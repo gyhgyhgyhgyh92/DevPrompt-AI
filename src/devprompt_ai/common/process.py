@@ -34,6 +34,9 @@ async def run_command(
     cwd: str | None = None,
 ) -> str:
     """执行外部命令并返回 stdout 文本。exit 码不在允许集时抛 ProcessError。"""
+    # 测试路由键约定（F-103/F-104）：domain 层在 rg 参数后追加 --route-key=<键> 供测试 Fake 路由，
+    # 真实进程不可见，转发前过滤
+    args = [a for a in args if not a.startswith("--route-key=")]
     proc = await asyncio.create_subprocess_exec(
         *args,
         cwd=cwd,
