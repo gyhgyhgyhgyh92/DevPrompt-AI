@@ -39,8 +39,9 @@ packages = ["src/devprompt_ai"]
 line-length = 100
 src = ["src", "tests"]
 # ruff 0.16 起默认格式化 Markdown 内嵌 Python 代码块，会改写范围外文档（AGENTS.md、架构文档等），
-# 显式排除以保持文档原样并保证 format --check 稳定绿灯（偏差说明见阶段二实施记录）
-extend-exclude = ["*.md"]
+# 显式排除以保持文档原样并保证 format --check 稳定绿灯（偏差说明见阶段二实施记录）；
+# eval/ 为召回率实测的语料 fixture（mock 仓库样例代码），属数据而非项目代码，同样排除
+extend-exclude = ["*.md", "eval"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "ASYNC"]
