@@ -1,0 +1,20 @@
+{"id":"mock-python-api-01","sentence":"用户列表接口 list_users 加分页参数","expected_symbol":"list_users","expected_path":"app/routers/users.py"}
+{"id":"mock-python-api-02","sentence":"创建用户接口加参数校验","expected_symbol":"create_user","expected_path":"app/routers/users.py"}
+{"id":"mock-python-api-03","sentence":"User 模型加 email 字段","expected_symbol":"User","expected_path":"app/models.py"}
+{"id":"mock-python-api-04","sentence":"get_db 依赖改成连接池实现","expected_symbol":"get_db","expected_path":"app/deps.py"}
+{"id":"mock-python-api-05","sentence":"create_app 加全局异常处理器","expected_symbol":"create_app","expected_path":"app/main.py"}
+{"id":"mock-python-api-06","sentence":"users 路由加 JWT 鉴权依赖","expected_symbol":"UserRouter","expected_path":"app/routers/users.py"}
+{"id":"mock-python-api-07","sentence":"用户实体加 created_at 时间戳","expected_symbol":"User","expected_path":"app/models.py"}
+{"id":"mock-python-api-08","sentence":"list_users 支持按名称模糊搜索","expected_symbol":"list_users","expected_path":"app/routers/users.py"}
+{"id":"mock-python-api-09","sentence":"OrderItem 模型加单价小计字段","expected_symbol":"OrderItem","expected_path":"app/models.py"}
+{"id":"mock-python-api-10","sentence":"create_user 重复用户名返回 409 错误码","expected_symbol":"create_user","expected_path":"app/routers/users.py"}
+{"id":"mock-python-api-11","sentence":"应用入口加 CORS 中间件配置","expected_symbol":"create_app","expected_path":"app/main.py"}
+{"id":"mock-python-api-12","sentence":"数据库依赖 get_db 加会话关闭逻辑","expected_symbol":"get_db","expected_path":"app/deps.py"}
+{"id":"mock-python-api-13","sentence":"用户路由的路径加 /v1 前缀","expected_symbol":"UserRouter","expected_path":"app/routers/users.py"}
+{"id":"mock-python-api-14","sentence":"User 模型改用 pydantic 定义","expected_symbol":"User","expected_path":"app/models.py"}
+{"id":"mock-python-api-15","sentence":"list_users 的返回加总数包装结构","expected_symbol":"list_users","expected_path":"app/routers/users.py"}
+{"id":"mock-python-api-16","sentence":"UserRouter 加健康检查子路由","expected_symbol":"UserRouter","expected_path":"app/routers/users.py"}
+{"id":"mock-python-api-17","sentence":"创建用户接口写操作日志","expected_symbol":"create_user","expected_path":"app/routers/users.py"}
+{"id":"mock-python-api-18","sentence":"加一个文件上传接口","expected_symbol":"upload_file","expected_path":"app/routers/users.py"}
+{"id":"mock-python-api-19","sentence":"OrderItem 加审核状态枚举","expected_symbol":"OrderItem","expected_path":"app/models.py"}
+{"id":"mock-python-api-20","sentence":"create_app 启动时打印版本号","expected_symbol":"create_app","expected_path":"app/main.py"}

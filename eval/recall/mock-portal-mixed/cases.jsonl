@@ -1,0 +1,20 @@
+{"id":"mock-portal-mixed-01","sentence":"个人中心 ProfilePage 加头像上传入口","expected_symbol":"ProfilePage","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-02","sentence":"profile page 的昵称改成可编辑","expected_symbol":"ProfilePage","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-03","sentence":"设置页 SettingsPage 加标签页布局","expected_symbol":"SettingsPage","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-04","sentence":"settings page 支持 url 直达子分区","expected_symbol":"SettingsPage","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-05","sentence":"requestClient 加请求超时处理","expected_symbol":"requestClient","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-06","sentence":"请求客户端统一加错误码拦截","expected_symbol":"requestClient","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-07","sentence":"formatDate 支持带时分秒格式","expected_symbol":"formatDate","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-08","sentence":"日期格式化加相对时间显示","expected_symbol":"formatDate","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-09","sentence":"个人中心加账号注销入口","expected_symbol":"ProfilePage","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-10","sentence":"设置页的常规分区加语言切换","expected_symbol":"SettingsPage","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-11","sentence":"requestClient 失败自动刷新 token 重试","expected_symbol":"requestClient","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-12","sentence":"个人中心数据加骨架屏","expected_symbol":"ProfilePage","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-13","sentence":"settings page 保存按钮加防抖","expected_symbol":"SettingsPage","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-14","sentence":"formatDate 空值返回占位符","expected_symbol":"formatDate","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-15","sentence":"请求客户端加取消重复请求逻辑","expected_symbol":"requestClient","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-16","sentence":"个人中心页头加面包屑导航","expected_symbol":"ProfilePage","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-17","sentence":"设置页改完未保存时离开要提示","expected_symbol":"SettingsPage","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-18","sentence":"加一个消息通知中心页面","expected_symbol":"NotificationPage","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-19","sentence":"requestClient 的错误信息改成中文","expected_symbol":"requestClient","expected_path":"src/index.ts"}
+{"id":"mock-portal-mixed-20","sentence":"profile page 底部加最近操作记录","expected_symbol":"ProfilePage","expected_path":"src/index.ts"}

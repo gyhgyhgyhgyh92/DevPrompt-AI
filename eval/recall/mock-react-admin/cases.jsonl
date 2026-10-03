@@ -1,0 +1,20 @@
+{"id":"mock-react-admin-01","sentence":"把提交按钮 SubmitButton 的圆角改成 8px","expected_symbol":"SubmitButton","expected_path":"src/components.tsx"}
+{"id":"mock-react-admin-02","sentence":"提交按钮默认背景色改为 primary-500","expected_symbol":"SubmitButton","expected_path":"src/components.tsx"}
+{"id":"mock-react-admin-03","sentence":"用户表格 UserTable 增加斑马纹样式","expected_symbol":"UserTable","expected_path":"src/components.tsx"}
+{"id":"mock-react-admin-04","sentence":"user table 支持点击表头列排序","expected_symbol":"UserTable","expected_path":"src/components.tsx"}
+{"id":"mock-react-admin-05","sentence":"登录表单 LoginForm 加一个验证码输入框","expected_symbol":"LoginForm","expected_path":"src/components.tsx"}
+{"id":"mock-react-admin-06","sentence":"login form 的错误提示文字改成红色 danger-500","expected_symbol":"LoginForm","expected_path":"src/components.tsx"}
+{"id":"mock-react-admin-07","sentence":"确认弹窗 ConfirmModal 增加加载中状态","expected_symbol":"ConfirmModal","expected_path":"src/components.tsx"}
+{"id":"mock-react-admin-08","sentence":"confirm modal 点击遮罩层不要关闭","expected_symbol":"ConfirmModal","expected_path":"src/components.tsx"}
+{"id":"mock-react-admin-09","sentence":"useFetch 请求失败时自动重试两次","expected_symbol":"useFetch","expected_path":"src/hooks.ts"}
+{"id":"mock-react-admin-10","sentence":"hooks 里加一个输入防抖 useDebounce","expected_symbol":"useDebounce","expected_path":"src/hooks.ts"}
+{"id":"mock-react-admin-11","sentence":"给用户表格的操作列加一个删除按钮","expected_symbol":"UserTable","expected_path":"src/components.tsx"}
+{"id":"mock-react-admin-12","sentence":"提交按钮 disabled 状态下显示 tooltip 提示","expected_symbol":"SubmitButton","expected_path":"src/components.tsx"}
+{"id":"mock-react-admin-13","sentence":"登录表单支持回车键直接提交","expected_symbol":"LoginForm","expected_path":"src/components.tsx"}
+{"id":"mock-react-admin-14","sentence":"确认弹窗的确定按钮颜色用 primary-500","expected_symbol":"ConfirmModal","expected_path":"src/components.tsx"}
+{"id":"mock-react-admin-15","sentence":"用户表格的斑马纹颜色改用 tokens.css 里的变量","expected_symbol":"UserTable","expected_path":"src/components.tsx"}
+{"id":"mock-react-admin-16","sentence":"useDebounce 的默认延迟改成 500ms","expected_symbol":"useDebounce","expected_path":"src/hooks.ts"}
+{"id":"mock-react-admin-17","sentence":"src/components.tsx 里所有组件补上 TypeScript Props 类型","expected_symbol":"SubmitButton","expected_path":"src/components.tsx"}
+{"id":"mock-react-admin-18","sentence":"首页顶部加一个全局搜索框","expected_symbol":"SearchBox","expected_path":"src/components.tsx"}
+{"id":"mock-react-admin-19","sentence":"移动端下用户表格支持横向滚动","expected_symbol":"UserTable","expected_path":"src/components.tsx"}
+{"id":"mock-react-admin-20","sentence":"确认弹窗宽度固定为 480px","expected_symbol":"ConfirmModal","expected_path":"src/components.tsx"}

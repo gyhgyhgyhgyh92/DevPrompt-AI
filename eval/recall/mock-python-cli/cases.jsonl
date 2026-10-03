@@ -1,0 +1,20 @@
+{"id":"mock-python-cli-01","sentence":"main 入口加版本号参数 --version","expected_symbol":"main","expected_path":"cli/main.py"}
+{"id":"mock-python-cli-02","sentence":"parse_args 支持布尔开关 --verbose","expected_symbol":"parse_args","expected_path":"cli/main.py"}
+{"id":"mock-python-cli-03","sentence":"cmd_init 加目录已存在的判断","expected_symbol":"cmd_init","expected_path":"cli/commands.py"}
+{"id":"mock-python-cli-04","sentence":"build 命令加增量构建开关","expected_symbol":"cmd_build","expected_path":"cli/commands.py"}
+{"id":"mock-python-cli-05","sentence":"render_table 表头加颜色高亮","expected_symbol":"render_table","expected_path":"cli/render.py"}
+{"id":"mock-python-cli-06","sentence":"命令执行出错时退出码返回非零","expected_symbol":"main","expected_path":"cli/main.py"}
+{"id":"mock-python-cli-07","sentence":"cmd_init 生成默认配置文件","expected_symbol":"cmd_init","expected_path":"cli/commands.py"}
+{"id":"mock-python-cli-08","sentence":"parse_args 的 path 参数加存在性校验","expected_symbol":"parse_args","expected_path":"cli/main.py"}
+{"id":"mock-python-cli-09","sentence":"render_table 支持右对齐列","expected_symbol":"render_table","expected_path":"cli/render.py"}
+{"id":"mock-python-cli-10","sentence":"cmd_build 输出构建耗时统计","expected_symbol":"cmd_build","expected_path":"cli/commands.py"}
+{"id":"mock-python-cli-11","sentence":"主入口加子命令自动补全提示","expected_symbol":"main","expected_path":"cli/main.py"}
+{"id":"mock-python-cli-12","sentence":"cmd_init 重复执行要幂等","expected_symbol":"cmd_init","expected_path":"cli/commands.py"}
+{"id":"mock-python-cli-13","sentence":"表格渲染空数据时输出提示行","expected_symbol":"render_table","expected_path":"cli/render.py"}
+{"id":"mock-python-cli-14","sentence":"build 命令失败时打印错误摘要","expected_symbol":"cmd_build","expected_path":"cli/commands.py"}
+{"id":"mock-python-cli-15","sentence":"parse_args 加 --config 配置文件参数","expected_symbol":"parse_args","expected_path":"cli/main.py"}
+{"id":"mock-python-cli-16","sentence":"cmd_build 支持 --clean 清理后再构建","expected_symbol":"cmd_build","expected_path":"cli/commands.py"}
+{"id":"mock-python-cli-17","sentence":"表格列宽自适应终端宽度","expected_symbol":"render_table","expected_path":"cli/render.py"}
+{"id":"mock-python-cli-18","sentence":"加一个 serve 子命令启动本地预览","expected_symbol":"cmd_serve","expected_path":"cli/commands.py"}
+{"id":"mock-python-cli-19","sentence":"main 里 init 成功后输出下一步提示","expected_symbol":"main","expected_path":"cli/main.py"}
+{"id":"mock-python-cli-20","sentence":"cmd_init 的输出加中文文案","expected_symbol":"cmd_init","expected_path":"cli/commands.py"}

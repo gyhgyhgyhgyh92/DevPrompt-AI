@@ -1,0 +1,20 @@
+{"id":"mock-vue-shop-01","sentence":"购物车页面 CartView 加全选商品按钮","expected_symbol":"CartView","expected_path":"src/views/index.ts"}
+{"id":"mock-vue-shop-02","sentence":"cart view 空车状态显示引导图","expected_symbol":"CartView","expected_path":"src/views/index.ts"}
+{"id":"mock-vue-shop-03","sentence":"订单列表 OrderList 支持按状态筛选","expected_symbol":"OrderList","expected_path":"src/views/index.ts"}
+{"id":"mock-vue-shop-04","sentence":"order list 加分页加载","expected_symbol":"OrderList","expected_path":"src/views/index.ts"}
+{"id":"mock-vue-shop-05","sentence":"购物车 store useCartStore 加删除商品 action","expected_symbol":"useCartStore","expected_path":"src/stores/cartStore.ts"}
+{"id":"mock-vue-shop-06","sentence":"cartStore 的 items 加商品快照字段","expected_symbol":"useCartStore","expected_path":"src/stores/cartStore.ts"}
+{"id":"mock-vue-shop-07","sentence":"fetchOrders 接口加 loading 参数透传","expected_symbol":"fetchOrders","expected_path":"src/stores/cartStore.ts"}
+{"id":"mock-vue-shop-08","sentence":"订单接口失败时返回统一错误结构","expected_symbol":"fetchOrders","expected_path":"src/stores/cartStore.ts"}
+{"id":"mock-vue-shop-09","sentence":"formatPrice 金额格式化支持千分位","expected_symbol":"formatPrice","expected_path":"src/stores/cartStore.ts"}
+{"id":"mock-vue-shop-10","sentence":"价格格式化加货币符号参数","expected_symbol":"formatPrice","expected_path":"src/stores/cartStore.ts"}
+{"id":"mock-vue-shop-11","sentence":"购物车角标数量实时更新","expected_symbol":"CartView","expected_path":"src/views/index.ts"}
+{"id":"mock-vue-shop-12","sentence":"订单列表的订单号列加复制功能","expected_symbol":"OrderList","expected_path":"src/views/index.ts"}
+{"id":"mock-vue-shop-13","sentence":"清空购物车前弹确认框","expected_symbol":"useCartStore","expected_path":"src/stores/cartStore.ts"}
+{"id":"mock-vue-shop-14","sentence":"fetchOrders 支持按下单时间倒序","expected_symbol":"fetchOrders","expected_path":"src/stores/cartStore.ts"}
+{"id":"mock-vue-shop-15","sentence":"金额展示统一走 formatPrice 工具","expected_symbol":"formatPrice","expected_path":"src/stores/cartStore.ts"}
+{"id":"mock-vue-shop-16","sentence":"cart view 底部加结算栏","expected_symbol":"CartView","expected_path":"src/views/index.ts"}
+{"id":"mock-vue-shop-17","sentence":"订单列表空数据时显示占位插画","expected_symbol":"OrderList","expected_path":"src/views/index.ts"}
+{"id":"mock-vue-shop-18","sentence":"加一个商品收藏功能","expected_symbol":"FavoriteService","expected_path":"src/stores/cartStore.ts"}
+{"id":"mock-vue-shop-19","sentence":"store 里 items 类型补上商品名","expected_symbol":"useCartStore","expected_path":"src/stores/cartStore.ts"}
+{"id":"mock-vue-shop-20","sentence":"购物车页头显示商品总数","expected_symbol":"CartView","expected_path":"src/views/index.ts"}
