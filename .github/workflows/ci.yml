@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: 安装依赖
+        run: uv sync --frozen --extra dev
+      - name: Ruff Lint（MUST-29 之一）
+        run: uv run ruff check .
+      - name: Ruff Format（MUST-29 之一）
+        run: uv run ruff format --check .
+      - name: mypy（MUST-29 之一）
+        run: uv run mypy
+      - name: pytest（MUST-29 之一）
+        run: uv run pytest -v
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+      - name: tsc 类型检查（MUST-29 之一）
+        run: pnpm typecheck
+      - name: ESLint（MUST-29 之一）
+        run: pnpm lint
+      - name: prettier
+        run: pnpm format:check
+      - name: Vitest
+        run: pnpm test
+      - name: 契约冒烟（MUST-29 之一；openapi.json 由阶段六 T6-2 产出，此前自动跳过）
+        if: ${{ hashFiles('openapi.json') != '' }}
+        run: pnpm check:contract
+
+  architecture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: 架构约束检查（MUST-29 之一）
+        run: python scripts/check_architecture.py

@@ -49,7 +49,7 @@ select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "ASYNC"]
 python_version = "3.10"
 strict = true
 mypy_path = "src"
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
