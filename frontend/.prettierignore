@@ -1,0 +1,3 @@
+dist/
+pnpm-lock.yaml
+src/schemas/openapi.generated.ts
