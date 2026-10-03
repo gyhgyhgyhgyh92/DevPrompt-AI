@@ -11,6 +11,9 @@ frontend/dist/
 *.db-journal
 .devprompt-ai/
 coverage/
+eval/recall/report-*.md
+eval/recall/report-*.json
+eval/recall/selftest-repo/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
