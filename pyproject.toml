@@ -34,3 +34,23 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/devprompt_ai"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+# ruff 0.16 起默认格式化 Markdown 内嵌 Python 代码块，会改写范围外文档（AGENTS.md、架构文档等），
+# 显式排除以保持文档原样并保证 format --check 稳定绿灯（偏差说明见阶段二实施记录）
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "ASYNC"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+mypy_path = "src"
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
