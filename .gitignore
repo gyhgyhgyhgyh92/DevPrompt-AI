@@ -1,0 +1,15 @@
+.env
+.env.local
+.venv/
+__pycache__/
+*.py[cod]
+node_modules/
+frontend/dist/
+.logs/
+*.db
+*.db-journal
+.devprompt-ai/
+coverage/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
