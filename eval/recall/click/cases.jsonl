@@ -1,0 +1,20 @@
+{"id":"click-01","sentence":"click 的 echo 输出 json 时不要转义中文","expected_symbol":"echo","expected_path":"src/click/utils.py"}
+{"id":"click-02","sentence":"超长文件名显示时中间截断加省略号","expected_symbol":"format_filename","expected_path":"src/click/utils.py"}
+{"id":"click-03","sentence":"CliRunner 混合 stdout stderr 的捕获顺序不稳定","expected_symbol":"CliRunner","expected_path":"src/click/testing.py"}
+{"id":"click-04","sentence":"命令装饰器支持从 yaml 读默认参数","expected_symbol":"command","expected_path":"src/click/decorators.py"}
+{"id":"click-05","sentence":"给 option 装饰器暴露 show_default 的开关","expected_symbol":"option","expected_path":"src/click/decorators.py"}
+{"id":"click-06","sentence":"必选位置参数缺失时的报错提示更友好","expected_symbol":"argument","expected_path":"src/click/decorators.py"}
+{"id":"click-07","sentence":"group 装饰器嵌套子命令时 help 输出分组标题","expected_symbol":"group","expected_path":"src/click/decorators.py"}
+{"id":"click-08","sentence":"version_option 直接读 pyproject.toml 的版本号","expected_symbol":"version_option","expected_path":"src/click/decorators.py"}
+{"id":"click-09","sentence":"password_option 输入的密码不要回显","expected_symbol":"password_option","expected_path":"src/click/decorators.py"}
+{"id":"click-10","sentence":"确认提示的默认值高亮显示大写 Y","expected_symbol":"confirm","expected_path":"src/click/termui.py"}
+{"id":"click-11","sentence":"prompt 的默认值用灰色显示","expected_symbol":"prompt","expected_path":"src/click/termui.py"}
+{"id":"click-12","sentence":"progressbar 结束后残留的进度条要清掉","expected_symbol":"progressbar","expected_path":"src/click/termui.py"}
+{"id":"click-13","sentence":"输出的文字颜色在不支持 ANSI 的终端自动降级","expected_symbol":"style","expected_path":"src/click/termui.py"}
+{"id":"click-14","sentence":"secho 同时传 fg 和 nl 时输出顺序不对","expected_symbol":"secho","expected_path":"src/click/termui.py"}
+{"id":"click-15","sentence":"getchar 在 Windows 下也要响应 Ctrl+C","expected_symbol":"getchar","expected_path":"src/click/termui.py"}
+{"id":"click-16","sentence":"echo_via_pager 内容不足一屏时直接打印不走分页","expected_symbol":"echo_via_pager","expected_path":"src/click/termui.py"}
+{"id":"click-17","sentence":"自定义异常基类要带退出码和退出前的清理钩子","expected_symbol":"ClickException","expected_path":"src/click/exceptions.py"}
+{"id":"click-18","sentence":"用法错误时提示最接近的正确命令名","expected_symbol":"UsageError","expected_path":"src/click/exceptions.py"}
+{"id":"click-19","sentence":"Context 上下文对象支持跨命令共享自定义字段","expected_symbol":"Context","expected_path":"src/click/core.py"}
+{"id":"click-20","sentence":"选项的枚举取值支持大小写不敏感匹配","expected_symbol":"Choice","expected_path":"src/click/types.py"}

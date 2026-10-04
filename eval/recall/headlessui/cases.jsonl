@@ -1,0 +1,20 @@
+{"id":"headlessui-01","sentence":"Button 渲染成 a 标签时不要再输出 type 属性","expected_symbol":"Button","expected_path":"packages/@headlessui-react/src/components/button/button.tsx"}
+{"id":"headlessui-02","sentence":"复选框的点击热区扩大到整行","expected_symbol":"Checkbox","expected_path":"packages/@headlessui-react/src/components/checkbox/checkbox.tsx"}
+{"id":"headlessui-03","sentence":"Combobox 输入过滤改成防抖并支持异步选项","expected_symbol":"Combobox","expected_path":"packages/@headlessui-react/src/components/combobox/combobox.tsx"}
+{"id":"headlessui-04","sentence":"ComboboxOption 选中后滚动到可视区域","expected_symbol":"ComboboxOption","expected_path":"packages/@headlessui-react/src/components/combobox/combobox.tsx"}
+{"id":"headlessui-05","sentence":"弹窗打开时禁止背景滚动","expected_symbol":"Dialog","expected_path":"packages/@headlessui-react/src/components/dialog/dialog.tsx"}
+{"id":"headlessui-06","sentence":"对话框面板加关闭动画","expected_symbol":"DialogPanel","expected_path":"packages/@headlessui-react/src/components/dialog/dialog.tsx"}
+{"id":"headlessui-07","sentence":"Disclosure 展开状态支持受控模式","expected_symbol":"Disclosure","expected_path":"packages/@headlessui-react/src/components/disclosure/disclosure.tsx"}
+{"id":"headlessui-08","sentence":"DisclosurePanel 支持静态渲染不卸载","expected_symbol":"DisclosurePanel","expected_path":"packages/@headlessui-react/src/components/disclosure/disclosure.tsx"}
+{"id":"headlessui-09","sentence":"Field 要把内部控件和描述文本用 describedby 关联","expected_symbol":"Field","expected_path":"packages/@headlessui-react/src/components/field/field.tsx"}
+{"id":"headlessui-10","sentence":"Input 组件支持前后缀插槽","expected_symbol":"Input","expected_path":"packages/@headlessui-react/src/components/input/input.tsx"}
+{"id":"headlessui-11","sentence":"下拉列表展开时高亮当前选中项","expected_symbol":"Listbox","expected_path":"packages/@headlessui-react/src/components/listbox/listbox.tsx"}
+{"id":"headlessui-12","sentence":"ListboxOption 的 value 支持对象类型","expected_symbol":"ListboxOption","expected_path":"packages/@headlessui-react/src/components/listbox/listbox.tsx"}
+{"id":"headlessui-13","sentence":"菜单打开时按 ESC 关闭并把焦点还给触发按钮","expected_symbol":"Menu","expected_path":"packages/@headlessui-react/src/components/menu/menu.tsx"}
+{"id":"headlessui-14","sentence":"MenuItem 禁用态不响应点击","expected_symbol":"MenuItem","expected_path":"packages/@headlessui-react/src/components/menu/menu.tsx"}
+{"id":"headlessui-15","sentence":"Popover 面板超出视口时自动翻转方向","expected_symbol":"Popover","expected_path":"packages/@headlessui-react/src/components/popover/popover.tsx"}
+{"id":"headlessui-16","sentence":"PopoverPanel 关闭后保留 DOM 节点","expected_symbol":"PopoverPanel","expected_path":"packages/@headlessui-react/src/components/popover/popover.tsx"}
+{"id":"headlessui-17","sentence":"RadioGroup 支持左右方向键切换选项","expected_symbol":"RadioGroup","expected_path":"packages/@headlessui-react/src/components/radio-group/radio-group.tsx"}
+{"id":"headlessui-18","sentence":"开关组件支持键盘空格切换","expected_symbol":"Switch","expected_path":"packages/@headlessui-react/src/components/switch/switch.tsx"}
+{"id":"headlessui-19","sentence":"进出场动画在首次挂载时也要生效","expected_symbol":"Transition","expected_path":"packages/@headlessui-react/src/components/transition/transition.tsx"}
+{"id":"headlessui-20","sentence":"点击外部区域关闭浮层的逻辑支持忽略白名单元素","expected_symbol":"useOutsideClick","expected_path":"packages/@headlessui-react/src/hooks/use-outside-click.ts"}

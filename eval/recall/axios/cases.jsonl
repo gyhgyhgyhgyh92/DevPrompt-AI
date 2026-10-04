@@ -1,0 +1,20 @@
+{"id":"axios-01","sentence":"Axios 实例上要暴露 getUri 方法","expected_symbol":"Axios","expected_path":"lib/core/Axios.js"}
+{"id":"axios-02","sentence":"AxiosError 的 toJSON 输出带上 config 摘要","expected_symbol":"AxiosError","expected_path":"lib/core/AxiosError.js"}
+{"id":"axios-03","sentence":"AxiosHeaders 的 set 支持传对象批量设置","expected_symbol":"AxiosHeaders","expected_path":"lib/core/AxiosHeaders.js"}
+{"id":"axios-04","sentence":"InterceptorManager 的 eject 之后 forEach 不应再遍历到","expected_symbol":"InterceptorManager","expected_path":"lib/core/InterceptorManager.js"}
+{"id":"axios-05","sentence":"请求分发入口对缺失适配器的情况报错更明确","expected_symbol":"dispatchRequest","expected_path":"lib/core/dispatchRequest.js"}
+{"id":"axios-06","sentence":"mergeConfig 对 headers 的合并策略按请求方法区分","expected_symbol":"mergeConfig","expected_path":"lib/core/mergeConfig.js"}
+{"id":"axios-07","sentence":"响应状态校验的时机提前到收到响应头时","expected_symbol":"settle","expected_path":"lib/core/settle.js"}
+{"id":"axios-08","sentence":"buildFullPath 对已是绝对 url 的输入直接返回","expected_symbol":"buildFullPath","expected_path":"lib/core/buildFullPath.js"}
+{"id":"axios-09","sentence":"transformData 依次应用转换器并收集异常","expected_symbol":"transformData","expected_path":"lib/core/transformData.js"}
+{"id":"axios-10","sentence":"dispatchXhrRequest 超时后要清理 ontimeout 监听","expected_symbol":"dispatchXhrRequest","expected_path":"lib/adapters/xhr.js"}
+{"id":"axios-11","sentence":"httpAdapter 支持 http2 会话复用","expected_symbol":"httpAdapter","expected_path":"lib/adapters/http.js"}
+{"id":"axios-12","sentence":"getAdapter 对未知的 adapter 名给出候选提示","expected_symbol":"getAdapter","expected_path":"lib/adapters/adapters.js"}
+{"id":"axios-13","sentence":"创建实例时合并默认配置是浅拷贝导致污染","expected_symbol":"createInstance","expected_path":"lib/axios.js"}
+{"id":"axios-14","sentence":"formToJSON 支持嵌套的表单字段名","expected_symbol":"formToJSON","expected_path":"lib/axios.js"}
+{"id":"axios-15","sentence":"CancelToken 的 source 静态方法要导出","expected_symbol":"CancelToken","expected_path":"lib/cancel/CancelToken.js"}
+{"id":"axios-16","sentence":"CanceledError 的 __CANCEL__ 判断补全","expected_symbol":"CanceledError","expected_path":"lib/cancel/CanceledError.js"}
+{"id":"axios-17","sentence":"请求被取消后该工具函数要返回 true 而不是抛错","expected_symbol":"isCancel","expected_path":"lib/cancel/isCancel.js"}
+{"id":"axios-18","sentence":"默认配置里的 transformRequest 数组支持外部追加","expected_symbol":"defaults","expected_path":"lib/defaults/index.js"}
+{"id":"axios-19","sentence":"buildURL 处理 url 已带 query 的拼接","expected_symbol":"buildURL","expected_path":"lib/helpers/buildURL.js"}
+{"id":"axios-20","sentence":"嵌套对象序列化成表单数据时限制深度","expected_symbol":"toFormData","expected_path":"lib/helpers/toFormData.js"}

@@ -1,0 +1,20 @@
+{"id":"requests-01","sentence":"Session 会话对象在 close 之后复用要给警告","expected_symbol":"Session","expected_path":"src/requests/sessions.py"}
+{"id":"requests-02","sentence":"requests.session() 建的会话支持 with 上下文管理器","expected_symbol":"session","expected_path":"src/requests/sessions.py"}
+{"id":"requests-03","sentence":"mount 挂载适配器的前缀匹配支持通配符","expected_symbol":"mount","expected_path":"src/requests/sessions.py"}
+{"id":"requests-04","sentence":"get_adapter 按 url 前缀选适配器时支持正则","expected_symbol":"get_adapter","expected_path":"src/requests/sessions.py"}
+{"id":"requests-05","sentence":"HTTPAdapter 的连接池默认大小做成可配置","expected_symbol":"HTTPAdapter","expected_path":"src/requests/adapters.py"}
+{"id":"requests-06","sentence":"BaseAdapter 基类的 send 方法补上超时默认值","expected_symbol":"BaseAdapter","expected_path":"src/requests/adapters.py"}
+{"id":"requests-07","sentence":"requests.get 的 allow_redirects 默认改成 False","expected_symbol":"get","expected_path":"src/requests/api.py"}
+{"id":"requests-08","sentence":"requests.post 上传文件的 filename 中文编码有问题","expected_symbol":"post","expected_path":"src/requests/api.py"}
+{"id":"requests-09","sentence":"顶层的请求入口方法支持复用已有的预处理逻辑","expected_symbol":"request","expected_path":"src/requests/api.py"}
+{"id":"requests-10","sentence":"Response 响应对象把 status_code 缓存成属性","expected_symbol":"Response","expected_path":"src/requests/models.py"}
+{"id":"requests-11","sentence":"预处理请求对象重新 prepare 时 method 要还原","expected_symbol":"PreparedRequest","expected_path":"src/requests/models.py"}
+{"id":"requests-12","sentence":"状态码 4xx 5xx 时报错信息带上响应体摘要","expected_symbol":"raise_for_status","expected_path":"src/requests/models.py"}
+{"id":"requests-13","sentence":"iter_content 流式读取的 chunk_size 支持自动探测","expected_symbol":"iter_content","expected_path":"src/requests/models.py"}
+{"id":"requests-14","sentence":"基本认证的用户名密码支持 unicode 字符","expected_symbol":"HTTPBasicAuth","expected_path":"src/requests/auth.py"}
+{"id":"requests-15","sentence":"摘要认证的 nonce 计数要改成线程安全","expected_symbol":"HTTPDigestAuth","expected_path":"src/requests/auth.py"}
+{"id":"requests-16","sentence":"RequestsCookieJar 支持导出 Netscape 格式文件","expected_symbol":"RequestsCookieJar","expected_path":"src/requests/cookies.py"}
+{"id":"requests-17","sentence":"从字典构建 cookie jar 时透传 ignore_expires 参数","expected_symbol":"cookiejar_from_dict","expected_path":"src/requests/cookies.py"}
+{"id":"requests-18","sentence":"大小写不敏感字典的 copy 保留原始插入顺序","expected_symbol":"CaseInsensitiveDict","expected_path":"src/requests/structures.py"}
+{"id":"requests-19","sentence":"网络异常时报错信息不要包含完整 url","expected_symbol":"RequestException","expected_path":"src/requests/exceptions.py"}
+{"id":"requests-20","sentence":"钩子分发改成逐个收集异常而不是中断","expected_symbol":"dispatch_hook","expected_path":"src/requests/hooks.py"}

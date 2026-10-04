@@ -1,0 +1,20 @@
+{"id":"pinia-01","sentence":"defineStore 的 id 支持省略并从文件名推导","expected_symbol":"defineStore","expected_path":"packages/pinia/src/store.ts"}
+{"id":"pinia-02","sentence":"createSetupStore 里补上 devtools 注册的时机","expected_symbol":"createSetupStore","expected_path":"packages/pinia/src/store.ts"}
+{"id":"pinia-03","sentence":"$patch 传回调函数时支持异步分批修改","expected_symbol":"$patch","expected_path":"packages/pinia/src/store.ts"}
+{"id":"pinia-04","sentence":"表单 store 支持一键重置回初始状态","expected_symbol":"$reset","expected_path":"packages/pinia/src/store.ts"}
+{"id":"pinia-05","sentence":"$dispose 之后访问 store 实例属性直接抛错","expected_symbol":"$dispose","expected_path":"packages/pinia/src/store.ts"}
+{"id":"pinia-06","sentence":"用 $onAction 订阅 action 拿到 after 回调","expected_symbol":"$onAction","expected_path":"packages/pinia/src/store.ts"}
+{"id":"pinia-07","sentence":"标记为跳过水合的字段在服务端渲染恢复时不覆盖","expected_symbol":"skipHydrate","expected_path":"packages/pinia/src/store.ts"}
+{"id":"pinia-08","sentence":"storeToRefs 解构 getters 后失去响应式","expected_symbol":"storeToRefs","expected_path":"packages/pinia/src/storeToRefs.ts"}
+{"id":"pinia-09","sentence":"创建根实例时支持传入自定义的 effectScope","expected_symbol":"createPinia","expected_path":"packages/pinia/src/createPinia.ts"}
+{"id":"pinia-10","sentence":"disposePinia 要同时清理订阅和副作用作用域","expected_symbol":"disposePinia","expected_path":"packages/pinia/src/createPinia.ts"}
+{"id":"pinia-11","sentence":"热更新替换 store 定义时保留未提交的 state","expected_symbol":"acceptHMRUpdate","expected_path":"packages/pinia/src/hmr.ts"}
+{"id":"pinia-12","sentence":"mapState 批量映射计算属性时支持传函数数组","expected_symbol":"mapState","expected_path":"packages/pinia/src/mapHelpers.ts"}
+{"id":"pinia-13","sentence":"选项式写法里把 actions 挂到 methods 上","expected_symbol":"mapActions","expected_path":"packages/pinia/src/mapHelpers.ts"}
+{"id":"pinia-14","sentence":"mapStores 返回的 key 自定义后缀不生效","expected_symbol":"mapStores","expected_path":"packages/pinia/src/mapHelpers.ts"}
+{"id":"pinia-15","sentence":"mapWritableState 支持 v-model 直接双向绑定","expected_symbol":"mapWritableState","expected_path":"packages/pinia/src/mapHelpers.ts"}
+{"id":"pinia-16","sentence":"批量映射 store 属性时统一命名后缀没生效","expected_symbol":"setMapStoreSuffix","expected_path":"packages/pinia/src/mapHelpers.ts"}
+{"id":"pinia-17","sentence":"setActivePinia 在应用卸载时还原成 undefined","expected_symbol":"setActivePinia","expected_path":"packages/pinia/src/rootStore.ts"}
+{"id":"pinia-18","sentence":"在组件外获取当前实例时返回空并告警","expected_symbol":"getActivePinia","expected_path":"packages/pinia/src/rootStore.ts"}
+{"id":"pinia-19","sentence":"piniaSymbol 作为 injection key 的注册逻辑","expected_symbol":"piniaSymbol","expected_path":"packages/pinia/src/rootStore.ts"}
+{"id":"pinia-20","sentence":"开发者工具插件的事件时间线补上 store 标识","expected_symbol":"devtoolsPlugin","expected_path":"packages/pinia/src/devtools/plugin.ts"}

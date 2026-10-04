@@ -1,9 +1,9 @@
 {
   "repos": [
-    { "id": "mock-react-admin", "path": "eval/recall/mock-react-admin", "language": "ts", "mock": true, "small": true },
-    { "id": "mock-vue-shop", "path": "eval/recall/mock-vue-shop", "language": "ts", "mock": true, "small": true },
-    { "id": "mock-python-api", "path": "eval/recall/mock-python-api", "language": "python", "mock": true, "small": true },
-    { "id": "mock-python-cli", "path": "eval/recall/mock-python-cli", "language": "python", "mock": true, "small": true },
-    { "id": "mock-portal-mixed", "path": "eval/recall/mock-portal-mixed", "language": "ts", "mock": true, "small": true }
+    { "id": "click", "path": "eval/repos/click", "language": "python", "mock": false, "symbol_total": 2470 },
+    { "id": "requests", "path": "eval/repos/requests", "language": "python", "mock": false, "symbol_total": 1301 },
+    { "id": "pinia", "path": "eval/repos/pinia", "language": "ts", "mock": false, "symbol_total": 2388 },
+    { "id": "axios", "path": "eval/repos/axios", "language": "js", "mock": false, "symbol_total": 28287 },
+    { "id": "headlessui", "path": "eval/repos/headlessui", "language": "ts", "mock": false, "symbol_total": 16100 }
   ]
 }

@@ -14,6 +14,7 @@ coverage/
 eval/recall/report-*.md
 eval/recall/report-*.json
 eval/recall/selftest-repo/
+eval/repos/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
