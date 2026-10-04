@@ -70,6 +70,10 @@ def test_build_ctags_args_contains_excludes_and_root() -> None:
     assert args[0] == "ctags"
     assert "--output-format=json" in args
     assert "--fields=+n" in args
+    # ctags 6.1.0 默认不映射 .tsx（实测零 tag），必须显式补映射
+    assert "--map-TypeScript=+.tsx" in args
+    # md 标题会混入符号表污染候选名额，保持符号表 = 纯代码符号
+    assert "--languages=-Markdown" in args
     assert args[-1] == "C:/proj"
     for d in EXCLUDED_DIRS:
         assert f"--exclude={d}" in args

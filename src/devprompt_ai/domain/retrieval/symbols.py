@@ -78,8 +78,21 @@ def cache_key(project_root: str, mtimes: list[tuple[str, int]]) -> str:
 
 
 def build_ctags_args(project_root: str) -> list[str]:
-    """组装 ctags 命令：JSON 输出 + 行号 + 排除目录（纯函数便于测试断言）。"""
-    args = ["ctags", "-f", "-", "--output-format=json", "--fields=+n", "-R"]
+    """组装 ctags 命令：JSON 输出 + 行号 + 排除目录（纯函数便于测试断言）。
+
+    --map-TypeScript=+.tsx：本机 ctags 6.1.0 默认不映射 .tsx（实测零 tag），React/TSX 是主场景；
+    --languages=-Markdown：md 标题会混入符号表污染候选名额，保持符号表 = 纯代码符号。
+    """
+    args = [
+        "ctags",
+        "-f",
+        "-",
+        "--output-format=json",
+        "--fields=+n",
+        "--map-TypeScript=+.tsx",
+        "--languages=-Markdown",
+        "-R",
+    ]
     for d in EXCLUDED_DIRS:
         args.append(f"--exclude={d}")
     args.append(project_root)

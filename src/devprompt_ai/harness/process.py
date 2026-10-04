@@ -11,7 +11,7 @@ import asyncio
 import logging
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from devprompt_ai.common.process import run_command
 from devprompt_ai.domain.models import Symbol
@@ -69,6 +69,18 @@ class SymbolTableResult:
     cache_hit: bool
 
 
+def _to_rel(path: str, root: str) -> str:
+    """将 ctags 输出路径归一为仓库相对 POSIX 路径（Symbol 契约要求）。
+
+    root 可能是相对路径（如 `.` 或 `eval/recall/mock-x`），与 ctags 的 cwd 相对输出一致；
+    relpath 失败（如跨盘符）时保留原值兜底，不中断符号表构建。
+    """
+    try:
+        return os.path.relpath(path, root).replace("\\", "/")
+    except ValueError:
+        return path
+
+
 class SymbolTableProvider:
     """F-101 编排：ctags 调用 + 解析 + 进程内缓存（键含 mtime 摘要，TTL 1h）。
 
@@ -117,7 +129,7 @@ class SymbolTableProvider:
         args = build_ctags_args(root)
         self.calls_args.append(args)
         raw = await self._runner.run(args, timeout=30.0)
-        symbols = parse_ctags_output(raw)
+        symbols = [replace(s, path=_to_rel(s.path, root)) for s in parse_ctags_output(raw)]
         self._cache_key = key
         self._cache_symbols = symbols
         self._cached_at = now

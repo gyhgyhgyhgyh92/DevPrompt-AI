@@ -57,3 +57,28 @@ async def test_excludes_passed_to_ctags() -> None:
     await provider.get("C:/proj")
     assert "--exclude=node_modules" in runner.calls_args[0]
     assert "--exclude=__pycache__" in runner.calls_args[0]
+    # src 修复随附：.tsx 映射与 Markdown 排除必须由 src 下发，脚本层不再补偿
+    assert "--map-TypeScript=+.tsx" in runner.calls_args[0]
+    assert "--languages=-Markdown" in runner.calls_args[0]
+
+
+async def test_symbols_paths_normalized_to_repo_relative() -> None:
+    # ctags 输出含仓库根前缀（绝对 root），Provider 必须归一为仓库相对 POSIX 路径
+    raw = (
+        '{"_type":"tag","name":"App","path":"C:/proj/src/App.tsx","line":1,"kind":"function"}\n'
+        '{"_type":"tag","name":"B","path":"C:/proj/src/ui/b.tsx","line":2,"kind":"function"}\n'
+    )
+    provider = SymbolTableProvider(FakeRunner(raw), ttl_seconds=3600.0)
+    r = await provider.get("C:/proj")
+    assert [s.path for s in r.symbols] == ["src/App.tsx", "src/ui/b.tsx"]
+
+
+async def test_relative_root_paths_normalized() -> None:
+    # root 为相对路径（如 eval/recall/mock-x）时同样归一
+    raw = (
+        '{"_type":"tag","name":"App","path":"eval/recall/mock-x/src/App.tsx",'
+        '"line":1,"kind":"function"}\n'
+    )
+    provider = SymbolTableProvider(FakeRunner(raw), ttl_seconds=3600.0)
+    r = await provider.get("eval/recall/mock-x")
+    assert r.symbols[0].path == "src/App.tsx"
