@@ -3,12 +3,8 @@
 用法：uv run python scripts/measure_recall.py [--manifest ...] [--out ...] [--cases-root ...]
 输出：report-<日期>.json（机器可读）+ report-<日期>.md（人读报告）
 
-测量链路注记（脚本层补偿，src 修复后应移除）：
-1. 本机 ctags 6.1.0 的 TypeScript 解析器仅映射 *.ts，.tsx 判为 NONE（零 tag）——
-   EvalCommandRunner 为 ctags 调用追加 --map-TypeScript=+.tsx 补偿；
-   src 的 build_ctags_args 缺该映射（F-101 实现缺陷，React/TSX 为主场景，待修复）。
-2. ctags 输出路径相对 cwd（含仓库根前缀），而 Symbol 契约要求仓库相对路径——
-   _repo_relative_symbols 剥离根前缀归一；SymbolTableProvider 未做该归一（待修复）。
+测量链路直接使用 src 的 LocalCommandRunner + SymbolTableProvider（计划 §8.2 原始形态）；
+.tsx 映射与路径归一已由 build_ctags_args / SymbolTableProvider 负责，脚本层零补偿。
 """
 
 from __future__ import annotations
@@ -20,43 +16,8 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from devprompt_ai.domain.models import Symbol
 from devprompt_ai.domain.retrieval.candidates import build_candidates
-from devprompt_ai.domain.retrieval.ports import CommandRunner
 from devprompt_ai.harness.process import LocalCommandRunner, SymbolTableProvider
-
-_TSX_MAP = "--map-TypeScript=+.tsx"  # 见模块 docstring 注记 1
-
-
-class EvalCommandRunner:
-    """CommandRunner 装饰器：为 ctags 调用追加 .tsx 语言映射（注记 1）。"""
-
-    def __init__(self, inner: CommandRunner) -> None:
-        self._inner = inner
-
-    async def run(
-        self,
-        args: list[str],
-        *,
-        timeout: float = 10.0,
-        allowed_exit_codes: frozenset[int] = frozenset({0}),
-        cwd: str | None = None,
-    ) -> str:
-        if args and args[0] == "ctags":
-            args = [args[0], _TSX_MAP, *args[1:]]
-        return await self._inner.run(
-            args, timeout=timeout, allowed_exit_codes=allowed_exit_codes, cwd=cwd
-        )
-
-
-def _repo_relative_symbols(symbols: list[Symbol], root: str) -> list[Symbol]:
-    """将符号路径归一为仓库相对路径（注记 2）：剥离 ctags 输出中的仓库根前缀。"""
-    prefix = root.replace("\\", "/").rstrip("/") + "/"
-    out: list[Symbol] = []
-    for s in symbols:
-        path = s.path[len(prefix) :] if s.path.startswith(prefix) else s.path
-        out.append(Symbol(name=s.name, path=path, line=s.line, kind=s.kind))
-    return out
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,7 +76,7 @@ async def measure_repo(
     root = str(repo["path"])
     repo_id = str(repo["id"])
     table = await provider.get(root)
-    symbols = _repo_relative_symbols(table.symbols, root)
+    symbols = table.symbols
     small = bool(repo.get("small", False)) or len(symbols) < 25
     cases = await asyncio.to_thread(_load_cases, cases_root / repo_id)
     results: list[CaseResult] = []
@@ -166,12 +127,6 @@ def _report_md(repos: list[RepoResult], out: Path, corpus: str) -> Path:
             "",
         ]
     lines += [
-        "测量链路注记：本脚本为 ctags 追加 `--map-TypeScript=+.tsx` 并将符号路径归一为仓库相对路径",
-        (
-            "（src 的 `build_ctags_args` 缺 tsx 映射、`SymbolTableProvider` 未做根前缀归一，"
-            "待主流程修复后移除本补偿）。"
-        ),
-        "",
         "| 仓库 | 符号总数 | <25 标注 | 命中 | 召回率 |",
         "|---|---|---|---|---|",
     ]
@@ -225,7 +180,7 @@ def _write_report_files(
 async def main_async(manifest_path: Path, out_dir: Path, cases_root: Path) -> int:
     raw = await asyncio.to_thread(manifest_path.read_text, encoding="utf-8")
     manifest = json.loads(raw)
-    provider = SymbolTableProvider(EvalCommandRunner(LocalCommandRunner()))
+    provider = SymbolTableProvider(LocalCommandRunner())
     repos: list[RepoResult] = []
     for repo in manifest["repos"]:
         repos.append(await measure_repo(repo, provider, cases_root))
