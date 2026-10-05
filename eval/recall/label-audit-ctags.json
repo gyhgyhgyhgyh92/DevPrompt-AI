@@ -1,0 +1,1244 @@
+{
+  "click": {
+    "symbol_total": 2470,
+    "cases": [
+      {
+        "id": "click-01",
+        "sentence": "click 的 echo 输出 json 时不要转义中文",
+        "expected_symbol": "echo",
+        "expected_path": "src/click/utils.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/utils.py",
+          "tests/test_utils/test_prompt.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-02",
+        "sentence": "超长文件名显示时中间截断加省略号",
+        "expected_symbol": "format_filename",
+        "expected_path": "src/click/utils.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/utils.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-03",
+        "sentence": "CliRunner 混合 stdout stderr 的捕获顺序不稳定",
+        "expected_symbol": "CliRunner",
+        "expected_path": "src/click/testing.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/testing.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-04",
+        "sentence": "命令装饰器支持从 yaml 读默认参数",
+        "expected_symbol": "command",
+        "expected_path": "src/click/decorators.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/core.py",
+          "src/click/core.py",
+          "src/click/core.py",
+          "src/click/decorators.py",
+          "src/click/decorators.py",
+          "src/click/decorators.py",
+          "src/click/decorators.py",
+          "src/click/decorators.py",
+          "tests/test_basic.py",
+          "tests/test_formatting.py",
+          "tests/test_formatting.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-05",
+        "sentence": "给 option 装饰器暴露 show_default 的开关",
+        "expected_symbol": "option",
+        "expected_path": "src/click/decorators.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/decorators.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-06",
+        "sentence": "必选位置参数缺失时的报错提示更友好",
+        "expected_symbol": "argument",
+        "expected_path": "src/click/decorators.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/decorators.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-07",
+        "sentence": "group 装饰器嵌套子命令时 help 输出分组标题",
+        "expected_symbol": "group",
+        "expected_path": "src/click/decorators.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "examples/completion/completion.py",
+          "src/click/__init__.py",
+          "src/click/core.py",
+          "src/click/core.py",
+          "src/click/core.py",
+          "src/click/decorators.py",
+          "src/click/decorators.py",
+          "src/click/decorators.py",
+          "src/click/decorators.py",
+          "src/click/decorators.py",
+          "tests/test_basic.py",
+          "tests/test_commands.py",
+          "tests/test_commands.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-08",
+        "sentence": "version_option 直接读 pyproject.toml 的版本号",
+        "expected_symbol": "version_option",
+        "expected_path": "src/click/decorators.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/decorators.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-09",
+        "sentence": "password_option 输入的密码不要回显",
+        "expected_symbol": "password_option",
+        "expected_path": "src/click/decorators.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/decorators.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-10",
+        "sentence": "确认提示的默认值高亮显示大写 Y",
+        "expected_symbol": "confirm",
+        "expected_path": "src/click/termui.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/termui.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-11",
+        "sentence": "prompt 的默认值用灰色显示",
+        "expected_symbol": "prompt",
+        "expected_path": "src/click/termui.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/termui.py",
+          "src/click/termui.py",
+          "src/click/termui.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-12",
+        "sentence": "progressbar 结束后残留的进度条要清掉",
+        "expected_symbol": "progressbar",
+        "expected_path": "src/click/termui.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/termui.py",
+          "src/click/termui.py",
+          "src/click/termui.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-13",
+        "sentence": "输出的文字颜色在不支持 ANSI 的终端自动降级",
+        "expected_symbol": "style",
+        "expected_path": "src/click/termui.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/termui.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-14",
+        "sentence": "secho 同时传 fg 和 nl 时输出顺序不对",
+        "expected_symbol": "secho",
+        "expected_path": "src/click/termui.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/termui.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-15",
+        "sentence": "getchar 在 Windows 下也要响应 Ctrl+C",
+        "expected_symbol": "getchar",
+        "expected_path": "src/click/termui.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/_termui_impl.py",
+          "src/click/_termui_impl.py",
+          "src/click/termui.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-16",
+        "sentence": "echo_via_pager 内容不足一屏时直接打印不走分页",
+        "expected_symbol": "echo_via_pager",
+        "expected_path": "src/click/termui.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/termui.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-17",
+        "sentence": "自定义异常基类要带退出码和退出前的清理钩子",
+        "expected_symbol": "ClickException",
+        "expected_path": "src/click/exceptions.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/exceptions.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-18",
+        "sentence": "用法错误时提示最接近的正确命令名",
+        "expected_symbol": "UsageError",
+        "expected_path": "src/click/exceptions.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/exceptions.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-19",
+        "sentence": "Context 上下文对象支持跨命令共享自定义字段",
+        "expected_symbol": "Context",
+        "expected_path": "src/click/core.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/core.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "click-20",
+        "sentence": "选项的枚举取值支持大小写不敏感匹配",
+        "expected_symbol": "Choice",
+        "expected_path": "src/click/types.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/click/__init__.py",
+          "src/click/types.py"
+        ],
+        "path_match": true
+      }
+    ],
+    "ctags_found": 20,
+    "path_match": 20,
+    "n": 20
+  },
+  "requests": {
+    "symbol_total": 1301,
+    "cases": [
+      {
+        "id": "requests-01",
+        "sentence": "Session 会话对象在 close 之后复用要给警告",
+        "expected_symbol": "Session",
+        "expected_path": "src/requests/sessions.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/sessions.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-02",
+        "sentence": "requests.session() 建的会话支持 with 上下文管理器",
+        "expected_symbol": "session",
+        "expected_path": "src/requests/sessions.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/sessions.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-03",
+        "sentence": "mount 挂载适配器的前缀匹配支持通配符",
+        "expected_symbol": "mount",
+        "expected_path": "src/requests/sessions.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/sessions.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-04",
+        "sentence": "get_adapter 按 url 前缀选适配器时支持正则",
+        "expected_symbol": "get_adapter",
+        "expected_path": "src/requests/sessions.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/sessions.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-05",
+        "sentence": "HTTPAdapter 的连接池默认大小做成可配置",
+        "expected_symbol": "HTTPAdapter",
+        "expected_path": "src/requests/adapters.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/adapters.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-06",
+        "sentence": "BaseAdapter 基类的 send 方法补上超时默认值",
+        "expected_symbol": "BaseAdapter",
+        "expected_path": "src/requests/adapters.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/adapters.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-07",
+        "sentence": "requests.get 的 allow_redirects 默认改成 False",
+        "expected_symbol": "get",
+        "expected_path": "src/requests/api.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/api.py",
+          "src/requests/cookies.py",
+          "src/requests/sessions.py",
+          "src/requests/structures.py",
+          "src/requests/structures.py",
+          "src/requests/structures.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-08",
+        "sentence": "requests.post 上传文件的 filename 中文编码有问题",
+        "expected_symbol": "post",
+        "expected_path": "src/requests/api.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/api.py",
+          "src/requests/sessions.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-09",
+        "sentence": "顶层的请求入口方法支持复用已有的预处理逻辑",
+        "expected_symbol": "request",
+        "expected_path": "src/requests/api.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/api.py",
+          "src/requests/sessions.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-10",
+        "sentence": "Response 响应对象把 status_code 缓存成属性",
+        "expected_symbol": "Response",
+        "expected_path": "src/requests/models.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/models.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-11",
+        "sentence": "预处理请求对象重新 prepare 时 method 要还原",
+        "expected_symbol": "PreparedRequest",
+        "expected_path": "src/requests/models.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/models.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-12",
+        "sentence": "状态码 4xx 5xx 时报错信息带上响应体摘要",
+        "expected_symbol": "raise_for_status",
+        "expected_path": "src/requests/models.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/models.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-13",
+        "sentence": "iter_content 流式读取的 chunk_size 支持自动探测",
+        "expected_symbol": "iter_content",
+        "expected_path": "src/requests/models.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/models.py",
+          "src/requests/models.py",
+          "src/requests/models.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-14",
+        "sentence": "基本认证的用户名密码支持 unicode 字符",
+        "expected_symbol": "HTTPBasicAuth",
+        "expected_path": "src/requests/auth.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/auth.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-15",
+        "sentence": "摘要认证的 nonce 计数要改成线程安全",
+        "expected_symbol": "HTTPDigestAuth",
+        "expected_path": "src/requests/auth.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/auth.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-16",
+        "sentence": "RequestsCookieJar 支持导出 Netscape 格式文件",
+        "expected_symbol": "RequestsCookieJar",
+        "expected_path": "src/requests/cookies.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/cookies.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-17",
+        "sentence": "从字典构建 cookie jar 时透传 ignore_expires 参数",
+        "expected_symbol": "cookiejar_from_dict",
+        "expected_path": "src/requests/cookies.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/cookies.py",
+          "src/requests/cookies.py",
+          "src/requests/cookies.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-18",
+        "sentence": "大小写不敏感字典的 copy 保留原始插入顺序",
+        "expected_symbol": "CaseInsensitiveDict",
+        "expected_path": "src/requests/structures.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/structures.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-19",
+        "sentence": "网络异常时报错信息不要包含完整 url",
+        "expected_symbol": "RequestException",
+        "expected_path": "src/requests/exceptions.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/exceptions.py"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "requests-20",
+        "sentence": "钩子分发改成逐个收集异常而不是中断",
+        "expected_symbol": "dispatch_hook",
+        "expected_path": "src/requests/hooks.py",
+        "ctags_found": true,
+        "ctags_paths": [
+          "src/requests/hooks.py"
+        ],
+        "path_match": true
+      }
+    ],
+    "ctags_found": 20,
+    "path_match": 20,
+    "n": 20
+  },
+  "pinia": {
+    "symbol_total": 2388,
+    "cases": [
+      {
+        "id": "pinia-01",
+        "sentence": "defineStore 的 id 支持省略并从文件名推导",
+        "expected_symbol": "defineStore",
+        "expected_path": "packages/pinia/src/store.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/store.ts",
+          "packages/pinia/test-dts/customizations.test-d.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-02",
+        "sentence": "createSetupStore 里补上 devtools 注册的时机",
+        "expected_symbol": "createSetupStore",
+        "expected_path": "packages/pinia/src/store.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/store.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-03",
+        "sentence": "$patch 传回调函数时支持异步分批修改",
+        "expected_symbol": "$patch",
+        "expected_path": "packages/pinia/src/store.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/store.ts",
+          "packages/pinia/src/types.ts",
+          "packages/pinia/src/types.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-04",
+        "sentence": "表单 store 支持一键重置回初始状态",
+        "expected_symbol": "$reset",
+        "expected_path": "packages/pinia/src/store.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/store.ts",
+          "packages/pinia/src/store.ts",
+          "packages/pinia/src/types.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-05",
+        "sentence": "$dispose 之后访问 store 实例属性直接抛错",
+        "expected_symbol": "$dispose",
+        "expected_path": "packages/pinia/src/store.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/devtools/plugin.ts",
+          "packages/pinia/src/store.ts",
+          "packages/pinia/src/types.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-06",
+        "sentence": "用 $onAction 订阅 action 拿到 after 回调",
+        "expected_symbol": "$onAction",
+        "expected_path": "packages/pinia/src/store.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/store.ts",
+          "packages/pinia/src/types.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-07",
+        "sentence": "标记为跳过水合的字段在服务端渲染恢复时不覆盖",
+        "expected_symbol": "skipHydrate",
+        "expected_path": "packages/pinia/src/store.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/store.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-08",
+        "sentence": "storeToRefs 解构 getters 后失去响应式",
+        "expected_symbol": "storeToRefs",
+        "expected_path": "packages/pinia/src/storeToRefs.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/storeToRefs.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-09",
+        "sentence": "创建根实例时支持传入自定义的 effectScope",
+        "expected_symbol": "createPinia",
+        "expected_path": "packages/pinia/src/createPinia.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/createPinia.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-10",
+        "sentence": "disposePinia 要同时清理订阅和副作用作用域",
+        "expected_symbol": "disposePinia",
+        "expected_path": "packages/pinia/src/createPinia.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/createPinia.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-11",
+        "sentence": "热更新替换 store 定义时保留未提交的 state",
+        "expected_symbol": "acceptHMRUpdate",
+        "expected_path": "packages/pinia/src/hmr.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/hmr.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-12",
+        "sentence": "mapState 批量映射计算属性时支持传函数数组",
+        "expected_symbol": "mapState",
+        "expected_path": "packages/pinia/src/mapHelpers.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/mapHelpers.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-13",
+        "sentence": "选项式写法里把 actions 挂到 methods 上",
+        "expected_symbol": "mapActions",
+        "expected_path": "packages/pinia/src/mapHelpers.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/mapHelpers.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-14",
+        "sentence": "mapStores 返回的 key 自定义后缀不生效",
+        "expected_symbol": "mapStores",
+        "expected_path": "packages/pinia/src/mapHelpers.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/mapHelpers.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-15",
+        "sentence": "mapWritableState 支持 v-model 直接双向绑定",
+        "expected_symbol": "mapWritableState",
+        "expected_path": "packages/pinia/src/mapHelpers.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/mapHelpers.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-16",
+        "sentence": "批量映射 store 属性时统一命名后缀没生效",
+        "expected_symbol": "setMapStoreSuffix",
+        "expected_path": "packages/pinia/src/mapHelpers.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/mapHelpers.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-17",
+        "sentence": "setActivePinia 在应用卸载时还原成 undefined",
+        "expected_symbol": "setActivePinia",
+        "expected_path": "packages/pinia/src/rootStore.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/rootStore.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-18",
+        "sentence": "在组件外获取当前实例时返回空并告警",
+        "expected_symbol": "getActivePinia",
+        "expected_path": "packages/pinia/src/rootStore.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/rootStore.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-19",
+        "sentence": "piniaSymbol 作为 injection key 的注册逻辑",
+        "expected_symbol": "piniaSymbol",
+        "expected_path": "packages/pinia/src/rootStore.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/rootStore.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "pinia-20",
+        "sentence": "开发者工具插件的事件时间线补上 store 标识",
+        "expected_symbol": "devtoolsPlugin",
+        "expected_path": "packages/pinia/src/devtools/plugin.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/pinia/src/devtools/plugin.ts"
+        ],
+        "path_match": true
+      }
+    ],
+    "ctags_found": 20,
+    "path_match": 20,
+    "n": 20
+  },
+  "axios": {
+    "symbol_total": 28287,
+    "cases": [
+      {
+        "id": "axios-01",
+        "sentence": "Axios 实例上要暴露 getUri 方法",
+        "expected_symbol": "Axios",
+        "expected_path": "lib/core/Axios.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "index.d.ts",
+          "lib/core/Axios.js"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-02",
+        "sentence": "AxiosError 的 toJSON 输出带上 config 摘要",
+        "expected_symbol": "AxiosError",
+        "expected_path": "lib/core/AxiosError.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "lib/core/AxiosError.js",
+          "tests/module/cjs/tests/helpers/ts-require-default.ts",
+          "tests/module/cjs/tests/helpers/ts-require.ts",
+          "tests/module/esm/tests/helpers/esm-added-types.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-03",
+        "sentence": "AxiosHeaders 的 set 支持传对象批量设置",
+        "expected_symbol": "AxiosHeaders",
+        "expected_path": "lib/core/AxiosHeaders.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "index.d.ts",
+          "lib/core/AxiosHeaders.js",
+          "tests/module/cjs/tests/helpers/ts-require-default.ts",
+          "tests/module/cjs/tests/helpers/ts-require.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-04",
+        "sentence": "InterceptorManager 的 eject 之后 forEach 不应再遍历到",
+        "expected_symbol": "InterceptorManager",
+        "expected_path": "lib/core/InterceptorManager.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "lib/core/InterceptorManager.js"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-05",
+        "sentence": "请求分发入口对缺失适配器的情况报错更明确",
+        "expected_symbol": "dispatchRequest",
+        "expected_path": "lib/core/dispatchRequest.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "lib/core/dispatchRequest.js"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-06",
+        "sentence": "mergeConfig 对 headers 的合并策略按请求方法区分",
+        "expected_symbol": "mergeConfig",
+        "expected_path": "lib/core/mergeConfig.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "lib/core/mergeConfig.js"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-07",
+        "sentence": "响应状态校验的时机提前到收到响应头时",
+        "expected_symbol": "settle",
+        "expected_path": "lib/core/settle.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "lib/core/settle.js"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-08",
+        "sentence": "buildFullPath 对已是绝对 url 的输入直接返回",
+        "expected_symbol": "buildFullPath",
+        "expected_path": "lib/core/buildFullPath.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "lib/core/buildFullPath.js"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-09",
+        "sentence": "transformData 依次应用转换器并收集异常",
+        "expected_symbol": "transformData",
+        "expected_path": "lib/core/transformData.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "lib/core/transformData.js"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-10",
+        "sentence": "dispatchXhrRequest 超时后要清理 ontimeout 监听",
+        "expected_symbol": "dispatchXhrRequest",
+        "expected_path": "lib/adapters/xhr.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "lib/adapters/xhr.js"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-11",
+        "sentence": "httpAdapter 支持 http2 会话复用",
+        "expected_symbol": "httpAdapter",
+        "expected_path": "lib/adapters/http.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "lib/adapters/http.js"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-12",
+        "sentence": "getAdapter 对未知的 adapter 名给出候选提示",
+        "expected_symbol": "getAdapter",
+        "expected_path": "lib/adapters/adapters.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "index.d.ts",
+          "lib/adapters/adapters.js"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-13",
+        "sentence": "创建实例时合并默认配置是浅拷贝导致污染",
+        "expected_symbol": "createInstance",
+        "expected_path": "lib/axios.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "lib/axios.js"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-14",
+        "sentence": "formToJSON 支持嵌套的表单字段名",
+        "expected_symbol": "formToJSON",
+        "expected_path": "lib/axios.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "lib/axios.js",
+          "tests/module/cjs/tests/helpers/ts-require-default.ts",
+          "tests/module/cjs/tests/helpers/ts-require.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-15",
+        "sentence": "CancelToken 的 source 静态方法要导出",
+        "expected_symbol": "CancelToken",
+        "expected_path": "lib/cancel/CancelToken.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "index.d.ts",
+          "lib/cancel/CancelToken.js"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-16",
+        "sentence": "CanceledError 的 __CANCEL__ 判断补全",
+        "expected_symbol": "CanceledError",
+        "expected_path": "lib/cancel/CanceledError.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "lib/cancel/CanceledError.js",
+          "tests/module/cjs/tests/helpers/ts-require-default.ts",
+          "tests/module/cjs/tests/helpers/ts-require.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-17",
+        "sentence": "请求被取消后该工具函数要返回 true 而不是抛错",
+        "expected_symbol": "isCancel",
+        "expected_path": "lib/cancel/isCancel.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "lib/cancel/isCancel.js",
+          "tests/module/cjs/tests/helpers/ts-require-default.ts",
+          "tests/module/cjs/tests/helpers/ts-require.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-18",
+        "sentence": "默认配置里的 transformRequest 数组支持外部追加",
+        "expected_symbol": "defaults",
+        "expected_path": "lib/defaults/index.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "lib/defaults/index.js",
+          "tests/unit/core/paramsMerge.test.js"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-19",
+        "sentence": "buildURL 处理 url 已带 query 的拼接",
+        "expected_symbol": "buildURL",
+        "expected_path": "lib/helpers/buildURL.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "lib/helpers/buildURL.js"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "axios-20",
+        "sentence": "嵌套对象序列化成表单数据时限制深度",
+        "expected_symbol": "toFormData",
+        "expected_path": "lib/helpers/toFormData.js",
+        "ctags_found": true,
+        "ctags_paths": [
+          "lib/helpers/toFormData.js",
+          "tests/module/cjs/tests/helpers/ts-require-default.ts",
+          "tests/module/cjs/tests/helpers/ts-require.ts"
+        ],
+        "path_match": true
+      }
+    ],
+    "ctags_found": 20,
+    "path_match": 20,
+    "n": 20
+  },
+  "headlessui": {
+    "symbol_total": 16100,
+    "cases": [
+      {
+        "id": "headlessui-01",
+        "sentence": "Button 渲染成 a 标签时不要再输出 type 属性",
+        "expected_symbol": "Button",
+        "expected_path": "packages/@headlessui-react/src/components/button/button.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/button/button.tsx",
+          "playgrounds/react/components/button.tsx",
+          "playgrounds/react/page-examples/popover/popover.tsx"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-02",
+        "sentence": "复选框的点击热区扩大到整行",
+        "expected_symbol": "Checkbox",
+        "expected_path": "packages/@headlessui-react/src/components/checkbox/checkbox.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/checkbox/checkbox.tsx"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-03",
+        "sentence": "Combobox 输入过滤改成防抖并支持异步选项",
+        "expected_symbol": "Combobox",
+        "expected_path": "packages/@headlessui-react/src/components/combobox/combobox.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/combobox/combobox.tsx",
+          "packages/@headlessui-vue/src/components/combobox/combobox.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-04",
+        "sentence": "ComboboxOption 选中后滚动到可视区域",
+        "expected_symbol": "ComboboxOption",
+        "expected_path": "packages/@headlessui-react/src/components/combobox/combobox.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/combobox/combobox.tsx",
+          "packages/@headlessui-vue/src/components/combobox/combobox.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-05",
+        "sentence": "弹窗打开时禁止背景滚动",
+        "expected_symbol": "Dialog",
+        "expected_path": "packages/@headlessui-react/src/components/dialog/dialog.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/dialog/dialog.tsx",
+          "packages/@headlessui-vue/src/components/dialog/dialog.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-06",
+        "sentence": "对话框面板加关闭动画",
+        "expected_symbol": "DialogPanel",
+        "expected_path": "packages/@headlessui-react/src/components/dialog/dialog.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/dialog/dialog.tsx",
+          "packages/@headlessui-vue/src/components/dialog/dialog.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-07",
+        "sentence": "Disclosure 展开状态支持受控模式",
+        "expected_symbol": "Disclosure",
+        "expected_path": "packages/@headlessui-react/src/components/disclosure/disclosure.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/disclosure/disclosure.tsx",
+          "packages/@headlessui-vue/src/components/disclosure/disclosure.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-08",
+        "sentence": "DisclosurePanel 支持静态渲染不卸载",
+        "expected_symbol": "DisclosurePanel",
+        "expected_path": "packages/@headlessui-react/src/components/disclosure/disclosure.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/disclosure/disclosure.tsx",
+          "packages/@headlessui-vue/src/components/disclosure/disclosure.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-09",
+        "sentence": "Field 要把内部控件和描述文本用 describedby 关联",
+        "expected_symbol": "Field",
+        "expected_path": "packages/@headlessui-react/src/components/field/field.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/field/field.tsx"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-10",
+        "sentence": "Input 组件支持前后缀插槽",
+        "expected_symbol": "Input",
+        "expected_path": "packages/@headlessui-react/src/components/input/input.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/input/input.tsx",
+          "playgrounds/react/components/input.tsx"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-11",
+        "sentence": "下拉列表展开时高亮当前选中项",
+        "expected_symbol": "Listbox",
+        "expected_path": "packages/@headlessui-react/src/components/listbox/listbox.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/listbox/listbox.tsx",
+          "packages/@headlessui-vue/src/components/listbox/listbox.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-12",
+        "sentence": "ListboxOption 的 value 支持对象类型",
+        "expected_symbol": "ListboxOption",
+        "expected_path": "packages/@headlessui-react/src/components/listbox/listbox.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/listbox/listbox.tsx",
+          "packages/@headlessui-vue/src/components/listbox/listbox.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-13",
+        "sentence": "菜单打开时按 ESC 关闭并把焦点还给触发按钮",
+        "expected_symbol": "Menu",
+        "expected_path": "packages/@headlessui-react/src/components/menu/menu.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/menu/menu.tsx",
+          "packages/@headlessui-vue/src/components/menu/menu.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-14",
+        "sentence": "MenuItem 禁用态不响应点击",
+        "expected_symbol": "MenuItem",
+        "expected_path": "packages/@headlessui-react/src/components/menu/menu.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/menu/menu.tsx",
+          "packages/@headlessui-vue/src/components/menu/menu.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-15",
+        "sentence": "Popover 面板超出视口时自动翻转方向",
+        "expected_symbol": "Popover",
+        "expected_path": "packages/@headlessui-react/src/components/popover/popover.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/popover/popover.tsx",
+          "packages/@headlessui-vue/src/components/popover/popover.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-16",
+        "sentence": "PopoverPanel 关闭后保留 DOM 节点",
+        "expected_symbol": "PopoverPanel",
+        "expected_path": "packages/@headlessui-react/src/components/popover/popover.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/popover/popover.tsx",
+          "packages/@headlessui-vue/src/components/popover/popover.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-17",
+        "sentence": "RadioGroup 支持左右方向键切换选项",
+        "expected_symbol": "RadioGroup",
+        "expected_path": "packages/@headlessui-react/src/components/radio-group/radio-group.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/radio-group/radio-group.tsx",
+          "packages/@headlessui-vue/src/components/radio-group/radio-group.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-18",
+        "sentence": "开关组件支持键盘空格切换",
+        "expected_symbol": "Switch",
+        "expected_path": "packages/@headlessui-react/src/components/switch/switch.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/switch/switch.tsx",
+          "packages/@headlessui-vue/src/components/switch/switch.ts"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-19",
+        "sentence": "进出场动画在首次挂载时也要生效",
+        "expected_symbol": "Transition",
+        "expected_path": "packages/@headlessui-react/src/components/transition/transition.tsx",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/components/transition/transition.tsx"
+        ],
+        "path_match": true
+      },
+      {
+        "id": "headlessui-20",
+        "sentence": "点击外部区域关闭浮层的逻辑支持忽略白名单元素",
+        "expected_symbol": "useOutsideClick",
+        "expected_path": "packages/@headlessui-react/src/hooks/use-outside-click.ts",
+        "ctags_found": true,
+        "ctags_paths": [
+          "packages/@headlessui-react/src/hooks/use-outside-click.ts",
+          "packages/@headlessui-vue/src/hooks/use-outside-click.ts"
+        ],
+        "path_match": true
+      }
+    ],
+    "ctags_found": 20,
+    "path_match": 20,
+    "n": 20
+  }
+}
