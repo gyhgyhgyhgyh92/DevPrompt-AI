@@ -131,10 +131,11 @@ def test_expand_multivalue_splits_and_lowercases() -> None:
 
 
 def test_expand_map_quality_constraints() -> None:
-    # 词表质量：key 为 2~3 字纯中文（与英文词元空间无冲突），value 为非空小写英文词元
+    # 词表质量：key 为 2~5 字纯中文（与英文词元空间无冲突；4~5 字为复合领域词，
+    # 如 下拉列表/开发者工具，配合滑窗扩到 5→4→3→2），value 为非空小写英文词元
     assert len(ZH_EN_MAP) >= 150
     for key, value in ZH_EN_MAP.items():
-        assert 2 <= len(key) <= 3
+        assert 2 <= len(key) <= 5
         assert not any(ch.isascii() for ch in key)
         tokens = value.split()
         assert tokens
@@ -174,3 +175,128 @@ def test_zh_sentence_hits_via_path_tokens() -> None:
     result = build_candidates("日期格式化加相对时间显示", syms)
     assert result.candidates[0].name == "formatDate"
     assert result.candidates[0].source == "symbol"
+
+
+# ── F-801 预览缺口修复：单复数归一 / 精确名加成 / 长窗映射 / tie-break ──
+
+
+def test_plural_normalization_singular_sentence_hits_plural_symbol() -> None:
+    # 原句 default（默认）× 符号词元 defaults：归一后交集非空，否则零重叠
+    syms = [_sym("loadDefaults", "src/config.ts")]
+    result = build_candidates("加载默认值", syms)
+    assert result.candidates[0].name == "loadDefaults"
+    assert result.candidates[0].score == 2.0
+
+
+def test_plural_normalization_plural_sentence_hits_singular_symbol() -> None:
+    # 原句 cookies × 符号 Cookie：归一双侧生效，全名命中触发加成，
+    # 路径词元 cookie 再叠 1 分（2+3+1=6）
+    syms = [_sym("Cookie", "src/net/cookie.ts")]
+    result = build_candidates("保存 cookies 到本地", syms)
+    assert result.candidates[0].name == "Cookie"
+    assert result.candidates[0].score == 6.0
+
+
+def test_exact_name_bonus_lifts_target_above_multi_hit_competitors() -> None:
+    # 同分截断场景（click-04 形态）：全名 command 命中 + 装饰器路径，
+    # 压过 2 个部分词元命中的测试符号（param+default）
+    syms = [
+        _sym("command", "src/click/decorators.py"),
+        _sym("testSharedParamPrefersFirstDefault", "tests/test_defaults.py"),
+    ]
+    result = build_candidates("命令装饰器支持从 yaml 读默认参数", syms)
+    assert result.candidates[0].name == "command"
+    assert result.candidates[0].score == 6.0
+    assert result.candidates[1].score == 5.0
+
+
+def test_exact_name_bonus_applies_to_normalized_plural_name() -> None:
+    # 符号名 defaults 归一为 default 后与原句词元相等，加成生效
+    syms = [_sym("Defaults", "src/settings.ts")]
+    result = build_candidates("导出默认配置", syms)
+    assert result.candidates[0].name == "Defaults"
+    assert result.candidates[0].score == 5.0
+
+
+def test_exact_name_bonus_requires_full_name_not_partial() -> None:
+    # 部分词元命中（SubmitButton 只中 submit+button，路径无命中）不加成；
+    # 全名 button 命中才加成（2+3=5）
+    syms = [_sym("SubmitButton", "src/view/form.tsx"), _sym("button", "src/b.ts")]
+    result = build_candidates("提交按钮 button", syms)
+    by_name = {c.name: c for c in result.candidates}
+    assert by_name["SubmitButton"].score == 4.0
+    assert by_name["button"].score == 5.0
+    assert result.candidates[0].name == "button"
+
+
+def test_exact_name_bonus_not_applied_to_path_only_match() -> None:
+    # path-only 候选名称必不命中 → 拿不到加成，仍是 1 分（噪声不会被打进前列）
+    syms = [_sym("helper", "src/button/helper.tsx")]
+    result = build_candidates("button", syms)
+    assert result.candidates[0].name == "helper"
+    assert result.candidates[0].score == 1.0
+    assert result.candidates[0].source == "path"
+
+
+def test_expand_four_char_compound_window() -> None:
+    # 下拉列表（4 字复合词）→ dropdown + listbox，长窗整体消费
+    assert expand_zh_en("下拉列表") == ["dropdown", "listbox"]
+
+
+def test_expand_five_char_compound_window() -> None:
+    # 开发者工具（5 字复合词）→ devtools
+    assert expand_zh_en("开发者工具") == ["devtools"]
+
+
+def test_expand_longest_window_priority() -> None:
+    # 长窗优先：下拉列表整体命中后再继续处理剩余段（展开）
+    assert expand_zh_en("下拉列表展开") == ["dropdown", "listbox", "expand"]
+
+
+def test_new_miss_gap_mappings_bridge() -> None:
+    # 27 条 MISS 推导的新映射：多值同义桥接与既有 命令→command cmd 同性质
+    assert expand_zh_en("钩子分发") == ["hook", "dispatch"]
+    assert expand_zh_en("水合") == ["hydrate"]
+    assert expand_zh_en("热更新") == ["hmr", "hot", "update"]
+    assert expand_zh_en("枚举") == ["enum", "choice"]
+    assert expand_zh_en("弹窗") == ["modal", "dialog"]
+    assert expand_zh_en("参数") == ["param", "argument"]
+    assert expand_zh_en("状态码") == ["status"]
+
+
+def test_tiebreak_prefers_more_name_hits_before_exact_bonus() -> None:
+    # 同分（5.0）时先比符号名命中数（2>1），再比精确名加成——
+    # 保证多词元命中目标不被单名加成群体反超（axios toFormData 形态的回归保护）
+    syms = [
+        _sym("UserCenter", "src/user/main.tsx"),
+        _sym("user", "src/b.ts"),
+    ]
+    result = build_candidates("用户中心 user center", syms)
+    assert result.candidates[0].name == "UserCenter"
+    assert result.candidates[1].name == "user"
+
+
+def test_exact_name_bonus_suppressed_for_high_df_names() -> None:
+    # DF 上限：同名符号超过 _MAX_EXACT_NAME_DF 时全名加成失效——
+    # 高频通名（如 click 的 cli×237）若加成会让数百同分候选霸满 25 席
+    from devprompt_ai.domain.retrieval.candidates import _MAX_EXACT_NAME_DF
+
+    syms = [_sym(f"cli_{i}", f"src/examples/e{i}.py") for i in range(_MAX_EXACT_NAME_DF)]
+    syms += [_sym("cli", f"src/examples/raw{i}.py") for i in range(_MAX_EXACT_NAME_DF + 1)]
+    syms.append(_sym("CliRunner", "src/click/testing.py"))
+    result = build_candidates("CliRunner 混合 stdout stderr 的捕获顺序不稳定", syms)
+    by_name = {c.name: c.score for c in result.candidates}
+    # cli 同名群体 DF 超限：只有 2 分（1 个词元命中），不得拿到 +3 加成
+    assert by_name["cli"] == 2.0
+    # CliRunner 两个词元命中 4 分，压过 cli 群体排第一
+    assert by_name["CliRunner"] == 4.0
+    assert result.candidates[0].name == "CliRunner"
+
+
+def test_exact_name_bonus_applies_at_df_cap_boundary() -> None:
+    # 边界：DF 恰好等于上限时加成仍生效（≤ 判定）
+    from devprompt_ai.domain.retrieval.candidates import _MAX_EXACT_NAME_DF
+
+    syms = [_sym("mount", f"src/a{i}.py") for i in range(_MAX_EXACT_NAME_DF)]
+    result = build_candidates("mount 挂载适配器的前缀匹配支持通配符", syms)
+    assert all(c.score == 5.0 for c in result.candidates)  # 2 + 3 加成

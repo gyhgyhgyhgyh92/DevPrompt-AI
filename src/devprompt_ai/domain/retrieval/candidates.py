@@ -7,6 +7,12 @@
 
 中英映射词表（F-801 实测结论）：纯中文指称与英文标识符零词元重叠是召回缺口主因，
 用通用开发/UI 领域的静态词表桥接（非编辑距离、非 LLM 扩展、零 I/O）。
+
+F-801 真实语料预览（73/100）暴露两类缺口的通用修复：
+1. 单复数归一（_normalize_term）：defaults/cookies 类词形差异导致零重叠；
+2. 精确名加成（_EXACT_NAME_BONUS）：目标全名被原句整体提及时，
+   与数百个仅部分词元重叠的同分符号并列，同分截断挤出不前列；
+3. 滑窗扩到 5→4→3→2：下拉列表/开发者工具类复合领域词需要长窗匹配。
 """
 
 from __future__ import annotations
@@ -22,6 +28,18 @@ MIN_CANDIDATES = 3  # F-102：少于 3 条触发人工指定流程
 
 _SYMBOL_WEIGHT = 2.0
 _PATH_WEIGHT = 1.0
+# 精确名加成：幅度取 3.0（= 1.5 个符号名命中）。论证：
+# - 下限：须让「1 个全名命中 + 加成」稳定压过「2 个部分词元命中」的纯测试符号
+#   （2×2+1=5 分，是真实语料中同分截断的主力竞争者），即 bonus > 5−(2+1) = 2；
+# - 上限：不得把 path-only 噪声顶进前列——path-only 候选名称必不命中，拿不到加成，
+#   而拿到加成的候选至少含 1 个符号名命中（≥2 分），加成 3 后为 5 分，
+#   与真实多词元命中（4~6 分）同档，不会形成断层式霸榜（mock + 真实语料回归验证）。
+_EXACT_NAME_BONUS = 3.0
+# 精确名加成的 DF（同名符号数）上限：全名匹配只在名字稀疏时具区分度。
+# 真实符号表实测（F-801 语料）：目标侧 command=14、Context=2、$reset≈4；
+# 噪声侧 cli=237、store=133、cmd=76、option=291、version=1288——
+# 高频通名加全名加成会让数百同分候选霸满 25 席（MUST-09 截断），故超限不加成。
+_MAX_EXACT_NAME_DF = 20
 
 # 连续 CJK 段（与 common.text 同一字符区间定义，避免反向依赖其私有正则）
 _CJK_RUN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+")
@@ -72,7 +90,7 @@ ZH_EN_MAP: dict[str, str] = {
     "加载": "loading",
     "停止": "stop",
     "暂停": "pause",
-    "恢复": "resume",
+    "恢复": "resume restore",
     "展开": "expand",
     "折叠": "collapse",
     "跳转": "navigate",
@@ -126,7 +144,7 @@ ZH_EN_MAP: dict[str, str] = {
     "表单": "form",
     "表格": "table",
     "列表": "list",
-    "弹窗": "modal",
+    "弹窗": "modal dialog",
     "对话框": "dialog",
     "提示": "tooltip",
     "标签": "tag",
@@ -253,12 +271,12 @@ ZH_EN_MAP: dict[str, str] = {
     "模型": "model",
     "实体": "entity",
     "字段": "field",
-    "参数": "param",
+    "参数": "param argument",
     "属性": "property",
     "变量": "variable",
     "常量": "constant",
     "类型": "type",
-    "枚举": "enum",
+    "枚举": "enum choice",
     "接口": "api",
     "请求": "request",
     "响应": "response",
@@ -345,14 +363,50 @@ ZH_EN_MAP: dict[str, str] = {
     "常规": "general",
     "历史": "history",
     "最近": "recent",
+    # ── F-801 真实语料预览缺口补映射 ──
+    # 逐条分析 27 条 MISS 原句推导的通用领域词（非个案专名）：
+    # 多值项为同义桥接（参数=param/argument、热更新=hmr/hot/update 等），
+    # 与既有 命令→command cmd、连接池→connection pool 同一性质。
+    "截断": "truncate",
+    "省略号": "ellipsis",
+    "文件名": "filename",
+    "外部": "external outside",
+    "装饰器": "decorator",
+    "用法": "usage",
+    "上下文": "context",
+    "状态码": "status",
+    "字典": "dict",
+    "钩子": "hook",
+    "分发": "dispatch",
+    "水合": "hydrate",
+    "跳过": "skip",
+    "服务端": "server",
+    "覆盖": "override",
+    "热更新": "hmr hot update",
+    "批量": "batch",
+    "映射": "map",
+    "后缀": "suffix",
+    "获取": "get",
+    "当前": "current",
+    "实例": "instance",
+    "告警": "warn",
+    "下拉列表": "dropdown listbox",
+    "进出场": "transition",
+    "挂载": "mount",
+    "禁止": "prevent",
+    "面板": "panel",
+    "摘要": "digest",
+    "基本": "basic",
+    "开发者工具": "devtools",
 }
 
 
 def expand_zh_en(sentence: str) -> list[str]:
     """将原句中的中文词经 ZH_EN_MAP 扩展为英文词元（纯函数零 I/O）。
 
-    对每个 CJK 连续段做滑动窗口匹配：先试 3 字窗、再试 2 字窗，
-    命中即消费整个窗口并从窗口尾继续（避免重叠误配）；两窗皆未命中前进 1 字。
+    对每个 CJK 连续段做滑动窗口匹配：按 5→4→3→2 字窗顺序试配（长窗优先，
+    支持下拉列表/开发者工具等复合领域词），命中即消费整个窗口并从窗口尾继续
+    （避免重叠误配）；各窗皆未命中前进 1 字。
     返回全部英文词元（value 按空格拆分、整句去重保序）。
     """
     tokens: list[str] = []
@@ -368,15 +422,22 @@ def expand_zh_en(sentence: str) -> list[str]:
         i = 0
         n = len(run)
         while i < n:
-            if i + 3 <= n and run[i : i + 3] in ZH_EN_MAP:
-                _emit(ZH_EN_MAP[run[i : i + 3]])
-                i += 3
-            elif i + 2 <= n and run[i : i + 2] in ZH_EN_MAP:
-                _emit(ZH_EN_MAP[run[i : i + 2]])
-                i += 2
+            for width in (5, 4, 3, 2):
+                if i + width <= n and run[i : i + width] in ZH_EN_MAP:
+                    _emit(ZH_EN_MAP[run[i : i + width]])
+                    i += width
+                    break
             else:
                 i += 1
     return tokens
+
+
+def _normalize_term(term: str) -> str:
+    """单复数归一：长度 >3 且以 s 结尾时去 s（defaults→default、cookies→cookie）。
+
+    len>3 门槛避免误伤 class→clas、is→i 这类短词。
+    """
+    return term[:-1] if len(term) > 3 and term.endswith("s") else term
 
 
 @dataclass(frozen=True, slots=True)
@@ -386,40 +447,93 @@ class CandidateResult:
     manual_required: bool
 
 
-def _score_symbol(sentence_terms: set[str], symbol: Symbol) -> tuple[float, CandidateSource] | None:
-    """词元重叠打分：符号名命中权重 2、路径词元命中权重 1；零命中返回 None。"""
-    name_terms = set(split_identifier(symbol.name))
+def _bonus_key(symbol: Symbol) -> tuple[str, str]:
+    """精确名加成的两个候选键：全名归一形式 + 去 sigil 拼接形式。
+
+    例：Defaults→(default, default)、$reset→($reset, reset)、__url__→(__url__, url)。
+    第二键覆盖 $/__ 前缀符号——用户句中只写词干（$reset、__url__ 的 sigil 不入词元）。
+    """
+    k1 = _normalize_term(symbol.name.lower())
+    k2 = _normalize_term("".join(split_identifier(symbol.name)))
+    return k1, k2
+
+
+def _score_symbol(
+    sentence_terms: set[str], symbol: Symbol, name_df: dict[str, int]
+) -> tuple[float, CandidateSource, int, bool] | None:
+    """词元重叠打分：符号名命中权重 2、路径词元命中权重 1；零命中返回 None。
+
+    两侧词元先经 _normalize_term 单复数归一再求交集。
+    精确名加成：符号全名的归一形式（或去 sigil 拼接形式）整体命中原句词元、
+    且该名字在符号表中足够稀疏（DF ≤ _MAX_EXACT_NAME_DF）时加固定 bonus——
+    全名匹配是强于部分词元重叠的信号，用于在数百同分候选中把正确目标顶入前列
+    （F-801 同分截断）；高频通名不加成，避免同分群体霸满候选集。
+    返回 (score, source, name_hits, is_exact)，后两项供 tie-break 使用。
+    """
+    name_terms = {_normalize_term(t) for t in split_identifier(symbol.name)}
     name_hits = len(name_terms & sentence_terms)
 
-    path_terms = set(split_identifier(symbol.path))
+    path_terms = {_normalize_term(t) for t in split_identifier(symbol.path)}
     path_hits = len(path_terms & sentence_terms)
 
     score = name_hits * _SYMBOL_WEIGHT + path_hits * _PATH_WEIGHT
     if score <= 0:
         return None
+
+    is_exact = False
+    for key in _bonus_key(symbol):
+        if key in sentence_terms and name_df.get(key, 0) <= _MAX_EXACT_NAME_DF:
+            is_exact = True
+            break
+    if is_exact:
+        score += _EXACT_NAME_BONUS
+
     source: CandidateSource = "symbol" if name_hits > 0 else "path"
-    return score, source
+    return score, source, name_hits, is_exact
 
 
 def build_candidates(sentence: str, symbols: list[Symbol]) -> CandidateResult:
     """从符号表构建候选集：打分 → 降序 → 截断 25 → <3 置人工标志。"""
-    # 中英映射只增词元不减（既有命中不受影响）；纯中文指称由此获得英文桥接词元
-    sentence_terms = set(tokenize_sentence(sentence)) | set(expand_zh_en(sentence))
+    # 中英映射只增词元不减（既有命中不受影响）；纯中文指称由此获得英文桥接词元；
+    # 词元统一做单复数归一，两侧口径一致
+    sentence_terms = {_normalize_term(t) for t in tokenize_sentence(sentence)} | {
+        _normalize_term(t) for t in expand_zh_en(sentence)
+    }
 
-    scored: list[Candidate] = []
+    # 全名 DF：统计每个加成候选键在全符号表中的出现次数（纯内存计算，零 I/O）；
+    # 单 token 名两键相同，只计一次，否则 DF 被翻倍
+    name_df: dict[str, int] = {}
     for sym in symbols:
-        hit = _score_symbol(sentence_terms, sym)
+        k1, k2 = _bonus_key(sym)
+        name_df[k1] = name_df.get(k1, 0) + 1
+        if k2 != k1:
+            name_df[k2] = name_df.get(k2, 0) + 1
+
+    scored: list[tuple[float, int, bool, Symbol]] = []
+    for sym in symbols:
+        hit = _score_symbol(sentence_terms, sym, name_df)
         if hit is None:
             continue
-        score, source = hit
-        scored.append(
-            Candidate(name=sym.name, path=sym.path, line=sym.line, score=score, source=source)
-        )
+        score, source, name_hits, is_exact = hit
+        scored.append((score, name_hits, is_exact, sym))
 
-    scored.sort(key=lambda c: (-c.score, len(c.name), c.path))
+    # tie-break：同分时依次比 ①符号名命中数（重叠更多=证据更强）
+    # ②精确名加成（全名匹配强于部分匹配）③名字更短（更具体的信号，保留原序）
+    # ④路径字典序（保证确定性，保留原序）。均为通用规则，无个案特判。
+    scored.sort(key=lambda t: (-t[0], -t[1], -t[2], len(t[3].name), t[3].path))
 
     total_matched = len(scored)
-    truncated = scored[:MAX_CANDIDATES]  # 超限截断而非报错（MUST-09）
+    # 超限截断而非报错（MUST-09）
+    truncated = [
+        Candidate(
+            name=sym.name,
+            path=sym.path,
+            line=sym.line,
+            score=score,
+            source="symbol" if name_hits > 0 else "path",
+        )
+        for score, name_hits, _exact, sym in scored[:MAX_CANDIDATES]
+    ]
     manual_required = len(truncated) < MIN_CANDIDATES
     return CandidateResult(
         candidates=truncated, total_matched=total_matched, manual_required=manual_required
