@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal, Protocol
 
 SymbolKind = Literal["function", "class", "variable", "other"]
 CandidateSource = Literal["symbol", "path"]
@@ -58,3 +58,24 @@ class FactResult:
     key: FactKey
     passed: bool
     evidence: str
+
+
+@dataclass(slots=True)
+class FlowSession:
+    """F-002 流程会话（state 存 FlowState.value 字符串以便序列化）。"""
+
+    session_id: str
+    user_id: str
+    state: str
+    version: int = 0
+    data: dict[str, Any] = field(default_factory=dict)
+
+
+class SessionStore(Protocol):
+    """L1 会话存储能力（MUST-11 乐观锁）。实现：memory/session_store.py。"""
+
+    async def create(self, session: FlowSession) -> None: ...
+    async def load(self, session_id: str) -> FlowSession | None: ...
+    async def save(self, session: FlowSession) -> bool:
+        """CAS 写入：WHERE version=旧值；0 行更新返回 False。"""
+        ...
