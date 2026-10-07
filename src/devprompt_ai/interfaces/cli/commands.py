@@ -10,19 +10,45 @@ from typing import Any
 from rich.console import Console
 
 from devprompt_ai.config import AppConfig
+from devprompt_ai.domain.errors import DevPromptError
 from devprompt_ai.interfaces.cli import prompts_flow, render
 from devprompt_ai.service import FlowSnapshot, build_default
 
 MASK = "******"
 
 
-async def drive_optimize(console: Console, *, sentence: str, project: str, json_out: bool) -> None:
+async def drive_optimize(
+    console: Console,
+    *,
+    sentence: str,
+    project: str,
+    json_out: bool,
+    session_id: str = "",
+) -> None:
     cfg = AppConfig()
     cfg.validate()
     service = await build_default(cfg)
-    snapshot = await service.optimize("local", project, sentence, request_id=uuid.uuid4().hex)
-    # --json 为机器可读模式：无交互输入流，反问循环里的 collect_answers 必然 EOF，
-    # 故 JSON 模式单次输出当前快照即返回（偏差：计划为循环内逐轮输出）
+    try:
+        if session_id:
+            # --session 恢复：只读加载既有流程，进入交互循环（4H-8.1）
+            snapshot = await service.resume("local", session_id, request_id=uuid.uuid4().hex)
+        else:
+            snapshot = await service.optimize(
+                "local", project, sentence, request_id=uuid.uuid4().hex
+            )
+        await _interactive_loop(console, service, snapshot, json_out=json_out)
+    except DevPromptError as exc:
+        # 错误呈现规范（MUST-19 的 CLI 等价）：仅 code+message，不回传堆栈
+        if json_out:
+            print(json.dumps({"code": exc.code, "message": str(exc)}, ensure_ascii=False))
+        else:
+            console.print(f"[red]错误 {exc.code}[/red]：{exc}")
+        raise SystemExit(1) from exc
+
+
+async def _interactive_loop(
+    console: Console, service: Any, snapshot: FlowSnapshot, *, json_out: bool
+) -> None:
     while not json_out and snapshot.status in ("ask", "guardrail"):
         if snapshot.status == "guardrail":
             choice = prompts_flow.ask_guardrail(console, snapshot)

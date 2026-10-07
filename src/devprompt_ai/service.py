@@ -129,6 +129,22 @@ class ForgeService:
         await transition(session, FlowState.CONFIRMING, self._sessions)
         return await self._reprobe(session)
 
+    async def resume(self, user_id: str, session_id: str, *, request_id: str) -> FlowSnapshot:
+        """--session 恢复入口：只读加载既有会话并重建快照，不做任何状态转移。
+
+        4H 偏差：计划称「service 无需改动」，但 CLI 层不得直读会话存储（只消费快照），
+        故以最小只读方法提供恢复路径。
+        """
+        session = await self._require(
+            user_id, session_id, {FlowState.ASKING, FlowState.CONFIRMING, FlowState.DONE}
+        )
+        state = FlowState(session.state)
+        if state is FlowState.DONE:
+            return self._snapshot(session, "done")
+        if state is FlowState.CONFIRMING and session.data.get("guardrail"):
+            return self._snapshot(session, "guardrail")
+        return self._snapshot(session, "ask")
+
     async def escape(self, user_id: str, session_id: str, *, request_id: str) -> FlowSnapshot:
         """MUST-26 ②：用户逃生「直接生成」→ 保守版。
 

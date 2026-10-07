@@ -21,23 +21,38 @@ def main(ctx: typer.Context) -> None:
 
 @app.command()
 def optimize(
-    sentence: str,
+    sentence: str = typer.Argument("", help="需求原句（--session 恢复时可省略）"),
     project: str = typer.Option(".", "--project", help="目标项目根目录"),
     json_out: bool = typer.Option(False, "--json", help="以 JSON 输出快照"),
     no_color: bool = typer.Option(False, "--no-color", help="禁用彩色输出"),
+    session: str = typer.Option("", "--session", help="恢复既有流程 ID（ASKING/CONFIRMING 状态）"),
 ) -> None:
     """单次优化：检索 → 探针 → 反问（可逃生）→ 生成。"""
-    _run_optimize(sentence=sentence, project=project, json_out=json_out, no_color=no_color)
+    if not session and not sentence:
+        err = Console(no_color=no_color)
+        err.print("[red]缺少需求原句：请提供 <原句> 或用 --session 指定要恢复的流程 ID。[/red]")
+        raise typer.Exit(code=1)
+    _run_optimize(
+        sentence=sentence, project=project, json_out=json_out, no_color=no_color, session_id=session
+    )
 
 
-def _run_optimize(*, sentence: str, project: str, json_out: bool, no_color: bool) -> None:
+def _run_optimize(
+    *, sentence: str, project: str, json_out: bool, no_color: bool, session_id: str = ""
+) -> None:
     import asyncio
 
     from devprompt_ai.interfaces.cli import commands
 
     cmd_console = Console(no_color=no_color)
     asyncio.run(
-        commands.drive_optimize(cmd_console, sentence=sentence, project=project, json_out=json_out)
+        commands.drive_optimize(
+            cmd_console,
+            sentence=sentence,
+            project=project,
+            json_out=json_out,
+            session_id=session_id,
+        )
     )
 
 
