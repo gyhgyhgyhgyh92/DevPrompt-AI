@@ -27,7 +27,11 @@ class AppConfig(BaseSettings):
     prefer_min_confidence: float = 0.6
     prefer_low_confidence: float = 0.4
 
-    max_followup_rounds: int = 2
+    followup_soft_round_guard: int = 10
+    followup_cost_budget: float = 0.0  # 单流程 LLM token 总数上限；0 = 禁用（MUST-26 软护栏）
+
+    # SQLite 单文件（L1/L3；用户主目录 ~ 由 expanduser 解析，展开归 4B init_schema）
+    db_path: str = "~/.devprompt-ai/devprompt.db"
     fact_probe_threshold: float = 0.75
     jev_model_id: str = "jev-1.13.0"
     max_state_tokens: int = 30000

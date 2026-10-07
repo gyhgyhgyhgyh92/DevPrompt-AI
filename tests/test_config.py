@@ -18,7 +18,9 @@ def test_defaults_match_f003() -> None:
     assert cfg.prefer_soft_threshold == 0.12
     assert cfg.prefer_min_confidence == 0.6
     assert cfg.prefer_low_confidence == 0.4
-    assert cfg.max_followup_rounds == 2
+    assert cfg.followup_soft_round_guard == 10
+    assert cfg.followup_cost_budget == 0.0  # 0 = 禁用成本护栏
+    assert cfg.db_path == "~/.devprompt-ai/devprompt.db"
     assert cfg.fact_probe_threshold == 0.75
     assert cfg.jev_model_id == "jev-1.13.0"  # MUST-12：禁别名
     assert cfg.max_state_tokens == 30000
