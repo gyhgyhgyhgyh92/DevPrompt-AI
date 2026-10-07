@@ -7,6 +7,7 @@ set_tracing_disabled(True)；base_url 经 set_default_openai_client 注入。
 from __future__ import annotations
 
 import asyncio
+from contextvars import ContextVar
 from typing import TypeVar
 
 from agents import (
@@ -21,8 +22,17 @@ from pydantic import BaseModel
 
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.errors import ConfigurationError, GenerationError
+from devprompt_ai.domain.generate.ports import GenerationContext, VariantDraft
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
+
+_last_usage: ContextVar[dict[str, int] | None] = ContextVar("last_usage", default=None)
+
+
+def last_usage() -> dict[str, int] | None:
+    """F-805 成本监控起建：返回最近一次结构化调用的 token 用量。"""
+    return _last_usage.get()
+
 
 _client: AsyncOpenAI | None = None
 _configured_model: str = ""
@@ -60,6 +70,10 @@ async def chat_structured(
         model=cfg.llm_model,
     )
     result = await asyncio.wait_for(Runner.run(agent, user, max_turns=1), timeout=timeout)
+    usage = getattr(result, "usage", None)
+    _last_usage.set(
+        {"total_tokens": int(getattr(usage, "total_tokens", 0) or 0)} if usage else None
+    )
     output = result.final_output
     if not isinstance(output, output_type):
         raise GenerationError(
@@ -68,3 +82,19 @@ async def chat_structured(
             context={"actual_type": type(output).__name__},
         )
     return output
+
+
+class LLMGenerator:
+    """GeneratePort 的 LLM 实现（F-301 单套；三套编排阶段五在 variants 扩展）。"""
+
+    def __init__(self, cfg: AppConfig) -> None:
+        self._cfg = cfg
+
+    async def generate_single(self, ctx: GenerationContext) -> VariantDraft:
+        from devprompt_ai.domain.generate.templates import TEMPLATE_BY_LEVEL
+        from devprompt_ai.harness.guardrails import validate_variant
+
+        tpl = TEMPLATE_BY_LEVEL[ctx.level]
+        draft = await chat_structured(self._cfg, VariantDraft, tpl.system, tpl.build_user(ctx))
+        validate_variant(draft)
+        return draft

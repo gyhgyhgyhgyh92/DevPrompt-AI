@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from devprompt_ai.domain.decision.port import RankComponentsOutput
 from devprompt_ai.domain.errors import GenerationError
+from devprompt_ai.domain.generate.ports import VariantDraft
 
 
 def validate_ranking(out: RankComponentsOutput, candidate_count: int) -> None:
@@ -17,3 +18,9 @@ def validate_ranking(out: RankComponentsOutput, candidate_count: int) -> None:
             code=4003,
             context={"expected": candidate_count, "got": len(out.order)},
         )
+
+
+def validate_variant(draft: VariantDraft) -> None:
+    """单套输出校验：标题/正文非空（MUST-17 禁空壳输出）。"""
+    if not draft.title.strip() or not draft.body.strip():
+        raise GenerationError("生成方案标题或正文为空", code=4003, context={"level": draft.level})
