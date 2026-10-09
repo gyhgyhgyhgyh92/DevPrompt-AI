@@ -8,6 +8,7 @@ LocalCommandRunner 在转发真实进程前会过滤掉它（见 common/process.
 from __future__ import annotations
 
 import json
+import posixpath
 import re
 
 from devprompt_ai.domain.models import CodeLocation, Symbol
@@ -24,11 +25,19 @@ def _with_route(args: list[str], key: str) -> list[str]:
     return [*args, f"--route-key={key}"]
 
 
-async def locate_symbol(symbol: Symbol, runner: CommandRunner, reader: FileReader) -> CodeLocation:
+async def locate_symbol(
+    symbol: Symbol, runner: CommandRunner, reader: FileReader, *, root: str = "."
+) -> CodeLocation:
     """定位符号：定义行号（rg 首个精确匹配）+ 选择器/token（读文件正则提取）。
 
     关联测试文件按命名约定对候选路径做存在性检查。
+    root：目标项目根（Symbol.path 为仓库相对路径，FileReader 文件系统访问需拼接——
+    进程 cwd 是 DevPrompt AI 自身而非目标项目，4H 端到端实测暴露）。
     """
+
+    def _fs(rel: str) -> str:
+        return posixpath.join(root, rel) if root not in (".", "") else rel
+
     # 1) 定义行号：rg --json 固定串搜索限定该文件
     def_args = _with_route(
         [
@@ -48,7 +57,7 @@ async def locate_symbol(symbol: Symbol, runner: CommandRunner, reader: FileReade
     definition_line = _first_match_line(raw)
 
     # 2) 选择器与设计 token：读文件文本正则提取
-    text = await reader.read(symbol.path)
+    text = await reader.read(_fs(symbol.path))
     selectors: list[str] = []
     for m in _CLASS_RE.finditer(text):
         for cls in m.group(1).replace("'", " ").replace('"', " ").split():
@@ -73,7 +82,7 @@ async def locate_symbol(symbol: Symbol, runner: CommandRunner, reader: FileReade
         f"{base}_test.{ext_clean}",
     ]
     for cand in candidates:
-        if await reader.exists(cand):
+        if await reader.exists(_fs(cand)):
             test_paths.append(cand)
 
     return CodeLocation(

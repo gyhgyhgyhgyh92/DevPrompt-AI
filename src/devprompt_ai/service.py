@@ -109,8 +109,10 @@ class ForgeService:
 
         top = result.candidates[0]
         symbol = Symbol(name=top.name, path=top.path, line=top.line, kind="function")
-        location = await locate_symbol(symbol, self._runner, self._reader)
-        facts = await verify_facts(location, sentence, self._runner, self._reader)
+        location = await locate_symbol(symbol, self._runner, self._reader, root=project_root)
+        facts = await verify_facts(
+            location, sentence, self._runner, self._reader, root=project_root
+        )
         session.data["facts"] = [
             {"key": f.key, "passed": f.passed, "evidence": f.evidence} for f in facts
         ]

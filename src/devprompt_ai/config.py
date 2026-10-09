@@ -43,7 +43,10 @@ class AppConfig(BaseSettings):
     data_dir: str = "~/.devprompt-ai"
     cors_origins: str = "http://localhost:5173"
 
-    model_config = SettingsConfigDict(env_file=None, case_sensitive=False, extra="ignore")
+    # 优先级（技术栈 §4.8）：进程环境变量 > .env 文件 > 默认值；.env 不入库（MUST-23）
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
+    )
 
     # 签名冻结（计划 §6.3 接口标准）：与 pydantic BaseModel.validate（classmethod）语义不同，非重写
     def validate(self) -> None:  # type: ignore[override]

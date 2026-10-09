@@ -33,21 +33,16 @@ def shout(text: str) -> str:
 
 
 async def _check_structured() -> bool:
-    out = await _structured_call("计算 2+3 只输出 JSON")
+    # 冒烟测项目实际调用路径（chat_structured 含 F-004 适配层），而非裸 SDK output_type
+    from devprompt_ai.harness.llm import chat_structured
+
+    cfg = AppConfig()  # 读取 .env（供应商配置来自环境文件）
+    out = await chat_structured(cfg, Probe, "只输出 JSON", "计算 2+3，把结果填入 answer 字段")
     return out.answer == 5
 
 
-async def _structured_call(user: str) -> Probe:
-    from agents import Agent as _Agent
-
-    cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
-    agent = _Agent(name="smoke", instructions="只输出 JSON", output_type=Probe, model=cfg.llm_model)
-    result = await Runner.run(agent, user, max_turns=1)
-    return result.final_output  # type: ignore[no-any-return]
-
-
 async def _check_tool_call() -> bool:
-    cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
+    cfg = AppConfig()  # 读取 .env（供应商配置来自环境文件）
     agent = Agent(
         name="smoke-tool",
         instructions="必须使用 add 工具计算 2+3",
@@ -59,7 +54,7 @@ async def _check_tool_call() -> bool:
 
 
 async def _check_parallel_tools() -> bool:
-    cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
+    cfg = AppConfig()  # 读取 .env（供应商配置来自环境文件）
     agent = Agent(
         name="smoke-para",
         instructions="同时用 add(1,2) 与 add(3,4)，再各自调用 shout 报告结果",
@@ -72,21 +67,30 @@ async def _check_parallel_tools() -> bool:
 
 
 async def _check_streaming() -> bool:
-    cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
+    cfg = AppConfig()  # 读取 .env（供应商配置来自环境文件）
     agent = Agent(name="smoke-stream", instructions="回复 OK", model=cfg.llm_model)
-    from openai.types.responses import ResponseTextDeltaEvent
 
     # run_streamed 返回同步流对象（非协程禁 await），事件经 stream_events() 异步迭代
     streamed = Runner.run_streamed(agent, "回复 OK")
     deltas = 0
+    event_types: set[str] = set()
     async for event in streamed.stream_events():
-        if isinstance(event, ResponseTextDeltaEvent):
-            deltas += 1
+        event_types.add(type(event).__name__)
+        inner = getattr(event, "data", None)
+        if inner is not None:
+            inner_name = type(inner).__name__
+            event_types.add(f"data:{inner_name}")
+            # chat_completions 模式下增量藏在 RawResponsesStreamEvent.data 内层
+            has_delta = bool(getattr(inner, "delta", None)) or "delta" in inner_name.lower()
+            if has_delta:
+                deltas += 1
+    if deltas == 0:
+        print(f"  detail: deltas=0, event_types={sorted(event_types)}")
     return deltas > 0
 
 
 async def main_async() -> int:
-    cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
+    cfg = AppConfig()  # 读取 .env（供应商配置来自环境文件）
     if not cfg.llm_base_url or not cfg.llm_model:
         print("SKIP: 需要 LLM_BASE_URL/LLM_MODEL")
         return 2

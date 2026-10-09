@@ -44,6 +44,13 @@ async def drive_optimize(
         else:
             console.print(f"[red]错误 {exc.code}[/red]：{exc}")
         raise SystemExit(1) from exc
+    except TimeoutError:  # py3.12 起 asyncio.TimeoutError 即内建 TimeoutError
+        # LLM 调用超限（wait_for 触发）：同样不回传内部堆栈
+        if json_out:
+            print(json.dumps({"code": 5001, "message": "LLM 调用超时"}, ensure_ascii=False))
+        else:
+            console.print("[red]错误 5001[/red]：LLM 调用超时，请稍后重试或检查网络。")
+        raise SystemExit(1) from None
 
 
 async def _interactive_loop(

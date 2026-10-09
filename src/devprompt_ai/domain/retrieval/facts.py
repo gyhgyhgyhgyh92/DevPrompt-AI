@@ -6,6 +6,8 @@ I/O 全部经 CommandRunner / FileReader Protocol（MUST-06）。
 
 from __future__ import annotations
 
+import posixpath
+
 from devprompt_ai.domain.models import CodeLocation, FactResult
 from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader
 
@@ -21,14 +23,26 @@ def _ev(raw: str) -> str:
 
 
 async def verify_facts(
-    location: CodeLocation, sentence: str, runner: CommandRunner, reader: FileReader
+    location: CodeLocation,
+    sentence: str,
+    runner: CommandRunner,
+    reader: FileReader,
+    *,
+    root: str = ".",
 ) -> list[FactResult]:
-    """逐项验证七项事实（F-104 行为列）；每项独立验证，互不短路。"""
+    """逐项验证七项事实（F-104 行为列）；每项独立验证，互不短路。
+
+    root：目标项目根（FileReader 文件系统访问需拼绝对路径，rg 相对搜索不受影响）。
+    """
+
+    def _fs(rel: str) -> str:
+        return posixpath.join(root, rel) if root not in (".", "") else rel
+
     path, name = location.path, location.symbol_name
     results: list[FactResult] = []
 
     # 1) 目标文件存在（文件系统检查经 FileReader）
-    exists = await reader.exists(path)
+    exists = await reader.exists(_fs(path))
     results.append(
         FactResult("target_file_exists", exists, f"file={path}" if exists else f"missing={path}")
     )
@@ -108,7 +122,7 @@ async def verify_facts(
     test_evidence = "未找到"
     test_ok = False
     for tp in location.test_paths:
-        if await reader.exists(tp):
+        if await reader.exists(_fs(tp)):
             test_ok, test_evidence = True, f"test={tp}"
             break
     results.append(FactResult("test_file_exists", test_ok, test_evidence))
