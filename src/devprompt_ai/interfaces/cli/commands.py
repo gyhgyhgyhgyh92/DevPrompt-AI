@@ -9,6 +9,7 @@ from typing import Any
 
 from rich.console import Console
 
+from devprompt_ai.common.process import ProcessError
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.errors import DevPromptError
 from devprompt_ai.interfaces.cli import prompts_flow, render
@@ -39,6 +40,13 @@ async def drive_optimize(
         await _interactive_loop(console, service, snapshot, json_out=json_out)
     except DevPromptError as exc:
         # 错误呈现规范（MUST-19 的 CLI 等价）：仅 code+message，不回传堆栈
+        if json_out:
+            print(json.dumps({"code": exc.code, "message": str(exc)}, ensure_ascii=False))
+        else:
+            console.print(f"[red]错误 {exc.code}[/red]：{exc}")
+        raise SystemExit(1) from exc
+    except ProcessError as exc:
+        # 子进程层错误（可执行缺失等，含安装/配置指引）
         if json_out:
             print(json.dumps({"code": exc.code, "message": str(exc)}, ensure_ascii=False))
         else:

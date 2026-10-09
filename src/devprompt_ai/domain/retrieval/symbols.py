@@ -26,8 +26,10 @@ _KIND_MAP: dict[str, SymbolKind] = {
     "local": "variable",
 }
 
-# F-101 排除目录（行为列一致）
+# F-101 排除目录（行为列一致）；.pnpm-store 为 pnpm 内容寻址缓存，
+# 混入会使符号表膨胀两个数量级并污染候选集（真实项目实测）
 EXCLUDED_DIRS: tuple[str, ...] = (
+    ".pnpm-store",
     "node_modules",
     "dist",
     "build",
