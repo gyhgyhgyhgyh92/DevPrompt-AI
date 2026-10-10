@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import difflib
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -14,6 +15,8 @@ from devprompt_ai.domain.errors import StateError
 from devprompt_ai.domain.generate.ports import GeneratePort, GenerationContext, VariantDraft
 from devprompt_ai.domain.generate.variants import resolve_level
 from devprompt_ai.domain.models import FactResult, FlowSession, SessionStore, Symbol
+from devprompt_ai.domain.ranking.ports import AdoptionRecord, PreferenceStore, VariantLevel
+from devprompt_ai.domain.ranking.preference import FEATURE_TABLE, update_vector
 from devprompt_ai.domain.retrieval.candidates import build_candidates
 from devprompt_ai.domain.retrieval.facts import verify_facts
 from devprompt_ai.domain.retrieval.locate import locate_symbol
@@ -26,12 +29,6 @@ logger = logging.getLogger("devprompt.flow")
 
 Preference = dict[str, float]
 SnapshotStatus = Literal["ask", "done", "guardrail"]
-_INITIAL_PREFERENCE: Preference = {
-    "detail_level": 0.5,
-    "include_diff": 0.5,
-    "specify_tests": 0.5,
-    "max_files_norm": 0.5,
-}
 
 
 @dataclass(slots=True)
@@ -54,6 +51,7 @@ class ForgeService:
         cfg: AppConfig,
         decider: DecisionPort,
         sessions: SessionStore,
+        preferences: PreferenceStore,
         runner: CommandRunner,
         reader: FileReader,
         generator: GeneratePort,
@@ -63,6 +61,7 @@ class ForgeService:
         self._cfg = cfg
         self._decider = decider
         self._sessions = sessions
+        self._preferences = preferences
         self._runner = runner
         self._reader = reader
         self._generator = generator
@@ -176,22 +175,64 @@ class ForgeService:
         return await self._generate_and_finish(session)
 
     async def get_preference(self, user_id: str) -> Preference:
-        """L3 偏好（阶段五接 SQLite L3；当前返回初始向量）。"""
-        return dict(_INITIAL_PREFERENCE)
+        """L3 偏好向量（F-503）：store 无记录时返回初始中性值（MUST-08：判定在 domain）。"""
+        return await self._preferences.load(user_id)
 
     async def feedback(
-        self, user_id: str, session_id: str, action: str, *, request_id: str
+        self,
+        user_id: str,
+        session_id: str,
+        action: str,
+        *,
+        request_id: str,
+        variant: VariantLevel | None = None,
+        edited_text: str | None = None,
     ) -> None:
-        """F-603 采纳反馈：阶段五写 L3；当前记录日志。"""
+        """F-603/F-503 采纳反馈写 L3：variant 采纳 / +edited_text 编辑采纳 / 两者皆无=跳过。
+
+        - 采纳/编辑采纳：update_vector（开放决策 #1 定稿合成语义）→ save → record_adoption；
+        - 跳过：update_vector(None) 趋向中性 → save（无采纳，不入采纳历史）；
+        - store 异常只记日志不上抛：反馈是流程后置信号，不得炸主流程。
+        """
         logger.info(
             "feedback.received",
             extra={
                 "action": action,
                 "user_id": user_id,
                 "session_id": session_id,
+                "variant": variant,
+                "edited": edited_text is not None,
                 "request_id": request_id,
             },
         )
+        if variant is not None and variant not in FEATURE_TABLE:
+            raise ValueError(f"未知方案档位：{variant}")  # 调用方契约错误，快速失败
+        try:
+            current = await self._preferences.load(user_id)
+            if variant is None:
+                updated = update_vector(current, None)
+                await self._preferences.save(user_id, updated)
+            else:
+                ratio = 0.0
+                if edited_text is not None:
+                    # 编辑距离占比 = 1 − SequenceMatcher 相似度（F-503「1 − 编辑距离占比」）
+                    ratio = 1.0 - await self._edited_similarity(session_id, edited_text)
+                rec = AdoptionRecord(
+                    user_id=user_id,
+                    session_id=session_id,
+                    variant=variant,
+                    edited=edited_text is not None,
+                    edited_text_ratio=ratio,
+                    features=FEATURE_TABLE[variant],
+                )
+                updated = update_vector(current, rec)
+                await self._preferences.save(user_id, updated)
+                await self._preferences.record_adoption(rec)
+        except Exception:
+            logger.exception(
+                "feedback.store_failed",
+                extra={"session_id": session_id, "request_id": request_id},
+            )
 
     async def scan_project(self, project_root: str) -> dict[str, Any]:
         """F-101 只读统计（Web /project/scan 薄透传）：符号总数/文件数/类别分布。"""
@@ -209,6 +250,20 @@ class ForgeService:
         }
 
     # ---- 内部 ----
+
+    async def _edited_similarity(self, session_id: str, edited_text: str) -> float:
+        """编辑相似度：difflib.SequenceMatcher.ratio（标准库，MUST-04）。
+
+        以会话内生成方案正文为基准；会话/方案缺失按 0 相似度处理
+        （无法核对编辑来源 → 编辑距离占比 1.0 → 零方向信号，不误更新偏好）。
+        """
+        session = await self._sessions.load(session_id)
+        original = ""
+        if session is not None:
+            data_variant = session.data.get("variant")
+            if isinstance(data_variant, dict):
+                original = str(data_variant.get("body", ""))
+        return difflib.SequenceMatcher(None, original, edited_text).ratio()
 
     async def _probe_and_route(self, session: FlowSession, *, request_id: str) -> FlowSnapshot:
         facts = [FactResult(**f) for f in session.data.get("facts", [])]
@@ -314,14 +369,18 @@ def _summarize_facts(session: FlowSession) -> str:
 async def build_default(cfg: AppConfig) -> ForgeService:
     """默认组装（CLI/开发态；Web 复用同一函数，MUST-10）。"""
     from devprompt_ai.decision.fallback import create_decider
+    from devprompt_ai.memory.preference_store import SQLitePreferenceStore
     from devprompt_ai.memory.session_store import SQLiteSessionStore
 
     sessions = SQLiteSessionStore(cfg.db_path)
     await sessions.init_schema()
+    preferences = SQLitePreferenceStore(cfg.db_path)
+    await preferences.init_schema()
     return ForgeService(
         cfg=cfg,
         decider=create_decider(cfg),
         sessions=sessions,
+        preferences=preferences,
         runner=LocalCommandRunner(),
         reader=LocalFileReader(),
         generator=LLMGenerator(cfg),

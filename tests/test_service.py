@@ -1,5 +1,6 @@
 """ForgeService 全流程测试（Fake 注入，无真实 I/O）。"""
 
+import difflib
 from dataclasses import dataclass, field
 
 import pytest
@@ -9,6 +10,8 @@ from devprompt_ai.domain.decision.port import FactJudgment, FactProbeOutput
 from devprompt_ai.domain.errors import StateError
 from devprompt_ai.domain.generate.ports import MultiVariantDraft, VariantDraft
 from devprompt_ai.domain.models import FlowSession, Symbol
+from devprompt_ai.domain.ranking.ports import AdoptionRecord
+from devprompt_ai.domain.ranking.preference import INITIAL_PREFERENCE
 from devprompt_ai.service import ForgeService
 
 
@@ -94,6 +97,31 @@ class FakeReader:
         return path in self.existing
 
 
+class FakePreferenceStore:
+    """内存偏好存储（PreferenceStore 最小实现，无 I/O）；fail=True 模拟存储故障。"""
+
+    def __init__(self, fail: bool = False) -> None:
+        self.vectors: dict[str, dict[str, float]] = {}
+        self.records: list[AdoptionRecord] = []
+        self.fail = fail
+
+    async def load(self, user_id: str) -> dict[str, float]:
+        if self.fail:
+            raise RuntimeError("preference store unavailable")
+        v = self.vectors.get(user_id)
+        return dict(v) if v is not None else dict(INITIAL_PREFERENCE)
+
+    async def save(self, user_id: str, vector: dict[str, float]) -> None:
+        if self.fail:
+            raise RuntimeError("preference store unavailable")
+        self.vectors[user_id] = dict(vector)
+
+    async def record_adoption(self, rec: AdoptionRecord) -> None:
+        if self.fail:
+            raise RuntimeError("preference store unavailable")
+        self.records.append(rec)
+
+
 def _symbols() -> list[Symbol]:
     # 3 个符号：冻结 F-102 的 MIN_CANDIDATES=3 下，单符号必触发 manual_required，
     # 与「非 manual 全流程」用例意图冲突；SubmitButton 须排第一（同分时名字更短优先）。
@@ -111,6 +139,7 @@ def _service(
     existing: set[str] | None = None,
     symbols: list[Symbol] | None = None,
     guard: int | None = None,
+    prefs: FakePreferenceStore | None = None,
 ) -> tuple[ForgeService, FakeStore]:
     from devprompt_ai.harness.process import SymbolTableProvider
 
@@ -124,6 +153,7 @@ def _service(
         cfg=cfg,
         decider=FakeDecider(confs or [0.9] * 7),
         sessions=st,
+        preferences=FakePreferenceStore() if prefs is None else prefs,
         runner=FakeRunner(),
         reader=FakeReader(existing if existing is not None else {"src/ui/button.tsx"}),
         generator=FakeGenerator(),
@@ -186,6 +216,78 @@ async def test_manual_required_path() -> None:
         request_id="r2",
     )
     assert done.status == "done"
+
+
+# ---- F-603/F-503 feedback 接入 L3（开放决策 #1 定稿合成语义）----
+
+
+async def test_feedback_adoption_updates_l3_vector() -> None:
+    prefs = FakePreferenceStore()
+    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, prefs=prefs)
+    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    assert snap.status == "done"
+    await svc.feedback("local", snap.session_id, "accept", variant="C", request_id="r2")
+    pref = await svc.get_preference("local")
+    # EMA 10% 步进：0.5 + 0.1×(0.9−0.5) = 0.54；max_files_norm: 0.5 + 0.1×(1.0−0.5) = 0.55
+    assert pref["detail_level"] == pytest.approx(0.54, abs=1e-9)
+    assert pref["max_files_norm"] == pytest.approx(0.55, abs=1e-9)
+    assert len(prefs.records) == 1  # 采纳历史入库（F-503 adoption_history）
+    assert prefs.records[0].variant == "C" and prefs.records[0].edited is False
+
+
+async def test_feedback_edited_adoption_weaker_than_direct() -> None:
+    # 会话 variant body="b"（FakeGenerator）；编辑稿 "b!!!" → 相似度 0.4 → 占比 0.6 → 强度 0.4
+    direct_svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"})
+    direct = await direct_svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    await direct_svc.feedback("local", direct.session_id, "accept", variant="C", request_id="r2")
+    pref_direct = await direct_svc.get_preference("local")
+
+    edited_svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"})
+    edited = await edited_svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    await edited_svc.feedback(
+        "local", edited.session_id, "accept", variant="C", edited_text="b!!!", request_id="r2"
+    )
+    pref_edited = await edited_svc.get_preference("local")
+
+    assert 0.5 < pref_edited["detail_level"] < pref_direct["detail_level"]  # 同向但弱于直接采纳
+    sim = difflib.SequenceMatcher(None, "b", "b!!!").ratio()  # 相似度 0.4 → 占比 0.6 → 强度 0.4
+    assert pref_edited["detail_level"] == pytest.approx(
+        0.5 + 0.1 * (1 - (1 - sim)) * (0.9 - 0.5),
+        abs=1e-9,  # 强度 = 1 − 占比 = sim
+    )
+
+
+async def test_feedback_skip_regresses_toward_neutral() -> None:
+    prefs = FakePreferenceStore()
+    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, prefs=prefs)
+    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    await svc.feedback("local", snap.session_id, "accept", variant="C", request_id="r2")
+    await svc.feedback("local", snap.session_id, "skip", request_id="r3")  # 两者皆无 = 跳过
+    pref = await svc.get_preference("local")
+    # 0.54 + (0.5−0.54)×0.3 = 0.528（开放决策 #1：趋向中性，独立规则不经 EMA）
+    assert pref["detail_level"] == pytest.approx(0.528, abs=1e-9)
+    assert len(prefs.records) == 1  # 跳过无采纳，不追加历史
+
+
+async def test_feedback_unknown_variant_raises() -> None:
+    svc, _ = _service()
+    bad: str = "X"  # 故意传入非法档位：服务层运行时防线（HTTP 层契约校验前的最后闸门）
+    with pytest.raises(ValueError, match="未知方案档位"):
+        await svc.feedback(
+            "local",
+            "s1",
+            "accept",
+            variant=bad,  # type: ignore[arg-type]  # 故意违约：服务层运行时防线
+            request_id="r1",
+        )
+
+
+async def test_feedback_store_failure_swallowed() -> None:
+    prefs = FakePreferenceStore(fail=True)
+    svc, _ = _service(prefs=prefs)
+    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    await svc.feedback("local", snap.session_id, "accept", variant="C", request_id="r2")  # 不上抛
+    await svc.feedback("local", snap.session_id, "skip", request_id="r3")  # 不上抛
 
 
 async def test_missing_session_raises_6003() -> None:
