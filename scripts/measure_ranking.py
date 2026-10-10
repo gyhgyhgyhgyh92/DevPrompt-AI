@@ -17,7 +17,8 @@
 不得与「Jev 排序准确率」混用，Jev 到位后重测）。
 
 退出码：--dry 为链路验证（mock 决策层下准确率无意义），跑通即 0、不套用 80% 门禁；
-真实模式按 W3 门禁判定，准确率 ≥80% 返回 0，否则 1（决策树见 MUST-25：甲/乙必择一）。
+真实模式按 W3 门禁判定，准确率 ≥80% 返回 0，否则 1（决策树见 MUST-25：甲/乙必择一）；
+账户级 API 故障（402 余额耗尽/401 鉴权失败）快速中止返回 2，不写报告。
 """
 
 from __future__ import annotations
@@ -44,6 +45,13 @@ from devprompt_ai.harness.process import LocalCommandRunner, SymbolTableProvider
 
 PASS_LINE = 0.8  # MUST-25 第二段：排序准确率通过线 ≥80%（仅真实模式套用）
 
+_FATAL_API_MARKERS = ("401", "402", "403", "Insufficient Balance")
+"""账户级 API 故障特征（余额耗尽/鉴权失败）：不可重试，继续测量只会产出整批无效 MISS。"""
+
+
+def _is_fatal_api_error(exc: Exception) -> bool:
+    return "APIStatusError" in type(exc).__name__ and any(m in str(exc) for m in _FATAL_API_MARKERS)
+
 
 @dataclass(frozen=True, slots=True)
 class Case:
@@ -64,6 +72,7 @@ class CaseResult:
     candidate_count: int
     order0: str | None
     top5: list[str]
+    error: str | None = None  # 单例 LLM 异常（超时等）：诚实计 MISS 并留因，不击穿整仓
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,11 +151,17 @@ async def measure_repo(
         )
         hit = False
         order0: str | None = None
+        error: str | None = None
         if cands:
-            out = await decider.rank_components(case.sentence, cands)
-            top = cands[out.order[0]]
-            order0 = f"{top.name}@{top.path}"
-            hit = top.name == case.expected_symbol and top.path == case.expected_path
+            try:
+                out = await decider.rank_components(case.sentence, cands)
+                top = cands[out.order[0]]
+                order0 = f"{top.name}@{top.path}"
+                hit = top.name == case.expected_symbol and top.path == case.expected_path
+            except Exception as exc:  # noqa: BLE001 - 单例失败计 MISS 并留因
+                if _is_fatal_api_error(exc):
+                    raise  # 账户级故障：继续跑只会产出整批无效 MISS，快速中止交由上层处置
+                error = f"{type(exc).__name__}: {exc}"[:200]
         results.append(
             CaseResult(
                 case_id=case.case_id,
@@ -158,6 +173,7 @@ async def measure_repo(
                 candidate_count=len(cands),
                 order0=order0,
                 top5=[f"{c.name}@{c.path}" for c in cands[:5]],
+                error=error,
             )
         )
     return RepoResult(repo_id=repo_id, symbol_total=len(symbols), small_repo=small, results=results)
@@ -196,6 +212,7 @@ def _build_payload(repos: list[RepoResult], mode: str, limit: int | None) -> dic
                         "candidate_count": c.candidate_count,
                         "order0": c.order0,
                         "top5": c.top5,
+                        "error": c.error,
                     }
                     for c in r.results
                 ],
@@ -236,7 +253,14 @@ async def main_async(
     decider: DecisionPort = _DryMockDecider() if dry else create_decider(AppConfig())
     mode = "dry" if dry else "real"
 
-    results = [await measure_repo(r, provider, cases_root, decider, limit) for r in repos]
+    try:
+        results = [await measure_repo(r, provider, cases_root, decider, limit) for r in repos]
+    except Exception as exc:  # noqa: BLE001 - 快速失败路径：账户级故障给出可操作信息
+        if _is_fatal_api_error(exc):
+            print(f"[abort] 账户级 API 故障，测量中止：{type(exc).__name__}: {str(exc)[:200]}")
+            print("请充值/修复 LLM 供应商账户后重跑（本次不写报告，避免无效结果污染门禁判定）。")
+            return 2
+        raise
     payload = _build_payload(results, mode, limit)
     total_cases = sum(len(r.results) for r in results)
     total_hits = sum(r.hits for r in results)
