@@ -48,6 +48,7 @@ class LLMFallbackDecider:
             RankComponentsOutput,
             RANK_SYSTEM,
             RANK_USER.format(sentence=sentence, candidates=listing),
+            timeout=60.0,  # 25 候选大 prompt，DeepSeek 实测 10s 必超时（排序准确率实测暴露）
         )
         validate_ranking(out, len(candidates))
         return out
@@ -72,6 +73,7 @@ class LLMFallbackDecider:
             ScorePromptsOutput,
             SCORE_SYSTEM,
             SCORE_USER.format(context=context, variants=listing),
+            timeout=60.0,  # 三套长正文，同生成类放宽
         )
 
 
