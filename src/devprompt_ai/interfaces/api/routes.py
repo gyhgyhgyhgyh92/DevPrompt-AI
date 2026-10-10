@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
@@ -19,8 +20,10 @@ from devprompt_ai.interfaces.api.schemas import (
     FlowSnapshotResponse,
     FollowupRequest,
     OptimizeRequest,
+    RankingViewPayload,
     ScanResponse,
     UnknownItemPayload,
+    VariantPayload,
 )
 from devprompt_ai.service import FlowSnapshot, ForgeService, build_default
 
@@ -47,7 +50,8 @@ def _ok(data: Any, request_id: str) -> ApiResponse:
 
 
 def _snapshot_payload(snapshot: FlowSnapshot) -> FlowSnapshotResponse:
-    """快照渲染（dataclass → 契约模型；VariantDraft 为 pydantic 模型需 model_dump）。"""
+    """快照渲染（dataclass → 契约模型；VariantDraft/RankingView 需逐字段镜像）。"""
+    ranking = snapshot.ranking
     return FlowSnapshotResponse(
         session_id=snapshot.session_id,
         status=snapshot.status,
@@ -57,7 +61,8 @@ def _snapshot_payload(snapshot: FlowSnapshot) -> FlowSnapshotResponse:
             for q in snapshot.questions
         ],
         cleared=snapshot.cleared,
-        variant=snapshot.variant.model_dump() if snapshot.variant is not None else None,
+        variants=[VariantPayload(**v.model_dump()) for v in snapshot.variants],
+        ranking=RankingViewPayload(**dataclasses.asdict(ranking)) if ranking is not None else None,
         message=snapshot.message,
     )
 
@@ -147,7 +152,14 @@ async def get_result(flow_id: str) -> ApiResponse:
 async def post_feedback(req: FeedbackRequest) -> ApiResponse:
     request_id = uuid.uuid4().hex
     svc = await get_service()
-    await svc.feedback(_USER_ID, req.session_id, req.action, request_id=request_id)
+    await svc.feedback(
+        _USER_ID,
+        req.session_id,
+        req.action,
+        request_id=request_id,
+        variant=req.variant,
+        edited_text=req.edited_text,
+    )
     return _ok(None, request_id)
 
 

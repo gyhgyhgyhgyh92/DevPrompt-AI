@@ -33,10 +33,12 @@ class FollowupRequest(BaseModel):
 
 
 class FeedbackRequest(BaseModel):
-    """POST /feedback 请求体。"""
+    """POST /feedback 请求体：variant 采纳 / +edited_text 编辑采纳 / 两者皆无=跳过。"""
 
     session_id: str
     action: str
+    variant: Literal["A", "B", "C"] | None = None
+    edited_text: str | None = None
 
 
 class UnknownItemPayload(BaseModel):
@@ -48,15 +50,41 @@ class UnknownItemPayload(BaseModel):
     ask: str
 
 
+class VariantPayload(BaseModel):
+    """domain VariantDraft 的契约镜像（F-301 结构化方案）。"""
+
+    title: str
+    body: str
+    changes: list[str] = Field(default_factory=list)
+    level: str
+
+
+class RankingViewPayload(BaseModel):
+    """service.RankingView 的契约镜像（F-403/F-404 加权推荐视图）。"""
+
+    variant: str
+    gap: float
+    confidence: float
+    marked: bool
+    reason: str
+    fit: float
+    pref: float
+    total: float
+
+
 class FlowSnapshotResponse(BaseModel):
-    """FlowSnapshot 的 HTTP 渲染形态（status 含 SSE 专有扩展值 "aborted"）。"""
+    """FlowSnapshot 的 HTTP 渲染形态（status 含 SSE 专有扩展值 "aborted"）。
+
+    v2（BREAKING）：variant 单数字段 → variants 列表 + ranking 推荐视图。
+    """
 
     session_id: str
     status: str
     state: str
     questions: list[UnknownItemPayload] = Field(default_factory=list)
     cleared: list[str] = Field(default_factory=list)
-    variant: dict[str, Any] | None = None
+    variants: list[VariantPayload] = Field(default_factory=list)
+    ranking: RankingViewPayload | None = None
     message: str = ""
 
 

@@ -2,17 +2,25 @@
 
 import difflib
 from dataclasses import dataclass, field
+from typing import Literal, cast
 
 import pytest
 
 from devprompt_ai.config import AppConfig
-from devprompt_ai.domain.decision.port import FactJudgment, FactProbeOutput
+from devprompt_ai.domain.decision.port import (
+    FactJudgment,
+    FactProbeOutput,
+    RankComponentsOutput,
+    ScorePromptsOutput,
+    VariantScore,
+)
 from devprompt_ai.domain.errors import StateError
 from devprompt_ai.domain.generate.ports import MultiVariantDraft, VariantDraft
-from devprompt_ai.domain.models import FlowSession, Symbol
+from devprompt_ai.domain.models import Candidate, FactResult, FlowSession, Symbol
 from devprompt_ai.domain.ranking.ports import AdoptionRecord
 from devprompt_ai.domain.ranking.preference import INITIAL_PREFERENCE
-from devprompt_ai.service import ForgeService
+from devprompt_ai.domain.ranking.recommend import REASON_SMALL_GAP
+from devprompt_ai.service import _RANK_CACHE, ForgeService
 
 
 @dataclass(slots=True)
@@ -35,12 +43,21 @@ class FakeStore:
 
 
 class FakeDecider:
-    """probe_facts 可编程；rank/score 阶段五。"""
+    """三方法全接（阶段五）：probe 可编程置信度，rank/score 带调用计数与异常注入。"""
 
-    def __init__(self, confs: list[float]) -> None:
+    def __init__(
+        self,
+        confs: list[float],
+        scores: dict[str, tuple[int, float]] | None = None,
+        score_error: Exception | None = None,
+    ) -> None:
         self.confs = confs
+        self.scores = scores or {"A": (2, 0.9), "B": (3, 0.9), "C": (4, 0.9)}
+        self.score_error = score_error
+        self.rank_calls = 0
+        self.score_calls = 0
 
-    async def probe_facts(self, sentence: str, facts):  # type: ignore[no-untyped-def]
+    async def probe_facts(self, sentence: str, facts: list[FactResult]) -> FactProbeOutput:
         keys = [f.key for f in facts]
         return FactProbeOutput(
             judgments=[
@@ -50,9 +67,28 @@ class FakeDecider:
             overall_confidence=sum(self.confs) / len(self.confs) if self.confs else 0.0,
         )
 
-    async def rank_components(self, sentence, candidates): ...  # type: ignore[no-untyped-def]
+    async def rank_components(
+        self, sentence: str, candidates: list[Candidate]
+    ) -> RankComponentsOutput:
+        self.rank_calls += 1
+        return RankComponentsOutput(order=list(range(len(candidates))), confidence=0.9)
 
-    async def score_prompts(self, context, variants): ...  # type: ignore[no-untyped-def]
+    async def score_prompts(
+        self, context: str, variants: list[tuple[str, str]]
+    ) -> ScorePromptsOutput:
+        self.score_calls += 1
+        if self.score_error is not None:
+            raise self.score_error
+        return ScorePromptsOutput(
+            scores=[
+                VariantScore(
+                    variant=cast(Literal["A", "B", "C"], key),
+                    score=self.scores[key][0],
+                    confidence=self.scores[key][1],
+                )
+                for key, _ in variants
+            ]
+        )
 
 
 class FakeGenerator:
@@ -140,6 +176,7 @@ def _service(
     symbols: list[Symbol] | None = None,
     guard: int | None = None,
     prefs: FakePreferenceStore | None = None,
+    decider: FakeDecider | None = None,
 ) -> tuple[ForgeService, FakeStore]:
     from devprompt_ai.harness.process import SymbolTableProvider
 
@@ -151,7 +188,7 @@ def _service(
     st = store or FakeStore(fail_save=fail_save)
     svc = ForgeService(
         cfg=cfg,
-        decider=FakeDecider(confs or [0.9] * 7),
+        decider=decider or FakeDecider(confs or [0.9] * 7),
         sessions=st,
         preferences=FakePreferenceStore() if prefs is None else prefs,
         runner=FakeRunner(),
@@ -161,6 +198,12 @@ def _service(
         symbols_override=symbols if symbols is not None else _symbols(),
     )
     return svc, st
+
+
+@pytest.fixture(autouse=True)
+def _isolated_rank_cache() -> None:
+    """模块级 rank 缓存按用例隔离，避免跨用例污染调用计数断言。"""
+    _RANK_CACHE.clear()
 
 
 async def test_optimize_full_flow_with_questions() -> None:
@@ -176,20 +219,30 @@ async def test_optimize_full_flow_with_questions() -> None:
         request_id="r2",
     )
     assert snap2.status == "done"
-    assert snap2.variant is not None and snap2.variant.level in ("A", "B", "C")
+    # B 档（有符号、取证未全过）→ 可输出档位 [A,B]；打分 B(3)>A(2)，d≈0.177∈[0.12,0.5)
+    assert [v.level for v in snap2.variants] == ["A", "B"]
+    assert snap2.ranking is not None
+    assert snap2.ranking.variant == "B"
+    assert snap2.ranking.marked is True
+    assert snap2.ranking.reason == REASON_SMALL_GAP
+    assert 0.12 <= snap2.ranking.gap < 0.5
 
 
 async def test_optimize_clean_flow_skips_asking() -> None:
     svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"})  # 七项全过 → 零提问
     snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
     assert snap.status == "done"  # unknowns 空 → 零提问（MUST-26 ①）
+    assert [v.level for v in snap.variants] == ["A", "B", "C"]  # C 档 → 三套同调
+    assert snap.ranking is not None
 
 
 async def test_escape_rounds_to_conservative() -> None:
     svc, _ = _service(confs=[0.9, 0.9, 0.1, 0.9, 0.9, 0.9, 0.9])
     snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
     done = await svc.escape("local", snap.session_id, request_id="r2")
-    assert done.status == "done" and done.variant is not None and done.variant.level == "A"
+    assert done.status == "done"
+    assert [v.level for v in done.variants] == ["A"]  # 保守路径仅 A 档
+    assert done.ranking is None  # MUST-28：单套不产生推荐视图
 
 
 async def test_guardrail_rounds_then_confirm() -> None:
@@ -315,3 +368,80 @@ async def test_get_preference_initial_vector() -> None:
         "specify_tests": 0.5,
         "max_files_norm": 0.5,
     }
+
+
+# ---- 5F：RANKING 编排 / 降级 / 缓存（阶段五）----
+
+
+class RecordingStore(FakeStore):
+    """记录每次 save 时的状态值，用于断言状态机真实流转路径（MUST-07 唯一状态机）。"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.states: list[str] = []
+
+    async def save(self, session: FlowSession) -> bool:
+        self.states.append(session.state)
+        return await super().save(session)
+
+
+async def test_three_variants_flow_passes_ranking_state() -> None:
+    # 七项全过 → C 档三套 → 状态机必须经停 RANKING（GENERATING→RANKING→DONE）
+    store = RecordingStore()
+    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, store=store)
+    snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+    assert snap.status == "done"
+    assert "RANKING" in store.states
+    assert (
+        store.states.index("GENERATING")
+        < store.states.index("RANKING")
+        < store.states.index("DONE")
+    )
+
+
+async def test_single_variant_skips_score_prompts() -> None:
+    # escape 保守路径 level=A → 单套：不调用 score_prompts、ranking=None、不计算 d（MUST-28）
+    decider = FakeDecider([0.9] * 7)
+    svc, _ = _service(decider=decider)
+    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    done = await svc.escape("local", snap.session_id, request_id="r2")
+    assert done.status == "done" and done.ranking is None
+    assert decider.score_calls == 0
+
+
+async def test_score_prompts_failure_degrades_without_blocking() -> None:
+    # 打分异常 → 诚实降级 ranking=None，流程仍走完 DONE（不阻断、不崩溃）
+    decider = FakeDecider([0.9] * 7, score_error=RuntimeError("LLM unavailable"))
+    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, decider=decider)
+    snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+    assert snap.status == "done" and snap.state == "DONE"
+    assert len(snap.variants) == 3
+    assert snap.ranking is None
+    assert decider.score_calls == 1
+
+
+async def test_rank_components_cache_hits_on_same_input() -> None:
+    # 同项目+同原句+同阈值配置 → 二次 optimize 命中模块级缓存，mock 只跑一次（MUST-14）
+    decider = FakeDecider([0.9] * 7)
+    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, decider=decider)
+    sentence = "缓存命中专用：把提交按钮改成 primary-500 cache-probe-42"
+    await svc.optimize("local", ".", sentence, request_id="r1")
+    assert decider.rank_calls == 1
+    await svc.optimize("local", ".", sentence, request_id="r2")
+    assert decider.rank_calls == 1
+
+
+async def test_feedback_edited_full_chain_updates_vector() -> None:
+    # 全链：clean 流程三套 → feedback(accept, variant, edited_text) → L3 向量按强度移动
+    prefs = FakePreferenceStore()
+    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, prefs=prefs)
+    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    assert [v.level for v in snap.variants] == ["A", "B", "C"]
+    await svc.feedback(
+        "local", snap.session_id, "accept", variant="C", edited_text="b!!!", request_id="r2"
+    )
+    pref = await svc.get_preference("local")
+    sim = difflib.SequenceMatcher(None, "b", "b!!!").ratio()  # 0.4 → 占比 0.6 → 强度 0.4
+    assert pref["detail_level"] == pytest.approx(0.5 + 0.1 * sim * (0.9 - 0.5), abs=1e-9)
+    assert len(prefs.records) == 1
+    assert prefs.records[0].variant == "C" and prefs.records[0].edited is True

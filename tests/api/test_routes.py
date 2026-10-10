@@ -12,7 +12,7 @@ import pytest
 from devprompt_ai.domain.errors import StateError
 from devprompt_ai.interfaces.api import health, routes
 from devprompt_ai.interfaces.api.app import create_app
-from devprompt_ai.service import FlowSnapshot, SnapshotStatus
+from devprompt_ai.service import FlowSnapshot, RankingView, SnapshotStatus
 
 
 def _snap(
@@ -28,6 +28,8 @@ class FakeForgeService:
         self.status: SnapshotStatus = "ask"
         self.state: str = "ASKING"
         self.fail_with: StateError | None = None
+        self.snapshot_override: FlowSnapshot | None = None
+        self.feedback_calls: list[dict[str, Any]] = []
         self.scan: dict[str, Any] = {
             "total_symbols": 3,
             "total_files": 2,
@@ -64,8 +66,24 @@ class FakeForgeService:
         }
 
     async def feedback(
-        self, user_id: str, session_id: str, action: str, *, request_id: str
+        self,
+        user_id: str,
+        session_id: str,
+        action: str,
+        *,
+        request_id: str,
+        variant: str | None = None,
+        edited_text: str | None = None,
     ) -> None:
+        self.feedback_calls.append(
+            {
+                "session_id": session_id,
+                "action": action,
+                "variant": variant,
+                "edited_text": edited_text,
+                "request_id": request_id,
+            }
+        )
         return None
 
     async def scan_project(self, project_root: str) -> dict[str, Any]:
@@ -74,6 +92,8 @@ class FakeForgeService:
     def _next(self, session_id: str = "s1") -> FlowSnapshot:
         if self.fail_with is not None:
             raise self.fail_with
+        if self.snapshot_override is not None:
+            return self.snapshot_override
         return _snap(self.status, self.state, session_id)
 
 
@@ -185,6 +205,60 @@ async def test_feedback_and_preference_passthrough(
     pref = await client.get("/api/v1/preference")
     assert pref.status_code == 200
     assert pref.json()["data"]["detail_level"] == 0.5
+
+
+async def test_feedback_variant_edited_text_passthrough(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    resp = await client.post(
+        "/api/v1/feedback",
+        json={
+            "session_id": "s1",
+            "action": "accept",
+            "variant": "C",
+            "edited_text": "编辑后的方案正文",
+        },
+    )
+    assert resp.status_code == 200
+    assert fake_service.feedback_calls == [
+        {
+            "session_id": "s1",
+            "action": "accept",
+            "variant": "C",
+            "edited_text": "编辑后的方案正文",
+            "request_id": fake_service.feedback_calls[0]["request_id"],
+        }
+    ]
+
+
+async def test_snapshot_renders_variants_and_ranking(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    fake_service.status = "done"
+    fake_service.state = "DONE"
+    fake_service.snapshot_override = FlowSnapshot(
+        session_id="s1",
+        status="done",
+        state="DONE",
+        ranking=RankingView(
+            variant="B",
+            gap=0.2,
+            confidence=0.9,
+            marked=True,
+            reason="分差较小",
+            fit=0.75,
+            pref=0.88,
+            total=0.802,
+        ),
+    )
+    resp = await client.get("/api/v1/result/s1")
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["variants"] == []  # 未注入方案时默认空表
+    assert data["ranking"] is not None
+    assert data["ranking"]["variant"] == "B"
+    assert data["ranking"]["marked"] is True
+    assert "variant" not in data  # 旧单数字段已删除（BREAKING）
 
 
 async def test_not_implemented_endpoints_501(client: httpx.AsyncClient) -> None:
