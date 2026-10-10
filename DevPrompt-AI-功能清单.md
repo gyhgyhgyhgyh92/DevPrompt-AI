@@ -1,6 +1,6 @@
 # DevPrompt AI · 全栈功能清单
 
-> 版本 v1.0 · 2026-10-04
+> 版本 v1.1 · 2026-10-10（BREAKING：废除 CLI 形态，全面转向 Web-only 架构，批准人=项目所有者）
 > 用途：作为 AI 项目开发的规格输入
 > 配套文档：`AGENTS.md`（宪法）、`DevPrompt-AI-项目架构文档.md`、`DevPrompt-AI-技术栈文档.md`
 
@@ -29,13 +29,13 @@
 
 ## F-001 统一服务入口
 
-**形态**：双形态共用，双端行为一致
+**形态**：单一 Web 形态，业务逻辑仅此一份
 
 **输入**：方法签名见《DevPrompt-AI-实施真源文档》阶段四 T4-2（optimize / ask_followup / confirm / feedback / get_preference 五方法）
 
 **行为**：
 - 提供 `ForgeService` 类，作为全部业务逻辑的唯一入口
-- CLI 与 Web 两个前端均只做「参数收拢 → 调用服务 → 渲染结果」
+- HTTP 层（`interfaces/api/`）与前端均只做「参数收拢 → 调用服务 → 渲染结果」
 - 任何领域逻辑不得写在前端层
 - 方法签名统一带 `user_id` 参数，当前实现恒为字符串 `local`
 
@@ -68,7 +68,7 @@ INIT → RETRIEVING → PROBING → [ASKING ↔ CONFIRMING] → GENERATING → R
 - 中断后可从任一状态恢复
 - 同一 session 内的状态变更必须串行化，禁止并发写入
 
-**验收**：CLI 中途退出后重启，Web 刷新页面后，均可继续原流程；并发两个请求操作同一 session，不产生状态错乱。
+**验收**：浏览器刷新页面或服务重启后，均可继续原流程；并发两个请求操作同一 session，不产生状态错乱。
 
 ## F-003 配置管理
 
@@ -86,7 +86,9 @@ INIT → RETRIEVING → PROBING → [ASKING ↔ CONFIRMING] → GENERATING → R
 | `PREFER_SOFT_THRESHOLD` | 0.12 | 推荐软阈值 |
 | `PREFER_MIN_CONFIDENCE` | 0.6 | 标推荐的最低置信度 |
 | `PREFER_LOW_CONFIDENCE` | 0.4 | 整体低置信度提示线 |
-| `MAX_FOLLOWUP_ROUNDS` | 2 | 反问轮次硬上限 |
+| `FOLLOWUP_SOFT_ROUND_GUARD` | 10 | 反问软护栏：单流程追问轮数达此值时显式询问用户裁决（非静默终止），裁决「继续」后清零 |
+| `FOLLOWUP_COST_BUDGET` | 0 | 反问软护栏：单流程 LLM token 总数上限；0=禁用 |
+| `DB_PATH` | `~/.devprompt-ai/devprompt.db` | SQLite 单文件库（L1/L3；WAL 模式，环境变量可覆盖） |
 | `FACT_PROBE_THRESHOLD` | 0.75 | 事实探针综合置信度通过线 |
 | `JEV_MODEL_ID` | `jev-1.13.0` | Jev 模型 ID，不使用别名 |
 | `MAX_STATE_TOKENS` | 30000 | Jev state 硬上限，超限截断 |
@@ -108,7 +110,7 @@ INIT → RETRIEVING → PROBING → [ASKING ↔ CONFIRMING] → GENERATING → R
 - 必须关闭 OpenAI tracing 上传（第三方密钥会返回 401）
 - 每次切换供应商后，执行一次工具调用冒烟测试
 
-**降级**：用户未配置 LLM 时，CLI 与 Web 均给出明确报错，提示需要配置哪些环境变量。
+**降级**：用户未配置 LLM 时，Web 端给出明确报错（`/health` 自检项 `llm_config` 不通过、流程启动时配置校验失败），提示需要配置哪些环境变量。
 
 **验收**：接入任一 OpenAI 兼容端点（DeepSeek / Kimi / 通义 / 硅基流动 / oneapi 等）后，四阶段流程可完整跑通。
 
@@ -237,29 +239,33 @@ INIT → RETRIEVING → PROBING → [ASKING ↔ CONFIRMING] → GENERATING → R
 - 输出每项判定 + 概率分布 + 综合置信度
 - 纯文本输入，不传代码正文
 
-**输出**：`各项概率` + `综合置信度`（值域 0–1）
+**输出**：`各项概率` + `综合置信度`（值域 0–1）+ `unknowns[]` 具体未决项清单（每项含：键、缺失原因、当前最佳推断、需用户提供什么）
 
-**验收**：探针总数与事实项数量一致；单次调用完成全部判断；置信度值在值域内。
+**验收**：探针总数与事实项数量一致；单次调用完成全部判断；置信度值在值域内；`unknowns[]` 每项绑定具体缺失事实并给出当前最佳推断。
 
-## F-204 反问触发与终止
+## F-204 自适应反问（具体未知驱动 · 无轮次上限）
 
-**触发条件**（三条同时不满足才反问）：
-- 条件一：硬事实全部确认（取证结果全为真）
-- 条件二：综合置信度 ≥ `FACT_PROBE_THRESHOLD`（0.75）
-- 条件三：反问轮次未达上限
+> v1.1 BREAKING 重构（批准人=项目所有者，2026-10-06）：废除「MAX_FOLLOWUP_ROUNDS(2) 轮次上限」，对齐 agentic clarification 最佳实践（Cursor/TraeCode 模式）。
+
+**提问条件**：
+- 存在具体未决事实（F-203 的 `unknowns[]` 非空，含取证未决与研判缺口）→ 本轮批量提出，每问绑定一个未知项 + 当前最佳推断
+- `unknowns[]` 为空 → **零提问**，直接进入生成
 
 **行为**：
-- 未达阈值时，列出所有未确认事实，生成反问清单
-- 反问一次可覆盖多个未确认项，不逐项单独提问
-- 用户答复后重新执行阶段一至阶段二（注意：不是简单重跑）
-- 轮次达 `MAX_FOLLOWUP_ROUNDS`（2）时，**不再提问**，直接输出保守版并显式列出未确认项
+- 每轮批量提出全部未知项，不逐项单独提问；**禁止**泛化提问（「还需要更多信息吗」「信息够了吗」类以『是否继续』为内容的提问一律禁止）
+- LLM 不自评信息充分性，只产出 `unknowns[]`；综合置信度仅作为输出档位依据（联动 F-205 / MUST-28），不作为终止条件
+- 用户答复后重新研判，生成新的 `unknowns[]` 清单；多轮澄清可提升信息完备度档位（A→B→C）
+- 用户任一轮可显式选择「直接生成」（逃生，`followup.escaped`）→ 立即进入生成
+- 软护栏：单流程追问轮数 ≥ `FOLLOWUP_SOFT_ROUND_GUARD`（10）或 LLM 成本超 `FOLLOWUP_COST_BUDGET` → 触发 `followup.guardrail`，**不静默终止**——显式展示已澄清清单，询问用户「继续追问 / 直接生成」，裁决「继续」后护栏计数清零
 
-**输出**：反问清单（每项含：事实描述、当前状态、期望答案格式）；或终止提示（已达轮次上限）
+**输出**：反问清单（每项含：未知项键、缺失原因、当前最佳推断、期望答案格式）；或护栏裁决面板（已澄清清单 + 两选项）；或保守方案 + 显式未确认项
 
 **验收**：
-- 构造信息缺失场景，能正确触发反问
-- 连续两轮答复后仍不确定，输出保守版且**不再继续追问**
-- 反问轮次计数准确，不会无限循环
+- 无具体未知时**零提问**直接输出；构造信息缺失场景，能正确触发反问
+- 每条提问均绑定具体未知项，无任何泛化提问（「是否继续」类零出现）
+- 用户逃生任一轮生效，立即进入生成并输出保守版 + 未确认项（信息不足时）
+- 软护栏触发时显式询问而非静默终止；裁决「继续」后可继续追问，轮数无上限
+- 多轮澄清后输出档位随信息完备度提升（A→B→C），不越级输出
 
 ## F-205 三套方案的输入完备性差异
 
@@ -274,6 +280,7 @@ INIT → RETRIEVING → PROBING → [ASKING ↔ CONFIRMING] → GENERATING → R
 **行为**：
 - 当前信息状态决定可生成的最高档位，不足则不输出该档
 - 若信息仅够生成 A，则只输出 A，并说明原因
+- 多轮澄清（F-204）可提升信息完备度档位：澄清后按新状态重新判定可输出档位，已输出过的低档位不回退
 - **不允许把 C 档呈现给尚未补充关键信息的用户**
 
 **验收**：不同信息完备度下，输出的档位数量与信息状态匹配，不出现越级输出。
@@ -409,19 +416,19 @@ INIT → RETRIEVING → PROBING → [ASKING ↔ CONFIRMING] → GENERATING → R
 
 ## F-501 L1 会话记忆
 
-**存储**：MySQL 8.0+，经自定义 `MySQLSession`（`memory/session_store.py`，实现 `openai-agents` 的 `Session` 协议——SDK 自带实现仅支持 SQLite，无 MySQL 版）
+**存储**：SQLite 单文件（`DB_PATH`，WAL 模式），经 `SQLiteSessionStore`（`memory/session_store.py`，`SessionStore` Protocol 注入；乐观锁 CAS 实现串行化）
 
 **内容**：当前流程状态、已确认事实、用户应答记录、已生成方案
 
 **生命周期**：单次会话，可手动清除
 
-**行为**：CLI 与 Web 共用同一存储，故中断后可恢复
+**行为**：状态存后端 SQLite 而非前端内存，故中断后可恢复
 
-**验收**：CLI 进行到一半改用 Web 打开，能看到原状态并继续。
+**验收**：流程进行到一半刷新页面或重启服务，重新进入后能看到原状态并继续。
 
 ## F-502 L2 项目长期记忆
 
-**存储**：**仅 Git notes**（`.git/notes/refs/notes/commits`，不受 `.gitignore` 影响）；`.devprompt-ai/` 只存本地缓存（检索缓存等，L1/L3 数据已存 MySQL），不入库
+**存储**：**仅 Git notes**（`.git/notes/refs/notes/commits`，不受 `.gitignore` 影响）；`.devprompt-ai/` 只存本地缓存（L1/L3 数据存 `devprompt.db`），不入库
 
 **内容**：项目技术栈、命名规范、设计 token 清单、目录结构约定、测试框架
 
@@ -429,7 +436,7 @@ INIT → RETRIEVING → PROBING → [ASKING ↔ CONFIRMING] → GENERATING → R
 - 首次分析项目时自动生成，随代码演进而更新
 - 写入 Git notes，团队成员拉取后共享（需仓库推送 `refs/notes/*`）
 - 提供手动刷新入口
-- **`.devprompt-ai/` 不参与共享**：该目录含本地缓存等私有状态（L1/L3 数据已存 MySQL），入库会造成污染
+- **`.devprompt-ai/` 不参与共享**：该目录含本地缓存等私有状态（L1/L3 数据存 `devprompt.db`），入库会造成污染
 
 **验收**：生成的规范内容与实际代码一致；`git notes list` 可见；在另一克隆中 `git fetch origin 'refs/notes/*'` 后可读取。
 
@@ -451,7 +458,7 @@ git config --get-all remote.origin.push
 
 ## F-503 L3 用户偏好记忆
 
-**存储**：MySQL，以 `user_id` 为键分区间
+**存储**：SQLite（同库 `devprompt.db`），以 `user_id` 为键分区间
 
 **内容**：偏好向量（四个维度）
 
@@ -482,41 +489,50 @@ git config --get-all remote.origin.push
 
 ---
 
-# 第七部分：CLI 形态
+# 第七部分：Web API 端点
 
-## F-601 命令设计
+## F-601 Web API 端点
 
-| 命令 | 作用 |
-|---|---|
-| `devprompt` | 主命令，直接进入交互式优化流程 |
-| `devprompt optimize <原句>` | 单次优化，输出三套方案 |
-| `devprompt web` | 启动 Web 服务 |
-| `devprompt config` | 查看与修改配置 |
-| `devprompt preference` | 查看与重置偏好向量 |
-| `devprompt doctor` | 环境自检（依赖、配置、连通性） |
-| `devprompt init` | 在项目中生成 L2 规范文件 |
+**统一前缀**：`/api/v1`，统一响应信封 `ApiResponse`（`code=0` 成功；非 0 为错误码；含 `request_id`）
+
+| 方法 | 路径 | 作用 |
+|---|---|---|
+| GET | `/health` | 环境自检：rg / ctags / git 版本、DB 文件可写、LLM 配置非空，返回逐项检查结果与总体健康位；单项失败不中断其余检查 |
+| POST | `/optimize` | 启动优化流程：输入原句 + 项目路径，返回流程快照（`session_id` 即 flow_id）。有副作用，客户端禁重试 |
+| GET | `/progress/{flow_id}` | SSE 进度流：1s 轮询推送快照，DONE / ABORTED / 反问 / 护栏态推送后关闭，客户端断开即停 |
+| POST | `/followup/{flow_id}` | 反问交互三模式（互斥，由契约校验保证）：`answers` 批量答复 / `escape` 逃生直接生成 / `guardrail_action` 软护栏裁决 |
+| GET | `/result/{flow_id}` | 获取流程快照（含三套方案与评分，若已生成） |
+| POST | `/feedback` | 提交采纳反馈（session_id + action），写入 L3 偏好信号 |
+| GET | `/preference` | 查询偏好向量 |
+| PUT | `/preference` | 更新偏好向量——**501（错误码 9004），阶段五（L3 写入）接入** |
+| GET | `/history` | 历史列表——**501（错误码 9004），阶段五（session store list 能力）接入** |
+| GET | `/project/scan` | 项目符号表扫描，返回符号总数 / 文件数 / 类型分布（F-101 只读透出） |
 
 **行为**：
-- 支持 `--project <路径>` 指定项目，默认当前目录
-- 支持 `--json` 输出机器可读格式
-- 支持 `--no-color` 无色模式
-- 主命令无参数时进入交互式，逐轮提问
+- 全部端点为薄壳：只做参数收拢 → 调 service → 渲染，零业务逻辑（MUST-10）
+- 全部使用 Pydantic v2 定义请求与响应（`schemas.py` 契约模型）
+- 错误响应仅含 code + message + request_id，不回传堆栈（MUST-19）
+- 涉及状态写入的请求带 `request_id` 便于追溯（MUST-11）
 
-## F-602 交互流程
+**验收**：9 个端点（preference 含 GET/PUT 两个方法）均可独立调用；501 端点返回 9004 错误码而非伪造数据；`/health` 单项探测失败不中断其余检查。
 
-**渲染要求**：
-- 三套方案并排或纵向分栏展示，视觉上可清晰区分
-- 【推荐】标记醒目，含置信度
-- 评分明细可展开，显示适配度、偏好匹配度、总分的计算过程
-- 未确认项显式列出，不用灰色小字隐藏
+## F-602 Web 交互界面（阶段六 UI）
+
+> 原 CLI 交互设计已随 CLI 形态废除（v1.2 BREAKING），对应概念平移为 React 组件，属阶段六交付；HTTP 层先行提供对应数据。
+
+**三套方案展示**（React 组件）：
+- 三套方案纵向分栏展示（`PromptCard`），视觉上可清晰区分
+- 【推荐】标记醒目，含置信度（`RecommendBadge`）
+- 评分明细可展开，显示适配度、偏好匹配度、总分的计算过程（`ScoreDetail`）
+- 未确认项显式列出，不用灰色小字隐藏（`ConfidenceNotice`）
 - 置信度不足时给出明确说明，不静默处理
 
-**反问交互**：
-- 显示轮次进度（当前轮次 / 上限）
-- 逐项列出未确认事实，可批量填写
-- 已达上限时明确提示「已达轮次上限，输出保守版」
+**反问交互**（React 组件 `FollowupForm`）：
+- 显示已澄清项清单与剩余未知项数量
+- 逐项列出未确认事实，可批量填写（提交 `POST /followup/{flow_id}` 的 `answers` 模式）；任一轮提供「直接生成」逃生入口（`escape` 模式）
+- 软护栏触发时展示裁决面板（已澄清清单 + 继续追问/直接生成两选项，`guardrail_action` 模式）
 
-**验收**：完整走通一次优化流程，界面输出包含三套方案、推荐标记、评分明细、未确认项。
+**验收**：完整走通一次优化流程，界面包含三套方案、推荐标记、评分明细、未确认项（属阶段六验收；阶段 4.5 仅验收 HTTP 层数据完备）。
 
 ## F-603 采纳反馈
 
@@ -567,30 +583,19 @@ frontend/src/
 |---|---|---|
 | `PromptCard` | 单套方案展示 | 可展开评分明细；区分推荐态 |
 | `RecommendBadge` | 【推荐】标记 | 含置信度数值；不推荐时不显示 |
-| `FollowupForm` | 反问卡片 | 批量填写未确认项；显示轮次进度 |
+| `FollowupForm` | 反问卡片 | 批量填写未知项；展示已澄清清单与「直接生成」逃生口 |
 | `ScoreDetail` | 评分明细 | 展开显示三个信号分项与总分计算 |
 | `ConfidenceNotice` | 置信度提示 | 置信度不足时的明确说明区 |
 
 ## F-704 HTTP 接口
 
-**统一前缀**：`/api/v1`
-
-| 方法 | 路径 | 用途 |
-|---|---|---|
-| POST | `/optimize` | 启动优化，返回流程 ID |
-| GET | `/progress/{flow_id}` | SSE 进度流 |
-| POST | `/followup/{flow_id}` | 提交反问应答 |
-| GET | `/result/{flow_id}` | 获取三套方案与评分 |
-| POST | `/feedback` | 提交采纳反馈 |
-| GET | `/preference` | 查询偏好向量 |
-| PUT | `/preference` | 更新偏好向量 |
-| GET | `/history` | 历史记录列表 |
-| GET | `/project/scan` | 触发项目规范扫描 |
+**端点清单以 F-601 为权威定义**（统一前缀 `/api/v1`，共 9 端点）。前端侧要点：
 
 **行为**：
-- 全部使用 Pydantic v2 定义请求与响应
-- 错误响应包含错误码、可读消息、建议动作
-- 长耗时操作通过 SSE 推送进度，不阻塞 HTTP
+- 全部使用 Pydantic v2 定义请求与响应（后端 `schemas.py` 为唯一契约来源）
+- 错误响应仅含错误码、可读消息、request_id，不回传堆栈
+- 长耗时操作通过 SSE（`GET /progress/{flow_id}`）推送进度，不阻塞 HTTP
+- `PUT /preference` 与 `GET /history` 当前为 501（错误码 9004），阶段五接入，前端阶段六实现时须处理该状态
 
 ## F-705 契约对齐
 
@@ -695,7 +700,7 @@ frontend/src/
 **必测项**：
 - 加权总分计算（含手工验算对照）
 - 双阈值推荐标记的四种情形
-- 反问轮次上限控制
+- 反问软护栏触发与用户逃生路径
 - 偏好向量更新与裁剪
 - 候选集条数硬约束
 - 事实取证七项判定
@@ -703,9 +708,11 @@ frontend/src/
 
 **验收**：全部通过；覆盖率不低于 70%。
 
-## F-804 形态一致性测试
+## F-804 流程恢复一致性测试
 
-**内容**：同一组输入分别经 CLI 与 Web 执行，比对三套方案内容、评分、推荐标记是否一致。
+> 原「形态一致性测试」（CLI 与 Web 比对）已随 CLI 形态废除（v1.2 BREAKING）重定义。
+
+**内容**：同一 flow_id 经不同端点与访问时机获取快照——SSE 中断后改用 `GET /result/{flow_id}`、刷新页面重新订阅 `GET /progress/{flow_id}`、反问提交后再次拉取快照——比对三套方案内容、评分、推荐标记是否一致。
 
 **验收**：一致项差异为零；不一致项有明确原因说明。
 
@@ -733,21 +740,21 @@ frontend/src/
 
 **W1 出口条件**：F-801 **第一段召回率** ≥ 80%。未达标不得进入 W2。排序准确率属 W3 门禁。
 
-## W2 · 服务层与 CLI
+## W2 · 服务层与 Web HTTP
 
 | 顺序 | 功能项 | 依赖 |
 |---|---|---|
 | 8 | F-002 状态机 | 无 |
 | 9 | F-001 统一服务入口 | F-002 |
 | 10 | F-203 事实探针 | F-201 |
-| 11 | F-204 反问触发与终止 | F-203 |
+| 11 | F-204 自适应反问 | F-203 |
 | 12 | F-205 输入完备性差异 | F-203 |
 | 13 | F-301 单次调用生成（仅单套部分，三套在 W3） | F-204 |
-| 14 | F-601 命令设计 | F-001 |
-| 15 | F-602 交互流程 | F-601 |
+| 14 | F-601 Web API 端点 | F-001 |
+| 15 | F-602 Web 交互界面（仅契约与数据完备，UI 属阶段六） | F-601 |
 | 16 | F-502 L2 项目记忆 | F-101 |
 
-**W2 出口条件**：CLI 可完成单套提示词生成，含反问机制。
+**W2 出口条件**：Web API 可完成单套提示词生成，含反问机制。
 
 ## W3 · 三套差异化与推荐
 
@@ -763,7 +770,7 @@ frontend/src/
 | 23 | F-603 采纳反馈 | F-503 |
 | 24 | F-202 Jev 决策实现 | F-201 |
 
-**W3 出口条件**：CLI 完成三套输出 + 推荐标记，Jev 与 LLM 两条路径均可运行。
+**W3 出口条件**：Web API 完成三套输出 + 推荐标记，Jev 与 LLM 两条路径均可运行。
 
 ## W4 · 全栈 Web 与记忆完善
 
@@ -779,7 +786,7 @@ frontend/src/
 | 32 | F-501 / F-504 记忆注入 | F-502, F-503 |
 | 33 | F-005 可观测性 | 全部 |
 
-**W4 出口条件**：双形态均可用且行为一致；记忆三层均生效。
+**W4 出口条件**：Web 全栈可用（HTTP API + React 前端）；记忆三层均生效。
 
 ## 横跨四周
 
@@ -788,7 +795,7 @@ frontend/src/
 | F-501 L1 会话记忆 | W2 起可用 |
 | F-004 多供应商适配 | W2 完成，切换供应商时执行 F-802 |
 | F-803 核心单元测试 | 随开发同步 |
-| F-804 形态一致性测试 | W4 |
+| F-804 流程恢复一致性测试 | W4 |
 | F-805 成本监控 | W2 起 |
 
 ---
@@ -808,19 +815,24 @@ frontend/src/
 
 **根本约束**：Jev 的定位是「在给定候选中做判断」，不是「检索候选」。检索必须由 ripgrep 完成，顺序不可颠倒。
 
-# 附录 B：CLI 命令速查
+# 附录 B：Web API 端点速查
 
-| 命令 | 示例 |
+统一前缀 `/api/v1`，统一响应信封 `ApiResponse`（code / message / data / request_id）：
+
+| 用途 | 示例 |
 |---|---|
-| 交互式 | `devprompt` |
-| 单次优化 | `devprompt optimize "把用户中心页面提交按钮默认背景色改为 primary-500"` |
-| 指定项目 | `devprompt optimize --project ./src "优化错误提示" |
-| 机器可读 | `devprompt optimize "..." --json` |
-| 启动 Web | `devprompt web` |
-| 环境自检 | `devprompt doctor` |
-| 生成规范 | `devprompt init` |
-| 查看偏好 | `devprompt preference show` |
-| 重置偏好 | `devprompt preference reset` |
+| 环境自检 | `GET /api/v1/health` |
+| 启动优化 | `POST /api/v1/optimize`，body：`{"project": "<项目绝对路径>", "sentence": "把用户中心页面提交按钮默认背景色改为 primary-500"}` |
+| 进度订阅 | `GET /api/v1/progress/{flow_id}`（SSE） |
+| 反问批量答复 | `POST /api/v1/followup/{flow_id}`，body：`{"answers": {"<未知项键>": "<答复>"}}` |
+| 逃生直接生成 | `POST /api/v1/followup/{flow_id}`，body：`{"escape": true}` |
+| 护栏裁决 | `POST /api/v1/followup/{flow_id}`，body：`{"guardrail_action": "continue"}` |
+| 获取结果 | `GET /api/v1/result/{flow_id}` |
+| 采纳反馈 | `POST /api/v1/feedback`，body：`{"session_id": "<flow_id>", "action": "<动作>"}` |
+| 查看偏好 | `GET /api/v1/preference` |
+| 更新偏好 | `PUT /api/v1/preference`（当前 501/9004，阶段五接入） |
+| 历史列表 | `GET /api/v1/history`（当前 501/9004，阶段五接入） |
+| 项目扫描 | `GET /api/v1/project/scan?project=<项目绝对路径>` |
 
 # 附录 C：验收检查清单
 
@@ -841,6 +853,15 @@ frontend/src/
 
 进入 W4 前确认：
 
-- [ ] CLI 三套方案 + 推荐标记可用
+- [ ] Web API 三套方案 + 推荐标记可用
 - [ ] Jev 与 LLM 两条路径均已验证
-- [ ] 形态一致性测试通过
+- [ ] 流程恢复一致性测试通过
+
+---
+
+# 变更记录
+
+| 版本 | 日期 | 变更 |
+|---|---|---|
+| v1.1 | 2026-10-10 | BREAKING：废除 CLI 形态，全面转向 Web-only 架构（批准人=项目所有者）。F-601 重定义为 Web API 端点（`interfaces/api/` 9 端点，501 端点如实标注）；F-602 重定义为 Web 交互界面（阶段六 React UI）；F-804 重定义为流程恢复一致性测试；附录 B 改为端点速查 |
+| v1.0 | 2026-10-04 | 初版 |
