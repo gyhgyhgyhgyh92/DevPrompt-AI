@@ -7,7 +7,7 @@ import pytest
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.decision.port import FactJudgment, FactProbeOutput
 from devprompt_ai.domain.errors import StateError
-from devprompt_ai.domain.generate.ports import VariantDraft
+from devprompt_ai.domain.generate.ports import MultiVariantDraft, VariantDraft
 from devprompt_ai.domain.models import FlowSession, Symbol
 from devprompt_ai.service import ForgeService
 
@@ -55,6 +55,11 @@ class FakeDecider:
 class FakeGenerator:
     async def generate_single(self, ctx):  # type: ignore[no-untyped-def]
         return VariantDraft(title="t", body="b", changes=["x"], level=ctx.level)
+
+    async def generate_variants(self, ctx, levels):  # type: ignore[no-untyped-def]
+        return MultiVariantDraft(
+            variants=[VariantDraft(title="t", body="b", changes=["x"], level=lv) for lv in levels]
+        )
 
 
 class FakeRunner:

@@ -12,3 +12,13 @@ def resolve_level(*, has_symbol: bool, facts_complete: bool) -> Literal["A", "B"
     if has_symbol:
         return "B"
     return "A"
+
+
+def expand_levels(level: Literal["A", "B", "C"]) -> list[Literal["A", "B", "C"]]:
+    """MUST-28 附注：可输出档位为从 A 起的前缀——A→["A"]、B→["A","B"]、C→["A","B","C"]。
+
+    generate_variants 的 levels 参数由调用方以本函数从 resolve_level 的结果推导
+    （仅 A 档=单套，三套同调不适用；escape/护栏保守路径直接请求 ["A"]）。
+    """
+    order: tuple[Literal["A", "B", "C"], ...] = ("A", "B", "C")
+    return list(order[: order.index(level) + 1])
