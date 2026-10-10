@@ -710,11 +710,18 @@ frontend/src/
 
 ## F-804 流程恢复一致性测试
 
-> 原「形态一致性测试」（CLI 与 Web 比对）已随 CLI 形态废除（v1.2 BREAKING）重定义。
+> 原「形态一致性测试」（CLI 与 Web 比对）已随 CLI 形态废除（v1.2 BREAKING）重定义；本条按审查报告「中等 6」拆分为两条可执行验收（2026-10-10，阶段五 5A）。
 
-**内容**：同一 flow_id 经不同端点与访问时机获取快照——SSE 中断后改用 `GET /result/{flow_id}`、刷新页面重新订阅 `GET /progress/{flow_id}`、反问提交后再次拉取快照——比对三套方案内容、评分、推荐标记是否一致。
+**输入**：同一组固定输入——同一 project_dir、同一原句、同一偏好向量、同一决策层配置——分别经两种形态各执行一次完整流程并取快照。当前两形态为：① HTTP 路径（`POST /optimize` 起流程后经 `GET /result/{flow_id}` 取结果）；② resume 重复执行路径（同一 flow_id 在 `GET /progress/{flow_id}` SSE 中断后改由 `GET /result/{flow_id}` 重新获取快照，以及反问经 `POST /followup/{flow_id}` 提交后再次拉取快照）。
 
-**验收**：一致项差异为零；不一致项有明确原因说明。
+**行为**：对两次执行所得快照逐项对照：三套方案正文逐套做 diff；ranking 视图（fit / pref / total / confidence / gap / marked / reason）逐字段比对。
+
+**LLM 非确定性豁免**：真实 LLM 输出不可复现，「方案正文 diff 为空」不要求真实 LLM 路径达成零差异；①② 两项对照均在**同一 mock 决策层 + 固定种子场景**（决策层与生成器输出注入，不真实调用 LLM）下执行。真实 LLM 路径仅做结构一致性冒烟（字段存在且类型正确），不比内容。
+
+**验收**：
+- ① 方案内容 diff 对照：mock 决策层下，两种形态的三套方案正文逐套 diff 为空
+- ② 评分与推荐标记一致性：mock 决策层下，两种形态的 ranking 视图 fit/pref/total/confidence/gap/marked/reason 七字段逐字段相等
+- ①② 任一不过即 F-804 不通过；不一致项必须有明确原因说明并记录，不得静默
 
 ## F-805 成本监控
 
@@ -863,5 +870,6 @@ frontend/src/
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v1.2 | 2026-10-10 | F-804 验收拆分为两条可执行条款：①方案内容 diff 对照（同 mock 决策层 + 固定种子场景；真实 LLM 不要求零差异——非确定性豁免显式化）②评分与推荐标记一致性（ranking 视图 fit/pref/total/confidence/gap/marked/reason 逐字段相等）；补齐输入/行为/验收三要素。修复审查报告「中等 6」（阶段五 5A · T5-11①） |
 | v1.1 | 2026-10-10 | BREAKING：废除 CLI 形态，全面转向 Web-only 架构（批准人=项目所有者）。F-601 重定义为 Web API 端点（`interfaces/api/` 9 端点，501 端点如实标注）；F-602 重定义为 Web 交互界面（阶段六 React UI）；F-804 重定义为流程恢复一致性测试；附录 B 改为端点速查 |
 | v1.0 | 2026-10-04 | 初版 |
