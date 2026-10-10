@@ -34,11 +34,11 @@
   - [x] 6.3 RETRIEVING 接 rank_components（MUST-14 缓存键：路径+sha256+阈值 hash，TTL 30min）
   - [x] 6.4 routes/schemas 同步（GET /preference 接 L3；feedback 补 variant/edited_text；PUT preference 与 /history 维持 501）
   - [x] 6.5 全量门禁 + API 测试更新 + uvicorn 冒烟（三套+标记；escape 单套 A 无 ranking）
-- [ ] Task 7: 5H 排序准确率实测与出口验收（T5-10）—— **生死线未通过（58% < 80%），MUST-25 甲/乙待用户裁决**
+- [x] Task 7: 5H 排序准确率实测与出口验收（T5-10）—— **生死线 58%＜80% 未达标，MUST-25 上报后用户裁决「方案甲」（LLM 决策转正），依决策树授权继续**
   - [x] 7.1 measure_ranking 全量 100 条（LLM 版，指标标注）—— 58/100=58.0%，metric_source=LLM 排序准确率
-  - [x] 7.2 主流程复跑判定：≥80% 通过 / <80% **停止上报甲乙**（MUST-25）—— 402 污染排除，最好上限 68% 仍不达标，已上报
-  - [ ] 7.3 出口验收：三套+推荐标记、双路径、失败归因报告 eval/recall/report-ranking-*.md（归因报告已落档 report-ranking-2026-10-11.md；出口验收待裁决后）
-  - [ ] 7.4 真源 §1/§13 收口 + F-202 补全确认（T5-11②）（待裁决后）
+  - [x] 7.2 主流程复跑判定：≥80% 通过 / <80% **停止上报甲乙**（MUST-25）—— 402 污染排除，最好上限 68% 仍不达标，已上报；用户裁决方案甲
+  - [x] 7.3 出口验收：三套+推荐标记、双路径、失败归因报告 eval/recall/report-ranking-2026-10-11.md（三套/标记/双路径由 257 测试 + uvicorn 冒烟覆盖；归因报告落档）
+  - [x] 7.4 真源 §1/§13 收口 + F-202 补全确认（T5-11②）—— 真源 §1 阶段五 ✅ + §13 甲裁决记录；F-202 三处空规格补全
 
 # Task Dependencies
 
