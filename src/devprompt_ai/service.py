@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.decision.followup import GuardrailState, UnknownItem, build_unknowns
@@ -192,6 +192,21 @@ class ForgeService:
                 "request_id": request_id,
             },
         )
+
+    async def scan_project(self, project_root: str) -> dict[str, Any]:
+        """F-101 只读统计（Web /project/scan 薄透传）：符号总数/文件数/类别分布。"""
+        table = await self._symbols_provider.get(project_root)
+        files: set[str] = set()
+        kind_counts: dict[str, int] = {}
+        for s in table.symbols:
+            files.add(s.path)
+            kind_counts[s.kind] = kind_counts.get(s.kind, 0) + 1
+        ranked = dict(sorted(kind_counts.items(), key=lambda kv: (-kv[1], kv[0])))
+        return {
+            "total_symbols": len(table.symbols),
+            "total_files": len(files),
+            "kind_counts": ranked,
+        }
 
     # ---- 内部 ----
 

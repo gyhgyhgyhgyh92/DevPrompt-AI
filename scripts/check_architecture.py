@@ -6,6 +6,7 @@
 3. SQL 字符串不得出现在 memory/ 之外（MUST-06）
 4. 前端 ts/tsx 不得出现阈值常量（MUST-08）
 5. 组件文件名必须与主导出名一致（架构文档 §5.3）
+6. interfaces/api/ 不得 import harness/memory/decision/state 实现模块（Web 薄壳约束，MUST-06）
 
 退出码：0 = 通过；1 = 存在违规。
 """
@@ -30,6 +31,12 @@ DOMAIN_FORBIDDEN = (
     "devprompt_ai.observability",
 )
 SERVICE_FORBIDDEN = ("devprompt_ai.interfaces",)
+API_FORBIDDEN = (
+    "devprompt_ai.harness",
+    "devprompt_ai.memory",
+    "devprompt_ai.decision",
+    "devprompt_ai.state",
+)
 
 IMPORT_RE = re.compile(r"^\s*(?:from|import)\s+([\w.]+)", re.MULTILINE)
 SQL_RE = re.compile(
@@ -63,6 +70,19 @@ def check_service_imports() -> list[str]:
         for match in IMPORT_RE.finditer(py.read_text(encoding="utf-8")):
             module = match.group(1)
             if module.startswith(SERVICE_FORBIDDEN):
+                violations.append(f"[MUST-06] {py}: import '{module}'")
+    return violations
+
+
+def check_api_imports() -> list[str]:
+    violations: list[str] = []
+    api_dir = SRC / "interfaces" / "api"
+    if not api_dir.exists():
+        return violations
+    for py in sorted(api_dir.rglob("*.py")):
+        for match in IMPORT_RE.finditer(py.read_text(encoding="utf-8")):
+            module = match.group(1)
+            if module.startswith(API_FORBIDDEN):
                 violations.append(f"[MUST-06] {py}: import '{module}'")
     return violations
 
@@ -114,6 +134,7 @@ def main() -> int:
     violations = (
         check_domain_imports()
         + check_service_imports()
+        + check_api_imports()
         + check_sql_outside_memory()
         + check_frontend_thresholds()
         + check_component_names()
