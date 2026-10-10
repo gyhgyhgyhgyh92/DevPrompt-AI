@@ -163,9 +163,7 @@ async def test_followup_guardrail_mode(
 
 
 async def test_followup_modes_mutually_exclusive(client: httpx.AsyncClient) -> None:
-    both = await client.post(
-        "/api/v1/followup/s1", json={"answers": {"k": "v"}, "escape": True}
-    )
+    both = await client.post("/api/v1/followup/s1", json={"answers": {"k": "v"}, "escape": True})
     assert both.status_code == 422
     none_mode = await client.post("/api/v1/followup/s1", json={})
     assert none_mode.status_code == 422
@@ -198,9 +196,7 @@ async def test_not_implemented_endpoints_501(client: httpx.AsyncClient) -> None:
     assert history_resp.json()["code"] == 9004
 
 
-async def test_project_scan(
-    client: httpx.AsyncClient, fake_service: FakeForgeService
-) -> None:
+async def test_project_scan(client: httpx.AsyncClient, fake_service: FakeForgeService) -> None:
     resp = await client.get("/api/v1/project/scan", params={"project": "."})
     assert resp.status_code == 200
     data = resp.json()["data"]
@@ -213,9 +209,7 @@ async def test_error_response_uniform_shape(
     client: httpx.AsyncClient, fake_service: FakeForgeService
 ) -> None:
     fake_service.fail_with = StateError("流程 ID 不存在", code=6003)
-    resp = await client.post(
-        "/api/v1/optimize", json={"sentence": "改按钮", "project": "."}
-    )
+    resp = await client.post("/api/v1/optimize", json={"sentence": "改按钮", "project": "."})
     assert resp.status_code == 500
     body = resp.json()
     assert body["code"] == 6003
