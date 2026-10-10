@@ -63,7 +63,9 @@ def _snapshot_payload(snapshot: FlowSnapshot) -> FlowSnapshotResponse:
 
 
 def _not_implemented(message: str) -> JSONResponse:
-    body = ApiResponse(code=_NOT_IMPLEMENTED_CODE, message=message, request_id=uuid.uuid4().hex)
+    body = ApiResponse(
+        code=_NOT_IMPLEMENTED_CODE, message=message, request_id=uuid.uuid4().hex
+    )
     return JSONResponse(status_code=501, content=body.model_dump())
 
 
