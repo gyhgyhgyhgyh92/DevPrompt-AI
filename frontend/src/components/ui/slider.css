@@ -1,0 +1,26 @@
+/* 数值滑条样式（视觉变量全部引用 tokens.css，MUST-17 禁硬编码颜色与间距）。 */
+
+.slider {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  font: var(--font-body-regular);
+  color: var(--color-text-secondary);
+}
+
+.slider__label {
+  flex: 0 0 auto;
+  font-size: var(--text-body-sm);
+}
+
+.slider__input {
+  flex: 1;
+  accent-color: var(--color-primary-500);
+}
+
+.slider__value {
+  min-width: var(--space-10);
+  font: var(--font-code-regular);
+  color: var(--color-text-primary);
+  text-align: right;
+}
