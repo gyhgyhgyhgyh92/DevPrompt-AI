@@ -3,7 +3,7 @@
 import pytest
 
 from devprompt_ai.domain.errors import StateError
-from devprompt_ai.domain.models import FlowSession
+from devprompt_ai.domain.models import FlowSession, SessionSummary
 from devprompt_ai.state import FlowState, load_or_create, transition
 
 
@@ -24,6 +24,18 @@ class FakeStore:
         self.items[session.session_id] = session
         session.version += 1
         return True
+
+    async def list_recent(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
+        return [
+            SessionSummary(
+                session_id=s.session_id,
+                state=s.state,
+                project="",
+                updated_at="",
+            )
+            for s in self.items.values()
+            if s.user_id == user_id
+        ][:limit]
 
 
 def test_all_states_have_transitions() -> None:

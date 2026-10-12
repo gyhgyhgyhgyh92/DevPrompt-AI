@@ -63,7 +63,8 @@ class LLMFallbackDecider:
             FactProbeOutput,
             FACTS_SYSTEM,
             FACTS_USER.format(sentence=sentence, facts=listing),
-            timeout=10.0,  # 证据探针小 prompt：短超时（保持历史默认，不随 llm_timeout 放宽）
+            # 真实冒烟（6G，2026-10-12）：DeepSeek 探针峰值 >10s 致间歇 500，弃用短超时
+            # 改随 cfg.llm_timeout（可配置）；成本失控由 MUST-26 成本护栏兜底
         )
 
     async def score_prompts(
