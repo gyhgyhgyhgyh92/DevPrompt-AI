@@ -194,7 +194,7 @@ async def test_state_over_limit_truncated(caplog: pytest.LogCaptureFixture) -> N
     cfg = _cfg(max_state_tokens=10)
     transport = ScriptedTransport([_scores_resp([(3.0, 0.7), (2.0, 0.6), (1.0, 0.5)])])
     decider = JevDecider(cfg, transport)
-    with caplog.at_level(logging.WARNING, logger="devprompt.decision"):
+    with caplog.at_level(logging.INFO, logger="devprompt.events"):
         out = await decider.score_prompts(
             "上下文" * 100, [("A", "正文" * 50), ("B", "b"), ("C", "c")]
         )
@@ -202,7 +202,10 @@ async def test_state_over_limit_truncated(caplog: pytest.LogCaptureFixture) -> N
     state = transport.calls[0][0]
     assert len(state) <= 10
     assert _estimate_tokens(state) <= 10
-    assert any(r.getMessage().startswith("state.truncated") for r in caplog.records)
+    assert any(
+        r.getMessage() == "state.truncated" and getattr(r, "reason", "") == "state-over-limit"
+        for r in caplog.records
+    )
 
 
 async def test_state_within_limit_untouched() -> None:
@@ -259,11 +262,11 @@ def test_create_decider_forced_fallback_ignores_key() -> None:
 async def test_create_decider_explicit_jev_without_key_logs_switch(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    with caplog.at_level(logging.WARNING, logger="devprompt.decision"):
+    with caplog.at_level(logging.INFO, logger="devprompt.events"):
         d = create_decider(AppConfig(_env_file=None, decider="jev"))  # type: ignore[call-arg]
     assert isinstance(d, LLMFallbackDecider)
     assert any(
-        "decider.switched" in r.getMessage() and "jev-no-api-key" in r.getMessage()
+        r.getMessage() == "decider.switched" and getattr(r, "reason", "") == "jev-no-api-key"
         for r in caplog.records
     )
 
@@ -300,14 +303,15 @@ async def test_failover_switches_after_three_failures(
 
     monkeypatch.setattr(fb, "chat_structured", fake_llm)
     d = FailoverDecider(_ExplodingPrimary(), _cfg())
-    with caplog.at_level(logging.WARNING, logger="devprompt.decision"):
+    with caplog.at_level(logging.INFO, logger="devprompt.events"):
         for _ in range(3):
             with pytest.raises(GenerationError):
                 await d.rank_components("改按钮", _cands())
         out = await d.rank_components("改按钮", _cands())
     assert out.order == [1, 0]  # 第 4 次调用由 LLM 版接管
     assert any(
-        "decider.switched" in r.getMessage() and "jev-consecutive-failures" in r.getMessage()
+        r.getMessage() == "decider.switched"
+        and getattr(r, "reason", "") == "jev-consecutive-failures"
         for r in caplog.records
     )
 

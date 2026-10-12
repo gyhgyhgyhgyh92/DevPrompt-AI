@@ -113,7 +113,7 @@ async def test_generate_variants_requests_exact_levels(
         system: str,
         user: str,
         *,
-        timeout: float = 10.0,
+        timeout: float | None = None,
     ) -> MultiVariantDraft:
         captured["output_type"] = output_type
         captured["system"] = system
@@ -125,7 +125,8 @@ async def test_generate_variants_requests_exact_levels(
     out = await LLMGenerator(_cfg()).generate_variants(_ctx(level="B"), ["A", "B"])
 
     assert captured["output_type"] is MultiVariantDraft
-    assert captured["timeout"] == 60.0
+    # 生成超时委托 cfg.llm_timeout（F-604）：生成器不覆写，chat_structured 缺省取配置值
+    assert captured["timeout"] is None
     assert [v.level for v in out.variants] == ["A", "B"]
     # 套数与请求档位写入 prompt
     assert "2 套" in captured["system"]

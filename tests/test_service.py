@@ -2,6 +2,7 @@
 
 import difflib
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal, cast
 
 import pytest
@@ -16,7 +17,7 @@ from devprompt_ai.domain.decision.port import (
 )
 from devprompt_ai.domain.errors import StateError
 from devprompt_ai.domain.generate.ports import MultiVariantDraft, VariantDraft
-from devprompt_ai.domain.models import Candidate, FactResult, FlowSession, Symbol
+from devprompt_ai.domain.models import Candidate, FactResult, FlowSession, SessionSummary, Symbol
 from devprompt_ai.domain.ranking.ports import AdoptionRecord
 from devprompt_ai.domain.ranking.preference import INITIAL_PREFERENCE
 from devprompt_ai.domain.ranking.recommend import REASON_SMALL_GAP
@@ -40,6 +41,19 @@ class FakeStore:
         session.version += 1
         self.items[session.session_id] = session
         return True
+
+    async def list_recent(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
+        out = [
+            SessionSummary(
+                session_id=s.session_id,
+                state=s.state,
+                project=str(s.data.get("project_root", "")),
+                updated_at="2026-10-12T00:00:00Z",
+            )
+            for s in self.items.values()
+            if s.user_id == user_id
+        ]
+        return out[:limit]
 
 
 class FakeDecider:
@@ -445,3 +459,98 @@ async def test_feedback_edited_full_chain_updates_vector() -> None:
     assert pref["detail_level"] == pytest.approx(0.5 + 0.1 * sim * (0.9 - 0.5), abs=1e-9)
     assert len(prefs.records) == 1
     assert prefs.records[0].variant == "C" and prefs.records[0].edited is True
+
+
+# ---------- T6-11 转正与 F-604 设置（6A） ----------
+
+
+async def test_set_preference_clips_out_of_range() -> None:
+    """PUT /preference 转正：部分更新 + clip01（超界截断而非拒绝），未知维度快速失败。"""
+    svc, _ = _service()
+    updated = await svc.set_preference("local", {"detail_level": 1.5, "specify_tests": -0.2})
+    assert updated["detail_level"] == 1.0  # 超上界截断
+    assert updated["specify_tests"] == 0.0  # 超下界截断
+    assert updated["include_diff"] == 0.5  # 未提及维度保持
+    with pytest.raises(ValueError, match="未知偏好维度"):
+        await svc.set_preference("local", {"nope": 0.5})
+
+
+async def test_list_history_returns_summaries() -> None:
+    """GET /history 转正：会话摘要脱敏（无原句明文，MUST-19）。"""
+    svc, _ = _service()
+    await svc.optimize("local", "/tmp/demo-proj", "改提交按钮", request_id="r1")
+    items = await svc.list_history("local")
+    assert len(items) == 1
+    assert items[0].state in {"ASKING", "DONE"}
+    assert items[0].project == "/tmp/demo-proj"  # FakeStore 摘要直传；真实 store 取 basename
+    assert "改提交按钮" not in str(items[0])
+
+
+async def test_update_settings_writes_applies_and_masks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """F-604：模型段落设置文件（0600）、流程段落 app_settings；回显脱敏；运行配置即时生效。"""
+    import json
+    import os
+    import stat
+
+    settings_file = tmp_path / "settings.json"
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_FILE", str(settings_file))
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_DB", str(tmp_path / "settings.db"))
+    svc, _ = _service()
+
+    view = await svc.update_settings(
+        {
+            "model_service": {"base_url": "https://api.x", "api_key": "sk-plain-1234567890"},
+            "process": {"followup_soft_round_guard": 7, "telemetry": False},
+        }
+    )
+    # 回显恒脱敏（MUST-19），明文不出现在视图
+    assert view["model_service"]["api_key_masked"] == "sk-••••7890"
+    assert "sk-plain-1234567890" not in str(view)
+    # 明文只进设置文件（0600，POSIX；Windows 无权限位），不入 SQLite
+    import os as _os
+
+    if _os.name != "nt":
+        assert stat.S_IMODE(os.stat(settings_file).st_mode) == 0o600
+    doc = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert doc["model_service"]["api_key"] == "sk-plain-1234567890"
+    assert "sk-plain" not in (tmp_path / "settings.db").read_text(encoding="utf-8", errors="ignore")
+    # 运行配置即时生效（含进程参数）
+    assert svc._cfg.llm_base_url == "https://api.x"
+    assert svc._cfg.followup_soft_round_guard == 7
+    assert svc._cfg.telemetry is False
+    # 锁定项恒 25（MUST-09），不接受修改
+    assert view["locked"]["candidate_limit"] == 25
+
+    # 空 api_key = 保持不变
+    view2 = await svc.update_settings({"model_service": {"api_key": ""}})
+    assert view2["model_service"]["api_key_masked"] == "sk-••••7890"
+
+
+async def test_flow_events_chain_without_sentence(caplog: pytest.LogCaptureFixture) -> None:
+    """T6-9：一次完整流程可查链路事件（flow.started/completed 等），且 INFO 级不落原句。"""
+    import logging as _logging
+
+    svc, _ = _service()
+    sentence = "把提交按钮改成 primary-500"
+    with caplog.at_level(_logging.INFO, logger="devprompt.events"):
+        snap = await svc.optimize("local", ".", sentence, request_id="r1")
+        if snap.status == "ask":
+            await svc.ask_followup(
+                "local", snap.session_id, {"test_file_exists": "已确认"}, request_id="r2"
+            )
+    names = [r.getMessage() for r in caplog.records]
+    assert "flow.started" in names
+    assert "flow.completed" in names
+    assert "cache.miss" in names or "cache.hit" in names
+    assert any(n.startswith("recommendation.") for n in names)
+    completed = next(r for r in caplog.records if r.getMessage() == "flow.completed")
+    assert getattr(completed, "flow_id", "") != ""
+    assert isinstance(getattr(completed, "elapsed_ms", None), int)
+    # MUST-19：事件字段与消息均不得携带用户原句
+    for r in caplog.records:
+        assert sentence not in r.getMessage()
+        for key, value in vars(r).items():
+            if key not in {"msg", "args", "message", "asctime"}:
+                assert sentence not in str(value)

@@ -37,6 +37,7 @@ from devprompt_ai.domain.decision.port import (
 )
 from devprompt_ai.domain.errors import ConfigurationError
 from devprompt_ai.domain.models import Candidate, FactResult
+from devprompt_ai.observability.logging import emit
 
 JEV_MODEL_ID = "jev-1.13.0"
 """钉死的 Jev 模型 ID（MUST-12）：禁用别名——别名随上游漂移会让置信度阈值失效。"""
@@ -184,10 +185,11 @@ class JevDecider:
         estimated = _estimate_tokens(state)
         if estimated <= limit:
             return state
-        logger.warning(
-            "state.truncated reason=state-over-limit estimated_tokens=%d limit=%d",
-            estimated,
-            limit,
+        emit(
+            "state.truncated",
+            reason="state-over-limit",
+            estimated_tokens=estimated,
+            limit=limit,
         )
         return state[:limit]
 

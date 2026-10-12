@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 from devprompt_ai.domain.errors import StateError
+from devprompt_ai.domain.models import SessionSummary
 from devprompt_ai.interfaces.api import health, routes
 from devprompt_ai.interfaces.api.app import create_app
 from devprompt_ai.service import FlowSnapshot, RankingView, SnapshotStatus
@@ -30,6 +31,25 @@ class FakeForgeService:
         self.fail_with: StateError | None = None
         self.snapshot_override: FlowSnapshot | None = None
         self.feedback_calls: list[dict[str, Any]] = []
+        self.preference_updates: list[dict[str, float]] = []
+        self.settings_updates: list[dict[str, Any]] = []
+        self.settings_view: dict[str, Any] = {
+            "model_service": {
+                "base_url": "https://mock.local",
+                "api_key_masked": "sk-••••3f7a",
+                "model_id": "mock-model",
+                "decider": "fallback",
+                "timeout": 60.0,
+                "temperature": None,
+                "max_tokens": None,
+            },
+            "process": {
+                "followup_soft_round_guard": 10,
+                "followup_cost_budget": 0.0,
+                "telemetry": True,
+            },
+            "locked": {"candidate_limit": 25},
+        }
         self.scan: dict[str, Any] = {
             "total_symbols": 3,
             "total_files": 2,
@@ -64,6 +84,29 @@ class FakeForgeService:
             "specify_tests": 0.5,
             "max_files_norm": 0.5,
         }
+
+    async def set_preference(self, user_id: str, values: dict[str, float]) -> dict[str, float]:
+        self.preference_updates.append(dict(values))
+        merged = await self.get_preference(user_id)
+        merged.update(values)
+        return merged
+
+    async def list_history(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
+        return [
+            SessionSummary(
+                session_id="s1",
+                state="DONE",
+                project="demo",
+                updated_at="2026-10-12T00:00:00Z",
+            )
+        ]
+
+    async def get_settings(self) -> dict[str, Any]:
+        return dict(self.settings_view)
+
+    async def update_settings(self, update: dict[str, Any]) -> dict[str, Any]:
+        self.settings_updates.append(update)
+        return dict(self.settings_view)
 
     async def feedback(
         self,
@@ -261,13 +304,64 @@ async def test_snapshot_renders_variants_and_ranking(
     assert "variant" not in data  # 旧单数字段已删除（BREAKING）
 
 
-async def test_not_implemented_endpoints_501(client: httpx.AsyncClient) -> None:
-    put_resp = await client.put("/api/v1/preference")
-    assert put_resp.status_code == 501
-    assert put_resp.json()["code"] == 9004
-    history_resp = await client.get("/api/v1/history")
-    assert history_resp.status_code == 501
-    assert history_resp.json()["code"] == 9004
+async def test_put_preference_partial_update_passthrough(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """T6-11 转正：PUT /preference 部分更新（None 字段过滤），契约体四维回读。"""
+    resp = await client.put(
+        "/api/v1/preference",
+        json={"detail_level": 1.5, "specify_tests": -0.2, "include_diff": None},
+    )
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert set(data) == {"detail_level", "include_diff", "specify_tests", "max_files_norm"}
+    # 路由层原值透传；clip01 截断归 service（见 tests/test_service.py）
+    assert fake_service.preference_updates == [{"detail_level": 1.5, "specify_tests": -0.2}]
+
+
+async def test_get_history_returns_summaries(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """T6-11 转正：GET /history 仅 id/时间/state/项目名（无原句明文，MUST-19）。"""
+    resp = await client.get("/api/v1/history")
+    assert resp.status_code == 200
+    items = resp.json()["data"]
+    assert items == [
+        {
+            "session_id": "s1",
+            "state": "DONE",
+            "project": "demo",
+            "updated_at": "2026-10-12T00:00:00Z",
+        }
+    ]
+    assert "sentence" not in items[0]
+
+
+async def test_settings_get_put_roundtrip(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """F-604：GET/PUT /settings；密钥恒脱敏形态，候选上限锁定只读（MUST-09）。"""
+    resp = await client.get("/api/v1/settings")
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["model_service"]["api_key_masked"] == "sk-••••3f7a"
+    assert "api_key" not in data["model_service"]
+    assert data["locked"]["candidate_limit"] == 25
+
+    put_resp = await client.put(
+        "/api/v1/settings",
+        json={
+            "model_service": {"api_key": "sk-new-secret-1234567890"},
+            "process": {"telemetry": False},
+        },
+    )
+    assert put_resp.status_code == 200
+    assert fake_service.settings_updates == [
+        {
+            "model_service": {"api_key": "sk-new-secret-1234567890"},
+            "process": {"telemetry": False},
+        }
+    ]
 
 
 async def test_project_scan(client: httpx.AsyncClient, fake_service: FakeForgeService) -> None:

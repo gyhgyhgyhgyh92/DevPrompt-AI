@@ -27,7 +27,9 @@ def _error_code(exc: Exception) -> int:
 
 async def _render_error(request: Request, exc: Exception) -> JSONResponse:
     """统一错误渲染：仅 code + message + request_id，不回传堆栈（MUST-19）。"""
-    body = ApiResponse(code=_error_code(exc), message=str(exc), request_id=uuid.uuid4().hex)
+    body: ApiResponse[None] = ApiResponse(
+        code=_error_code(exc), message=str(exc), request_id=uuid.uuid4().hex
+    )
     return JSONResponse(status_code=500, content=body.model_dump())
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import difflib
 import json
@@ -11,23 +12,33 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from devprompt_ai.common.hashing import sha256_hex
-from devprompt_ai.config import AppConfig
+from devprompt_ai.common.secrets import mask_secret
+from devprompt_ai.config import MODEL_KEY_MAP, AppConfig
 from devprompt_ai.domain.decision.followup import GuardrailState, UnknownItem, build_unknowns
 from devprompt_ai.domain.decision.port import DecisionPort, VariantScore
 from devprompt_ai.domain.errors import StateError
 from devprompt_ai.domain.generate.ports import GeneratePort, GenerationContext, VariantDraft
 from devprompt_ai.domain.generate.variants import expand_levels, resolve_level
-from devprompt_ai.domain.models import Candidate, FactResult, FlowSession, SessionStore, Symbol
+from devprompt_ai.domain.models import (
+    Candidate,
+    FactResult,
+    FlowSession,
+    SessionStore,
+    SessionSummary,
+    Symbol,
+)
 from devprompt_ai.domain.ranking.ports import AdoptionRecord, PreferenceStore, VariantLevel
-from devprompt_ai.domain.ranking.preference import FEATURE_TABLE, match_score, update_vector
+from devprompt_ai.domain.ranking.preference import FEATURE_TABLE, clip01, match_score, update_vector
 from devprompt_ai.domain.ranking.recommend import decide_mark
 from devprompt_ai.domain.ranking.score import normalize_fit, validate_weights, weighted_total
-from devprompt_ai.domain.retrieval.candidates import build_candidates
+from devprompt_ai.domain.retrieval.candidates import MAX_CANDIDATES, build_candidates
 from devprompt_ai.domain.retrieval.facts import verify_facts
 from devprompt_ai.domain.retrieval.locate import locate_symbol
 from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader
 from devprompt_ai.harness.llm import LLMGenerator, last_usage
 from devprompt_ai.harness.process import LocalCommandRunner, LocalFileReader, SymbolTableProvider
+from devprompt_ai.memory.settings_store import write_model_settings, write_process_settings
+from devprompt_ai.observability.logging import emit, emit_error, set_telemetry
 from devprompt_ai.state import FlowState, load_or_create, transition
 
 logger = logging.getLogger("devprompt.flow")
@@ -113,8 +124,10 @@ class ForgeService:
             "clarifications": {},
             "rounds": 0,
             "cost_tokens": 0,
+            "started_at": time.time(),  # flow.completed 耗时基准（T6-9）
         }
         await transition(session, FlowState.RETRIEVING, self._sessions)
+        emit("flow.started", flow_id=session.session_id, request_id=request_id)
 
         symbols = self._symbols_override
         if symbols is None:
@@ -186,9 +199,10 @@ class ForgeService:
         此处不得预转移，否则必抛 6001）。
         """
         session = await self._require(user_id, session_id, {FlowState.ASKING, FlowState.CONFIRMING})
-        logger.info(
+        emit(
             "followup.escaped",
-            extra={"rounds": session.data.get("rounds", 0), "request_id": request_id},
+            rounds=session.data.get("rounds", 0),
+            request_id=request_id,
         )
         session.data["level"] = "A"
         session.data["conservative"] = True
@@ -210,6 +224,66 @@ class ForgeService:
     async def get_preference(self, user_id: str) -> Preference:
         """L3 偏好向量（F-503）：store 无记录时返回初始中性值（MUST-08：判定在 domain）。"""
         return await self._preferences.load(user_id)
+
+    async def set_preference(self, user_id: str, values: dict[str, float]) -> Preference:
+        """PUT /preference 转正（T6-11）：部分更新 + clip01（超界截断而非拒绝），返回更新后向量。"""
+        current = await self._preferences.load(user_id)
+        merged = dict(current)
+        for key, value in values.items():
+            if key not in current:
+                raise ValueError(f"未知偏好维度：{key}")
+            merged[key] = clip01(float(value))
+        await self._preferences.save(user_id, merged)
+        return merged
+
+    async def list_history(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
+        """GET /history 转正（T6-11）：脱敏会话摘要（无原句明文，MUST-19）。"""
+        return await self._sessions.list_recent(user_id, limit)
+
+    async def get_settings(self) -> dict[str, Any]:
+        """F-604 读设置（T6-11）：有效配置视图（env 已并入）；api_key 恒脱敏，候选上限锁定只读。"""
+        cfg = self._cfg
+        return {
+            "model_service": {
+                "base_url": cfg.llm_base_url,
+                "api_key_masked": mask_secret(cfg.llm_api_key),
+                "model_id": cfg.llm_model,
+                "decider": cfg.decider,
+                "timeout": cfg.llm_timeout,
+                "temperature": cfg.llm_temperature,
+                "max_tokens": cfg.llm_max_tokens,
+            },
+            "process": {
+                "followup_soft_round_guard": cfg.followup_soft_round_guard,
+                "followup_cost_budget": cfg.followup_cost_budget,
+                "telemetry": cfg.telemetry,
+            },
+            "locked": {"candidate_limit": MAX_CANDIDATES},  # MUST-09 宪法常量，只读下发
+        }
+
+    async def update_settings(self, update: dict[str, Any]) -> dict[str, Any]:
+        """PUT /settings（T6-11）：模型段写设置文件（0600）、流程段写 app_settings 表并应用。
+
+        api_key 语义：空值/None = 保持不变；仅显式新值落盘（明文只进设置文件，不进库不进日志）。
+        """
+        model_in: dict[str, Any] = dict(update.get("model_service") or {})
+        process_in: dict[str, Any] = dict(update.get("process") or {})
+        api_key = model_in.pop("api_key", None)
+        if api_key:  # 非空才替换（空值/None = 不变）
+            model_in["api_key"] = api_key
+        model_write = {k: v for k, v in model_in.items() if v is not None}
+        process_write = {k: v for k, v in process_in.items() if v is not None}
+        if model_write:
+            await asyncio.to_thread(write_model_settings, model_write)
+        if process_write:
+            await asyncio.to_thread(write_process_settings, process_write)
+        for src_key, value in model_write.items():
+            setattr(self._cfg, MODEL_KEY_MAP[src_key], value)
+        for key, value in process_write.items():
+            setattr(self._cfg, key, value)
+        self._cfg.validate()
+        set_telemetry(self._cfg.telemetry)
+        return await self.get_settings()
 
     async def feedback(
         self,
@@ -331,13 +405,11 @@ class ForgeService:
             cost_tokens=int(session.data.get("cost_tokens", 0)),
         )
         if guard.should_trigger(self._cfg):
-            logger.info(
+            emit(
                 "followup.guardrail",
-                extra={
-                    "rounds": guard.rounds,
-                    "cost_tokens": guard.cost_tokens,
-                    "request_id": session.data.get("last_request_id", ""),
-                },
+                rounds=guard.rounds,
+                cost_tokens=guard.cost_tokens,
+                request_id=session.data.get("last_request_id", ""),
             )
             return self._snapshot(session, "guardrail")  # 停在 CONFIRMING 等裁决（6002 语义）
         if unknowns:
@@ -370,22 +442,39 @@ class ForgeService:
         session.data["variants"] = [v.model_dump() for v in multi.variants]
         if len(multi.variants) < 2:
             # MUST-28：单套（仅 A 档）跳过打分与推荐，ranking=None，不计算 d
-            logger.info(
+            emit(
                 "recommendation.skipped",
-                extra={
-                    "reason": "single-variant",
-                    "gap": None,
-                    "confidence": None,
-                    "request_id": session.data.get("last_request_id", ""),
-                },
+                reason="single-variant",
+                gap=None,
+                confidence=None,
+                request_id=session.data.get("last_request_id", ""),
             )
             await transition(session, FlowState.DONE, self._sessions)
+            self._emit_completed(session, variants=len(multi.variants), marked=None)
             return self._snapshot(session, "done")
         await transition(session, FlowState.RANKING, self._sessions)
         ranking = await self._rank_and_mark(session, multi.variants)
         session.data["ranking"] = dataclasses.asdict(ranking) if ranking is not None else None
         await transition(session, FlowState.DONE, self._sessions)
+        self._emit_completed(
+            session,
+            variants=len(multi.variants),
+            marked=ranking.marked if ranking is not None else None,
+        )
         return self._snapshot(session, "done")
+
+    def _emit_completed(self, session: FlowSession, *, variants: int, marked: bool | None) -> None:
+        """flow.completed（T6-9）：耗时 = 会话起点至生成收尾（跨反问轮次的真实全程）。"""
+        started_at = float(session.data.get("started_at", 0.0))
+        elapsed_ms = int((time.time() - started_at) * 1000) if started_at else None
+        emit(
+            "flow.completed",
+            flow_id=session.session_id,
+            variants=variants,
+            marked=marked,
+            elapsed_ms=elapsed_ms,
+            request_id=session.data.get("last_request_id", ""),
+        )
 
     async def _rank_and_mark(
         self, session: FlowSession, variants: list[VariantDraft]
@@ -417,26 +506,23 @@ class ForgeService:
                 details[v.level] = (fit, pref_match, total)
             rec = decide_mark(entries)
         except Exception:
-            logger.exception(
+            emit_error(
                 "recommendation.skipped",
-                extra={
-                    "reason": "score-failed",
-                    "gap": None,
-                    "confidence": None,
-                    "request_id": request_id,
-                },
+                reason="score-failed",
+                gap=None,
+                confidence=None,
+                request_id=request_id,
             )
             return None
         top_fit, top_pref, top_total = details[rec.variant]
-        logger.info(
+        emit(
             "recommendation.made" if rec.marked else "recommendation.skipped",
-            extra={
-                "gap": rec.gap,
-                "confidence": rec.confidence,
-                "marked": rec.marked,
-                "variant": rec.variant,
-                "request_id": request_id,
-            },
+            gap=rec.gap,
+            confidence=rec.confidence,
+            marked=rec.marked,
+            variant=rec.variant,
+            reason=rec.reason,
+            request_id=request_id,
         )
         return RankingView(
             variant=rec.variant,
@@ -464,8 +550,10 @@ class ForgeService:
         if cached is not None:
             expires_at, order = cached
             if now <= expires_at and order and order[0] < len(candidates):
+                emit("cache.hit", request_id=request_id, candidates=len(candidates))
                 return candidates[order[0]]
             _RANK_CACHE.pop(key, None)  # 过期惰性淘汰（SHOULD-04）
+        emit("cache.miss", request_id=request_id, candidates=len(candidates))
         try:
             out = await self._decider.rank_components(sentence, candidates)
         except Exception:

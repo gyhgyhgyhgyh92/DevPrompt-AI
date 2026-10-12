@@ -1,5 +1,7 @@
 """F-003 配置管理测试：默认值、环境覆盖、热重载、权重校验。"""
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -25,6 +27,11 @@ def test_defaults_match_f003() -> None:
     assert cfg.jev_model_id == "jev-1.13.0"  # MUST-12：禁别名
     assert cfg.max_state_tokens == 30000
     assert cfg.decider == "auto"
+    # F-604 新键（T6-11）：模型调用参数 + 遥测
+    assert cfg.llm_timeout == 60.0
+    assert cfg.llm_temperature is None
+    assert cfg.llm_max_tokens is None
+    assert cfg.telemetry is True
 
 
 def test_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -59,3 +66,45 @@ def test_decider_literal(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DECIDER", "sideways")
     with pytest.raises(ValidationError):  # pydantic 校验失败（非 Literal 成员）
         AppConfig(_env_file=None)  # type: ignore[call-arg]
+
+
+# ---------- 本地设置加载链（T6-11：init > env > 本地设置 > .env > 默认值） ----------
+
+
+def test_local_settings_merged_below_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """本地设置补默认缺口；环境变量仍优先于本地设置（MUST-19 修订后语义）。
+
+    分段存储：模型段在 settings.json，流程段在 app_settings 表（F-604）。
+    """
+    import json
+
+    from devprompt_ai.memory.settings_store import write_process_settings
+
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text(
+        json.dumps({"model_service": {"base_url": "https://from-file", "model_id": "file-model"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_FILE", str(settings_file))
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_DB", str(tmp_path / "settings.db"))
+    write_process_settings({"followup_soft_round_guard": 8})
+    monkeypatch.setenv("LLM_BASE_URL", "https://from-env")
+
+    cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
+    assert cfg.llm_base_url == "https://from-env"  # env > 本地设置
+    assert cfg.llm_model == "file-model"  # 本地设置 > 默认值
+    assert cfg.followup_soft_round_guard == 8  # 流程参数经 app_settings 表生效
+
+
+def test_local_process_settings_from_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """流程参数经 app_settings 表进入加载链（JSON 值类型还原）。"""
+    from devprompt_ai.memory.settings_store import write_process_settings
+
+    db = tmp_path / "settings.db"
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_FILE", "")
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_DB", str(db))
+    write_process_settings({"telemetry": False, "followup_cost_budget": 12.5})
+
+    cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
+    assert cfg.telemetry is False
+    assert cfg.followup_cost_budget == 12.5

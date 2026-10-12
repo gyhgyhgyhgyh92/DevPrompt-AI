@@ -26,6 +26,7 @@ from devprompt_ai.domain.decision.port import (
 from devprompt_ai.domain.models import Candidate, FactResult
 from devprompt_ai.harness.guardrails import validate_ranking
 from devprompt_ai.harness.llm import chat_structured
+from devprompt_ai.observability.logging import emit, emit_error
 
 logger = logging.getLogger("devprompt.decision")
 
@@ -43,12 +44,12 @@ class LLMFallbackDecider:
         self, sentence: str, candidates: list[Candidate]
     ) -> RankComponentsOutput:
         listing = "\n".join(f"{i}. {c.name}  ({c.path})" for i, c in enumerate(candidates))
+        # timeout 缺省即 cfg.llm_timeout（F-604 默认 60s；25 候选大 prompt 10s 必超时——实测）
         out = await chat_structured(
             self._cfg,
             RankComponentsOutput,
             RANK_SYSTEM,
             RANK_USER.format(sentence=sentence, candidates=listing),
-            timeout=60.0,  # 25 候选大 prompt，DeepSeek 实测 10s 必超时（排序准确率实测暴露）
         )
         validate_ranking(out, len(candidates))
         return out
@@ -62,6 +63,7 @@ class LLMFallbackDecider:
             FactProbeOutput,
             FACTS_SYSTEM,
             FACTS_USER.format(sentence=sentence, facts=listing),
+            timeout=10.0,  # 证据探针小 prompt：短超时（保持历史默认，不随 llm_timeout 放宽）
         )
 
     async def score_prompts(
@@ -73,7 +75,6 @@ class LLMFallbackDecider:
             ScorePromptsOutput,
             SCORE_SYSTEM,
             SCORE_USER.format(context=context, variants=listing),
-            timeout=60.0,  # 三套长正文，同生成类放宽
         )
 
 
@@ -134,9 +135,10 @@ class FailoverDecider:
         self._consecutive_failures += 1
         if self._consecutive_failures >= self._max_failures:
             self._delegate = LLMFallbackDecider(self._cfg)
-            logger.warning(
-                "decider.switched reason=jev-consecutive-failures consecutive_failures=%d",
-                self._consecutive_failures,
+            emit_error(
+                "decider.switched",
+                reason="jev-consecutive-failures",
+                consecutive_failures=self._consecutive_failures,
             )
 
     def _reset_failures(self) -> None:
@@ -155,5 +157,5 @@ def create_decider(cfg: AppConfig) -> DecisionPort:
 
         return FailoverDecider(JevDecider(cfg), cfg)
     if cfg.decider == "jev":
-        logger.warning("decider.switched reason=jev-no-api-key")
+        emit("decider.switched", reason="jev-no-api-key")
     return LLMFallbackDecider(cfg)

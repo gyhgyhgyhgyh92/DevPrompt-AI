@@ -1,0 +1,1405 @@
+{
+  "components": {
+    "schemas": {
+      "ApiResponse_FlowSnapshotResponse_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FlowSnapshotResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[FlowSnapshotResponse]",
+        "type": "object"
+      },
+      "ApiResponse_HealthResponse_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HealthResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[HealthResponse]",
+        "type": "object"
+      },
+      "ApiResponse_NoneType_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "title": "Data",
+            "type": "null"
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[NoneType]",
+        "type": "object"
+      },
+      "ApiResponse_PreferenceVectorPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreferenceVectorPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[PreferenceVectorPayload]",
+        "type": "object"
+      },
+      "ApiResponse_ScanResponse_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScanResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[ScanResponse]",
+        "type": "object"
+      },
+      "ApiResponse_SettingsResponse_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettingsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[SettingsResponse]",
+        "type": "object"
+      },
+      "ApiResponse_list_HistoryItemPayload__": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/HistoryItemPayload"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[list[HistoryItemPayload]]",
+        "type": "object"
+      },
+      "FeedbackRequest": {
+        "description": "POST /feedback 请求体：variant 采纳 / +edited_text 编辑采纳 / 两者皆无=跳过。",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "edited_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited Text"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "variant": {
+            "anyOf": [
+              {
+                "enum": [
+                  "A",
+                  "B",
+                  "C"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant"
+          }
+        },
+        "required": [
+          "session_id",
+          "action"
+        ],
+        "title": "FeedbackRequest",
+        "type": "object"
+      },
+      "FlowSnapshotResponse": {
+        "description": "FlowSnapshot 的 HTTP 渲染形态（status 含 SSE 专有扩展值 \"aborted\"）。\n\nv2（BREAKING）：variant 单数字段 → variants 列表 + ranking 推荐视图。",
+        "properties": {
+          "cleared": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Cleared",
+            "type": "array"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/UnknownItemPayload"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "ranking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RankingViewPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/VariantPayload"
+            },
+            "title": "Variants",
+            "type": "array"
+          }
+        },
+        "required": [
+          "session_id",
+          "status",
+          "state"
+        ],
+        "title": "FlowSnapshotResponse",
+        "type": "object"
+      },
+      "FollowupRequest": {
+        "description": "POST /followup/{flow_id} 三模式请求体：answers / escape / guardrail_action 互斥。",
+        "properties": {
+          "answers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answers"
+          },
+          "escape": {
+            "default": false,
+            "title": "Escape",
+            "type": "boolean"
+          },
+          "guardrail_action": {
+            "anyOf": [
+              {
+                "enum": [
+                  "continue",
+                  "generate"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guardrail Action"
+          }
+        },
+        "title": "FollowupRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthCheckItem": {
+        "description": "单项自检结果。",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "ok",
+          "detail"
+        ],
+        "title": "HealthCheckItem",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "description": "GET /health 数据体：checks 列表 + 总体健康位。",
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/HealthCheckItem"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "is_healthy": {
+            "title": "Is Healthy",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "checks",
+          "is_healthy"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "HistoryItemPayload": {
+        "description": "GET /history 会话摘要（脱敏：无原句明文，MUST-19）。",
+        "properties": {
+          "project": {
+            "title": "Project",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "state",
+          "project",
+          "updated_at"
+        ],
+        "title": "HistoryItemPayload",
+        "type": "object"
+      },
+      "LockedSettings": {
+        "description": "宪法锁定项（MUST-09）：候选集上限只读下发，不接受设置修改。",
+        "properties": {
+          "candidate_limit": {
+            "title": "Candidate Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "candidate_limit"
+        ],
+        "title": "LockedSettings",
+        "type": "object"
+      },
+      "ModelServiceSettings": {
+        "description": "F-604 模型服务设置视图：api_key 恒脱敏（MUST-19，明文不进响应）。",
+        "properties": {
+          "api_key_masked": {
+            "default": "",
+            "title": "Api Key Masked",
+            "type": "string"
+          },
+          "base_url": {
+            "default": "",
+            "title": "Base Url",
+            "type": "string"
+          },
+          "decider": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "jev",
+              "fallback"
+            ],
+            "title": "Decider",
+            "type": "string"
+          },
+          "max_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Tokens"
+          },
+          "model_id": {
+            "default": "",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          },
+          "timeout": {
+            "default": 60.0,
+            "title": "Timeout",
+            "type": "number"
+          }
+        },
+        "title": "ModelServiceSettings",
+        "type": "object"
+      },
+      "ModelServiceUpdate": {
+        "description": "PUT /settings 模型段：None = 保持不变；api_key 仅作入参明文，恒不回显。",
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "decider": {
+            "anyOf": [
+              {
+                "enum": [
+                  "auto",
+                  "jev",
+                  "fallback"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decider"
+          },
+          "max_tokens": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Tokens"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          },
+          "timeout": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeout"
+          }
+        },
+        "title": "ModelServiceUpdate",
+        "type": "object"
+      },
+      "OptimizeRequest": {
+        "description": "POST /optimize 请求体（该端点有副作用，客户端禁重试，MUST-15）。",
+        "properties": {
+          "project": {
+            "title": "Project",
+            "type": "string"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sentence",
+          "project"
+        ],
+        "title": "OptimizeRequest",
+        "type": "object"
+      },
+      "PreferenceUpdateRequest": {
+        "description": "PUT /preference 部分更新：None = 保持不变；超界值由后端 clip01 截断而非拒绝。",
+        "properties": {
+          "detail_level": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Level"
+          },
+          "include_diff": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include Diff"
+          },
+          "max_files_norm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Files Norm"
+          },
+          "specify_tests": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Specify Tests"
+          }
+        },
+        "title": "PreferenceUpdateRequest",
+        "type": "object"
+      },
+      "PreferenceVectorPayload": {
+        "description": "L3 偏好向量四维（GET/PUT /preference）。",
+        "properties": {
+          "detail_level": {
+            "title": "Detail Level",
+            "type": "number"
+          },
+          "include_diff": {
+            "title": "Include Diff",
+            "type": "number"
+          },
+          "max_files_norm": {
+            "title": "Max Files Norm",
+            "type": "number"
+          },
+          "specify_tests": {
+            "title": "Specify Tests",
+            "type": "number"
+          }
+        },
+        "required": [
+          "detail_level",
+          "include_diff",
+          "specify_tests",
+          "max_files_norm"
+        ],
+        "title": "PreferenceVectorPayload",
+        "type": "object"
+      },
+      "ProcessSettings": {
+        "description": "F-604 流程参数视图（app_settings 表持久化）。",
+        "properties": {
+          "followup_cost_budget": {
+            "default": 0.0,
+            "title": "Followup Cost Budget",
+            "type": "number"
+          },
+          "followup_soft_round_guard": {
+            "default": 10,
+            "title": "Followup Soft Round Guard",
+            "type": "integer"
+          },
+          "telemetry": {
+            "default": true,
+            "title": "Telemetry",
+            "type": "boolean"
+          }
+        },
+        "title": "ProcessSettings",
+        "type": "object"
+      },
+      "ProcessUpdate": {
+        "description": "PUT /settings 流程段：None = 保持不变。",
+        "properties": {
+          "followup_cost_budget": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Cost Budget"
+          },
+          "followup_soft_round_guard": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Soft Round Guard"
+          },
+          "telemetry": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telemetry"
+          }
+        },
+        "title": "ProcessUpdate",
+        "type": "object"
+      },
+      "RankingViewPayload": {
+        "description": "service.RankingView 的契约镜像（F-403/F-404 加权推荐视图）。",
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "fit": {
+            "title": "Fit",
+            "type": "number"
+          },
+          "gap": {
+            "title": "Gap",
+            "type": "number"
+          },
+          "marked": {
+            "title": "Marked",
+            "type": "boolean"
+          },
+          "pref": {
+            "title": "Pref",
+            "type": "number"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "number"
+          },
+          "variant": {
+            "title": "Variant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "variant",
+          "gap",
+          "confidence",
+          "marked",
+          "reason",
+          "fit",
+          "pref",
+          "total"
+        ],
+        "title": "RankingViewPayload",
+        "type": "object"
+      },
+      "ScanResponse": {
+        "description": "GET /project/scan 数据体：符号表统计（F-101 只读透出）。",
+        "properties": {
+          "kind_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Kind Counts",
+            "type": "object"
+          },
+          "total_files": {
+            "title": "Total Files",
+            "type": "integer"
+          },
+          "total_symbols": {
+            "title": "Total Symbols",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_symbols",
+          "total_files",
+          "kind_counts"
+        ],
+        "title": "ScanResponse",
+        "type": "object"
+      },
+      "SettingsResponse": {
+        "description": "GET/PUT /settings 数据体（T6-11）。",
+        "properties": {
+          "locked": {
+            "$ref": "#/components/schemas/LockedSettings"
+          },
+          "model_service": {
+            "$ref": "#/components/schemas/ModelServiceSettings"
+          },
+          "process": {
+            "$ref": "#/components/schemas/ProcessSettings"
+          }
+        },
+        "required": [
+          "model_service",
+          "process",
+          "locked"
+        ],
+        "title": "SettingsResponse",
+        "type": "object"
+      },
+      "SettingsUpdate": {
+        "description": "PUT /settings 请求体（T6-11）。",
+        "properties": {
+          "model_service": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelServiceUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "process": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProcessUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "SettingsUpdate",
+        "type": "object"
+      },
+      "UnknownItemPayload": {
+        "description": "domain UnknownItem 的契约镜像（仅渲染字段）。",
+        "properties": {
+          "ask": {
+            "title": "Ask",
+            "type": "string"
+          },
+          "best_guess": {
+            "title": "Best Guess",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "reason",
+          "best_guess",
+          "ask"
+        ],
+        "title": "UnknownItemPayload",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VariantPayload": {
+        "description": "domain VariantDraft 的契约镜像（F-301 结构化方案）。",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "changes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "body",
+          "level"
+        ],
+        "title": "VariantPayload",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "DevPrompt AI",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/feedback": {
+      "post": {
+        "operationId": "post_feedback_api_v1_feedback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_NoneType_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Feedback"
+      }
+    },
+    "/api/v1/followup/{flow_id}": {
+      "post": {
+        "description": "三模式分发（互斥由契约校验保证）：批量答复 / 逃生 / 软护栏裁决（MUST-26）。",
+        "operationId": "post_followup_api_v1_followup__flow_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FollowupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_FlowSnapshotResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Followup"
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "get_health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_HealthResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Health"
+      }
+    },
+    "/api/v1/history": {
+      "get": {
+        "description": "T6-11 转正：脱敏会话摘要（id/时间/state/项目名，无原句明文，MUST-19）。",
+        "operationId": "get_history_api_v1_history_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_HistoryItemPayload__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get History"
+      }
+    },
+    "/api/v1/optimize": {
+      "post": {
+        "description": "有副作用端点：禁止客户端自动重试（MUST-15，重复提交将产生重复流程）。",
+        "operationId": "post_optimize_api_v1_optimize_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptimizeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_FlowSnapshotResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Optimize"
+      }
+    },
+    "/api/v1/preference": {
+      "get": {
+        "operationId": "get_preference_api_v1_preference_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PreferenceVectorPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Preference"
+      },
+      "put": {
+        "description": "T6-11 转正：部分更新 + clip01（超界截断而非拒绝），返回更新后向量。",
+        "operationId": "put_preference_api_v1_preference_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferenceUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PreferenceVectorPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Preference"
+      }
+    },
+    "/api/v1/progress/{flow_id}": {
+      "get": {
+        "description": "SSE 进度流：1s 轮询快照；DONE/ABORTED/ASKING/护栏推送后关闭；客户端断开即停。",
+        "operationId": "get_progress_api_v1_progress__flow_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Progress"
+      }
+    },
+    "/api/v1/project/scan": {
+      "get": {
+        "operationId": "get_project_scan_api_v1_project_scan_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ScanResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Scan"
+      }
+    },
+    "/api/v1/result/{flow_id}": {
+      "get": {
+        "operationId": "get_result_api_v1_result__flow_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_FlowSnapshotResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Result"
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "operationId": "get_settings_api_v1_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SettingsResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Settings"
+      },
+      "put": {
+        "description": "T6-11：模型段写设置文件（0600），流程段写 app_settings 表；密钥恒脱敏返回。",
+        "operationId": "put_settings_api_v1_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SettingsResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Settings"
+      }
+    }
+  }
+}

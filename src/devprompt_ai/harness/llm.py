@@ -16,6 +16,7 @@ from typing import Final, TypeVar
 
 from agents import (
     Agent,
+    ModelSettings,
     Runner,
     set_default_openai_api,
     set_default_openai_client,
@@ -83,22 +84,37 @@ def _ensure_client(cfg: AppConfig) -> AsyncOpenAI:
 
 
 async def chat_structured(
-    cfg: AppConfig, output_type: type[ModelT], system: str, user: str, *, timeout: float = 10.0
+    cfg: AppConfig,
+    output_type: type[ModelT],
+    system: str,
+    user: str,
+    *,
+    timeout: float | None = None,
 ) -> ModelT:
     """单次结构化调用：system+user → output_type 实例（MUST-13：wait_for 超时）。
 
+    timeout 缺省取 cfg.llm_timeout（F-604 可配置；小证据探针等调用方可显式传短超时）；
+    温度/max_tokens 经 ModelSettings 下发（未设则不下发，走供应商默认）。
     F-004 适配：prompt 注入 JSON Schema，本地解析 + pydantic 校验 + 一次纠偏重试——
     不依赖供应商 response_format（实测 DeepSeek 400: response_format type unavailable）。
     """
     _ensure_client(cfg)
+    effective_timeout = timeout if timeout is not None else cfg.llm_timeout
     schema = json.dumps(output_type.model_json_schema(), ensure_ascii=False)
     instructions = (
         f"{system}\n\n"
         "输出要求：只输出一个 JSON 对象（无 markdown 围栏、无解释文字），"
         f"且必须符合如下 JSON Schema：\n{schema}"
     )
-    agent = Agent(name="devprompt-llm", instructions=instructions, model=cfg.llm_model)
-    result = await asyncio.wait_for(Runner.run(agent, user, max_turns=1), timeout=timeout)
+    agent = Agent(
+        name="devprompt-llm",
+        instructions=instructions,
+        model=cfg.llm_model,
+        model_settings=ModelSettings(
+            temperature=cfg.llm_temperature, max_tokens=cfg.llm_max_tokens
+        ),
+    )
+    result = await asyncio.wait_for(Runner.run(agent, user, max_turns=1), timeout=effective_timeout)
     usage = getattr(result, "usage", None)
     _last_usage.set(
         {"total_tokens": int(getattr(usage, "total_tokens", 0) or 0)} if usage else None
@@ -112,7 +128,9 @@ async def chat_structured(
         f"{user}\n\n你上一轮输出无法解析为符合 Schema 的 JSON，原样如下：\n{raw[:2000]}\n\n"
         "请修正：只输出一个符合 Schema 的 JSON 对象，无围栏无解释。"
     )
-    result2 = await asyncio.wait_for(Runner.run(agent, retry_input, max_turns=1), timeout=timeout)
+    result2 = await asyncio.wait_for(
+        Runner.run(agent, retry_input, max_turns=1), timeout=effective_timeout
+    )
     usage2 = getattr(result2, "usage", None)
     _last_usage.set(
         {"total_tokens": int(getattr(usage2, "total_tokens", 0) or 0)} if usage2 else None
@@ -153,9 +171,6 @@ _TIER_CONSTRAINTS: Final[dict[str, str]] = {
         "结尾附显式测试指令（含测试文件路径）。"
     ),
 }
-
-# 生成类调用输出长（完整方案正文），10s 默认超时会截断真实生成（4H 端到端实测）
-_MULTI_TIMEOUT: Final[float] = 60.0
 
 _LEVEL_RANK: Final[dict[str, int]] = {"A": 0, "B": 1, "C": 2}
 
@@ -198,10 +213,9 @@ class LLMGenerator:
         from devprompt_ai.harness.guardrails import validate_variant
 
         tpl = TEMPLATE_BY_LEVEL[ctx.level]
-        # 生成类调用输出长（完整方案正文），10s 默认超时会截断真实生成（4H 端到端实测）
-        draft = await chat_structured(
-            self._cfg, VariantDraft, tpl.system, tpl.build_user(ctx), timeout=60.0
-        )
+        # 生成类调用输出长（完整方案正文）：timeout 缺省即 cfg.llm_timeout（F-604，默认 60s；
+        # 10s 会截断真实生成——4H 端到端实测）
+        draft = await chat_structured(self._cfg, VariantDraft, tpl.system, tpl.build_user(ctx))
         validate_variant(draft)
         return draft
 
@@ -213,7 +227,7 @@ class LLMGenerator:
         契约：levels 由调用方按 resolve_level 推导（A→["A"]、B→["A","B"]、C→["A","B","C"]，
         见 domain/generate/variants.expand_levels；escape/护栏保守路径请求 ["A"]）；
         输出档位集合必须与请求一致，返回按 A<B<C 单调排序（MUST-28 不越级输出）。
-        单次 chat_structured 调用（timeout 60s 沿用；一次纠偏重试由 chat_structured 内聚）。
+        单次 chat_structured 调用（timeout 缺省即 cfg.llm_timeout；纠偏重试内聚）。
         """
         level_set = frozenset(levels)
         if len(level_set) != len(levels) or level_set not in VALID_LEVEL_SETS:
@@ -227,7 +241,6 @@ class LLMGenerator:
             MultiVariantDraft,
             _build_multi_system(levels),
             _build_multi_user(ctx, levels),
-            timeout=_MULTI_TIMEOUT,
         )
         got = frozenset(v.level for v in draft.variants)
         if got != level_set:

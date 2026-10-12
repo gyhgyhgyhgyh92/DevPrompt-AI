@@ -288,7 +288,7 @@ uv run uvicorn devprompt_ai.interfaces.api.app:app --port 8000
 
 **生产环境特别约定**：
 
-- 密钥只从环境变量读取，不从配置文件读取
+- 密钥环境变量优先；本地设置文件（0600）为唯一落盘处；不入库、不进日志（MUST-19 修订，真源 §13 2026-10-12）
 - 错误响应不回传内部堆栈
 - 敏感字段（路径、用户原句）在 INFO 级别不落盘
 
@@ -780,9 +780,9 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 
 ### 4.1 日志系统
 
-**实现**：`structlog`（结构化日志）+ 标准库 `logging` 桥接。
+**实现**：标准库 `logging`（固定事件名 + LogRecord extra 结构化字段）。
 
-**为什么用 structlog**：本项目日志需要同时被人读和被机器解析。structlog 提供结构化输出，键值对便于聚合查询，同时可配 pretty 格式供开发期阅读。
+**为什么不用 structlog**（MUST-04 冲突裁决，真源 §13 2026-10-12）：原设计为 structlog，但其未安装且未登记技术栈（审查报告 §四）；标准库 logging（第 2 级）足以承载「固定事件名 + 结构化字段 + 脱敏」要求，依宪法优先原生能力采用标准库实现。事件全集与发射 API 见 `observability/logging.py`（T6-9）。
 
 **配置**：
 
@@ -1071,11 +1071,11 @@ src/devprompt_ai/
 │   └── api/
 │       ├── __init__.py        包声明（薄壳层约束说明）
 │       ├── app.py             FastAPI 实例 + CORS 中间件 + 统一异常渲染
-│       ├── routes.py          9 端点路由薄壳（参数收拢 → 调 service → 渲染）
+│       ├── routes.py          路由薄壳（10 路径/12 操作；参数收拢 → 调 service → 渲染）
 │       ├── schemas.py         Pydantic v2 请求/响应契约（XxxRequest/XxxResponse）
 │       └── health.py          环境自检（rg/ctags/git 版本、DB 文件可写、LLM 配置非空）
 └── observability/
-    ├── logging.py             structlog 配置
+    ├── logging.py             结构化事件日志（标准库，T6-9）
     └── tracing.py             执行链路记录
 ```
 

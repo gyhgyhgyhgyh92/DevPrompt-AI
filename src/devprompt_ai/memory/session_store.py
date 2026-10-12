@@ -7,7 +7,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from devprompt_ai.domain.models import FlowSession
+from devprompt_ai.domain.models import FlowSession, SessionSummary
 from devprompt_ai.memory.schema import SESSIONS_DDL
 
 _BUSY_TIMEOUT_MS = 5000
@@ -87,5 +87,34 @@ class SQLiteSessionStore:
                     return False
             session.version += 1
             return True
+
+        return await asyncio.to_thread(_run)
+
+    async def list_recent(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
+        """GET /history 数据源（T6-11 转正）：updated_at 倒序；脱敏——payload 仅取项目名。"""
+
+        def _run() -> list[SessionSummary]:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    "SELECT session_id, state, payload, updated_at FROM forge_sessions"
+                    " WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?",
+                    (user_id, limit),
+                ).fetchall()
+            out: list[SessionSummary] = []
+            for session_id, state, payload_raw, updated_at in rows:
+                try:
+                    payload = json.loads(payload_raw)
+                except json.JSONDecodeError:
+                    payload = {}
+                project = Path(str(payload.get("project_root", ""))).name
+                out.append(
+                    SessionSummary(
+                        session_id=session_id,
+                        state=state,
+                        project=project,
+                        updated_at=updated_at,
+                    )
+                )
+            return out
 
         return await asyncio.to_thread(_run)

@@ -343,19 +343,21 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | GET | `/result/{flow_id}` | 获取流程快照（含三套方案与评分） |
 | POST | `/feedback` | 提交采纳反馈，写入 L3 偏好信号 |
 | GET | `/preference` | 查询偏好向量 |
-| PUT | `/preference` | **501（9004）**——偏好写入阶段五（L3）接入 |
-| GET | `/history` | **501（9004）**——历史列表阶段五接入 |
+| PUT | `/preference` | 更新偏好向量（部分更新 + clip01 截断；T6-11 转正） |
+| GET | `/history` | 历史会话摘要（脱敏：id/时间/state/项目名；T6-11 转正） |
 | GET | `/project/scan` | 项目符号表扫描（符号总数 / 文件数 / 类型分布） |
+| GET | `/settings` | 读取设置（模型服务脱敏 + 流程参数 + 锁定项；T6-11） |
+| PUT | `/settings` | 更新设置（模型段 → settings.json 0600；流程段 → app_settings 表） |
 
 ## 4.8 配置管理
 
 | 项 | 选型 |
 |---|---|
 | 配置读取 | Pydantic Settings |
-| 优先级 | 环境变量 > 项目配置文件 > 默认值 |
-| 存储 | `.env`（不入库） + `.env.example`（入库） |
+| 优先级 | init > 环境变量 > 本地设置（settings.json + app_settings 表）> .env > 默认值 |
+| 存储 | `.env`（不入库） + `.env.example`（入库）+ `settings.json`（0600，密钥唯一落盘处） |
 
-**存储路径配置**：`DB_PATH`（默认 `~/.devprompt-ai/devprompt.db`）经环境变量覆盖；数据目录不存在时启动自动创建；无任何凭据类配置（MUST-19 天然满足）。
+**存储路径配置**：`DB_PATH`（默认 `~/.devprompt-ai/devprompt.db`）经环境变量覆盖；数据目录不存在时启动自动创建。**密钥边界（MUST-19 修订后，真源 §13 2026-10-12）**：API Key 仅可存本地 `settings.json`（0600）与 `.env`，不入 SQLite、不进日志，GET 回显恒脱敏。
 
 ---
 

@@ -71,6 +71,16 @@ class FlowSession:
     data: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(slots=True)
+class SessionSummary:
+    """F-501 会话摘要（GET /history 渲染用）：脱敏——不含原句明文（MUST-19）。"""
+
+    session_id: str
+    state: str
+    project: str
+    updated_at: str
+
+
 class SessionStore(Protocol):
     """L1 会话存储能力（MUST-11 乐观锁）。实现：memory/session_store.py。"""
 
@@ -78,4 +88,8 @@ class SessionStore(Protocol):
     async def load(self, session_id: str) -> FlowSession | None: ...
     async def save(self, session: FlowSession) -> bool:
         """CAS 写入：WHERE version=旧值；0 行更新返回 False。"""
+        ...
+
+    async def list_recent(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
+        """最近会话摘要（updated_at 倒序）；项目名 = project_root 的 basename（脱敏）。"""
         ...

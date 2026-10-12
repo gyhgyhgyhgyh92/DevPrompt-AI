@@ -1,13 +1,16 @@
 """Web 契约模型（Pydantic v2，XxxRequest/XxxResponse 命名）。
 
 错误响应仅含 code + message + request_id，不回传堆栈（MUST-19）。
+ApiResponse 泛型化：data 体类型进 OpenAPI，供前端类型生成精确对齐（F-705）。
 """
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, Field, model_validator
+
+DataT = TypeVar("DataT")
 
 
 class OptimizeRequest(BaseModel):
@@ -111,10 +114,98 @@ class ScanResponse(BaseModel):
     kind_counts: dict[str, int]
 
 
-class ApiResponse(BaseModel):
+class ModelServiceSettings(BaseModel):
+    """F-604 模型服务设置视图：api_key 恒脱敏（MUST-19，明文不进响应）。"""
+
+    base_url: str = ""
+    api_key_masked: str = ""
+    model_id: str = ""
+    decider: Literal["auto", "jev", "fallback"] = "auto"
+    timeout: float = 60.0
+    temperature: float | None = None
+    max_tokens: int | None = None
+
+
+class ProcessSettings(BaseModel):
+    """F-604 流程参数视图（app_settings 表持久化）。"""
+
+    followup_soft_round_guard: int = 10
+    followup_cost_budget: float = 0.0
+    telemetry: bool = True
+
+
+class LockedSettings(BaseModel):
+    """宪法锁定项（MUST-09）：候选集上限只读下发，不接受设置修改。"""
+
+    candidate_limit: int
+
+
+class SettingsResponse(BaseModel):
+    """GET/PUT /settings 数据体（T6-11）。"""
+
+    model_service: ModelServiceSettings
+    process: ProcessSettings
+    locked: LockedSettings
+
+
+class ModelServiceUpdate(BaseModel):
+    """PUT /settings 模型段：None = 保持不变；api_key 仅作入参明文，恒不回显。"""
+
+    base_url: str | None = None
+    api_key: str | None = None
+    model_id: str | None = None
+    decider: Literal["auto", "jev", "fallback"] | None = None
+    timeout: float | None = Field(default=None, gt=0)
+    temperature: float | None = Field(default=None, ge=0)
+    max_tokens: int | None = Field(default=None, gt=0)
+
+
+class ProcessUpdate(BaseModel):
+    """PUT /settings 流程段：None = 保持不变。"""
+
+    followup_soft_round_guard: int | None = Field(default=None, ge=1)
+    followup_cost_budget: float | None = Field(default=None, ge=0)
+    telemetry: bool | None = None
+
+
+class SettingsUpdate(BaseModel):
+    """PUT /settings 请求体（T6-11）。"""
+
+    model_service: ModelServiceUpdate | None = None
+    process: ProcessUpdate | None = None
+
+
+class PreferenceVectorPayload(BaseModel):
+    """L3 偏好向量四维（GET/PUT /preference）。"""
+
+    detail_level: float
+    include_diff: float
+    specify_tests: float
+    max_files_norm: float
+
+
+class PreferenceUpdateRequest(BaseModel):
+    """PUT /preference 部分更新：None = 保持不变；超界值由后端 clip01 截断而非拒绝。"""
+
+    detail_level: float | None = None
+    include_diff: float | None = None
+    specify_tests: float | None = None
+    max_files_norm: float | None = None
+
+
+class HistoryItemPayload(BaseModel):
+    """GET /history 会话摘要（脱敏：无原句明文，MUST-19）。"""
+
+    session_id: str
+    state: str
+    project: str
+    updated_at: str
+
+
+class ApiResponse(BaseModel, Generic[DataT]):
     """统一响应信封：code=0 成功；非 0 为架构文档 §3.3 错误码。"""
 
     code: int = 0
     message: str = "ok"
-    data: Any = None
+    data: DataT | None = None
     request_id: str = ""

@@ -6,10 +6,10 @@ import asyncio
 import dataclasses
 import uuid
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import TypeVar
 
 from fastapi import APIRouter
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.errors import StateError
@@ -19,18 +19,25 @@ from devprompt_ai.interfaces.api.schemas import (
     FeedbackRequest,
     FlowSnapshotResponse,
     FollowupRequest,
+    HealthResponse,
+    HistoryItemPayload,
     OptimizeRequest,
+    PreferenceUpdateRequest,
+    PreferenceVectorPayload,
     RankingViewPayload,
     ScanResponse,
+    SettingsResponse,
+    SettingsUpdate,
     UnknownItemPayload,
     VariantPayload,
 )
 from devprompt_ai.service import FlowSnapshot, ForgeService, build_default
 
+DataT = TypeVar("DataT")
+
 router = APIRouter(prefix="/api/v1")
 
 _USER_ID = "local"
-_NOT_IMPLEMENTED_CODE = 9004
 
 _service: ForgeService | None = None
 
@@ -45,7 +52,7 @@ async def get_service() -> ForgeService:
     return _service
 
 
-def _ok(data: Any, request_id: str) -> ApiResponse:
+def _ok(data: DataT, request_id: str) -> ApiResponse[DataT]:
     return ApiResponse(code=0, message="ok", data=data, request_id=request_id)
 
 
@@ -67,13 +74,8 @@ def _snapshot_payload(snapshot: FlowSnapshot) -> FlowSnapshotResponse:
     )
 
 
-def _not_implemented(message: str) -> JSONResponse:
-    body = ApiResponse(code=_NOT_IMPLEMENTED_CODE, message=message, request_id=uuid.uuid4().hex)
-    return JSONResponse(status_code=501, content=body.model_dump())
-
-
 @router.get("/health")
-async def get_health() -> ApiResponse:
+async def get_health() -> ApiResponse[HealthResponse]:
     request_id = uuid.uuid4().hex
     report = await health.run_checks(AppConfig())
     return _ok(report, request_id)
@@ -83,7 +85,7 @@ async def get_health() -> ApiResponse:
     "/optimize",
     description="有副作用端点：禁止客户端自动重试（MUST-15，重复提交将产生重复流程）。",
 )
-async def post_optimize(req: OptimizeRequest) -> ApiResponse:
+async def post_optimize(req: OptimizeRequest) -> ApiResponse[FlowSnapshotResponse]:
     request_id = uuid.uuid4().hex
     svc = await get_service()
     snapshot = await svc.optimize(_USER_ID, req.project, req.sentence, request_id=request_id)
@@ -111,7 +113,9 @@ async def get_progress(flow_id: str) -> StreamingResponse:
                     )
                     yield f"data: {aborted.model_dump_json()}\n\n"
                 else:
-                    err = ApiResponse(code=exc.code, message=str(exc), request_id=request_id)
+                    err: ApiResponse[None] = ApiResponse(
+                        code=exc.code, message=str(exc), request_id=request_id
+                    )
                     yield f"data: {err.model_dump_json()}\n\n"
                 return
             yield f"data: {_snapshot_payload(snapshot).model_dump_json()}\n\n"
@@ -123,7 +127,7 @@ async def get_progress(flow_id: str) -> StreamingResponse:
 
 
 @router.post("/followup/{flow_id}")
-async def post_followup(flow_id: str, req: FollowupRequest) -> ApiResponse:
+async def post_followup(flow_id: str, req: FollowupRequest) -> ApiResponse[FlowSnapshotResponse]:
     """三模式分发（互斥由契约校验保证）：批量答复 / 逃生 / 软护栏裁决（MUST-26）。"""
     request_id = uuid.uuid4().hex
     svc = await get_service()
@@ -141,7 +145,7 @@ async def post_followup(flow_id: str, req: FollowupRequest) -> ApiResponse:
 
 
 @router.get("/result/{flow_id}")
-async def get_result(flow_id: str) -> ApiResponse:
+async def get_result(flow_id: str) -> ApiResponse[FlowSnapshotResponse]:
     request_id = uuid.uuid4().hex
     svc = await get_service()
     snapshot = await svc.resume(_USER_ID, flow_id, request_id=request_id)
@@ -149,7 +153,7 @@ async def get_result(flow_id: str) -> ApiResponse:
 
 
 @router.post("/feedback")
-async def post_feedback(req: FeedbackRequest) -> ApiResponse:
+async def post_feedback(req: FeedbackRequest) -> ApiResponse[None]:
     request_id = uuid.uuid4().hex
     svc = await get_service()
     await svc.feedback(
@@ -164,27 +168,61 @@ async def post_feedback(req: FeedbackRequest) -> ApiResponse:
 
 
 @router.get("/preference")
-async def get_preference() -> ApiResponse:
+async def get_preference() -> ApiResponse[PreferenceVectorPayload]:
     request_id = uuid.uuid4().hex
     svc = await get_service()
     pref = await svc.get_preference(_USER_ID)
-    return _ok(pref, request_id)
+    return _ok(PreferenceVectorPayload(**pref), request_id)
 
 
 @router.put("/preference")
-async def put_preference() -> JSONResponse:
-    """阶段五（L3）前不提供偏好写入——薄壳不造假数据。"""
-    return _not_implemented("偏好写入将在阶段五(L3)接入")
+async def put_preference(req: PreferenceUpdateRequest) -> ApiResponse[PreferenceVectorPayload]:
+    """T6-11 转正：部分更新 + clip01（超界截断而非拒绝），返回更新后向量。"""
+    request_id = uuid.uuid4().hex
+    svc = await get_service()
+    values = {k: v for k, v in req.model_dump().items() if v is not None}
+    pref = await svc.set_preference(_USER_ID, values)
+    return _ok(PreferenceVectorPayload(**pref), request_id)
 
 
 @router.get("/history")
-async def get_history() -> JSONResponse:
-    """阶段五（L3）前不提供历史列表——session store 无 list 能力。"""
-    return _not_implemented("历史列表将在阶段五(L3)接入")
+async def get_history() -> ApiResponse[list[HistoryItemPayload]]:
+    """T6-11 转正：脱敏会话摘要（id/时间/state/项目名，无原句明文，MUST-19）。"""
+    request_id = uuid.uuid4().hex
+    svc = await get_service()
+    items = await svc.list_history(_USER_ID)
+    return _ok(
+        [
+            HistoryItemPayload(
+                session_id=i.session_id,
+                state=i.state,
+                project=i.project,
+                updated_at=i.updated_at,
+            )
+            for i in items
+        ],
+        request_id,
+    )
+
+
+@router.get("/settings")
+async def get_settings() -> ApiResponse[SettingsResponse]:
+    request_id = uuid.uuid4().hex
+    svc = await get_service()
+    return _ok(SettingsResponse(**await svc.get_settings()), request_id)
+
+
+@router.put("/settings")
+async def put_settings(req: SettingsUpdate) -> ApiResponse[SettingsResponse]:
+    """T6-11：模型段写设置文件（0600），流程段写 app_settings 表；密钥恒脱敏返回。"""
+    request_id = uuid.uuid4().hex
+    svc = await get_service()
+    view = await svc.update_settings(req.model_dump(exclude_none=True))
+    return _ok(SettingsResponse(**view), request_id)
 
 
 @router.get("/project/scan")
-async def get_project_scan(project: str) -> ApiResponse:
+async def get_project_scan(project: str) -> ApiResponse[ScanResponse]:
     request_id = uuid.uuid4().hex
     svc = await get_service()
     stats = await svc.scan_project(project)

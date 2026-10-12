@@ -34,3 +34,13 @@ CREATE TABLE IF NOT EXISTS adoption_history (
 );
 CREATE INDEX IF NOT EXISTS idx_adoption_history_user ON adoption_history (user_id);
 """
+
+# F-604 设置持久化（T6-11）：流程参数键值表。模型服务密钥在 settings.json 文件（0600），
+# 不入库（MUST-19 修订后语义：密钥不入库、不进日志）。
+SETTINGS_DDL = """
+CREATE TABLE IF NOT EXISTS app_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+"""
