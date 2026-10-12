@@ -21,7 +21,7 @@ describe('工程基座冒烟', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    expect(screen.getByRole('heading', { name: '优化流程' })).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: '优化原句' })).toBeTruthy()
 
     await user.click(screen.getByRole('link', { name: /历史/ }))
 

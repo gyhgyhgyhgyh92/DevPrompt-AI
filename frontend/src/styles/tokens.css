@@ -20,8 +20,8 @@
   --space-10: 40px;
 
   /* 字体栈（PingFang SC / SF Pro Text 优先，参考图西文观感） */
-  --font-family-body: 'PingFang SC', 'SF Pro Text', system-ui, -apple-system, 'Segoe UI', Roboto,
-    sans-serif;
+  --font-family-body:
+    'PingFang SC', 'SF Pro Text', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-family-code: 'JetBrains Mono', ui-monospace, Consolas, monospace;
   --font-body-regular: 400 14px/22px var(--font-family-body);
   --font-body-medium: 500 14px/22px var(--font-family-body);
@@ -108,6 +108,7 @@
   --bubble: #f2f3f5;
   --hover: #f5f6f7;
   --selected: #eff0f2;
+  --brand: var(--color-text-brand);
   --brand-btn: #dff5e6;
   --brand-btn-hover: #d2f0dc;
 
@@ -115,6 +116,7 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.04);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-menu: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
 /* ===== 深色主题（保留可切换；品牌同改绿系适配） ===== */
@@ -162,6 +164,7 @@
   --bubble: #262626;
   --hover: #2a2a2a;
   --selected: #303030;
+  --brand: var(--color-text-brand);
   --brand-btn: rgba(52, 196, 110, 0.16);
   --brand-btn-hover: rgba(52, 196, 110, 0.24);
 
@@ -169,4 +172,5 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.52);
+  --shadow-menu: 0 4px 16px rgba(0, 0, 0, 0.32);
 }

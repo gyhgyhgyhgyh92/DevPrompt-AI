@@ -67,7 +67,7 @@ export interface paths {
         };
         /**
          * Get History
-         * @description T6-11 转正：脱敏会话摘要（id/时间/state/项目名，无原句明文，MUST-19）。
+         * @description T6-11 转正：脱敏会话摘要（id/时间/state/项目名/标题/置顶，无原句明文，MUST-19）。
          */
         get: operations["get_history_api_v1_history_get"];
         put?: never;
@@ -76,6 +76,30 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/history/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete History
+         * @description 会话管理（T1.4）：删除会话。
+         */
+        delete: operations["delete_history_api_v1_history__session_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch History
+         * @description 会话管理（T1.4）：重命名/置顶——None 字段不提交（exclude_none）；一致性由后续 GET 保证。
+         */
+        patch: operations["patch_history_api_v1_history__session_id__patch"];
         trace?: never;
     };
     "/api/v1/optimize": {
@@ -482,16 +506,38 @@ export interface components {
         /**
          * HistoryItemPayload
          * @description GET /history 会话摘要（脱敏：无原句明文，MUST-19）。
+         *
+         *     title：自定义标题优先，否则原句截断（≤40）；pinned：置顶标记（排序优先级）。
          */
         HistoryItemPayload: {
+            /**
+             * Pinned
+             * @default false
+             */
+            pinned: boolean;
             /** Project */
             project: string;
             /** Session Id */
             session_id: string;
             /** State */
             state: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
             /** Updated At */
             updated_at: string;
+        };
+        /**
+         * HistoryUpdateRequest
+         * @description PATCH /history/{session_id} 请求体：title/pinned 至少一项非 None（None = 保持不变）。
+         */
+        HistoryUpdateRequest: {
+            /** Pinned */
+            pinned?: boolean | null;
+            /** Title */
+            title?: string | null;
         };
         /**
          * LockedSettings
@@ -857,6 +903,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_list_HistoryItemPayload__"];
+                };
+            };
+        };
+    };
+    delete_history_api_v1_history__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_NoneType_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_history_api_v1_history__session_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HistoryUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_NoneType_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

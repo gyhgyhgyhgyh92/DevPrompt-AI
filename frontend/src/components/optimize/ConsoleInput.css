@@ -1,0 +1,124 @@
+/* 启动页居中主视觉卡片（图一 1:1）：颜色/间距全部取 tokens.css 变量，禁硬编码色值。 */
+
+.console-input {
+  display: flex;
+  justify-content: center;
+  inline-size: 100%;
+}
+
+.console-input__card {
+  display: flex;
+  flex-direction: column;
+  inline-size: min(720px, calc(100% - 48px));
+  max-inline-size: 720px;
+  padding: var(--space-4);
+  background: var(--color-surface-base);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.console-input__text {
+  inline-size: 100%;
+  padding: var(--space-2) var(--space-1);
+  font: var(--font-body-regular);
+  font-size: var(--text-body-md);
+  line-height: var(--line-height-body);
+  color: var(--color-text-primary);
+  resize: none;
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+.console-input__text::placeholder {
+  font-size: var(--text-body-md);
+  color: var(--color-text-muted);
+}
+
+/* 工具行（输入区底部）：左侧留空，右侧仅模型名只读 + 发送按钮 */
+.console-input__tools {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.console-input__spacer {
+  flex: 1;
+}
+
+.console-input__model {
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+}
+
+.console-input__send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--space-8);
+  block-size: var(--space-8);
+  font-size: var(--text-title-md);
+  color: var(--brand);
+  cursor: pointer;
+  background: var(--brand-btn);
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.console-input__send:hover:not(:disabled) {
+  background: var(--brand-btn-hover);
+}
+
+.console-input__send:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.console-input__divider {
+  block-size: 1px;
+  margin: var(--space-3) 0;
+  background: var(--divider);
+}
+
+/* 第二行：选择文件夹（项目路径，可选） */
+.console-input__folder {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.console-input__folder-toggle {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-body-xs);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.console-input__folder-toggle:hover {
+  background: var(--hover);
+}
+
+.console-input__path-input {
+  flex: 1;
+  min-inline-size: 12rem;
+  padding: var(--space-1) var(--space-2);
+  font: var(--font-code-regular);
+  color: var(--color-text-primary);
+  background: var(--color-surface-code);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.console-input__error {
+  margin-block-start: var(--space-2);
+  font-size: var(--text-body-xs);
+  color: var(--danger);
+}

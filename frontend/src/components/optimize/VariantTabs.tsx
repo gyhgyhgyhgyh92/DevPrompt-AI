@@ -21,11 +21,7 @@ export function VariantTabs({ variants, ranking, renderActions }: VariantTabsPro
     <div className="variant-tabs" role="list" aria-label="方案对比">
       {variants.map((variant) => (
         <div role="listitem" key={variant.level}>
-          <PromptCard
-            variant={variant}
-            ranking={ranking}
-            actions={renderActions?.(variant)}
-          />
+          <PromptCard variant={variant} ranking={ranking} actions={renderActions?.(variant)} />
         </div>
       ))}
     </div>

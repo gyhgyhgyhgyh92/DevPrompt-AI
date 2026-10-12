@@ -108,17 +108,13 @@ afterEach(() => {
 })
 
 describe('OptimizePage 三栏工作台', () => {
-  it('三栏布局结构存在（会话侧栏 / 流程线程 / 上下文面板）', () => {
-    stubApi([
-      { match: '/history', payload: envelope([]) },
-      { match: '/preference', payload: envelope(vectorFixture) },
-    ])
+  it('初始态渲染居中 ConsoleInput（无侧栏 / 无结果区）', () => {
+    stubApi([{ match: '/preference', payload: envelope(vectorFixture) }])
 
     renderPage()
 
-    expect(screen.getByRole('complementary', { name: '会话侧栏' })).toBeTruthy()
-    expect(screen.getByRole('region', { name: '流程线程' })).toBeTruthy()
-    expect(screen.getByRole('complementary', { name: '上下文面板' })).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: '优化原句' })).toBeTruthy()
+    expect(screen.queryByRole('complementary', { name: '上下文面板' })).toBeNull()
   })
 
   it('上下文面板渲染快照中的目标定位与取证事实', () => {
@@ -141,14 +137,14 @@ describe('OptimizePage 三栏工作台', () => {
     expect(within(panel).getByText('共 3 处调用')).toBeTruthy()
   })
 
-  it('无流程时渲染输入态表单', () => {
-    stubApi([{ match: '/history', payload: envelope([]) }])
+  it('无流程时渲染启动卡片（原句输入 + 发送 + 选择文件夹）', () => {
+    stubApi([{ match: '/preference', payload: envelope(vectorFixture) }])
 
     renderPage()
 
-    expect(screen.getByRole('textbox', { name: '项目路径' })).toBeTruthy()
     expect(screen.getByRole('textbox', { name: '优化原句' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: '开始优化' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '发送' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '选择文件夹' })).toBeTruthy()
     expect(screen.queryByText('直接生成（A 保守版 + 待确认清单）')).toBeNull()
   })
 
@@ -163,9 +159,10 @@ describe('OptimizePage 三栏工作台', () => {
     ])
 
     renderPage()
+    await user.click(screen.getByRole('button', { name: '选择文件夹' }))
     await user.type(screen.getByRole('textbox', { name: '项目路径' }), 'D:/ws/repo')
     await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
-    await user.click(screen.getByRole('button', { name: '开始优化' }))
+    await user.click(screen.getByRole('button', { name: '发送' }))
 
     await waitFor(() => {
       const call = mock.mock.calls.find(([input]) => input.includes('/api/v1/optimize'))
@@ -296,35 +293,12 @@ describe('OptimizePage 恢复与侧栏', () => {
     expect(await screen.findByText('CONFIRMING')).toBeTruthy()
   })
 
-  it('会话侧栏渲染历史会话（截短 id + state 徽章 + 项目名）', async () => {
-    usePreferenceStore.getState().setHistory([
-      {
-        session_id: 'sess-abcdef1234',
-        state: 'DONE',
-        project: 'D:/ws/repo',
-        updated_at: '2026-10-12T08:00:00Z',
-      },
-    ])
-    stubApi([
-      {
-        match: '/history',
-        payload: envelope([
-          {
-            session_id: 'sess-abcdef1234',
-            state: 'DONE',
-            project: 'D:/ws/repo',
-            updated_at: '2026-10-12T08:00:00Z',
-          },
-        ]),
-      },
-    ])
+  it('优化页不再内嵌会话侧栏（已迁至 AppShell）', async () => {
+    stubApi([{ match: '/preference', payload: envelope(vectorFixture) }])
 
     renderPage()
 
-    const sidebar = screen.getByRole('complementary', { name: '会话侧栏' })
-    expect(await within(sidebar).findByText(/sess-abc/)).toBeTruthy()
-    expect(within(sidebar).getByText('DONE')).toBeTruthy()
-    expect(within(sidebar).getByText('repo')).toBeTruthy()
-    expect(screen.getByRole('link', { name: '偏好记忆 →' })).toBeTruthy()
+    expect(screen.queryByRole('complementary', { name: '会话侧栏' })).toBeNull()
+    expect(await screen.findByRole('textbox', { name: '优化原句' })).toBeTruthy()
   })
 })

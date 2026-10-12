@@ -10,11 +10,10 @@ import {
   postOptimize,
 } from '../api/endpoints'
 import { ConfidenceNotice } from '../components/optimize/ConfidenceNotice'
+import { ConsoleInput } from '../components/optimize/ConsoleInput'
 import { ContextPanel } from '../components/optimize/ContextPanel'
 import { FollowupForm } from '../components/optimize/FollowupForm'
-import { OptimizeInput } from '../components/optimize/OptimizeInput'
 import { PhaseIndicator } from '../components/optimize/PhaseIndicator'
-import { SessionSidebar } from '../components/optimize/SessionSidebar'
 import { VariantTabs } from '../components/optimize/VariantTabs'
 import { useSSE } from '../hooks/useSSE'
 import { useOptimizeStore } from '../stores/useOptimizeStore'
@@ -68,7 +67,6 @@ export function OptimizePage() {
       isSubmitting: s.isSubmitting,
     })),
   )
-  const history = usePreferenceStore((s) => s.history)
   const vector = usePreferenceStore((s) => s.vector)
 
   const [sentence, setSentence] = useState('')
@@ -94,13 +92,8 @@ export function OptimizePage() {
     }
   }, [])
 
-  // 侧栏会话列表与上下文面板偏好条数据（页面编排调 API，store 只存结果）
+  // 上下文面板偏好条数据（页面编排调 API，store 只存结果）；会话列表由侧边栏负责
   useEffect(() => {
-    getHistory()
-      .then((items) => usePreferenceStore.getState().setHistory(items))
-      .catch(() => {
-        // 列表加载失败保持空态（侧栏已渲染兜底文案），不重试
-      })
     getPreference()
       .then((preference) => usePreferenceStore.getState().setVector(preference))
       .catch(() => {
@@ -157,97 +150,80 @@ export function OptimizePage() {
     }
   }
 
-  async function handleSelectSession(selected: string): Promise<void> {
-    setIsBusy(true)
-    setErrorMessage(null)
-    try {
-      const snapshot = await getResult(selected)
-      useOptimizeStore.getState().applySnapshot(snapshot)
-    } catch (error) {
-      setErrorMessage(toMessage(error))
-    } finally {
-      setIsBusy(false)
-    }
-  }
-
-  function handleNewSession(): void {
-    useOptimizeStore.getState().reset()
-    setSentence('')
-    setErrorMessage(null)
-  }
-
   const view = resolveFlowView(status)
 
   return (
-    <div className="workspace">
-      <SessionSidebar
-        sessions={history}
-        onSelectSession={(selected) => void handleSelectSession(selected)}
-        onNewSession={handleNewSession}
-      />
-      <section className="workspace__thread" aria-label="流程线程">
-        <h1>优化流程</h1>
-        <PhaseIndicator state={state} />
-        {sentence.trim() !== '' ? <p className="thread__bubble">{sentence}</p> : null}
-        {errorMessage !== null ? <p className="thread__error">{errorMessage}</p> : null}
-
-        {view === 'input' ? (
-          <OptimizeInput
+    <div className="optimize-page">
+      {view === 'input' ? (
+        <div className="optimize-page__center">
+          <ConsoleInput
             isSubmitting={isSubmitting || isBusy}
             onSubmit={(nextSentence, project) => {
               setSentence(nextSentence)
               void handleOptimizeSubmit(nextSentence, project)
             }}
           />
-        ) : null}
+          {errorMessage !== null ? <p className="thread__error">{errorMessage}</p> : null}
+        </div>
+      ) : (
+        <div className="workspace workspace--chat">
+          <section className="workspace__thread" aria-label="流程线程">
+            <h1>优化流程</h1>
+            <PhaseIndicator state={state} />
+            {sentence.trim() !== '' ? <p className="thread__bubble">{sentence}</p> : null}
+            {errorMessage !== null ? <p className="thread__error">{errorMessage}</p> : null}
 
-        {view === 'asking' ? (
-          <FollowupForm
-            questions={questions}
-            cleared={cleared}
-            status={status}
-            isBusy={isBusy || isSubmitting}
-            onSubmitAnswers={(answers) => void runFollowup({ answers, escape: false })}
-            onEscape={() => void runFollowup({ escape: true })}
-            onGuardrail={(action) => void runFollowup({ escape: false, guardrail_action: action })}
-          />
-        ) : null}
+            {view === 'asking' ? (
+              <FollowupForm
+                questions={questions}
+                cleared={cleared}
+                status={status}
+                isBusy={isBusy || isSubmitting}
+                onSubmitAnswers={(answers) => void runFollowup({ answers, escape: false })}
+                onEscape={() => void runFollowup({ escape: true })}
+                onGuardrail={(action) =>
+                  void runFollowup({ escape: false, guardrail_action: action })
+                }
+              />
+            ) : null}
 
-        {view === 'result' ? (
-          <div>
-            {message !== '' ? <p className="thread__message">{message}</p> : null}
-            <ConfidenceNotice ranking={ranking} />
-            <VariantTabs
-              variants={variants}
-              ranking={ranking}
-              renderActions={(variant) => {
-                const level = toVariantLevel(variant.level)
-                return level === null ? null : (
+            {view === 'result' ? (
+              <div>
+                {message !== '' ? <p className="thread__message">{message}</p> : null}
+                <ConfidenceNotice ranking={ranking} />
+                <VariantTabs
+                  variants={variants}
+                  ranking={ranking}
+                  renderActions={(variant) => {
+                    const level = toVariantLevel(variant.level)
+                    return level === null ? null : (
+                      <button
+                        type="button"
+                        className="button button--primary"
+                        disabled={isBusy || isSubmitting}
+                        onClick={() => void handleFeedback(level)}
+                      >
+                        采纳 {variant.level}
+                      </button>
+                    )
+                  }}
+                />
+                <div className="thread__actions">
                   <button
                     type="button"
-                    className="button button--primary"
+                    className="button button--ghost"
                     disabled={isBusy || isSubmitting}
-                    onClick={() => void handleFeedback(level)}
+                    onClick={() => void handleFeedback(null)}
                   >
-                    采纳 {variant.level}
+                    跳过
                   </button>
-                )
-              }}
-            />
-            <div className="thread__actions">
-              <button
-                type="button"
-                className="button button--ghost"
-                disabled={isBusy || isSubmitting}
-                onClick={() => void handleFeedback(null)}
-              >
-                跳过
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </section>
-      <ContextPanel target={target} facts={facts} vector={vector} />
+                </div>
+              </div>
+            ) : null}
+          </section>
+          <ContextPanel target={target} facts={facts} vector={vector} />
+        </div>
+      )}
     </div>
   )
 }

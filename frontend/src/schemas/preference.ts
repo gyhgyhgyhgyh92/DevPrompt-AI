@@ -16,12 +16,20 @@ export const PreferenceUpdateRequestSchema = z.object({
   max_files_norm: z.number().nullish(),
 })
 
-/** 会话摘要（契约 HistoryItemPayload；脱敏：无原句明文，MUST-19）。 */
+/** 会话摘要（契约 HistoryItemPayload；脱敏：无原句明文，MUST-19）。title 只为条目展示，pinned 为排序优先级。 */
 export const HistoryItemSchema = z.object({
+  pinned: z.boolean(),
   project: z.string(),
   session_id: z.string(),
   state: z.string(),
+  title: z.string(),
   updated_at: z.string(),
+})
+
+/** PATCH /history/{session_id} 请求体（契约 HistoryUpdateRequest；title/pinned 至少一项，None=不变）。 */
+export const HistoryUpdateRequestSchema = z.object({
+  pinned: z.boolean().nullish(),
+  title: z.string().nullish(),
 })
 
 /** GET /history 数据体（契约 ApiResponse[list[HistoryItemPayload]] 的 data）。 */

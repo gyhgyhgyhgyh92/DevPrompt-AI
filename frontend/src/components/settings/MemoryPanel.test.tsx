@@ -23,11 +23,20 @@ const vectorFixture: PreferenceVectorPayload = {
 }
 
 const historyFixture: HistoryItemPayload[] = [
-  { project: 'demo-repo', session_id: 'sess-1', state: 'DONE', updated_at: '2026-10-12T10:00:00Z' },
+  {
+    project: 'demo-repo',
+    session_id: 'sess-1',
+    state: 'DONE',
+    title: '会话一',
+    pinned: false,
+    updated_at: '2026-10-12T10:00:00Z',
+  },
   {
     project: 'other-repo',
     session_id: 'sess-2',
     state: 'ASKING',
+    title: '会话二',
+    pinned: false,
     updated_at: '2026-10-12T11:00:00Z',
   },
 ]

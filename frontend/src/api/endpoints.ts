@@ -9,6 +9,7 @@ import {
 import {
   AdoptionsClearSchema,
   HistoryListSchema,
+  HistoryUpdateRequestSchema,
   PreferenceUpdateRequestSchema,
   PreferenceVectorSchema,
 } from '../schemas/preference'
@@ -22,6 +23,7 @@ import type {
   FollowupRequest,
   HealthResponse,
   HistoryItemPayload,
+  HistoryUpdateRequest,
   OptimizeRequest,
   PreferenceUpdateRequest,
   PreferenceVectorPayload,
@@ -41,6 +43,7 @@ export const ENDPOINTS = {
   preference: `${API_BASE_URL}/preference`,
   preferenceAdoptions: `${API_BASE_URL}/preference/adoptions`,
   history: `${API_BASE_URL}/history`,
+  historyItem: (sessionId: string) => `${API_BASE_URL}/history/${encodeURIComponent(sessionId)}`,
   projectScan: (project: string) =>
     `${API_BASE_URL}/project/scan?project=${encodeURIComponent(project)}`,
   settings: `${API_BASE_URL}/settings`,
@@ -131,6 +134,31 @@ export function putPreference(
 
 export function getHistory(signal?: AbortSignal): Promise<HistoryItemPayload[]> {
   return request(ENDPOINTS.history, { method: 'GET', schema: HistoryListSchema, signal })
+}
+
+/** PATCH /history/{session_id}：重命名 / 置顶（有副作用端点，禁重试，MUST-15）；契约 data 恒为 null。 */
+export async function patchHistory(
+  sessionId: string,
+  body: HistoryUpdateRequest,
+  signal?: AbortSignal,
+): Promise<void> {
+  await request(ENDPOINTS.historyItem(sessionId), {
+    method: 'PATCH',
+    schema: EmptyDataSchema,
+    body: parseBody(HistoryUpdateRequestSchema, body),
+    hasSideEffect: true,
+    signal,
+  })
+}
+
+/** DELETE /history/{session_id}：删除会话（有副作用端点，禁重试，MUST-15）；契约 data 恒为 null。 */
+export async function deleteHistory(sessionId: string, signal?: AbortSignal): Promise<void> {
+  await request(ENDPOINTS.historyItem(sessionId), {
+    method: 'DELETE',
+    schema: EmptyDataSchema,
+    hasSideEffect: true,
+    signal,
+  })
 }
 
 /** DELETE /preference/adoptions：清空服务端采纳历史（有副作用端点，禁重试，MUST-15）。 */

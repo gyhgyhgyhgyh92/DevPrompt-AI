@@ -101,12 +101,7 @@ export function FollowupForm({
         >
           提交答复
         </button>
-        <button
-          type="button"
-          className="button button--ghost"
-          disabled={isBusy}
-          onClick={onEscape}
-        >
+        <button type="button" className="button button--ghost" disabled={isBusy} onClick={onEscape}>
           直接生成（A 保守版 + 待确认清单）
         </button>
       </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { BrowserRouter } from 'react-router'
 import { useShallow } from 'zustand/react/shallow'
 import { getHealth } from './api/endpoints'
+import { ProjectSidebar } from './components/history/ProjectSidebar'
 import { SettingsModal } from './components/settings/SettingsModal'
 import { AppRoutes } from './router'
 import { useOptimizeStore } from './stores/useOptimizeStore'
@@ -66,9 +67,12 @@ export function App() {
             ⚙ 设置
           </button>
         </header>
-        <main className="app-main">
-          <AppRoutes />
-        </main>
+        <div className="app-body">
+          <ProjectSidebar />
+          <main className="app-main">
+            <AppRoutes />
+          </main>
+        </div>
         <footer className="app-statusbar">
           <span>session: {sessionId ?? '无'}</span>
           <span>state: {state}</span>

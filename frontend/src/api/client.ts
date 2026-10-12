@@ -18,7 +18,7 @@ const DEFAULT_TIMEOUT_MS = 60_000
 /** request_id 响应头：优先读它，缺失时回退信封内 request_id。 */
 const REQUEST_ID_HEADER = 'x-request-id'
 
-export type RequestMethod = 'GET' | 'POST' | 'PUT' | 'DELETE'
+export type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 export interface RequestOptions<S extends z.ZodType> {
   method: RequestMethod

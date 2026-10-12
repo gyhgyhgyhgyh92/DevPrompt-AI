@@ -20,7 +20,9 @@ function jsonResponse(payload: unknown) {
 type FetchHandler = (input: string, init?: RequestInit) => unknown
 
 function stubFetch(handler: FetchHandler) {
-  const mock = vi.fn(async (input: string, init?: RequestInit) => jsonResponse(handler(input, init)))
+  const mock = vi.fn(async (input: string, init?: RequestInit) =>
+    jsonResponse(handler(input, init)),
+  )
   vi.stubGlobal('fetch', mock)
   return mock
 }
@@ -116,17 +118,18 @@ describe('mock e2e 六路径', () => {
     ])
 
     renderPage()
+    await user.click(screen.getByRole('button', { name: '选择文件夹' }))
     await user.type(screen.getByRole('textbox', { name: '项目路径' }), 'D:/ws/repo')
     await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
-    await user.click(screen.getByRole('button', { name: '开始优化' }))
+    await user.click(screen.getByRole('button', { name: '发送' }))
 
     expect(await screen.findByRole('article', { name: '方案 A' })).toBeTruthy()
     expect(screen.getByRole('article', { name: '方案 B' })).toBeTruthy()
     expect(screen.getByRole('article', { name: '方案 C' })).toBeTruthy()
     expect(screen.getByText(/【推荐】B/)).toBeTruthy()
-    expect(
-      screen.getByRole('article', { name: '方案 B' }).className,
-    ).toContain('prompt-card--recommended')
+    expect(screen.getByRole('article', { name: '方案 B' }).className).toContain(
+      'prompt-card--recommended',
+    )
     expect(screen.getByText('body-B')).toBeTruthy()
   })
 
@@ -152,9 +155,10 @@ describe('mock e2e 六路径', () => {
     ])
 
     renderPage()
+    await user.click(screen.getByRole('button', { name: '选择文件夹' }))
     await user.type(screen.getByRole('textbox', { name: '项目路径' }), 'D:/ws/repo')
     await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
-    await user.click(screen.getByRole('button', { name: '开始优化' }))
+    await user.click(screen.getByRole('button', { name: '发送' }))
 
     expect(await screen.findByText('缺目标定位')).toBeTruthy()
     expect(screen.getAllByRole('textbox', { name: '答复' })).toHaveLength(2)
@@ -190,9 +194,10 @@ describe('mock e2e 六路径', () => {
     ])
 
     renderPage()
+    await user.click(screen.getByRole('button', { name: '选择文件夹' }))
     await user.type(screen.getByRole('textbox', { name: '项目路径' }), 'D:/ws/repo')
     await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
-    await user.click(screen.getByRole('button', { name: '开始优化' }))
+    await user.click(screen.getByRole('button', { name: '发送' }))
 
     await user.click(await screen.findByRole('button', { name: /直接生成（A 保守版/ }))
 
@@ -213,7 +218,9 @@ describe('mock e2e 六路径', () => {
       status: 'guardrail',
       state: 'ASKING',
       cleared: ['target'],
-      questions: [{ key: 'scope', reason: '缺改造范围', best_guess: '仅首页', ask: '改多大范围？' }],
+      questions: [
+        { key: 'scope', reason: '缺改造范围', best_guess: '仅首页', ask: '改多大范围？' },
+      ],
     })
     useOptimizeStore.getState().applySnapshot(seed)
     const mock = stubApi([
