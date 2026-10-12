@@ -36,13 +36,13 @@
   - [x] 5.4 MemoryPanel：L3 四维滑条（PUT /preference，超界后端 clip 兜底）+ 更新规则只读说明 + 采纳历史表格（GET /history）+ 导出 JSON + 清空（danger 双重确认，本地范围假设已标注）
   - [x] 5.5 SecurityPanel：护栏轮数/成本预算（PUT /settings）+ 候选上限 25 锁定只读（标注「宪法 MUST-09 锁定」）+ 遥测开关 + 清除本地数据（双重确认）
   - [x] 5.6 组件测试 ≥15 用例 + 提交 `feat(web)`——实际 32 用例（SettingsModal 7/面板 21/控件 4）
-- [ ] Task 6: 6E 核心组件与流程联调（T6-5 + T6-7）：五核心组件 + mock e2e（依赖 Task 4）
-  - [ ] 6.1 PromptCard + VariantTabs（A/B/C 三卡对比、推荐卡品牌边框、等宽代码区；渲染后端 body 不加工）
-  - [ ] 6.2 RecommendBadge（仅 marked=true 渲染，含 confidence）+ ScoreDetail（展开 fit/pref/total，全取 ranking 视图）
-  - [ ] 6.3 ConfidenceNotice：不标记时展示后端 reason 文案，不静默（MUST-27）
-  - [ ] 6.4 FollowupForm：澄清卡 ×N（key/reason/best_guess 一键采用/输入框）+「直接生成」逃生常驻 + 软护栏裁决面板（guardrail_action 双选项）；answers 模式一次批量
-  - [ ] 6.5 mock e2e 六路径（mock api 层返回，不 mock store 内部）：正常三套/反问答复/逃生/护栏继续/护栏逃生/刷新恢复
-  - [ ] 6.6 T6-7 职责边界检查（grep 0.12|0.5|threshold 零命中 + 架构约束脚本）+ 组件测试 ≥20 + 提交 `feat(web)`
+- [x] Task 6: 6E 核心组件与流程联调（T6-5 + T6-7）：五核心组件 + mock e2e（依赖 Task 4）
+  - [x] 6.1 PromptCard + VariantTabs（A/B/C 三卡对比、推荐卡品牌边框、等宽代码区；渲染后端 body 不加工）
+  - [x] 6.2 RecommendBadge（仅 marked=true 渲染，含 confidence）+ ScoreDetail（展开 fit/pref/total，全取 ranking 视图）
+  - [x] 6.3 ConfidenceNotice：不标记时展示后端 reason 文案，不静默（MUST-27）
+  - [x] 6.4 FollowupForm：澄清卡 ×N（key/reason/best_guess 一键采用/输入框）+「直接生成」逃生常驻 + 软护栏裁决面板（guardrail_action 双选项）；answers 模式一次批量
+  - [x] 6.5 mock e2e 六路径（mock api 层返回，不 mock store 内部）：正常三套/反问答复/逃生/护栏继续/护栏逃生/刷新恢复
+  - [x] 6.6 T6-7 职责边界检查（grep 0.12|0.5|threshold 零命中 + 架构约束脚本）+ 组件测试 ≥20 + 提交 `feat(web)`——实际 140 用例（组件 27 + e2e 6）
 - [ ] Task 7: 6G 记忆注入与出口验收（T6-8 + T6-10 + W4 门禁）：（依赖 Task 5 + Task 6）
   - [ ] 7.1 三层记忆逐层关闭验证：空 L1 / 空 L2 / 中性 L3 注入，断言流程完成且行为符合预期（流程失败才判 FAIL，行为退化非缺陷；D-6G-3）
   - [ ] 7.2 真实 LLM 端到端冒烟一次（DeepSeek：输入→反问→三套→推荐→反馈→L3 变化），作为 W4 出口证据

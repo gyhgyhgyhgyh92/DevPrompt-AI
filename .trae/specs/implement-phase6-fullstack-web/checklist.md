@@ -26,9 +26,9 @@
 - [x] 三页面可访问、路由切换正常、刷新后流程状态不丢失（GET /result 恢复）
 - [x] OptimizePage 三栏工作台布局成型；步进器仅镜像 9 态（MUST-07）
 - [x] 上下文面板只读渲染目标定位/取证事实/L3 向量（快照契约已补 target/facts）
-- [ ] 五核心组件齐备：推荐徽章仅 marked=true 渲染；不标记时 reason 文案具体（MUST-27）
-- [ ] FollowupForm 澄清卡四要素 + 逃生常驻 + 软护栏裁决面板（MUST-26）
-- [ ] mock e2e 六路径全 PASS（正常三套/反问/逃生/护栏继续/护栏逃生/刷新恢复）
+- [x] 五核心组件齐备：推荐徽章仅 marked=true 渲染；不标记时 reason 文案具体（MUST-27）
+- [x] FollowupForm 澄清卡四要素 + 逃生常驻 + 软护栏裁决面板（MUST-26）
+- [x] mock e2e 六路径全 PASS（正常三套/反问/逃生/护栏继续/护栏逃生/刷新恢复）
 - [x] 设置中心四标签页可操作；保存后 GET 回读一致；主题即时生效且刷新保持
 - [x] 密钥任何界面状态不出现明文（type=password + 回显脱敏）
 - [x] 候选上限锁定项 disabled 且标注「宪法 MUST-09 锁定」

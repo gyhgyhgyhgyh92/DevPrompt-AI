@@ -9,9 +9,13 @@ import {
   postFollowup,
   postOptimize,
 } from '../api/endpoints'
+import { ConfidenceNotice } from '../components/optimize/ConfidenceNotice'
 import { ContextPanel } from '../components/optimize/ContextPanel'
+import { FollowupForm } from '../components/optimize/FollowupForm'
+import { OptimizeInput } from '../components/optimize/OptimizeInput'
 import { PhaseIndicator } from '../components/optimize/PhaseIndicator'
 import { SessionSidebar } from '../components/optimize/SessionSidebar'
+import { VariantTabs } from '../components/optimize/VariantTabs'
 import { useSSE } from '../hooks/useSSE'
 import { useOptimizeStore } from '../stores/useOptimizeStore'
 import { usePreferenceStore } from '../stores/usePreferenceStore'
@@ -24,6 +28,11 @@ function resolveFlowView(status: string | null): FlowView {
   if (status === null) return 'input'
   if (status === 'done' || status === 'aborted') return 'result'
   return 'asking'
+}
+
+/** 契约枚举收窄（level 契约为自由字符串，反馈请求仅接受 A/B/C；集合匹配非业务判定）。 */
+function toVariantLevel(level: string): VariantLevel | null {
+  return level === 'A' || level === 'B' || level === 'C' ? level : null
 }
 
 function toMessage(error: unknown): string {
@@ -63,8 +72,6 @@ export function OptimizePage() {
   const vector = usePreferenceStore((s) => s.vector)
 
   const [sentence, setSentence] = useState('')
-  const [project, setProject] = useState('')
-  const [answers, setAnswers] = useState<Record<string, string>>({})
   const [isBusy, setIsBusy] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -116,12 +123,12 @@ export function OptimizePage() {
     }
   }
 
-  async function handleOptimizeSubmit(): Promise<void> {
+  async function handleOptimizeSubmit(nextSentence: string, project: string): Promise<void> {
     const store = useOptimizeStore.getState()
     store.setSubmitting(true)
     setErrorMessage(null)
     try {
-      const snapshot = await postOptimize({ sentence: sentence.trim(), project: project.trim() })
+      const snapshot = await postOptimize({ sentence: nextSentence, project })
       store.applySnapshot(snapshot)
       const items = await getHistory().catch(() => null)
       if (items !== null) usePreferenceStore.getState().setHistory(items)
@@ -166,7 +173,6 @@ export function OptimizePage() {
   function handleNewSession(): void {
     useOptimizeStore.getState().reset()
     setSentence('')
-    setAnswers({})
     setErrorMessage(null)
   }
 
@@ -186,172 +192,53 @@ export function OptimizePage() {
         {errorMessage !== null ? <p className="thread__error">{errorMessage}</p> : null}
 
         {view === 'input' ? (
-          <form
-            className="thread__form"
-            onSubmit={(event) => {
-              event.preventDefault()
-              void handleOptimizeSubmit()
+          <OptimizeInput
+            isSubmitting={isSubmitting || isBusy}
+            onSubmit={(nextSentence, project) => {
+              setSentence(nextSentence)
+              void handleOptimizeSubmit(nextSentence, project)
             }}
-          >
-            <label className="field">
-              <span>项目路径</span>
-              <input
-                className="field__input"
-                value={project}
-                onChange={(event) => setProject(event.target.value)}
-                placeholder="D:/workspace/repo"
-              />
-            </label>
-            <label className="field">
-              <span>优化原句</span>
-              <textarea
-                className="field__textarea"
-                value={sentence}
-                onChange={(event) => setSentence(event.target.value)}
-                placeholder="描述要改造的目标……"
-                rows={4}
-              />
-            </label>
-            <button
-              type="submit"
-              className="button button--primary"
-              disabled={isSubmitting || isBusy || sentence.trim() === '' || project.trim() === ''}
-            >
-              {isSubmitting ? '提交中…' : '开始优化'}
-            </button>
-          </form>
+          />
         ) : null}
 
         {view === 'asking' ? (
-          <div>
-            {status === 'guardrail' ? (
-              <div className="guardrail-banner">
-                <p>软护栏触发：请裁决继续追问或直接生成</p>
-                <button
-                  type="button"
-                  className="button button--ghost"
-                  disabled={isBusy}
-                  onClick={() => void runFollowup({ escape: false, guardrail_action: 'continue' })}
-                >
-                  继续追问
-                </button>
-                <button
-                  type="button"
-                  className="button button--primary"
-                  disabled={isBusy}
-                  onClick={() => void runFollowup({ escape: false, guardrail_action: 'generate' })}
-                >
-                  直接生成
-                </button>
-              </div>
-            ) : null}
-            {cleared.length > 0 ? (
-              <p className="thread__chips">
-                <span>已澄清：</span>
-                {cleared.map((key) => (
-                  <span className="thread__chip" key={key}>
-                    {key}
-                  </span>
-                ))}
-              </p>
-            ) : null}
-            <ul className="clarify-list">
-              {questions.map((item) => (
-                <li className="clarify-card" key={item.key}>
-                  <span className="clarify-card__key">{item.key}</span>
-                  <p className="clarify-card__reason">{item.reason}</p>
-                  <p className="clarify-card__guess">
-                    <span>当前最佳推断：{item.best_guess}</span>
-                    <button
-                      type="button"
-                      className="button button--ghost"
-                      onClick={() =>
-                        setAnswers((prev) => ({ ...prev, [item.key]: item.best_guess }))
-                      }
-                    >
-                      采用
-                    </button>
-                  </p>
-                  <label className="field">
-                    <span>答复</span>
-                    <input
-                      className="field__input"
-                      value={answers[item.key] ?? ''}
-                      onChange={(event) =>
-                        setAnswers((prev) => ({ ...prev, [item.key]: event.target.value }))
-                      }
-                    />
-                  </label>
-                </li>
-              ))}
-            </ul>
-            <div className="thread__actions">
-              <button
-                type="button"
-                className="button button--primary"
-                disabled={isBusy}
-                onClick={() => void runFollowup({ answers, escape: false })}
-              >
-                提交答复
-              </button>
-              <button
-                type="button"
-                className="button button--ghost"
-                disabled={isBusy}
-                onClick={() => void runFollowup({ escape: true })}
-              >
-                直接生成（A 保守版 + 待确认清单）
-              </button>
-            </div>
-          </div>
+          <FollowupForm
+            questions={questions}
+            cleared={cleared}
+            status={status}
+            isBusy={isBusy || isSubmitting}
+            onSubmitAnswers={(answers) => void runFollowup({ answers, escape: false })}
+            onEscape={() => void runFollowup({ escape: true })}
+            onGuardrail={(action) => void runFollowup({ escape: false, guardrail_action: action })}
+          />
         ) : null}
 
         {view === 'result' ? (
           <div>
             {message !== '' ? <p className="thread__message">{message}</p> : null}
-            {ranking !== null ? (
-              <div className="ranking-block">
-                {ranking.marked ? (
-                  <p className="ranking-block__marked">
-                    【推荐】{ranking.variant}（置信度 {ranking.confidence}）
-                  </p>
-                ) : (
-                  <p className="ranking-block__reason">{ranking.reason}</p>
-                )}
-              </div>
-            ) : null}
-            <ul className="variant-list">
-              {variants.map((variant) => (
-                <li className="variant-card" key={variant.level}>
-                  <h3>
-                    {variant.title} <span className="variant-card__level">{variant.level}</span>
-                  </h3>
-                  {(variant.changes ?? []).length > 0 ? (
-                    <ul className="variant-card__changes">
-                      {(variant.changes ?? []).map((change) => (
-                        <li key={change}>{change}</li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
+            <ConfidenceNotice ranking={ranking} />
+            <VariantTabs
+              variants={variants}
+              ranking={ranking}
+              renderActions={(variant) => {
+                const level = toVariantLevel(variant.level)
+                return level === null ? null : (
+                  <button
+                    type="button"
+                    className="button button--primary"
+                    disabled={isBusy || isSubmitting}
+                    onClick={() => void handleFeedback(level)}
+                  >
+                    采纳 {variant.level}
+                  </button>
+                )
+              }}
+            />
             <div className="thread__actions">
-              {(['A', 'B', 'C'] as const).map((level) => (
-                <button
-                  key={level}
-                  type="button"
-                  className="button button--primary"
-                  disabled={isBusy}
-                  onClick={() => void handleFeedback(level)}
-                >
-                  采纳 {level}
-                </button>
-              ))}
               <button
                 type="button"
                 className="button button--ghost"
-                disabled={isBusy}
+                disabled={isBusy || isSubmitting}
                 onClick={() => void handleFeedback(null)}
               >
                 跳过
