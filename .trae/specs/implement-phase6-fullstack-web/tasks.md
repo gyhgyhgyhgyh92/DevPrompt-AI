@@ -22,20 +22,20 @@
   - [x] 3.4 usePreferenceStore（向量+采纳历史）与 useSettingsStore（后端设置 + localStorage 外观项，键前缀 devprompt:v1: + Zod 读取校验）
   - [x] 3.5 useSSE：EventSource 生命周期，close() 写 effect cleanup（单测断言 unmount 关闭）
   - [x] 3.6 单测 ≥15 用例（SSE cleanup/畸形响应拒绝等）+ MUST-16 静态检查（useShallow）+ 提交 `feat(web)`——实际 53 用例全绿（1 冒烟 + 52 新增）
-- [ ] Task 4: 6D 三页面与工作台布局（T6-4）：三路由 + OptimizePage 三栏（依赖 Task 3）
-  - [ ] 4.1 路由表 + AppShell（标题栏：logo/项目 chip/API 状态 pill/⚙ 设置入口占位；三栏骨架容器）
-  - [ ] 4.2 OptimizePage 三态容器（输入→反问→结果，由 FlowSnapshot.status ask/done/guardrail 驱动）
-  - [ ] 4.3 会话侧栏（历史会话列表 + DONE/ASKING 徽章 + 新建会话；数据源 GET /history）
-  - [ ] 4.4 上下文面板（目标定位 symbol@path:line、取证事实 ✓ 列表、L3 偏好四维条——只读渲染）
-  - [ ] 4.5 PhaseIndicator 步进器（9 态镜像，MUST-07）；HistoryPage / PreferencePage 骨架接数据
-  - [ ] 4.6 Testing Library 渲染冒烟 + 三页路由测试 + 提交 `feat(web)`
-- [ ] Task 5: 6F 设置中心 UI（T6-11 前端）：SettingsModal 四标签页（依赖 Task 3，与 Task 4 并行）
-  - [ ] 5.1 SettingsModal 外壳（模态 + 左侧四项导航 + Esc/✕ 关闭 + 焦点管理）
-  - [ ] 5.2 ModelServicePanel：供应商分段/脱敏密钥输入（输入新值才回传明文）/模型 ID/决策层下拉/调用参数三字段；「测试连接」= PUT 后读 GET /health 的 LLM 检查位（信息不足触发 D-6F-2 上报）
-  - [ ] 5.3 AppearancePanel：主题三态（缩略预览）→ localStorage devprompt:v1:appearance + data-theme 即时生效；语言（English 占位禁用）/代码字体/启动恢复/桌面通知 Toggle
-  - [ ] 5.4 MemoryPanel：L3 四维滑条（PUT /preference，超界后端 clip 兜底）+ 更新规则只读说明 + 采纳历史表格（GET /history）+ 导出 JSON + 清空（danger 双重确认）
-  - [ ] 5.5 SecurityPanel：护栏轮数/成本预算（PUT /settings）+ 候选上限 25 锁定只读（标注「宪法 MUST-09 锁定」）+ 遥测开关 + 清除本地数据（双重确认）
-  - [ ] 5.6 组件测试 ≥15 用例 + 提交 `feat(web)`
+- [x] Task 4: 6D 三页面与工作台布局（T6-4）：三路由 + OptimizePage 三栏（依赖 Task 3）
+  - [x] 4.1 路由表 + AppShell（标题栏：logo/项目 chip/API 状态 pill/⚙ 设置入口占位；三栏骨架容器）——BrowserRouter 切换兑现 6B 注记
+  - [x] 4.2 OptimizePage 三态容器（输入→反问→结果，由 FlowSnapshot.status ask/done/guardrail 驱动）
+  - [x] 4.3 会话侧栏（历史会话列表 + DONE/ASKING 徽章 + 新建会话；数据源 GET /history）
+  - [x] 4.4 上下文面板（目标定位 symbol@path:line、取证事实 ✓ 列表、L3 偏好四维条——只读渲染）——快照契约补 target/facts 字段后接线
+  - [x] 4.5 PhaseIndicator 步进器（9 态镜像，MUST-07）；HistoryPage / PreferencePage 骨架接数据
+  - [x] 4.6 Testing Library 渲染冒烟 + 三页路由测试 + 提交 `feat(web)`——OptimizePage/History/Preference/PhaseIndicator/ContextPanel 共 18+4 用例
+- [x] Task 5: 6F 设置中心 UI（T6-11 前端）：SettingsModal 四标签页（依赖 Task 3，与 Task 4 并行）
+  - [x] 5.1 SettingsModal 外壳（模态 + 左侧四项导航 + Esc/✕ 关闭 + 焦点管理）
+  - [x] 5.2 ModelServicePanel：供应商分段/脱敏密钥输入（输入新值才回传明文）/模型 ID/决策层下拉/调用参数三字段；「测试连接」= PUT 后读 GET /health 的 LLM 检查位（D-6F-2 复用检查位）
+  - [x] 5.3 AppearancePanel：主题三态（缩略预览）→ localStorage devprompt:v1:appearance + data-theme 即时生效；语言（English 占位禁用）/代码字体/启动恢复/桌面通知 Toggle
+  - [x] 5.4 MemoryPanel：L3 四维滑条（PUT /preference，超界后端 clip 兜底）+ 更新规则只读说明 + 采纳历史表格（GET /history）+ 导出 JSON + 清空（danger 双重确认，本地范围假设已标注）
+  - [x] 5.5 SecurityPanel：护栏轮数/成本预算（PUT /settings）+ 候选上限 25 锁定只读（标注「宪法 MUST-09 锁定」）+ 遥测开关 + 清除本地数据（双重确认）
+  - [x] 5.6 组件测试 ≥15 用例 + 提交 `feat(web)`——实际 32 用例（SettingsModal 7/面板 21/控件 4）
 - [ ] Task 6: 6E 核心组件与流程联调（T6-5 + T6-7）：五核心组件 + mock e2e（依赖 Task 4）
   - [ ] 6.1 PromptCard + VariantTabs（A/B/C 三卡对比、推荐卡品牌边框、等宽代码区；渲染后端 body 不加工）
   - [ ] 6.2 RecommendBadge（仅 marked=true 渲染，含 confidence）+ ScoreDetail（展开 fit/pref/total，全取 ranking 视图）

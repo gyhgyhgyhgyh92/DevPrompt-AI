@@ -27,6 +27,8 @@ function snapshotOf(overrides?: Partial<FlowSnapshotResponse>): FlowSnapshotResp
       { title: '激进', body: 'b3', level: 'C', changes: [] },
     ],
     ranking,
+    target: { name: 'build', path: 'src/app.py', line: 12 },
+    facts: [{ key: 'fact_a', passed: true, evidence: '定位到 build' }],
     ...overrides,
   }
 }
@@ -47,6 +49,8 @@ describe('useOptimizeStore 快照镜像', () => {
     expect(state.ranking).toMatchObject({ variant: 'B', marked: true })
     expect(state.questions).toHaveLength(1)
     expect(state.cleared).toEqual(['scope'])
+    expect(state.target).toMatchObject({ name: 'build', path: 'src/app.py', line: 12 })
+    expect(state.facts).toEqual([{ key: 'fact_a', passed: true, evidence: '定位到 build' }])
   })
 
   it('applySnapshot 可选字段缺省时回退空集合与 null', () => {
@@ -56,6 +60,8 @@ describe('useOptimizeStore 快照镜像', () => {
         cleared: undefined,
         variants: undefined,
         ranking: undefined,
+        target: undefined,
+        facts: undefined,
       }),
     )
 
@@ -64,6 +70,8 @@ describe('useOptimizeStore 快照镜像', () => {
     expect(state.cleared).toEqual([])
     expect(state.variants).toEqual([])
     expect(state.ranking).toBeNull()
+    expect(state.target).toBeNull()
+    expect(state.facts).toEqual([])
   })
 
   it('applySseMessage 合法消息更新状态（SSE 消息在 store 内处理）', () => {

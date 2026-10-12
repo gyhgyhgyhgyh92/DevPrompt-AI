@@ -334,6 +334,18 @@ export interface components {
             request_id: string;
         };
         /**
+         * FactPayload
+         * @description 取证事实只读透出（F-104 七项判定结果）。
+         */
+        FactPayload: {
+            /** Evidence */
+            evidence: string;
+            /** Key */
+            key: string;
+            /** Passed */
+            passed: boolean;
+        };
+        /**
          * FeedbackRequest
          * @description POST /feedback 请求体：variant 采纳 / +edited_text 编辑采纳 / 两者皆无=跳过。
          */
@@ -356,6 +368,8 @@ export interface components {
         FlowSnapshotResponse: {
             /** Cleared */
             cleared?: string[];
+            /** Facts */
+            facts?: components["schemas"]["FactPayload"][];
             /**
              * Message
              * @default
@@ -370,6 +384,7 @@ export interface components {
             state: string;
             /** Status */
             status: string;
+            target?: components["schemas"]["SymbolPayload"] | null;
             /** Variants */
             variants?: components["schemas"]["VariantPayload"][];
         };
@@ -618,6 +633,21 @@ export interface components {
         SettingsUpdate: {
             model_service?: components["schemas"]["ModelServiceUpdate"] | null;
             process?: components["schemas"]["ProcessUpdate"] | null;
+        };
+        /**
+         * SymbolPayload
+         * @description 目标定位（上下文面板，设计 §1.2）：symbol@path:line。
+         */
+        SymbolPayload: {
+            /**
+             * Line
+             * @default 0
+             */
+            line: number;
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
         };
         /**
          * UnknownItemPayload

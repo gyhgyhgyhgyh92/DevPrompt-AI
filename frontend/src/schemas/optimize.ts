@@ -34,18 +34,34 @@ export const RankingViewSchema = z.object({
   variant: z.string(),
 })
 
+/** 目标定位（契约 SymbolPayload）：symbol@path:line；line 为 0 表示不带行号。 */
+export const SymbolSchema = z.object({
+  line: z.number(),
+  name: z.string(),
+  path: z.string(),
+})
+
+/** 取证事实（契约 FactPayload，F-104 判定结果只读透出）。 */
+export const FactSchema = z.object({
+  evidence: z.string(),
+  key: z.string(),
+  passed: z.boolean(),
+})
+
 /**
  * 流程快照（契约 FlowSnapshotResponse）。
  * state/status/level/variant 按契约为自由字符串，前端只镜像不判定（MUST-07）。
  */
 export const FlowSnapshotSchema = z.object({
   cleared: z.array(z.string()).optional(),
+  facts: z.array(FactSchema).optional(),
   message: z.string(),
   questions: z.array(UnknownItemSchema).optional(),
   ranking: RankingViewSchema.nullish(),
   session_id: z.string(),
   state: z.string(),
   status: z.string(),
+  target: SymbolSchema.nullish(),
   variants: z.array(VariantSchema).optional(),
 })
 

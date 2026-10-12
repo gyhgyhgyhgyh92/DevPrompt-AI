@@ -65,6 +65,39 @@ describe('schemas/optimize 契约校验', () => {
     ).toBe(false)
   })
 
+  it('FlowSnapshotSchema 接受 target/facts 载荷', () => {
+    const parsed = FlowSnapshotSchema.safeParse({
+      session_id: 's',
+      state: 'PROBING',
+      status: 'ask',
+      message: '',
+      target: { name: 'build', path: 'src/app.py', line: 12 },
+      facts: [{ key: 'fact_a', passed: true, evidence: '定位到 build' }],
+    })
+    expect(parsed.success).toBe(true)
+  })
+
+  it('FlowSnapshotSchema 拒绝畸形 target/facts', () => {
+    expect(
+      FlowSnapshotSchema.safeParse({
+        session_id: 's',
+        state: 'PROBING',
+        status: 'ask',
+        message: '',
+        target: { name: 'build', path: 'src/app.py', line: '12' },
+      }).success,
+    ).toBe(false)
+    expect(
+      FlowSnapshotSchema.safeParse({
+        session_id: 's',
+        state: 'PROBING',
+        status: 'ask',
+        message: '',
+        facts: [{ key: 'fact_a', passed: 'yes', evidence: 'x' }],
+      }).success,
+    ).toBe(false)
+  })
+
   it('RankingView / Variant 载荷字段类型不匹配即拒绝', () => {
     expect(
       RankingViewSchema.safeParse({

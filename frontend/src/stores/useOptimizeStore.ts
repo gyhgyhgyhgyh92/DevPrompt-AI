@@ -8,6 +8,10 @@ import type {
 import { FlowSnapshotSchema } from '../schemas/optimize'
 import type { SseStatus } from '../types'
 
+/** 契约载荷按生成类型派生（F-705：勿在 api/types.ts 之外手写结构）。 */
+type SymbolPayload = NonNullable<FlowSnapshotResponse['target']>
+type FactPayload = NonNullable<FlowSnapshotResponse['facts']>[number]
+
 /**
  * 单次优化流程状态（F-706）：SSE 消息统一在此处理，页面只消费状态（MUST-16）。
  * state/status 只镜像后端字符串，转移逻辑唯一在后端 state.py（MUST-07）。
@@ -26,6 +30,10 @@ interface OptimizeState {
   variants: readonly VariantPayload[]
   /** 推荐视图（契约 ranking；null 表示后端未产生推荐）。 */
   ranking: RankingViewPayload | null
+  /** 目标定位镜像（契约 target；null 表示未定位，MUST-07 只镜像不判定）。 */
+  target: SymbolPayload | null
+  /** 取证事实镜像（契约 facts，F-104 判定结果只读透出）。 */
+  facts: readonly FactPayload[]
   sseStatus: SseStatus
   isSubmitting: boolean
   /** 应用流程快照（POST /optimize、GET /result、SSE 推送共用同一入口）。 */
@@ -47,6 +55,8 @@ const initialState: Pick<
   | 'cleared'
   | 'variants'
   | 'ranking'
+  | 'target'
+  | 'facts'
   | 'sseStatus'
   | 'isSubmitting'
 > = {
@@ -58,6 +68,8 @@ const initialState: Pick<
   cleared: [],
   variants: [],
   ranking: null,
+  target: null,
+  facts: [],
   sseStatus: 'idle',
   isSubmitting: false,
 }
@@ -74,6 +86,8 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
       cleared: snapshot.cleared ?? [],
       variants: snapshot.variants ?? [],
       ranking: snapshot.ranking ?? null,
+      target: snapshot.target ?? null,
+      facts: snapshot.facts ?? [],
     }),
   applySseMessage: (raw) => {
     let parsed: unknown

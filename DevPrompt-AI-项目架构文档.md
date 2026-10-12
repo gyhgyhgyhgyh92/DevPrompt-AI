@@ -1149,7 +1149,9 @@ frontend/
     │   │   ├── ScoreDetail.tsx
     │   │   ├── ConfidenceNotice.tsx
     │   │   ├── FollowupForm.tsx
-    │   │   └── CopyButton.tsx
+    │   │   ├── CopyButton.tsx
+    │   │   ├── SessionSidebar.tsx  会话侧栏（T6-4 工作台左栏：新建会话/历史会话/侧栏导航）
+    │   │   └── ContextPanel.tsx    上下文面板（T6-4 工作台右栏：目标定位/取证事实/L3 偏好条）
     │   ├── history/           历史页组件
     │   │   └── HistoryItem.tsx
     │   ├── preference/        偏好页组件
