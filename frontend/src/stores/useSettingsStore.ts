@@ -9,7 +9,7 @@ export const STORAGE_PREFIX = 'devprompt:v1:'
 export const APPEARANCE_KEY = `${STORAGE_PREFIX}appearance`
 
 const defaultAppearance: AppearanceSettings = {
-  theme: 'dark',
+  theme: 'light',
   locale: 'zh-CN',
   codeFont: 'JetBrains Mono',
   restoreSessionOnLaunch: true,
@@ -37,7 +37,7 @@ function writeSetting(key: string, value: unknown): void {
   }
 }
 
-/** 跟随系统主题经 matchMedia 解析为具体主题（jsdom 无 matchMedia 时按暗色兜底）。 */
+/** 跟随系统主题经 matchMedia 解析为具体主题（jsdom 无 matchMedia 时按浅色兜底，与默认基调一致）。 */
 function resolveTheme(theme: AppearanceSettings['theme']): 'light' | 'dark' {
   if (theme !== 'system') return theme
   const prefersDark =

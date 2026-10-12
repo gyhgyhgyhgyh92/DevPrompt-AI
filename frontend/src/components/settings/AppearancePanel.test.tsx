@@ -62,7 +62,7 @@ describe('AppearancePanel 通用外观', () => {
 
     const { useSettingsStore: freshStore } = await import('../../stores/useSettingsStore')
 
-    expect(freshStore.getState().appearance).toMatchObject({ theme: 'dark', locale: 'zh-CN' })
+    expect(freshStore.getState().appearance).toMatchObject({ theme: 'light', locale: 'zh-CN' })
   })
 
   it('启动恢复会话开关写入 localStorage 外观项', () => {

@@ -37,7 +37,7 @@ describe('useSettingsStore localStorage 外观项', () => {
   it('无存储数据时回退默认外观', async () => {
     const store = await loadStore()
 
-    expect(store.getState().appearance).toMatchObject({ theme: 'dark', locale: 'zh-CN' })
+    expect(store.getState().appearance).toMatchObject({ theme: 'light', locale: 'zh-CN' })
   })
 
   it('存储内容损坏（非法 JSON）回退默认值', async () => {
@@ -45,7 +45,7 @@ describe('useSettingsStore localStorage 外观项', () => {
 
     const store = await loadStore()
 
-    expect(store.getState().appearance).toMatchObject({ theme: 'dark' })
+    expect(store.getState().appearance).toMatchObject({ theme: 'light' })
   })
 
   it('存储形状不合法（Zod 校验失败）回退默认值', async () => {
@@ -53,7 +53,7 @@ describe('useSettingsStore localStorage 外观项', () => {
 
     const store = await loadStore()
 
-    expect(store.getState().appearance).toMatchObject({ theme: 'dark', locale: 'zh-CN' })
+    expect(store.getState().appearance).toMatchObject({ theme: 'light', locale: 'zh-CN' })
   })
 
   it('合法数据经 Zod 校验后读出', async () => {
