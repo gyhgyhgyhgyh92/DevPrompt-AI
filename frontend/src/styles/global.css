@@ -181,6 +181,7 @@ pre {
 
 .app-statusbar {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-5);
   padding: var(--space-2) var(--space-4);
   font: var(--font-code-regular);
