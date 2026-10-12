@@ -1,14 +1,14 @@
 # Checklist
 
 ## 宪法级（每任务收口必过）
-- [ ] ruff check + ruff format --check 全绿（后端改动任务）
-- [ ] mypy strict 零错误（后端改动任务）
-- [ ] pytest 全绿（基线 257+1 skipped，逐任务递增）
-- [ ] 前端 tsc / eslint / vitest / pnpm build / check:contract 五脚本全绿（前端改动任务）
-- [ ] scripts/check_architecture.py 通过（业务判定仅 domain/ranking/recommend.py；前端零阈值常量）
-- [ ] 无新增第三方依赖超出技术栈 §6.1（MUST-04；如需必须先上报更新技术栈文档）
-- [ ] 提交信息 type(scope) 符合 MUST-21；6A 提交含 MUST-19 条文修订 BREAKING 标注与批准记录
-- [ ] 子代理零 git 操作，主流程串行提交与门禁复验
+- [x] ruff check + ruff format --check 全绿（后端改动任务）
+- [x] mypy strict 零错误（后端改动任务）——uv run mypy 全量 109 files 含 tests
+- [x] pytest 全绿（基线 257+1 skipped，逐任务递增）——最终 282 passed + 2 skipped
+- [x] 前端 tsc / eslint / vitest / pnpm build / check:contract 五脚本全绿（前端改动任务）——最终 140 用例
+- [x] scripts/check_architecture.py 通过（业务判定仅 domain/ranking/recommend.py；前端零阈值常量）
+- [x] 无新增第三方依赖超出技术栈 §6.1（MUST-04；新增测试/工具依赖已查 registry 并登记 §6.1 附理由）
+- [x] 提交信息 type(scope) 符合 MUST-21；6A 提交含 MUST-19 条文修订 BREAKING 标注与批准记录
+- [x] 子代理零 git 操作，主流程串行提交与门禁复验
 
 ## 功能验收（对应 tasks.md 逐项）
 - [x] /settings 契约冻结（10 路径/12 操作），openapi 两次导出 diff 为零
@@ -33,18 +33,18 @@
 - [x] 密钥任何界面状态不出现明文（type=password + 回显脱敏）
 - [x] 候选上限锁定项 disabled 且标注「宪法 MUST-09 锁定」
 - [x] 前端 grep 0.12|0.5|threshold 零命中（MUST-08）
-- [ ] 记忆三层逐层关闭验证通过（空 L1/空 L2/中性 L3，流程失败才判 FAIL）
-- [ ] 组件清单四文档 diff 为零（以 §5.1 为权威，T6-10）
-- [ ] §4.2 表清单含采纳历史表
+- [x] 记忆三层逐层关闭验证通过（空 L1/空 L2/中性 L3，流程失败才判 FAIL）
+- [x] 组件清单四文档 diff 为零（以 §5.1 为权威，T6-10）
+- [x] §4.2 表清单含采纳历史表
 
 ## W4 出口门禁（Task 7 收口必过）
-- [ ] 门禁 1：Web 全栈行为一致（前端产物 + HTTP 层走通完整流程；同一份 service/state/memory/config；HTTP 层零业务逻辑）
-- [ ] 门禁 2：记忆三层生效（逐层关闭验证通过；真实冒烟中 L3 向量经反馈更新可观测）
-- [ ] 门禁 3：设置中心可用（F-604 验收全过；/settings 契约冒烟通过）
-- [ ] 门禁 4：前端质量（五脚本绿 + 组件测试全绿 + T6-7 零阈值检查通过）
-- [ ] 门禁 5：契约一致（check:contract 绿 10 路径/12 操作；Zod 与生成类型一致）
-- [ ] 门禁 6：文档一致（组件清单四文档 diff 为零；实施计划 §7 有执行留痕）
-- [ ] 真源 §1 阶段六状态行 + §13 变更记录更新
-- [ ] 真实 LLM 端到端冒烟证据留存（W4 出口）
-- [ ] 出口门禁任一不达标 → 停止上报，不得含糊进入阶段七
-- [ ] 全部通过后上报项目所有者签收
+- [x] 门禁 1：Web 全栈行为一致（前端产物 + HTTP 层走通完整流程；同一份 service/state/memory/config；HTTP 层零业务逻辑）——真实浏览器 e2e（uvicorn + vite preview + DeepSeek）
+- [x] 门禁 2：记忆三层生效（逐层关闭验证通过；真实冒烟中 L3 向量经反馈更新可观测——EMA 逐位吻合）
+- [x] 门禁 3：设置中心可用（F-604 验收全过；/settings 契约冒烟通过）
+- [x] 门禁 4：前端质量（五脚本绿 + 组件测试全绿 + T6-7 零阈值检查通过）——140 用例
+- [x] 门禁 5：契约一致（check:contract 绿 10 路径/12 操作；Zod 与生成类型一致）——31 schema
+- [x] 门禁 6：文档一致（组件清单四文档 diff 为零；实施计划 §7 有执行留痕 v1.1/v1.2）
+- [x] 真源 §1 阶段六状态行 + §13 变更记录更新
+- [x] 真实 LLM 端到端冒烟证据留存（W4 出口）——真源 §13 + 实施计划 §7 v1.2 + 截图
+- [x] 出口门禁任一不达标 → 停止上报，不得含糊进入阶段七（六项全过，无触发）
+- [x] 全部通过后上报项目所有者签收

@@ -845,12 +845,13 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 
 当前表结构简单且是本地工具，**不使用迁移框架**。`memory/schema.py` 启动时检查 schema 版本，不匹配则执行幂等迁移；无法迁移时**报错并保留旧库**，不静默重建。
 
-**必须建表的两张表**：
+**必须建表的表**：
 
 | 表 | 字段 |
 |---|---|
 | `preferences` | `user_id` (PK), `detail_level`, `include_diff`, `specify_tests`, `max_files`, `updated_at` |
 | `followup_records` | `id`, `flow_id`, `user_id`, `items`, `answered_at` |
+| `adoption_history`（T6-10 补，采纳历史表） | `id` (PK), `user_id`, `session_id`, `variant`, `edited`, `edited_text_ratio`, `features_json`, `created_at` |
 
 ### 4.3 ORM 映射
 

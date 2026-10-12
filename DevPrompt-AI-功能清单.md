@@ -583,7 +583,7 @@ frontend/src/
 ├── api/                    请求封装、类型定义、SSE 订阅
 ├── stores/                 Zustand 状态
 ├── pages/                  三个页面
-├── components/             五个核心组件
+├── components/             组件组（ui/optimize/history/preference/settings，清单以架构文档 §5.1 为准，T6-10）
 ├── schemas/                Zod 运行时校验
 └── styles/                 设计 token
 ```
@@ -600,6 +600,8 @@ frontend/src/
 
 ## F-703 核心组件
 
+> 组件清单以 `DevPrompt-AI-项目架构文档.md` §5.1 为唯一权威（T6-10 核对补齐：6D 的 `SessionSidebar`/`ContextPanel`、6E 其余 `OptimizeInput`/`VariantTabs`/`CopyButton`、设置中心五组件）。
+
 | 组件 | 职责 | 关键要求 |
 |---|---|---|
 | `PromptCard` | 单套方案展示 | 可展开评分明细；区分推荐态 |
@@ -607,6 +609,18 @@ frontend/src/
 | `FollowupForm` | 反问卡片 | 批量填写未知项；展示已澄清清单与「直接生成」逃生口 |
 | `ScoreDetail` | 评分明细 | 展开显示三个信号分项与总分计算 |
 | `ConfidenceNotice` | 置信度提示 | 置信度不足时的明确说明区 |
+| `OptimizeInput` | 优化输入（项目路径 + 原句） | 草稿为组件局部状态；提交中禁用按钮（MUST-15） |
+| `VariantTabs` | 三套方案 A/B/C 切换 | 推荐卡品牌边框；正文只渲染后端下发 body |
+| `CopyButton` | 方案一键复制 | 复制成功给短暂反馈 |
+| `SessionSidebar` | 工作台左栏会话侧栏 | 新建会话/历史会话/状态徽章/侧栏导航（T6-4） |
+| `ContextPanel` | 工作台右栏上下文面板 | 目标定位/取证事实/L3 偏好条只读渲染（T6-4） |
+| `SettingsModal` | 设置中心弹窗外壳 | 左侧四项导航 + Esc/✕ 关闭（F-604） |
+| `ModelServicePanel` | 设置 · 模型服务标签页 | 密钥脱敏回显 + 测试连接（F-604） |
+| `AppearancePanel` | 设置 · 通用外观标签页 | 主题三态分段 + localStorage `devprompt:v1:`（F-604） |
+| `MemoryPanel` | 设置 · 长期记忆标签页 | L3 滑条/采纳历史/导出/清空（F-604） |
+| `SecurityPanel` | 设置 · 流程与安全标签页 | 护栏参数/锁定项只读/清除数据（F-604） |
+
+（T6-10 补齐行：`OptimizeInput`/`VariantTabs`/`CopyButton`/`SessionSidebar`/`ContextPanel` 及设置中心五组件；`ui/`、`history/`、`preference/` 组见 §5.1 全清单。）
 
 ## F-704 HTTP 接口
 
@@ -892,6 +906,7 @@ frontend/src/
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v1.4 | 2026-10-12 | F-703 组件清单按**架构文档 §5.1（唯一权威）**补齐（T6-10，修复审查报告中等 5）：新增 6E 其余 `OptimizeInput`/`VariantTabs`/`CopyButton`、6D 的 `SessionSidebar`/`ContextPanel`、设置中心五组件；F-701 目录草图「五个核心组件」改为指向 §5.1 的组件组表述；F-702 页面清单与 §5.1 pages/ 一致无需改动 |
 | v1.3 | 2026-10-10 | F-503 更新规则表按**开放决策 #1（用户裁定 2026-10-10）**改写为合成公式：采纳 `v←0.9v+0.1×feat`、编辑采纳信号强度 ×(1−编辑距离占比)（`difflib.SequenceMatcher`）、跳过 `v←v+(0.5−v)×0.3` 趋向中性，消除原「各−0.5」字面权重与验收「向 0.5 回归」的数值张力（阶段五 5D · T5-7/T5-8） |
 | v1.2 | 2026-10-10 | F-804 验收拆分为两条可执行条款：①方案内容 diff 对照（同 mock 决策层 + 固定种子场景；真实 LLM 不要求零差异——非确定性豁免显式化）②评分与推荐标记一致性（ranking 视图 fit/pref/total/confidence/gap/marked/reason 逐字段相等）；补齐输入/行为/验收三要素。修复审查报告「中等 6」（阶段五 5A · T5-11①） |
 | v1.1 | 2026-10-10 | BREAKING：废除 CLI 形态，全面转向 Web-only 架构（批准人=项目所有者）。F-601 重定义为 Web API 端点（`interfaces/api/` 9 端点，501 端点如实标注）；F-602 重定义为 Web 交互界面（阶段六 React UI）；F-804 重定义为流程恢复一致性测试；附录 B 改为端点速查 |
