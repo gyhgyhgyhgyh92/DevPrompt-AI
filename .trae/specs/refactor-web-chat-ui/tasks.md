@@ -31,18 +31,18 @@
   - [x] 5.2 `SessionMenu`：4 项（置顶/复制路径/重命名/删除红字）；视觉对齐；Esc/外点关闭；键盘可达
   - [x] 5.3 功能接线：置顶 PATCH 排前；重命名内联编辑 PATCH；删除二次确认 DELETE；复制路径 clipboard + toast（注：当前复制 basename，全路径随 Task 6 前置小修提供 project_root 字段后接续）
   - [x] 5.4 测试（≥8）+ 提交 `feat(web)`
-- [ ] Task 6: 正式界面对话流（图五 1:1，依赖 Task 2 + Task 4）
-  - [ ] 6.1 `components/optimize/ChatStream.tsx` 骨架：用户消息气泡（右对齐浅灰圆角块）+ AI 回复块（小图标 + DevPrompt 标识 + 耗时/状态折叠行 + 分隔线 + 正文 + 操作栏[复制/重试/反馈/由 AI 生成]）
-  - [ ] 6.2 方案组嵌入：PromptCard/VariantTabs/RecommendBadge/ScoreDetail/ConfidenceNotice/上下文信息（目标定位/取证事实）重排进回复正文；追问卡 FollowupForm 以回复块形式呈现（MUST-26/27/08 全保留）
-  - [ ] 6.3 底部建议胶囊：承载 采纳 A/B/C / 编辑后采纳 / 跳过（`POST /feedback`）；操作栏按钮接线（复制/重试/反馈）
-  - [ ] 6.4 耗时折叠行：映射流程状态 + 耗时（替代 PhaseIndicator 信息位，MUST-07 只镜像）；ASKING/护栏态对话式呈现
-  - [ ] 6.5 mock e2e 六路径更新（对话流断言）：正常三套/反问/逃生/护栏继续/护栏逃生/刷新恢复 + 视觉属性断言（气泡底色/分隔线存在/「由 AI 生成」）
-  - [ ] 6.6 测试（≥10）+ 提交 `feat(web)`
-- [ ] Task 7: 响应式适配与废弃清理（依赖 Task 3/5/6）
-  - [ ] 7.1 响应式：360/768/1024/1440/1920 五档断言（<768 侧边栏抽屉 + 汉堡 + 遮罩；卡片与对话流在窄屏单列；无横向溢出）
-  - [ ] 7.2 清理：删除不兼容旧组件（PhaseIndicator/SessionSidebar 旧实现/ContextPanel 若已融入）、废弃 CSS/未用导出与资源；grep 残留引用零命中
-  - [ ] 7.3 全量门禁：前端五脚本 + 后端四门禁 + `check:contract`（12 路径/15 操作）+ 架构约束（前端零阈值）+ T6-7 复验
-  - [ ] 7.4 文档收口：UI 设计文档增补「对话式重构定稿」章节（引用 5 图与裁定）；真源 §13 留痕；提交 `docs(spec)`
+- [x] Task 6: 正式界面对话流（图五 1:1，依赖 Task 2 + Task 4）—— ChatStream 用例 + mock e2e 六路径（提交 2be3843）
+  - [x] 6.1 `components/optimize/ChatStream.tsx` 骨架：用户消息气泡（右对齐浅灰圆角块）+ AI 回复块（小图标 + DevPrompt 标识 + 耗时/状态折叠行 + 分隔线 + 正文 + 操作栏[复制/重试/反馈/由 AI 生成]）
+  - [x] 6.2 方案组嵌入：PromptCard/VariantTabs/RecommendBadge/ScoreDetail/ConfidenceNotice/上下文信息（目标定位/取证事实）重排进回复正文；追问卡 FollowupForm 以回复块形式呈现（MUST-26/27/08 全保留）
+  - [x] 6.3 底部建议胶囊：承载 采纳 A/B/C / 编辑后采纳 / 跳过（`POST /feedback`）；操作栏按钮接线（复制/重试/反馈）
+  - [x] 6.4 耗时折叠行：映射流程状态 + 耗时（替代 PhaseIndicator 信息位，MUST-07 只镜像）；ASKING/护栏态对话式呈现
+  - [x] 6.5 mock e2e 六路径更新（对话流断言）：正常三套/反问/逃生/护栏继续/护栏逃生/刷新恢复 + 视觉属性断言（气泡底色/分隔线存在/「由 AI 生成」）
+  - [x] 6.6 测试（≥10）+ 提交 `feat(web)`
+- [x] Task 7: 响应式适配与废弃清理（依赖 Task 3/5/6）—— 前端 182 用例（+App 抽屉 4 用例）
+  - [x] 7.1 响应式：360/768/1024/1440/1920 五档断言（<768 侧边栏抽屉 + 汉堡 + 遮罩；卡片与对话流在窄屏单列；无横向溢出）
+  - [x] 7.2 清理：删除不兼容旧组件（PhaseIndicator/SessionSidebar 旧实现/ContextPanel 若已融入）、废弃 CSS/未用导出与资源；grep 残留引用零命中
+  - [x] 7.3 全量门禁：前端五脚本 + 后端四门禁 + `check:contract`（12 路径/15 操作）+ 架构约束（前端零阈值）+ T6-7 复验
+  - [x] 7.4 文档收口：UI 设计文档增补「对话式重构定稿」章节（引用 5 图与裁定）；真源 §13 留痕；提交 `docs(spec)`
 
 # Task Dependencies
 

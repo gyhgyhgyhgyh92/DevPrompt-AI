@@ -23,6 +23,8 @@ const API_STATUS_TEXT: Record<ApiStatus, string> = {
 export function App() {
   const [apiStatus, setApiStatus] = useState<ApiStatus>('checking')
   const [isSettingsOpen, setSettingsOpen] = useState(false)
+  // 窄屏（<768）侧边栏抽屉开合；纯表现层状态，不进 store，不含任何业务判定（MUST-07/08）
+  const [isDrawerOpen, setDrawerOpen] = useState(false)
   const { sessionId, state, sseStatus } = useOptimizeStore(
     useShallow((s) => ({ sessionId: s.sessionId, state: s.state, sseStatus: s.sseStatus })),
   )
@@ -43,6 +45,16 @@ export function App() {
     }
   }, [])
 
+  // 抽屉打开时 Esc 关闭（无障碍要求；关闭后移除监听）
+  useEffect(() => {
+    if (!isDrawerOpen) return undefined
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') setDrawerOpen(false)
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isDrawerOpen])
+
   const activeProject =
     sessionId === null ? undefined : history.find((item) => item.session_id === sessionId)?.project
 
@@ -50,6 +62,15 @@ export function App() {
     <BrowserRouter>
       <div className="app-shell">
         <header className="app-titlebar">
+          <button
+            type="button"
+            className="app-titlebar__menu"
+            aria-label="打开侧边栏"
+            aria-expanded={isDrawerOpen}
+            onClick={() => setDrawerOpen(true)}
+          >
+            ☰
+          </button>
           <span className="app-titlebar__logo">● DevPrompt AI</span>
           <span className="app-titlebar__chip">
             {activeProject ? `▸ ${activeProject}` : '▸ 未选择项目'}
@@ -68,7 +89,17 @@ export function App() {
           </button>
         </header>
         <div className="app-body">
-          <ProjectSidebar />
+          <div className={isDrawerOpen ? 'app-drawer app-drawer--open' : 'app-drawer'}>
+            <ProjectSidebar />
+          </div>
+          {isDrawerOpen ? (
+            <button
+              type="button"
+              className="app-drawer__overlay"
+              aria-label="关闭侧边栏"
+              onClick={() => setDrawerOpen(false)}
+            />
+          ) : null}
           <main className="app-main">
             <AppRoutes />
           </main>

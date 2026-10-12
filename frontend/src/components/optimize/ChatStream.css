@@ -10,6 +10,13 @@
   padding: var(--space-6) var(--space-5);
 }
 
+/* 窄屏（<768）：气泡放宽至 90%，对话流单列不溢出 */
+@media (max-width: 767.98px) {
+  .chat-user-bubble {
+    max-inline-size: 90%;
+  }
+}
+
 .chat-stream__row {
   display: flex;
   inline-size: 100%;

@@ -17,6 +17,8 @@ body {
   font: var(--font-body-regular);
   color: var(--color-text-primary);
   background: var(--color-surface-base);
+  /* 全页禁横向滚动（窄屏/超宽屏均不出现横向溢出） */
+  overflow-x: hidden;
 }
 
 /* 细滚动条（色值取 token；浅/深主题自适应，参考图浅色系观感） */
@@ -88,6 +90,35 @@ pre {
   display: flex;
   flex: 1;
   min-block-size: 0;
+}
+
+/* 侧边栏抽屉容器：桌面「贯穿」为普通 flex 项（display:contents），<768 变覆盖层抽屉（见文件末尾媒体查询） */
+.app-drawer {
+  display: contents;
+}
+
+/* 抽屉遮罩：仅 <768 且抽屉打开时渲染（居中内容含点击关闭） */
+.app-drawer__overlay {
+  display: none;
+}
+
+/* 汉堡按钮（☰）：唤出窄屏抽屉；≥768 隐藏（见文件末尾媒体查询） */
+.app-titlebar__menu {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--space-8);
+  block-size: var(--space-8);
+  font-size: var(--text-title-lg);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.app-titlebar__menu:hover {
+  background: var(--hover);
 }
 
 .app-titlebar {
@@ -175,11 +206,6 @@ pre {
   min-inline-size: 0;
 }
 
-/* 会话视图：侧栏移至 AppShell，主区为「流程线程 + 上下文面板」两列（Task 6 将改对话流） */
-.workspace--chat {
-  grid-template-columns: minmax(0, 1fr) 18rem;
-}
-
 /* 优化页容器（初始态居中主视觉 / 有会话时结果区） */
 .optimize-page {
   display: flex;
@@ -197,47 +223,7 @@ pre {
   padding: var(--space-6);
 }
 
-/* 会话侧栏 */
-
-.session-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-}
-
-.session-sidebar__list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  max-block-size: 24rem;
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  list-style: none;
-}
-
-.session-sidebar__item {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  align-items: center;
-  inline-size: 100%;
-  padding: var(--space-2);
-  text-align: start;
-  cursor: pointer;
-  background: var(--color-surface-base);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
-}
-
-.session-sidebar__id {
-  font: var(--font-code-medium);
-  color: var(--color-text-primary);
-}
+/* 条目状态徽章/项目名（旧 SessionSidebar 已删除，HistoryPage 复用此二类） */
 
 .session-sidebar__badge {
   padding: 0 var(--space-2);
@@ -255,22 +241,7 @@ pre {
   overflow-wrap: anywhere;
 }
 
-.session-sidebar__footer {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-block-start: auto;
-  padding-block-start: var(--space-2);
-  border-block-start: 1px solid var(--color-border-subtle);
-}
-
 /* 流程线程（主区） */
-
-.thread__bubble {
-  padding: var(--space-3);
-  background: var(--color-primary-soft);
-  border-radius: var(--radius-md);
-}
 
 .thread__chips {
   display: flex;
@@ -373,60 +344,7 @@ pre {
   border-radius: var(--radius-md);
 }
 
-.variant-card__level {
-  padding: 0 var(--space-2);
-  font: var(--font-code-medium);
-  color: var(--color-text-brand);
-  background: var(--color-primary-soft);
-  border-radius: var(--radius-sm);
-}
-
-.variant-card__changes {
-  margin: 0;
-  padding-inline-start: var(--space-5);
-  color: var(--color-text-secondary);
-}
-
-.ranking-block {
-  padding: var(--space-3);
-  background: var(--color-surface-code);
-  border-radius: var(--radius-md);
-}
-
-.ranking-block__marked {
-  color: var(--color-text-brand);
-}
-
-.ranking-block__reason {
-  color: var(--color-text-secondary);
-}
-
-/* 上下文面板 */
-
-.context-panel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  padding: var(--space-3);
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-}
-
-.context-panel__target {
-  display: block;
-  padding: var(--space-2);
-  overflow-wrap: anywhere;
-}
-
-.context-panel__facts {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
+/* 上下文/偏好空态文案（PreferencePage/HistoryPage/VariantTabs 共用） */
 
 .context-panel__empty {
   font-size: var(--text-body-sm);
@@ -514,15 +432,10 @@ pre {
   border-radius: var(--radius-sm);
 }
 
-.thread__form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
 /* ===== 布局容器与断点基线 =====
  * 移动优先断点：360 / 768 / 1024 / 1440 / 1920（对应 tokens --bp-sm…--bp-2xl）。
- * <768px 侧边栏抽屉的最终实现归 Task 7，本任务仅落「主题 + 断点」占位基线。
+ * 主区内容由 ConsoleInput（720 卡片）/ ChatStream（820 列）各自 max-inline-size 约束，
+ * 1920 超宽屏下居中不拉伸。
  */
 
 .layout-container {
@@ -532,14 +445,43 @@ pre {
   padding-inline: var(--space-4);
 }
 
-/* 窄屏（<768）：三栏塌陷为单列，侧边栏让位（抽屉延迟到 Task 7） */
+/* 窄屏（<768）：侧边栏折叠为抽屉（汉堡唤出 + 遮罩/Esc 关闭）；三栏塌陷为单列 */
 @media (max-width: 767.98px) {
   .workspace {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .session-sidebar {
-    display: none;
+  .app-titlebar__menu {
+    display: inline-flex;
+  }
+
+  .app-drawer {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    z-index: 40;
+    display: block;
+    inline-size: var(--sidebar-width);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+
+  .app-drawer--open {
+    transform: translateX(0);
+  }
+
+  .app-drawer .project-sidebar {
+    block-size: 100%;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .app-drawer__overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: block;
+    background: var(--color-overlay);
+    border: none;
   }
 
   .layout-container {

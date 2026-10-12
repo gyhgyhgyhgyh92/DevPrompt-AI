@@ -122,3 +122,10 @@
   font-size: var(--text-body-xs);
   color: var(--danger);
 }
+
+/* 窄屏（≤480）单列：卡片收窄至「视口 - 32px」，两侧留白不溢出 */
+@media (max-width: 480px) {
+  .console-input__card {
+    inline-size: calc(100% - var(--space-8));
+  }
+}
