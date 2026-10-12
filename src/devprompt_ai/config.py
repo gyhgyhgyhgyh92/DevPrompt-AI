@@ -22,6 +22,7 @@ DeciderMode = Literal["auto", "jev", "fallback"]
 
 # settings.json model_service 段键 → AppConfig 字段名（F-604 契约键与配置键分离）
 MODEL_KEY_MAP: dict[str, str] = {
+    "provider": "llm_provider",
     "base_url": "llm_base_url",
     "api_key": "llm_api_key",
     "model_id": "llm_model",
@@ -57,6 +58,7 @@ class _LocalSettingsSource(PydanticBaseSettingsSource):
 
 class AppConfig(BaseSettings):
     typesafe_api_key: str = ""
+    llm_provider: str = ""  # F-604 供应商标识（UI 分段展示用；URL 预填由前端映射）
     llm_base_url: str = ""
     llm_api_key: str = ""
     llm_model: str = ""

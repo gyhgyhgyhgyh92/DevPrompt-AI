@@ -7,6 +7,7 @@ import {
   OptimizeRequestSchema,
 } from '../schemas/optimize'
 import {
+  AdoptionsClearSchema,
   HistoryListSchema,
   PreferenceUpdateRequestSchema,
   PreferenceVectorSchema,
@@ -15,6 +16,7 @@ import { SettingsResponseSchema, SettingsUpdateSchema } from '../schemas/setting
 import { API_BASE_URL, openEventStream, request, type SseHandlers } from './client'
 import { contractError } from './errors'
 import type {
+  AdoptionsClearResponse,
   FeedbackRequest,
   FlowSnapshotResponse,
   FollowupRequest,
@@ -37,6 +39,7 @@ export const ENDPOINTS = {
   result: (flowId: string) => `${API_BASE_URL}/result/${flowId}`,
   feedback: `${API_BASE_URL}/feedback`,
   preference: `${API_BASE_URL}/preference`,
+  preferenceAdoptions: `${API_BASE_URL}/preference/adoptions`,
   history: `${API_BASE_URL}/history`,
   projectScan: (project: string) =>
     `${API_BASE_URL}/project/scan?project=${encodeURIComponent(project)}`,
@@ -128,6 +131,16 @@ export function putPreference(
 
 export function getHistory(signal?: AbortSignal): Promise<HistoryItemPayload[]> {
   return request(ENDPOINTS.history, { method: 'GET', schema: HistoryListSchema, signal })
+}
+
+/** DELETE /preference/adoptions：清空服务端采纳历史（有副作用端点，禁重试，MUST-15）。 */
+export async function clearAdoptions(signal?: AbortSignal): Promise<AdoptionsClearResponse> {
+  return request(ENDPOINTS.preferenceAdoptions, {
+    method: 'DELETE',
+    schema: AdoptionsClearSchema,
+    hasSideEffect: true,
+    signal,
+  })
 }
 
 export function getSettings(signal?: AbortSignal): Promise<SettingsResponse> {

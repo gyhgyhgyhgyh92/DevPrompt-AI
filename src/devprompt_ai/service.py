@@ -119,64 +119,72 @@ class ForgeService:
     ) -> FlowSnapshot:
         """F-001：创建/恢复会话，执行阶段一至二（检索+探针），路由 ask/done。"""
         session = await load_or_create(self._sessions, user_id)
-        session.data = {
-            "sentence": sentence,
-            "project_root": project_root,
-            "last_request_id": request_id,
-            "clarifications": {},
-            "rounds": 0,
-            "cost_tokens": 0,
-            "started_at": time.time(),  # flow.completed 耗时基准（T6-9）
-        }
-        await transition(session, FlowState.RETRIEVING, self._sessions)
-        emit("flow.started", flow_id=session.session_id, request_id=request_id)
+        try:
+            session.data = {
+                "sentence": sentence,
+                "project_root": project_root,
+                "last_request_id": request_id,
+                "clarifications": {},
+                "rounds": 0,
+                "cost_tokens": 0,
+                "started_at": time.time(),  # flow.completed 耗时基准（T6-9）
+            }
+            await transition(session, FlowState.RETRIEVING, self._sessions)
+            emit("flow.started", flow_id=session.session_id, request_id=request_id)
 
-        symbols = self._symbols_override
-        if symbols is None:
-            table = await self._symbols_provider.get(project_root)
-            symbols = table.symbols
-        result = build_candidates(sentence, symbols)
-        session.data["candidates"] = [
-            {"name": c.name, "path": c.path, "score": c.score, "source": c.source}
-            for c in result.candidates
-        ]
+            symbols = self._symbols_override
+            if symbols is None:
+                table = await self._symbols_provider.get(project_root)
+                symbols = table.symbols
+            result = build_candidates(sentence, symbols)
+            session.data["candidates"] = [
+                {"name": c.name, "path": c.path, "score": c.score, "source": c.source}
+                for c in result.candidates
+            ]
 
-        if result.manual_required:
-            # slots dataclass 无 __dict__，序列化必须走 asdict（计划 §6.2 注意事项）
-            item = UnknownItem(
-                key="manual_target",
-                reason=f"候选不足（{result.total_matched} 条）",
-                best_guess="",
-                ask="请指明目标符号名与文件路径（格式：符号@路径）",
+            if result.manual_required:
+                # slots dataclass 无 __dict__，序列化必须走 asdict（计划 §6.2 注意事项）
+                item = UnknownItem(
+                    key="manual_target",
+                    reason=f"候选不足（{result.total_matched} 条）",
+                    best_guess="",
+                    ask="请指明目标符号名与文件路径（格式：符号@路径）",
+                )
+                session.data["unknowns"] = [dataclasses.asdict(item)]
+                session.data["level"] = "A"
+                await transition(session, FlowState.ASKING, self._sessions)
+                return self._snapshot(session, "ask")
+
+            top = await self._rank_top(session, result.candidates)
+            symbol = Symbol(name=top.name, path=top.path, line=top.line, kind="function")
+            location = await locate_symbol(symbol, self._runner, self._reader, root=project_root)
+            facts = await verify_facts(
+                location, sentence, self._runner, self._reader, root=project_root
             )
-            session.data["unknowns"] = [dataclasses.asdict(item)]
-            session.data["level"] = "A"
-            await transition(session, FlowState.ASKING, self._sessions)
-            return self._snapshot(session, "ask")
-
-        top = await self._rank_top(session, result.candidates)
-        symbol = Symbol(name=top.name, path=top.path, line=top.line, kind="function")
-        location = await locate_symbol(symbol, self._runner, self._reader, root=project_root)
-        facts = await verify_facts(
-            location, sentence, self._runner, self._reader, root=project_root
-        )
-        session.data["facts"] = [
-            {"key": f.key, "passed": f.passed, "evidence": f.evidence} for f in facts
-        ]
-        session.data["target"] = {"name": top.name, "path": top.path, "line": top.line}
-        await transition(session, FlowState.PROBING, self._sessions)
-        return await self._probe_and_route(session, request_id=request_id)
+            session.data["facts"] = [
+                {"key": f.key, "passed": f.passed, "evidence": f.evidence} for f in facts
+            ]
+            session.data["target"] = {"name": top.name, "path": top.path, "line": top.line}
+            await transition(session, FlowState.PROBING, self._sessions)
+            return await self._probe_and_route(session, request_id=request_id)
+        except Exception:
+            await self._abort_quietly(session)
+            raise
 
     async def ask_followup(
         self, user_id: str, session_id: str, answers: dict[str, str], *, request_id: str
     ) -> FlowSnapshot:
         """F-204：批量答复 → 重新研判 → ask/guardrail/done。"""
         session = await self._require(user_id, session_id, {FlowState.ASKING, FlowState.CONFIRMING})
-        session.data.setdefault("clarifications", {}).update(answers)
-        session.data["last_request_id"] = request_id
-        session.data["rounds"] = int(session.data.get("rounds", 0)) + 1
-        await transition(session, FlowState.CONFIRMING, self._sessions)
-        return await self._reprobe(session)
+        try:
+            session.data.setdefault("clarifications", {}).update(answers)
+            session.data["last_request_id"] = request_id
+            session.data["rounds"] = int(session.data.get("rounds", 0)) + 1
+            await transition(session, FlowState.CONFIRMING, self._sessions)
+            return await self._reprobe(session)
+        except Exception:
+            await self._abort_quietly(session)
+            raise
 
     async def resume(self, user_id: str, session_id: str, *, request_id: str) -> FlowSnapshot:
         """--session 恢复入口：只读加载既有会话并重建快照，不做任何状态转移。
@@ -201,27 +209,42 @@ class ForgeService:
         此处不得预转移，否则必抛 6001）。
         """
         session = await self._require(user_id, session_id, {FlowState.ASKING, FlowState.CONFIRMING})
-        emit(
-            "followup.escaped",
-            rounds=session.data.get("rounds", 0),
-            request_id=request_id,
-        )
-        session.data["level"] = "A"
-        session.data["conservative"] = True
-        return await self._generate_and_finish(session)
+        try:
+            emit(
+                "followup.escaped",
+                rounds=session.data.get("rounds", 0),
+                request_id=request_id,
+            )
+            session.data["level"] = "A"
+            session.data["conservative"] = True
+            return await self._generate_and_finish(session)
+        except Exception:
+            await self._abort_quietly(session)
+            raise
 
     async def guardrail_confirm(
         self, user_id: str, session_id: str, proceed: bool, *, request_id: str
     ) -> FlowSnapshot:
         """MUST-26 ③：软护栏裁决——继续追问（清零）或直接生成。"""
         session = await self._require(user_id, session_id, {FlowState.CONFIRMING})
-        if proceed:
-            session.data["rounds"] = 0
-            await transition(session, FlowState.ASKING, self._sessions)
-            return self._snapshot(session, "ask")
-        session.data["level"] = "A"
-        session.data["conservative"] = True
-        return await self._generate_and_finish(session)
+        try:
+            if proceed:
+                session.data["rounds"] = 0
+                await transition(session, FlowState.ASKING, self._sessions)
+                return self._snapshot(session, "ask")
+            session.data["level"] = "A"
+            session.data["conservative"] = True
+            return await self._generate_and_finish(session)
+        except Exception:
+            await self._abort_quietly(session)
+            raise
+
+    async def _abort_quietly(self, session: FlowSession) -> None:
+        """失败兜底（6G 遗留①）：异常路径置 ABORTED，避免死会话（如 PROBING）残留污染历史。"""
+        try:
+            await transition(session, FlowState.ABORTED, self._sessions)
+        except Exception:
+            logger.exception("state.abort_failed", extra={"session_id": session.session_id})
 
     async def get_preference(self, user_id: str) -> Preference:
         """L3 偏好向量（F-503）：store 无记录时返回初始中性值（MUST-08：判定在 domain）。"""
@@ -238,6 +261,10 @@ class ForgeService:
         await self._preferences.save(user_id, merged)
         return merged
 
+    async def clear_adoption_history(self, user_id: str) -> int:
+        """清空服务端采纳历史（D-6F-4 关闭）：返回清空条数；偏好向量不动。"""
+        return await self._preferences.clear_adoptions(user_id)
+
     async def list_history(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
         """GET /history 转正（T6-11）：脱敏会话摘要（无原句明文，MUST-19）。"""
         return await self._sessions.list_recent(user_id, limit)
@@ -247,6 +274,7 @@ class ForgeService:
         cfg = self._cfg
         return {
             "model_service": {
+                "provider": cfg.llm_provider,
                 "base_url": cfg.llm_base_url,
                 "api_key_masked": mask_secret(cfg.llm_api_key),
                 "model_id": cfg.llm_model,

@@ -7,7 +7,7 @@ import {
   VariantSchema,
 } from './optimize'
 import { HistoryListSchema, PreferenceVectorSchema } from './preference'
-import { SettingsResponseSchema } from './settings'
+import { ModelServiceUpdateSchema, SettingsResponseSchema } from './settings'
 
 describe('schemas/optimize 契约校验', () => {
   it('FollowupRequest 三模式各自合法', () => {
@@ -146,6 +146,7 @@ describe('schemas/preference 与 settings 契约校验', () => {
         base_url: '',
         decider: 'auto',
         model_id: 'demo',
+        provider: 'DeepSeek',
         timeout: 60,
       },
       process: {
@@ -163,5 +164,32 @@ describe('schemas/preference 与 settings 契约校验', () => {
       }).success,
     ).toBe(false)
     expect(SettingsResponseSchema.safeParse({ ...base, locked: {} }).success).toBe(false)
+  })
+
+  it('ModelServiceSettings.provider 为必填字符串', () => {
+    expect(
+      SettingsResponseSchema.safeParse({
+        model_service: {
+          api_key_masked: '',
+          base_url: '',
+          decider: 'auto',
+          model_id: 'demo',
+          timeout: 60,
+        },
+        process: {
+          followup_cost_budget: 1,
+          followup_soft_round_guard: 10,
+          telemetry: true,
+        },
+        locked: { candidate_limit: 25 },
+      }).success,
+    ).toBe(false)
+  })
+
+  it('ModelServiceUpdate.provider 可省略或为 null（None/空=不变）', () => {
+    expect(ModelServiceUpdateSchema.safeParse({}).success).toBe(true)
+    expect(ModelServiceUpdateSchema.safeParse({ provider: null }).success).toBe(true)
+    expect(ModelServiceUpdateSchema.safeParse({ provider: '自定义' }).success).toBe(true)
+    expect(ModelServiceUpdateSchema.safeParse({ provider: 7 }).success).toBe(false)
   })
 })

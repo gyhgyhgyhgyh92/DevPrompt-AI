@@ -24,18 +24,19 @@ def _load_export_module() -> Any:
     return mod
 
 
-def test_openapi_covers_twelve_operations() -> None:
-    """10 路径 / 12 操作（preference 与 settings 各含 GET+PUT）；统一 /api/v1 前缀。"""
+def test_openapi_covers_thirteen_operations() -> None:
+    """11 路径 / 13 操作（preference/settings 各 GET+PUT，另有 DELETE adoptions）。"""
     doc = create_app().openapi()
     paths: dict[str, Any] = doc["paths"]
-    assert len(paths) == 10
+    assert len(paths) == 11
     assert all(p.startswith("/api/v1/") for p in paths)
     operations = sum(
         len([m for m in ops if m in {"get", "put", "post", "delete"}]) for ops in paths.values()
     )
-    assert operations == 12
+    assert operations == 13
     assert set(paths["/api/v1/settings"]) >= {"get", "put"}
     assert set(paths["/api/v1/preference"]) >= {"get", "put"}
+    assert "delete" in paths["/api/v1/preference/adoptions"]
 
 
 def test_committed_openapi_matches_app() -> None:

@@ -33,8 +33,10 @@ class FakeForgeService:
         self.feedback_calls: list[dict[str, Any]] = []
         self.preference_updates: list[dict[str, float]] = []
         self.settings_updates: list[dict[str, Any]] = []
+        self.adoption_clear_calls: list[str] = []
         self.settings_view: dict[str, Any] = {
             "model_service": {
+                "provider": "DeepSeek",
                 "base_url": "https://mock.local",
                 "api_key_masked": "sk-••••3f7a",
                 "model_id": "mock-model",
@@ -107,6 +109,10 @@ class FakeForgeService:
     async def update_settings(self, update: dict[str, Any]) -> dict[str, Any]:
         self.settings_updates.append(update)
         return dict(self.settings_view)
+
+    async def clear_adoption_history(self, user_id: str) -> int:
+        self.adoption_clear_calls.append(user_id)
+        return 3
 
     async def feedback(
         self,
@@ -434,3 +440,13 @@ async def test_x_request_id_echoed_from_request(
     resp = await client.get("/api/v1/settings", headers={"X-Request-ID": "trace-123"})
     assert resp.headers["x-request-id"] == "trace-123"
     assert resp.json()["request_id"] == "trace-123"
+
+
+async def test_delete_preference_adoptions(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """D-6F-4：DELETE /preference/adoptions 清空服务端采纳历史，返回清空条数。"""
+    resp = await client.delete("/api/v1/preference/adoptions")
+    assert resp.status_code == 200
+    assert resp.json()["data"] == {"cleared": 3}
+    assert fake_service.adoption_clear_calls == ["local"]

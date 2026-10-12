@@ -18,6 +18,7 @@ export const ModelServiceSchema = z.object({
   decider: z.enum(['auto', 'jev', 'fallback']),
   max_tokens: z.number().nullish(),
   model_id: z.string(),
+  provider: z.string(),
   temperature: z.number().nullish(),
   timeout: z.number(),
 })
@@ -41,13 +42,14 @@ export const SettingsResponseSchema = z.object({
   process: ProcessSchema,
 })
 
-/** PUT /settings 模型段（契约 ModelServiceUpdate；None=不变，api_key 仅入参明文）。 */
+/** PUT /settings 模型段（契约 ModelServiceUpdate；None/空=不变，api_key 仅入参明文）。 */
 export const ModelServiceUpdateSchema = z.object({
   api_key: z.string().nullish(),
   base_url: z.string().nullish(),
   decider: z.enum(['auto', 'jev', 'fallback']).nullish(),
   max_tokens: z.number().nullish(),
   model_id: z.string().nullish(),
+  provider: z.string().nullish(),
   temperature: z.number().nullish(),
   timeout: z.number().nullish(),
 })

@@ -21,7 +21,7 @@ from devprompt_ai.domain.models import Candidate, FactResult, FlowSession, Sessi
 from devprompt_ai.domain.ranking.ports import AdoptionRecord
 from devprompt_ai.domain.ranking.preference import INITIAL_PREFERENCE
 from devprompt_ai.domain.ranking.recommend import REASON_SMALL_GAP
-from devprompt_ai.service import _RANK_CACHE, ForgeService
+from devprompt_ai.service import _RANK_CACHE, FlowSnapshot, ForgeService
 
 
 @dataclass(slots=True)
@@ -64,14 +64,18 @@ class FakeDecider:
         confs: list[float],
         scores: dict[str, tuple[int, float]] | None = None,
         score_error: Exception | None = None,
+        probe_error: Exception | None = None,
     ) -> None:
         self.confs = confs
         self.scores = scores or {"A": (2, 0.9), "B": (3, 0.9), "C": (4, 0.9)}
         self.score_error = score_error
+        self.probe_error = probe_error
         self.rank_calls = 0
         self.score_calls = 0
 
     async def probe_facts(self, sentence: str, facts: list[FactResult]) -> FactProbeOutput:
+        if self.probe_error is not None:
+            raise self.probe_error
         keys = [f.key for f in facts]
         return FactProbeOutput(
             judgments=[
@@ -170,6 +174,13 @@ class FakePreferenceStore:
         if self.fail:
             raise RuntimeError("preference store unavailable")
         self.records.append(rec)
+
+    async def clear_adoptions(self, user_id: str) -> int:
+        if self.fail:
+            raise RuntimeError("preference store unavailable")
+        before = len(self.records)
+        self.records = [r for r in self.records if r.user_id != user_id]
+        return before - len(self.records)
 
 
 def _symbols() -> list[Symbol]:
@@ -566,3 +577,66 @@ async def test_flow_events_chain_without_sentence(caplog: pytest.LogCaptureFixtu
         for key, value in vars(r).items():
             if key not in {"msg", "args", "message", "asctime"}:
                 assert sentence not in str(value)
+
+
+# ---------- 6G 遗留①失败兜底 + D-6F-4 清空 + 供应商标识 ----------
+
+
+async def test_failed_optimize_aborts_session() -> None:
+    """6G 遗留①：失败请求不残留死会话——异常路径置 ABORTED（如 PROBING 挂起不再出现）。"""
+    svc, store = _service(decider=FakeDecider([0.9] * 7, probe_error=RuntimeError("llm down")))
+    with pytest.raises(RuntimeError, match="llm down"):
+        await svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    sessions = list(store.items.values())
+    assert len(sessions) == 1
+    assert sessions[0].state == "ABORTED"  # 不残留 PROBING
+
+
+async def test_failed_ask_followup_aborts_session() -> None:
+    """6G 遗留①同类：答复路径失败同样兜底 ABORTED，异常照常冒泡。"""
+    svc, store = _service()
+    snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+    assert snap.status == "ask"
+
+    async def _boom(session: FlowSession) -> FlowSnapshot:
+        raise RuntimeError("reprobe down")
+
+    svc._reprobe = _boom  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="reprobe down"):
+        await svc.ask_followup("local", snap.session_id, {"test_file_exists": "x"}, request_id="r2")
+    assert store.items[snap.session_id].state == "ABORTED"
+
+
+async def test_clear_adoption_history_only_own_records() -> None:
+    """D-6F-4：服务端清空采纳历史——仅本用户分区，返回清空条数，向量不动。"""
+    prefs = FakePreferenceStore()
+    svc, _ = _service(prefs=prefs)
+    await svc.feedback("local", "s1", "accept", variant="B", request_id="r1")
+    await svc.feedback("local", "s2", "accept", variant="C", request_id="r2")
+    await svc.feedback("other", "s3", "accept", variant="A", request_id="r3")
+    before = await svc.get_preference("local")
+
+    cleared = await svc.clear_adoption_history("local")
+    assert cleared == 2
+    assert [r.user_id for r in prefs.records] == ["other"]  # 他人分区不受影响
+    assert await svc.get_preference("local") == before  # 偏好向量不动
+    assert await svc.clear_adoption_history("local") == 0  # 幂等：再次清空 0 条
+
+
+async def test_update_settings_carries_provider(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """遗留④：供应商标识为契约字段——写入设置文件并经加载链生效，GET 回读一致。"""
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_FILE", str(tmp_path / "settings.json"))
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_DB", str(tmp_path / "settings.db"))
+    svc, _ = _service()
+
+    view = await svc.update_settings({"model_service": {"provider": "DeepSeek"}})
+    assert view["model_service"]["provider"] == "DeepSeek"
+    assert svc._cfg.llm_provider == "DeepSeek"  # 运行配置即时生效
+    # 落盘并经加载链回读（新构造 AppConfig 同值）
+    from devprompt_ai.memory.settings_store import read_model_settings
+
+    assert read_model_settings()["provider"] == "DeepSeek"
+    reloaded = AppConfig(_env_file=None)  # type: ignore[call-arg]
+    assert reloaded.llm_provider == "DeepSeek"

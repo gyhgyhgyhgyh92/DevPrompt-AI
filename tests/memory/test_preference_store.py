@@ -98,8 +98,24 @@ async def test_history_limit_and_user_partition(store: SQLitePreferenceStore) ->
 async def test_store_satisfies_preference_store_protocol(store: SQLitePreferenceStore) -> None:
     await store.init_schema()
     assert issubclass(SQLitePreferenceStore, PreferenceStore)  # runtime_checkable 契约
-    # Protocol 三方法真实可调用（非仅鸭子签名）
+    # Protocol 方法真实可调用（非仅鸭子签名）
     await store.save("u1", dict(INITIAL_PREFERENCE))
     await store.record_adoption(_rec("C"))
     assert (await store.load("u1"))["detail_level"] == pytest.approx(0.5)
     assert len(await store.history("u1")) == 1
+
+
+async def test_clear_adoptions_partitions_and_counts(store: SQLitePreferenceStore) -> None:
+    """D-6F-4：清空仅本 user_id 分区并返回条数；向量与其他用户记录不动。"""
+    await store.init_schema()
+    await store.save("u1", dict(INITIAL_PREFERENCE))
+    await store.record_adoption(_rec("C"))
+    await store.record_adoption(_rec("B", session_id="s2"))
+    await store.record_adoption(_rec("A", user_id="u2", session_id="s3"))
+
+    cleared = await store.clear_adoptions("u1")
+    assert cleared == 2
+    assert await store.history("u1") == []
+    assert len(await store.history("u2")) == 1  # 他人分区不受影响
+    assert (await store.load("u1"))["detail_level"] == pytest.approx(0.5)  # 向量不动
+    assert await store.clear_adoptions("u1") == 0  # 幂等

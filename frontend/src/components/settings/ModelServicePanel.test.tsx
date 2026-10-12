@@ -20,6 +20,7 @@ const settingsFixture: SettingsResponse = {
     base_url: 'https://api.example.com',
     decider: 'auto',
     model_id: 'demo-model',
+    provider: 'OpenAI 兼容',
     timeout: 60,
     max_tokens: null,
     temperature: null,
@@ -125,13 +126,55 @@ describe('ModelServicePanel 模型服务', () => {
     expect(screen.getByText(/https:\/\/api\.example\.com \/ demo-model/)).toBeTruthy()
   })
 
-  it('供应商分段选择预填 Base URL', () => {
+  it('加载时按 settings.model_service.provider 高亮分段', () => {
+    render(<ModelServicePanel />)
+
+    expect(screen.getByRole('button', { name: 'OpenAI 兼容' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    )
+    expect(screen.getByRole('button', { name: 'DeepSeek' }).getAttribute('aria-pressed')).toBe(
+      'false',
+    )
+  })
+
+  it('切换分段写 provider 并预填 Base URL，保存随 model_service 上送', async () => {
     render(<ModelServicePanel />)
 
     fireEvent.click(screen.getByRole('button', { name: 'DeepSeek' }))
 
+    expect(screen.getByRole('button', { name: 'DeepSeek' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    )
     expect((screen.getByLabelText('Base URL') as HTMLInputElement).value).toBe(
       'https://api.deepseek.com',
     )
+
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(putSettings).mock.calls[0]?.[0].model_service?.provider).toBe('DeepSeek')
+    expect(vi.mocked(putSettings).mock.calls[0]?.[0].model_service?.base_url).toBe(
+      'https://api.deepseek.com',
+    )
+  })
+
+  it('保存后按回读 provider 回显分段（往返一致）', async () => {
+    const next: SettingsResponse = {
+      ...settingsFixture,
+      model_service: { ...settingsFixture.model_service, provider: '自定义' },
+    }
+    vi.mocked(putSettings).mockResolvedValue(next)
+    render(<ModelServicePanel />)
+
+    fireEvent.click(screen.getByRole('button', { name: '自定义' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(1))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '自定义' }).getAttribute('aria-pressed')).toBe(
+        'true',
+      ),
+    )
+    expect(useSettingsStore.getState().settings?.model_service.provider).toBe('自定义')
   })
 })

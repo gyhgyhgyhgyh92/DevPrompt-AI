@@ -17,6 +17,9 @@ class _FakeStore:
     async def record_adoption(self, rec: AdoptionRecord) -> None:
         return None
 
+    async def clear_adoptions(self, user_id: str) -> int:
+        return 0
+
 
 class _PartialStore:
     """缺 record_adoption，不满足 Protocol。"""

@@ -1,6 +1,51 @@
 {
   "components": {
     "schemas": {
+      "AdoptionsClearResponse": {
+        "description": "DELETE /preference/adoptions 数据体（D-6F-4）：清空条数。",
+        "properties": {
+          "cleared": {
+            "title": "Cleared",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cleared"
+        ],
+        "title": "AdoptionsClearResponse",
+        "type": "object"
+      },
+      "ApiResponse_AdoptionsClearResponse_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdoptionsClearResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[AdoptionsClearResponse]",
+        "type": "object"
+      },
       "ApiResponse_FlowSnapshotResponse_": {
         "properties": {
           "code": {
@@ -545,6 +590,11 @@
             "title": "Model Id",
             "type": "string"
           },
+          "provider": {
+            "default": "",
+            "title": "Provider",
+            "type": "string"
+          },
           "temperature": {
             "anyOf": [
               {
@@ -628,6 +678,17 @@
               }
             ],
             "title": "Model Id"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
           },
           "temperature": {
             "anyOf": [
@@ -1293,6 +1354,25 @@
           }
         },
         "summary": "Put Preference"
+      }
+    },
+    "/api/v1/preference/adoptions": {
+      "delete": {
+        "description": "清空服务端采纳历史（D-6F-4 关闭）：前端双重确认后调用，返回清空条数。",
+        "operationId": "delete_preference_adoptions_api_v1_preference_adoptions_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_AdoptionsClearResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Delete Preference Adoptions"
       }
     },
     "/api/v1/progress/{flow_id}": {

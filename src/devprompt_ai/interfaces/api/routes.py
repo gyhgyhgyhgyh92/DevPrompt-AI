@@ -15,6 +15,7 @@ from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.errors import StateError
 from devprompt_ai.interfaces.api import health
 from devprompt_ai.interfaces.api.schemas import (
+    AdoptionsClearResponse,
     ApiResponse,
     FactPayload,
     FeedbackRequest,
@@ -203,6 +204,17 @@ async def put_preference(
     values = {k: v for k, v in req.model_dump().items() if v is not None}
     pref = await svc.set_preference(_USER_ID, values)
     return _ok(PreferenceVectorPayload(**pref), request_id)
+
+
+@router.delete("/preference/adoptions")
+async def delete_preference_adoptions(
+    request: Request,
+) -> ApiResponse[AdoptionsClearResponse]:
+    """清空服务端采纳历史（D-6F-4 关闭）：前端双重确认后调用，返回清空条数。"""
+    request_id = _request_id(request)
+    svc = await get_service()
+    cleared = await svc.clear_adoption_history(_USER_ID)
+    return _ok(AdoptionsClearResponse(cleared=cleared), request_id)
 
 
 @router.get("/history")

@@ -135,6 +135,7 @@ class ScanResponse(BaseModel):
 class ModelServiceSettings(BaseModel):
     """F-604 模型服务设置视图：api_key 恒脱敏（MUST-19，明文不进响应）。"""
 
+    provider: str = ""
     base_url: str = ""
     api_key_masked: str = ""
     model_id: str = ""
@@ -169,6 +170,7 @@ class SettingsResponse(BaseModel):
 class ModelServiceUpdate(BaseModel):
     """PUT /settings 模型段：None = 保持不变；api_key 仅作入参明文，恒不回显。"""
 
+    provider: str | None = None
     base_url: str | None = None
     api_key: str | None = None
     model_id: str | None = None
@@ -218,6 +220,12 @@ class HistoryItemPayload(BaseModel):
     state: str
     project: str
     updated_at: str
+
+
+class AdoptionsClearResponse(BaseModel):
+    """DELETE /preference/adoptions 数据体（D-6F-4）：清空条数。"""
+
+    cleared: int
 
 
 class ApiResponse(BaseModel, Generic[DataT]):

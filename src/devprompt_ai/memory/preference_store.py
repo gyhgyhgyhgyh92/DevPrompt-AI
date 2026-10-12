@@ -140,3 +140,16 @@ class SQLitePreferenceStore:
             ]
 
         return await asyncio.to_thread(_run)
+
+    async def clear_adoptions(self, user_id: str) -> int:
+        """清空采纳历史（D-6F-4）：仅本 user_id 分区，返回清空条数；向量表不动。"""
+
+        def _run() -> int:
+            with self._connect() as conn:
+                cur = conn.execute(
+                    "DELETE FROM adoption_history WHERE user_id = ?",
+                    (user_id,),
+                )
+                return int(cur.rowcount)
+
+        return await asyncio.to_thread(_run)

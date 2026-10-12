@@ -26,3 +26,8 @@ export const HistoryItemSchema = z.object({
 
 /** GET /history 数据体（契约 ApiResponse[list[HistoryItemPayload]] 的 data）。 */
 export const HistoryListSchema = z.array(HistoryItemSchema)
+
+/** DELETE /preference/adoptions 数据体（契约 AdoptionsClearResponse；清空条数）。 */
+export const AdoptionsClearSchema = z.object({
+  cleared: z.number(),
+})

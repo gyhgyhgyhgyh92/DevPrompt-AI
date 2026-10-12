@@ -21,7 +21,7 @@ export const usePreferenceStore = create<PreferenceState>()((set) => ({
   ...initialState,
   setVector: (vector) => set({ vector }),
   setHistory: (history) => set({ history }),
-  // 后端暂无清空端点（清空接口待契约增补）：只清前端本地留存，外观设置键保留
+  // 服务端清空走 DELETE /preference/adoptions 且成功后才调本方法：此处只清前端本地留存，外观设置键保留
   clearLocalHistory: () => {
     for (const key of Object.keys(localStorage)) {
       if (key.startsWith(STORAGE_PREFIX) && key !== APPEARANCE_KEY) {

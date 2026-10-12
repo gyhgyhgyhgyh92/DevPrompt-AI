@@ -9,13 +9,13 @@ import './settings.css'
 type Decider = SettingsResponse['model_service']['decider']
 
 /**
- * 供应商分段（F-604）：契约无 provider 字段，分段仅作 Base URL 预填与归类展示，
- * 持久化仍以 base_url/model_id 为准。
+ * 供应商分段（F-604）：value 即契约 ModelServiceSettings.provider 取值（双向绑定），
+ * baseUrl 仅作切换分段时的预填；「自定义」不预填，保留用户已有 Base URL。
  */
-const PROVIDERS: ReadonlyArray<{ key: string; label: string; baseUrl: string }> = [
-  { key: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com' },
-  { key: 'openai', label: 'OpenAI 兼容', baseUrl: 'https://api.openai.com/v1' },
-  { key: 'custom', label: '自定义', baseUrl: '' },
+const PROVIDERS: ReadonlyArray<{ value: string; label: string; baseUrl: string }> = [
+  { value: 'DeepSeek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com' },
+  { value: 'OpenAI 兼容', label: 'OpenAI 兼容', baseUrl: 'https://api.openai.com/v1' },
+  { value: '自定义', label: '自定义', baseUrl: '' },
 ]
 
 /** GET /health 的 LLM 配置检查位名称（后端检查项标识，非前端判定）。 */
@@ -25,6 +25,7 @@ interface ModelServiceForm {
   baseUrl: string
   apiKey: string
   modelId: string
+  provider: string
   decider: Decider
   timeout: string
   temperature: string
@@ -43,6 +44,7 @@ function formFromSettings(settings: SettingsResponse): ModelServiceForm {
     baseUrl: service.base_url,
     apiKey: '',
     modelId: service.model_id,
+    provider: service.provider,
     decider: service.decider,
     timeout: String(service.timeout),
     temperature: service.temperature == null ? '' : String(service.temperature),
@@ -77,8 +79,8 @@ export function ModelServicePanel() {
 
   const maskedKey =
     settings.model_service.api_key_masked !== '' ? settings.model_service.api_key_masked : '未配置'
-  const activeProvider =
-    PROVIDERS.find((item) => item.baseUrl !== '' && item.baseUrl === form.baseUrl)?.key ?? 'custom'
+  // 分段高亮直接取 provider（双向绑定）；未匹配到已知分段时不高亮，不替用户猜测
+  const activeProvider = form.provider
 
   const patchForm = (patch: Partial<ModelServiceForm>) =>
     setForm((prev) => (prev ? { ...prev, ...patch } : prev))
@@ -95,6 +97,7 @@ export function ModelServicePanel() {
     const model_service: NonNullable<SettingsUpdate['model_service']> = {
       base_url: form.baseUrl.trim(),
       model_id: form.modelId.trim(),
+      provider: form.provider,
       decider: form.decider,
       timeout: timeout.value,
       temperature: temperature.value,
@@ -143,16 +146,19 @@ export function ModelServicePanel() {
         <div className="settings-segment" role="group" aria-label="供应商">
           {PROVIDERS.map((item) => (
             <button
-              key={item.key}
+              key={item.value}
               type="button"
-              aria-pressed={activeProvider === item.key}
+              aria-pressed={activeProvider === item.value}
               className={
-                activeProvider === item.key
+                activeProvider === item.value
                   ? 'settings-segment__item settings-segment__item--active'
                   : 'settings-segment__item'
               }
               onClick={() =>
-                patchForm({ baseUrl: item.key === 'custom' ? form.baseUrl : item.baseUrl })
+                patchForm({
+                  provider: item.value,
+                  ...(item.baseUrl === '' ? {} : { baseUrl: item.baseUrl }),
+                })
               }
             >
               {item.label}

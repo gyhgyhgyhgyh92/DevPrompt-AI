@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  clearAdoptions,
   getHealth,
   getHistory,
   getPreference,
@@ -50,6 +51,7 @@ const settings = {
     base_url: 'https://api.example.com',
     decider: 'auto',
     model_id: 'demo',
+    provider: 'DeepSeek',
     timeout: 60,
     max_tokens: null,
     temperature: null,
@@ -170,6 +172,14 @@ describe('api/endpoints 偏好与设置', () => {
     )
 
     await expect(getHistory()).resolves.toHaveLength(1)
+  })
+
+  it('clearAdoptions 走 DELETE /preference/adoptions 并返回清空条数', async () => {
+    const fetchMock = stubFetchJson(envelope({ cleared: 3 }))
+
+    await expect(clearAdoptions()).resolves.toEqual({ cleared: 3 })
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/preference/adoptions')
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('DELETE')
   })
 
   it('getSettings / putSettings 读写设置视图', async () => {

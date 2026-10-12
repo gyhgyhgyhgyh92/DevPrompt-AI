@@ -9,6 +9,7 @@ const settingsFixture: SettingsResponse = {
     base_url: 'https://api.example.com',
     decider: 'auto',
     model_id: 'demo',
+    provider: 'DeepSeek',
     timeout: 60,
     max_tokens: null,
     temperature: null,

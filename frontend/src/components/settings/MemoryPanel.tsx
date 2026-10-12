@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getHistory, getPreference, putPreference } from '../../api/endpoints'
+import { clearAdoptions, getHistory, getPreference, putPreference } from '../../api/endpoints'
 import type { PreferenceVectorPayload } from '../../api/types'
 import { usePreferenceStore } from '../../stores/usePreferenceStore'
 import { formatDateTime } from '../../utils/format'
@@ -83,15 +83,24 @@ export function MemoryPanel() {
     setStatus({ ok: true, text: '已导出本地 JSON' })
   }
 
-  /** 清空采纳历史（双重确认）：后端暂无清空端点，仅清前端本地留存。 */
-  const handleClearHistory = () => {
+  /** 清空采纳历史（双重确认）：先清服务端（DELETE /preference/adoptions）成功后再清本地留存。 */
+  const handleClearHistory = async () => {
     if (!isConfirmingClear) {
       setIsConfirmingClear(true)
       return
     }
-    clearLocalHistory()
-    setIsConfirmingClear(false)
-    setStatus({ ok: true, text: '已清空前端本地采纳历史留存' })
+    setIsBusy(true)
+    try {
+      const result = await clearAdoptions()
+      clearLocalHistory()
+      setIsConfirmingClear(false)
+      setStatus({ ok: true, text: `已清空 ${result.cleared} 条` })
+    } catch (error) {
+      // 服务端清空失败：本地一并保留，避免两端数据不一致
+      setStatus({ ok: false, text: errorMessage(error, '清空采纳历史失败') })
+    } finally {
+      setIsBusy(false)
+    }
   }
 
   return (
@@ -156,6 +165,7 @@ export function MemoryPanel() {
         <button
           type="button"
           className="settings-btn settings-btn--danger"
+          disabled={isBusy}
           onClick={handleClearHistory}
         >
           {isConfirmingClear ? '确认清空？' : '清空采纳历史'}
@@ -170,7 +180,6 @@ export function MemoryPanel() {
           </button>
         ) : null}
       </div>
-      <p className="settings-note">服务端记录保留（清空接口待契约增补）</p>
       {status.text !== '' ? (
         <p
           className={

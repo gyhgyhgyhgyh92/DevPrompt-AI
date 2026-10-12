@@ -1,6 +1,7 @@
 import type { components } from '../schemas/openapi.generated'
 
 /** 请求/响应类型直接取自生成契约（F-705：字段以后端 Pydantic 为唯一来源，勿手写）。 */
+export type AdoptionsClearResponse = components['schemas']['AdoptionsClearResponse']
 export type FeedbackRequest = components['schemas']['FeedbackRequest']
 export type FlowSnapshotResponse = components['schemas']['FlowSnapshotResponse']
 export type FollowupRequest = components['schemas']['FollowupRequest']

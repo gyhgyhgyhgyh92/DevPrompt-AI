@@ -14,6 +14,7 @@ vi.mock('../../api/endpoints', () => ({
   getPreference: vi.fn(),
   putPreference: vi.fn(),
   getHistory: vi.fn(),
+  clearAdoptions: vi.fn(),
 }))
 
 const settingsFixture: SettingsResponse = {
@@ -22,6 +23,7 @@ const settingsFixture: SettingsResponse = {
     base_url: 'https://api.example.com',
     decider: 'auto',
     model_id: 'demo-model',
+    provider: 'DeepSeek',
     timeout: 60,
     max_tokens: null,
     temperature: null,

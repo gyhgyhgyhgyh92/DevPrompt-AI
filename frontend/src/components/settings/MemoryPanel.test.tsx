@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getHistory, getPreference, putPreference } from '../../api/endpoints'
+import { clearAdoptions, getHistory, getPreference, putPreference } from '../../api/endpoints'
 import type { HistoryItemPayload, PreferenceVectorPayload } from '../../api/types'
 import { usePreferenceStore } from '../../stores/usePreferenceStore'
 import { MemoryPanel } from './MemoryPanel'
@@ -12,6 +12,7 @@ vi.mock('../../api/endpoints', () => ({
   getPreference: vi.fn(),
   putPreference: vi.fn(),
   getHistory: vi.fn(),
+  clearAdoptions: vi.fn(),
 }))
 
 const vectorFixture: PreferenceVectorPayload = {
@@ -37,6 +38,7 @@ beforeEach(() => {
   vi.mocked(getPreference).mockResolvedValue(vectorFixture)
   vi.mocked(getHistory).mockResolvedValue(historyFixture)
   vi.mocked(putPreference).mockResolvedValue(vectorFixture)
+  vi.mocked(clearAdoptions).mockResolvedValue({ cleared: 3 })
 })
 
 afterEach(() => {
@@ -102,7 +104,7 @@ describe('MemoryPanel 长期记忆', () => {
     clickSpy.mockRestore()
   })
 
-  it('清空采纳历史需二次确认且只清前端本地留存', async () => {
+  it('清空采纳历史需二次确认，确认后调 DELETE 清服务端并清本地', async () => {
     localStorage.setItem('devprompt:v1:sessions', '[]')
     localStorage.setItem('devprompt:v1:appearance', '{"theme":"dark"}')
     render(<MemoryPanel />)
@@ -110,15 +112,31 @@ describe('MemoryPanel 长期记忆', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '清空采纳历史' }))
     expect(screen.getByRole('button', { name: '确认清空？' })).toBeTruthy()
+    expect(clearAdoptions).not.toHaveBeenCalled()
     expect(localStorage.getItem('devprompt:v1:sessions')).toBe('[]')
 
     fireEvent.click(screen.getByRole('button', { name: '确认清空？' }))
 
+    await waitFor(() => expect(clearAdoptions).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(usePreferenceStore.getState().history).toEqual([]))
     expect(localStorage.getItem('devprompt:v1:sessions')).toBeNull()
     expect(localStorage.getItem('devprompt:v1:appearance')).toBe('{"theme":"dark"}')
     expect(screen.getByText('暂无记录')).toBeTruthy()
-    expect(screen.getByText('服务端记录保留（清空接口待契约增补）')).toBeTruthy()
+    expect(screen.getByText('已清空 3 条')).toBeTruthy()
+  })
+
+  it('服务端清空失败时保留本地留存并提示错误', async () => {
+    localStorage.setItem('devprompt:v1:sessions', '[]')
+    vi.mocked(clearAdoptions).mockRejectedValue(new Error('采纳历史清空被拒绝'))
+    render(<MemoryPanel />)
+    await waitFor(() => expect(usePreferenceStore.getState().history.length).toBeGreaterThan(0))
+
+    fireEvent.click(screen.getByRole('button', { name: '清空采纳历史' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认清空？' }))
+
+    await waitFor(() => expect(screen.getByText('采纳历史清空被拒绝')).toBeTruthy())
+    expect(localStorage.getItem('devprompt:v1:sessions')).toBe('[]')
+    expect(usePreferenceStore.getState().history).toHaveLength(2)
   })
 
   it('加载失败只展示后端 message', async () => {

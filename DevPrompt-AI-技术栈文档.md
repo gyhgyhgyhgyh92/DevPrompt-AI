@@ -355,6 +355,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | GET | `/project/scan` | 项目符号表扫描（符号总数 / 文件数 / 类型分布） |
 | GET | `/settings` | 读取设置（模型服务脱敏 + 流程参数 + 锁定项；T6-11） |
 | PUT | `/settings` | 更新设置（模型段 → settings.json 0600；流程段 → app_settings 表） |
+| DELETE | `/preference/adoptions` | 清空服务端采纳历史，返回清空条数（D-6F-4 关闭） |
 
 ## 4.8 配置管理
 

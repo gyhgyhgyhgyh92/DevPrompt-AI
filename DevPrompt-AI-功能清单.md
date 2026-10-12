@@ -509,6 +509,7 @@ git config --get-all remote.origin.push
 | GET | `/project/scan` | 项目符号表扫描，返回符号总数 / 文件数 / 类型分布（F-101 只读透出） |
 | GET | `/settings` | 读取设置（模型服务 + 流程参数），密钥字段恒脱敏返回——**阶段六（T6-11）接入** |
 | PUT | `/settings` | 更新设置：模型配置写入本地设置文件（密钥不入库不进日志，MUST-19 边界见 F-604）；流程参数写 SQLite——**阶段六（T6-11）接入** |
+| DELETE | `/preference/adoptions` | 清空服务端采纳历史，返回清空条数（D-6F-4 关闭；2026-10-12 契约增补） |
 
 **行为**：
 - 全部端点为薄壳：只做参数收拢 → 调 service → 渲染，零业务逻辑（MUST-10）
@@ -516,7 +517,7 @@ git config --get-all remote.origin.push
 - 错误响应仅含 code + message + request_id，不回传堆栈（MUST-19）
 - 涉及状态写入的请求带 `request_id` 便于追溯（MUST-11）
 
-**验收**：10 条路径 / 12 个操作（preference 与 settings 各含 GET/PUT 两个方法）均可独立调用；501 端点已全部转正（T6-11）；`/health` 单项探测失败不中断其余检查；settings 端点随阶段六 T6-11 落地并计入契约冒烟。
+**验收**：11 条路径 / 13 个操作（preference 与 settings 各含 GET/PUT 两个方法，另有 DELETE adoptions）均可独立调用；501 端点已全部转正（T6-11）；`/health` 单项探测失败不中断其余检查；settings 端点随阶段六 T6-11 落地并计入契约冒烟。
 
 ## F-602 Web 交互界面（阶段六 UI）
 
@@ -552,9 +553,9 @@ git config --get-all remote.origin.push
 **输入**：标题栏 ⚙ 入口 → 模态面板，左侧四项导航
 
 **行为**（四标签页）：
-- **模型服务**：供应商选择（DeepSeek / OpenAI 兼容 / 自定义）、Base URL、API Key（回显恒脱敏 `sk-••••3f7a`）、模型 ID、决策层选择（默认 LLM 优先，方案甲）、超时/温度/max_tokens；「测试连接」走一次最小调用验证
+- **模型服务**：供应商选择（DeepSeek / OpenAI 兼容 / 自定义，`provider` 为契约字段，2026-10-12 增补）、Base URL、API Key（回显恒脱敏 `sk-••••3f7a`）、模型 ID、决策层选择（默认 LLM 优先，方案甲）、超时/温度/max_tokens；「测试连接」走一次最小调用验证
 - **通用外观**：主题三态（浅色/深色/跟随系统）、界面语言、代码字体、启动恢复会话、桌面通知——纯展示配置，存前端 localStorage（`devprompt:v1:` 前缀 + Zod 读取校验）
-- **长期记忆**：L3 偏好四维滑条微调（经 PUT /preference）、更新规则与衰减系数只读展示、采纳历史清单（GET /history 数据源）、导出 JSON、清空采纳历史
+- **长期记忆**：L3 偏好四维滑条微调（经 PUT /preference）、更新规则与衰减系数只读展示、采纳历史清单（GET /history 数据源）、导出 JSON、清空采纳历史（经 DELETE /preference/adoptions 服务端清空，双重确认后显示清空条数）
 - **流程与安全**：软护栏轮数与成本预算调节、候选集上限 25（锁定只读，界面标注「宪法 MUST-09 锁定」）、遥测开关、清除本地数据（双重确认）
 
 **安全边界（MUST-19 口径澄清，随 T6-11 落地）**：
@@ -562,7 +563,7 @@ git config --get-all remote.origin.push
 - 宪法 MUST-19 措辞**已修订**（2026-10-12 批准并落地）：「环境变量优先；密钥不入库、不进日志」——AGENTS.md 与三份配套文档已同步
 - 业务参数（护栏轮数、候选上限等）由后端下发渲染，前端零阈值常量（MUST-08）
 
-**验收**：四标签页均可操作；密钥回显恒脱敏且 PUT 后写入设置文件而非数据库；`/settings` 契约冒烟通过；流程参数修改后生效且界面标注锁定项。
+**验收**：四标签页均可操作；密钥回显恒脱敏且 PUT 后写入设置文件而非数据库；`/settings` 契约冒烟通过；流程参数修改后生效且界面标注锁定项；清空采纳历史经服务端接口并显示清空条数；供应商 provider 往返一致。
 
 ---
 
