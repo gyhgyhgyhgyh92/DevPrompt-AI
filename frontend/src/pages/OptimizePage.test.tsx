@@ -137,14 +137,14 @@ describe('OptimizePage 三栏工作台', () => {
     expect(within(panel).getByText('共 3 处调用')).toBeTruthy()
   })
 
-  it('无流程时渲染启动卡片（原句输入 + 发送 + 选择文件夹）', () => {
+  it('无流程时渲染启动卡片（原句输入 + 发送 + 选择文件夹（本地））', () => {
     stubApi([{ match: '/preference', payload: envelope(vectorFixture) }])
 
     renderPage()
 
     expect(screen.getByRole('textbox', { name: '优化原句' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '发送' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: '选择文件夹' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '选择文件夹（本地）' })).toBeTruthy()
     expect(screen.queryByText('直接生成（A 保守版 + 待确认清单）')).toBeNull()
   })
 
@@ -154,13 +154,14 @@ describe('OptimizePage 三栏工作台', () => {
       questions: [{ key: 'target', reason: '缺目标定位', best_guess: 'build()', ask: '改哪里？' }],
     })
     const mock = stubApi([
+      { match: '/project/pick', payload: envelope({ path: 'D:/ws/repo' }) },
       { match: '/optimize', payload: envelope(asked) },
       { match: '/history', payload: envelope([]) },
     ])
 
     renderPage()
-    await user.click(screen.getByRole('button', { name: '选择文件夹' }))
-    await user.type(screen.getByRole('textbox', { name: '项目路径' }), 'D:/ws/repo')
+    await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
+    expect(await screen.findByText('repo')).toBeTruthy()
     await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
     await user.click(screen.getByRole('button', { name: '发送' }))
 

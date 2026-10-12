@@ -9,6 +9,7 @@ import {
   postFeedback,
   postFollowup,
   postOptimize,
+  pickProjectFolder,
   putPreference,
   putSettings,
   scanProject,
@@ -139,6 +140,15 @@ describe('api/endpoints 12 操作', () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       `/api/v1/project/scan?project=${encodeURIComponent('D:/我的 项目')}`,
     )
+  })
+
+  it('pickProjectFolder 以 POST 调用（无 body）；取消返回空串路径', async () => {
+    const fetchMock = stubFetchJson(envelope({ path: '' }))
+
+    await expect(pickProjectFolder()).resolves.toEqual({ path: '' })
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/project/pick')
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST')
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined()
   })
 })
 

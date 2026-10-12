@@ -7,6 +7,7 @@ import dataclasses
 import difflib
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -16,7 +17,7 @@ from devprompt_ai.common.secrets import mask_secret
 from devprompt_ai.config import MODEL_KEY_MAP, AppConfig
 from devprompt_ai.domain.decision.followup import GuardrailState, UnknownItem, build_unknowns
 from devprompt_ai.domain.decision.port import DecisionPort, VariantScore
-from devprompt_ai.domain.errors import StateError
+from devprompt_ai.domain.errors import RetrievalError, StateError
 from devprompt_ai.domain.generate.ports import GeneratePort, GenerationContext, VariantDraft
 from devprompt_ai.domain.generate.variants import expand_levels, resolve_level
 from devprompt_ai.domain.models import (
@@ -35,6 +36,7 @@ from devprompt_ai.domain.retrieval.candidates import MAX_CANDIDATES, build_candi
 from devprompt_ai.domain.retrieval.facts import verify_facts
 from devprompt_ai.domain.retrieval.locate import locate_symbol
 from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader
+from devprompt_ai.harness.dialog import pick_folder_dialog
 from devprompt_ai.harness.llm import LLMGenerator, last_usage
 from devprompt_ai.harness.process import LocalCommandRunner, LocalFileReader, SymbolTableProvider
 from devprompt_ai.memory.settings_store import write_model_settings, write_process_settings
@@ -423,6 +425,18 @@ class ForgeService:
             "total_files": len(files),
             "kind_counts": ranked,
         }
+
+    async def pick_project_folder(self) -> str:
+        """系统原生目录选择（POST /project/pick）：返回绝对路径；取消空串；非目录 2001（MUST-20）。
+
+        校验强度=存在且为目录（用户裁定）：不拒绝 UNC/映射盘；错误消息不回传路径本体（MUST-19）。
+        """
+        path = await pick_folder_dialog()
+        if path == "":
+            return ""
+        if not await asyncio.to_thread(os.path.isdir, path):
+            raise RetrievalError("所选路径不是有效目录（请重新选择）", code=2001)
+        return path
 
     # ---- 内部 ----
 

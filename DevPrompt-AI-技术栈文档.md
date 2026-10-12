@@ -353,6 +353,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | PUT | `/preference` | 更新偏好向量（部分更新 + clip01 截断；T6-11 转正） |
 | GET | `/history` | 历史会话摘要（脱敏：id/时间/state/项目名；T6-11 转正） |
 | GET | `/project/scan` | 项目符号表扫描（符号总数 / 文件数 / 类型分布） |
+| POST | `/project/pick` | 系统原生文件夹选择器：返回所选目录绝对路径；取消空串（本机 Windows 对话框） |
 | GET | `/settings` | 读取设置（模型服务脱敏 + 流程参数 + 锁定项；T6-11） |
 | PUT | `/settings` | 更新设置（模型段 → settings.json 0600；流程段 → app_settings 表） |
 | DELETE | `/preference/adoptions` | 清空服务端采纳历史，返回清空条数（D-6F-4 关闭） |

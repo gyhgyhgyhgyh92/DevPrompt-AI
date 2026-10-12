@@ -183,6 +183,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/project/pick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Project Pick
+         * @description 系统原生文件夹选择器（F-601/F-602）：仅返回真实存在的目录；取消返回空串。
+         */
+        post: operations["post_project_pick_api_v1_project_pick_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/project/scan": {
         parameters: {
             query?: never;
@@ -335,6 +355,25 @@ export interface components {
              */
             code: number;
             data?: components["schemas"]["PreferenceVectorPayload"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
+        /** ApiResponse[ProjectPickResponse] */
+        ApiResponse_ProjectPickResponse_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["ProjectPickResponse"] | null;
             /**
              * Message
              * @default ok
@@ -686,6 +725,17 @@ export interface components {
             followup_soft_round_guard?: number | null;
             /** Telemetry */
             telemetry?: boolean | null;
+        };
+        /**
+         * ProjectPickResponse
+         * @description POST /project/pick 数据体：所选目录绝对路径；用户取消为空串（F-601）。
+         */
+        ProjectPickResponse: {
+            /**
+             * Path
+             * @default
+             */
+            path: string;
         };
         /**
          * RankingViewPayload
@@ -1112,6 +1162,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_project_pick_api_v1_project_pick_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProjectPickResponse_"];
                 };
             };
         };

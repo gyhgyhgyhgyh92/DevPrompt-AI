@@ -1073,7 +1073,7 @@ src/devprompt_ai/
 │   └── api/
 │       ├── __init__.py        包声明（薄壳层约束说明）
 │       ├── app.py             FastAPI 实例 + CORS 中间件 + 统一异常渲染
-│       ├── routes.py          路由薄壳（10 路径/12 操作；参数收拢 → 调 service → 渲染）
+│       ├── routes.py          路由薄壳（13 路径/16 操作；参数收拢 → 调 service → 渲染）
 │       ├── schemas.py         Pydantic v2 请求/响应契约（XxxRequest/XxxResponse）
 │       └── health.py          环境自检（rg/ctags/git 版本、DB 文件可写、LLM 配置非空）
 └── observability/

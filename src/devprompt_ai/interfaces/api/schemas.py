@@ -132,6 +132,12 @@ class ScanResponse(BaseModel):
     kind_counts: dict[str, int]
 
 
+class ProjectPickResponse(BaseModel):
+    """POST /project/pick 数据体：所选目录绝对路径；用户取消为空串（F-601）。"""
+
+    path: str = ""
+
+
 class ModelServiceSettings(BaseModel):
     """F-604 模型服务设置视图：api_key 恒脱敏（MUST-19，明文不进响应）。"""
 

@@ -33,3 +33,8 @@ export const ScanResponseSchema = z.object({
   total_files: z.number(),
   total_symbols: z.number(),
 })
+
+/** POST /project/pick 数据体（契约 ProjectPickResponse）：取消为空串。 */
+export const ProjectPickResponseSchema = z.object({
+  path: z.string(),
+})

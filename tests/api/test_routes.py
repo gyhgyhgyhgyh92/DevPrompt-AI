@@ -60,6 +60,7 @@ class FakeForgeService:
             "total_files": 2,
             "kind_counts": {"function": 2, "class": 1},
         }
+        self.pick_path: str = "D:/ws/repo"
 
     async def optimize(
         self, user_id: str, project_root: str, sentence: str, *, request_id: str
@@ -152,6 +153,9 @@ class FakeForgeService:
 
     async def scan_project(self, project_root: str) -> dict[str, Any]:
         return dict(self.scan)
+
+    async def pick_project_folder(self) -> str:
+        return self.pick_path
 
     def _next(self, session_id: str = "s1") -> FlowSnapshot:
         if self.fail_with is not None:
@@ -430,6 +434,28 @@ async def test_project_scan(client: httpx.AsyncClient, fake_service: FakeForgeSe
     assert data["total_symbols"] == 3
     assert data["total_files"] == 2
     assert data["kind_counts"]["function"] == 2
+
+
+async def test_project_pick_returns_path(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """POST /project/pick：返回所选目录路径；X-Request-ID 头与信封一致。"""
+    resp = await client.post("/api/v1/project/pick")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["code"] == 0
+    assert body["data"] == {"path": "D:/ws/repo"}
+    assert resp.headers["x-request-id"] == body["request_id"]
+
+
+async def test_project_pick_cancel_returns_empty(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """用户取消对话框：空串成功响应（非错误），前端据此保持原状。"""
+    fake_service.pick_path = ""
+    resp = await client.post("/api/v1/project/pick")
+    assert resp.status_code == 200
+    assert resp.json()["data"] == {"path": ""}
 
 
 async def test_error_response_uniform_shape(

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse, SettingsResponse } from '../../api/types'
@@ -26,12 +26,21 @@ const settingsFixture: SettingsResponse = {
   locked: { candidate_limit: 25 },
 }
 
-function stubFetch(payload: unknown) {
-  const mock = vi.fn(async () => ({
-    status: 200,
-    headers: { get: () => null },
-    json: async () => envelope(payload),
-  }))
+/** URL 分流 stub：/project/pick 与 /project/scan 各取自己的 JSON（其余回 null）。 */
+function stubFetchByUrl(payloadByPath: { pick: unknown; scan?: unknown }) {
+  const mock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+    const url = String(input)
+    const payload = url.includes('/project/pick')
+      ? payloadByPath.pick
+      : url.includes('/project/scan')
+        ? (payloadByPath.scan ?? envelope({ total_symbols: 1, total_files: 1, kind_counts: {} }))
+        : envelope(null)
+    return {
+      status: 200,
+      headers: { get: () => null },
+      json: async () => payload,
+    }
+  })
   vi.stubGlobal('fetch', mock)
   return mock
 }
@@ -72,7 +81,16 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
     expect(screen.queryByLabelText('添加附件')).toBeNull()
     expect(screen.queryByLabelText('麦克风')).toBeNull()
     expect(screen.queryByLabelText('音频')).toBeNull()
-    expect(screen.queryByRole('button', { name: /附件|审批|麦克风|音频|本地|文件类型/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /附件|审批|麦克风|音频|文件类型/ })).toBeNull()
+    // 独立「本地」选择器零存在（文件夹按钮命名为「选择文件夹（本地）」，非独立本地项）
+    expect(screen.queryByRole('button', { name: '本地' })).toBeNull()
+  })
+
+  it('不再存在「项目路径」手动输入文本框（移除手输，仅原生对话框）', () => {
+    render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
+
+    expect(screen.queryByRole('textbox', { name: '项目路径' })).toBeNull()
+    expect(document.querySelector('.console-input__path-input')).toBeNull()
   })
 
   it('无输入时发送按钮禁用（防重复/防误触，MUST-15）', () => {
@@ -81,18 +99,57 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
     expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('填写原句与项目路径后点击发送上抛（草稿不出组件）', async () => {
+  it('点击「选择文件夹（本地）」经 POST /project/pick 选择并显示 basename，提交透传路径', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
-    stubFetch({ total_symbols: 0, total_files: 0, kind_counts: {} })
+    const fetchMock = stubFetchByUrl({ pick: envelope({ path: 'D:/ws/repo' }) })
     render(<ConsoleInput isSubmitting={false} onSubmit={onSubmit} />)
 
     await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
-    await user.click(screen.getByRole('button', { name: '选择文件夹' }))
-    await user.type(screen.getByRole('textbox', { name: '项目路径' }), 'D:/ws/repo')
-    await user.click(screen.getByRole('button', { name: '发送' }))
+    await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
 
+    expect(await screen.findByText('repo')).toBeTruthy()
+    const pickCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/project/pick'))
+    expect(pickCall).toBeTruthy()
+    expect(pickCall?.[1]?.method).toBe('POST')
+    // 选择后沿用 scan 复校验（失败提示路径依赖，不再有手输）
+    const scanCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/project/scan'))
+    expect(scanCall).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: '发送' }))
     expect(onSubmit).toHaveBeenCalledWith('加个导出按钮', 'D:/ws/repo')
+  })
+
+  it('取消选择（空串）保持原状且不报错，发送仍禁用', async () => {
+    const user = userEvent.setup()
+    stubFetchByUrl({ pick: envelope({ path: '' }) })
+    render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
+
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: '选择文件夹（本地）' }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    )
+    expect(screen.queryByText('无法打开系统文件夹选择器')).toBeNull()
+    expect(screen.getByRole('button', { name: '选择文件夹（本地）' }).textContent).toContain(
+      '选择文件夹（本地）',
+    )
+    expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('选择失败（业务错误）显示「无法打开系统文件夹选择器」', async () => {
+    const user = userEvent.setup()
+    stubFetchByUrl({
+      pick: { code: 2001, message: '所选路径不是有效目录', request_id: 'r', data: null },
+    })
+    render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
+
+    expect(await screen.findByText('无法打开系统文件夹选择器')).toBeTruthy()
+    expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('模型名只读展示当前设置；未配置时显「未配置模型」', () => {

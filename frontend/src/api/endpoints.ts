@@ -1,5 +1,10 @@
 import type { z } from 'zod'
-import { EmptyDataSchema, HealthResponseSchema, ScanResponseSchema } from '../schemas/common'
+import {
+  EmptyDataSchema,
+  HealthResponseSchema,
+  ProjectPickResponseSchema,
+  ScanResponseSchema,
+} from '../schemas/common'
 import {
   FeedbackRequestSchema,
   FlowSnapshotSchema,
@@ -27,6 +32,7 @@ import type {
   OptimizeRequest,
   PreferenceUpdateRequest,
   PreferenceVectorPayload,
+  ProjectPickResponse,
   ScanResponse,
   SettingsResponse,
   SettingsUpdate,
@@ -46,6 +52,7 @@ export const ENDPOINTS = {
   historyItem: (sessionId: string) => `${API_BASE_URL}/history/${encodeURIComponent(sessionId)}`,
   projectScan: (project: string) =>
     `${API_BASE_URL}/project/scan?project=${encodeURIComponent(project)}`,
+  projectPick: `${API_BASE_URL}/project/pick`,
   settings: `${API_BASE_URL}/settings`,
 } as const
 
@@ -189,5 +196,20 @@ export function scanProject(project: string, signal?: AbortSignal): Promise<Scan
     method: 'GET',
     schema: ScanResponseSchema,
     signal,
+  })
+}
+
+/**
+ * 系统原生文件夹选择（F-601/F-602）：后端弹本机对话框返回绝对路径；取消返回空串。
+ * 超时放宽至 310s（略大于后端 300s，保证后端超时错误优先返回）；hasSideEffect——
+ * 潜在自动重试会重复弹窗（MUST-15）。
+ */
+export function pickProjectFolder(signal?: AbortSignal): Promise<ProjectPickResponse> {
+  return request(ENDPOINTS.projectPick, {
+    method: 'POST',
+    schema: ProjectPickResponseSchema,
+    signal,
+    timeoutMs: 310_000,
+    hasSideEffect: true,
   })
 }

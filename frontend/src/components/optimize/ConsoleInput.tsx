@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { scanProject } from '../../api/endpoints'
+import { pickProjectFolder, scanProject } from '../../api/endpoints'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import './ConsoleInput.css'
 
@@ -42,18 +42,18 @@ function FolderIcon() {
 
 /**
  * 启动页居中主视觉输入卡片（图一 1:1，spec Task 3，F-602/F-703）。
- * 仅含发送按钮 / 模型名只读 / 选择文件夹（项目路径）；不含附件/审批/麦克风/音频/本地等已移除元素。
+ * 仅含发送按钮 / 模型名只读 / 选择文件夹（本地，系统原生对话框）；不含附件/审批/麦克风/音频等已移除元素。
  */
 export function ConsoleInput({ isSubmitting, onSubmit }: ConsoleInputProps) {
   const modelId = useSettingsStore((s) => s.settings?.model_service.model_id ?? '')
   const [sentence, setSentence] = useState('')
   const [project, setProject] = useState('')
-  const [isPickerOpen, setPickerOpen] = useState(false)
+  const [isPicking, setPicking] = useState(false)
   const [projectError, setProjectError] = useState<string | null>(null)
 
   const isDisabled = isSubmitting || sentence.trim() === '' || project.trim() === ''
 
-  /** 失焦校验项目路径（沿用 GET /project/scan；失败提示，不阻塞提交外的其他操作，MUST-15 不重试）。 */
+  /** 选择成功后复校验（沿用 GET /project/scan；顺路预热符号表缓存；失败提示不自动重试 MUST-15）。 */
   async function validateProject(raw: string): Promise<void> {
     const value = raw.trim()
     if (value === '') {
@@ -65,6 +65,23 @@ export function ConsoleInput({ isSubmitting, onSubmit }: ConsoleInputProps) {
       setProjectError(null)
     } catch {
       setProjectError('项目路径不存在或无法扫描')
+    }
+  }
+
+  /** 系统原生文件夹选择（POST /project/pick）：取消（空串）保持原状不报错；仅接受本机真实目录。 */
+  async function handlePickFolder(): Promise<void> {
+    setPicking(true)
+    try {
+      const { path } = await pickProjectFolder()
+      if (path !== '') {
+        setProject(path)
+        setProjectError(null)
+        void validateProject(path)
+      }
+    } catch {
+      setProjectError('无法打开系统文件夹选择器')
+    } finally {
+      setPicking(false)
     }
   }
 
@@ -103,24 +120,14 @@ export function ConsoleInput({ isSubmitting, onSubmit }: ConsoleInputProps) {
           <button
             type="button"
             className="console-input__folder-toggle"
-            aria-label="选择文件夹"
+            aria-label="选择文件夹（本地）"
             title={project.trim() !== '' ? project : undefined}
-            onClick={() => setPickerOpen((open) => !open)}
+            disabled={isPicking}
+            onClick={() => void handlePickFolder()}
           >
             <FolderIcon />
-            <span>{project.trim() !== '' ? baseName(project) : '选择文件夹（可选）'}</span>
-            <span aria-hidden="true">⌄</span>
+            <span>{project.trim() !== '' ? baseName(project) : '选择文件夹（本地）'}</span>
           </button>
-          {isPickerOpen ? (
-            <input
-              aria-label="项目路径"
-              className="console-input__path-input"
-              placeholder="D:/workspace/repo"
-              value={project}
-              onChange={(event) => setProject(event.currentTarget.value)}
-              onBlur={(event) => void validateProject(event.currentTarget.value)}
-            />
-          ) : null}
         </div>
         {projectError !== null ? <p className="console-input__error">{projectError}</p> : null}
       </form>

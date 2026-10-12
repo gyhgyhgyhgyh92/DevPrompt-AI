@@ -164,6 +164,37 @@
         "title": "ApiResponse[PreferenceVectorPayload]",
         "type": "object"
       },
+      "ApiResponse_ProjectPickResponse_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectPickResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[ProjectPickResponse]",
+        "type": "object"
+      },
       "ApiResponse_ScanResponse_": {
         "properties": {
           "code": {
@@ -925,6 +956,18 @@
         "title": "ProcessUpdate",
         "type": "object"
       },
+      "ProjectPickResponse": {
+        "description": "POST /project/pick 数据体：所选目录绝对路径；用户取消为空串（F-601）。",
+        "properties": {
+          "path": {
+            "default": "",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "title": "ProjectPickResponse",
+        "type": "object"
+      },
       "RankingViewPayload": {
         "description": "service.RankingView 的契约镜像（F-403/F-404 加权推荐视图）。",
         "properties": {
@@ -1543,6 +1586,25 @@
           }
         },
         "summary": "Get Progress"
+      }
+    },
+    "/api/v1/project/pick": {
+      "post": {
+        "description": "系统原生文件夹选择器（F-601/F-602）：仅返回真实存在的目录；取消返回空串。",
+        "operationId": "post_project_pick_api_v1_project_pick_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ProjectPickResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Post Project Pick"
       }
     },
     "/api/v1/project/scan": {

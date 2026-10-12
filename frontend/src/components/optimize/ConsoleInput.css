@@ -81,7 +81,7 @@
   background: var(--divider);
 }
 
-/* 第二行：选择文件夹（项目路径，可选） */
+/* 第二行：选择文件夹（本地，系统原生对话框） */
 .console-input__folder {
   display: flex;
   flex-wrap: wrap;
@@ -106,15 +106,9 @@
   background: var(--hover);
 }
 
-.console-input__path-input {
-  flex: 1;
-  min-inline-size: 12rem;
-  padding: var(--space-1) var(--space-2);
-  font: var(--font-code-regular);
-  color: var(--color-text-primary);
-  background: var(--color-surface-code);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
+.console-input__folder-toggle:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .console-input__error {

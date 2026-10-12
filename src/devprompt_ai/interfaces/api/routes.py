@@ -27,6 +27,7 @@ from devprompt_ai.interfaces.api.schemas import (
     OptimizeRequest,
     PreferenceUpdateRequest,
     PreferenceVectorPayload,
+    ProjectPickResponse,
     RankingViewPayload,
     ScanResponse,
     SettingsResponse,
@@ -287,3 +288,11 @@ async def get_project_scan(request: Request, project: str) -> ApiResponse[ScanRe
     svc = await get_service()
     stats = await svc.scan_project(project)
     return _ok(ScanResponse(**stats), request_id)
+
+
+@router.post("/project/pick")
+async def post_project_pick(request: Request) -> ApiResponse[ProjectPickResponse]:
+    """系统原生文件夹选择器（F-601/F-602）：仅返回真实存在的目录；取消返回空串。"""
+    request_id = _request_id(request)
+    svc = await get_service()
+    return _ok(ProjectPickResponse(path=await svc.pick_project_folder()), request_id)

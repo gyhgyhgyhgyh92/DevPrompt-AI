@@ -504,9 +504,10 @@ git config --get-all remote.origin.push
 | GET | `/result/{flow_id}` | 获取流程快照（含三套方案与评分，若已生成） |
 | POST | `/feedback` | 提交采纳反馈（session_id + action），写入 L3 偏好信号 |
 | GET | `/preference` | 查询偏好向量 |
-| PUT | `/preference` | 更新偏好向量——**501（错误码 9004），阶段五（L3 写入）接入** |
-| GET | `/history` | 历史列表——**501（错误码 9004），阶段五（session store list 能力）接入** |
+| PUT | `/preference` | 更新偏好向量（部分更新 + clip01 截断；T6-11 转正） |
+| GET | `/history` | 历史会话列表：id/时间/state/项目名/title（原句截断）/pinned/项目全路径（T6-11 转正；2026-10-13 补 project_root） |
 | GET | `/project/scan` | 项目符号表扫描，返回符号总数 / 文件数 / 类型分布（F-101 只读透出） |
+| POST | `/project/pick` | 系统原生文件夹选择器（后端本机弹 Windows 对话框）返回所选目录绝对路径；取消返回空串（2026-10-13 契约增补） |
 | GET | `/settings` | 读取设置（模型服务 + 流程参数），密钥字段恒脱敏返回——**阶段六（T6-11）接入** |
 | PUT | `/settings` | 更新设置：模型配置写入本地设置文件（密钥不入库不进日志，MUST-19 边界见 F-604）；流程参数写 SQLite——**阶段六（T6-11）接入** |
 | DELETE | `/preference/adoptions` | 清空服务端采纳历史，返回清空条数（D-6F-4 关闭；2026-10-12 契约增补） |
@@ -517,7 +518,7 @@ git config --get-all remote.origin.push
 - 错误响应仅含 code + message + request_id，不回传堆栈（MUST-19）
 - 涉及状态写入的请求带 `request_id` 便于追溯（MUST-11）
 
-**验收**：11 条路径 / 13 个操作（preference 与 settings 各含 GET/PUT 两个方法，另有 DELETE adoptions）均可独立调用；501 端点已全部转正（T6-11）；`/health` 单项探测失败不中断其余检查；settings 端点随阶段六 T6-11 落地并计入契约冒烟。
+**验收**：12 条路径 / 15 个操作（preference 与 settings 各含 GET/PUT 两个方法，另有 DELETE adoptions 与 POST project/pick）均可独立调用；501 端点已全部转正（T6-11）；`/health` 单项探测失败不中断其余检查；settings 端点随阶段六 T6-11 落地并计入契约冒烟。
 
 ## F-602 Web 交互界面（阶段六 UI）
 

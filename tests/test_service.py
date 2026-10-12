@@ -751,3 +751,56 @@ async def test_rename_session_cas_conflict_twice_raises_6003() -> None:
     with pytest.raises(StateError) as ei:
         await svc.rename_session("local", snap.session_id, "t")
     assert ei.value.code == 6003
+
+
+# ---------- 原生文件夹选择器（POST /project/pick） ----------
+
+
+async def test_pick_project_folder_returns_existing_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """选择成功：后端校验「存在且为目录」后返回绝对路径（用户裁定强度）。"""
+    import devprompt_ai.service as service_module
+
+    picked = str(tmp_path)
+
+    async def _fake_pick() -> str:
+        return picked
+
+    monkeypatch.setattr(service_module, "pick_folder_dialog", _fake_pick)
+    svc, _ = _service()
+    assert await svc.pick_project_folder() == picked
+
+
+async def test_pick_project_folder_cancel_returns_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """用户取消对话框：空串原样返回（前端据此保持原选择、不报错）。"""
+    import devprompt_ai.service as service_module
+
+    async def _fake_pick() -> str:
+        return ""
+
+    monkeypatch.setattr(service_module, "pick_folder_dialog", _fake_pick)
+    svc, _ = _service()
+    assert await svc.pick_project_folder() == ""
+
+
+async def test_pick_project_folder_invalid_dir_raises_2001(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """非目录（MUST-20 防线）：抛 RetrievalError 2001，错误消息不含路径本体（MUST-19）。"""
+    import devprompt_ai.service as service_module
+    from devprompt_ai.domain.errors import RetrievalError
+
+    missing = str(tmp_path / "not-exist-dir")
+
+    async def _fake_pick() -> str:
+        return missing
+
+    monkeypatch.setattr(service_module, "pick_folder_dialog", _fake_pick)
+    svc, _ = _service()
+    with pytest.raises(RetrievalError) as err:
+        await svc.pick_project_folder()
+    assert err.value.code == 2001
+    assert missing not in str(err.value)
