@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Awaitable, Callable
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -45,6 +46,19 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def _attach_request_id(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        """X-Request-ID 全端点透传（§3.1）：回显请求头或生成，信封 request_id 取同一值。"""
+        rid = request.headers.get("x-request-id") or uuid.uuid4().hex
+        request.state.request_id = rid
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = rid
+        return response
+
     app.include_router(routes.router)
     for exc_type in (DevPromptError, ProcessError, ProcessTimeoutError, TimeoutError):
         app.add_exception_handler(exc_type, _render_error)

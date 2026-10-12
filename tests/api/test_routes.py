@@ -417,3 +417,20 @@ async def test_sse_progress_ends_on_done(
     events = await _collect_sse(client, "/api/v1/progress/s1")
     assert len(events) >= 1
     assert events[-1]["state"] == "DONE"
+
+
+async def test_x_request_id_header_matches_envelope(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """§3.1：X-Request-ID 响应头与信封 request_id 同值（全端点透传）。"""
+    resp = await client.get("/api/v1/settings")
+    assert resp.headers["x-request-id"] == resp.json()["request_id"]
+
+
+async def test_x_request_id_echoed_from_request(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """客户端携带 X-Request-ID 时回显（链路追踪约定）。"""
+    resp = await client.get("/api/v1/settings", headers={"X-Request-ID": "trace-123"})
+    assert resp.headers["x-request-id"] == "trace-123"
+    assert resp.json()["request_id"] == "trace-123"

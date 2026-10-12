@@ -8,7 +8,7 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import TypeVar
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from devprompt_ai.config import AppConfig
@@ -52,6 +52,11 @@ async def get_service() -> ForgeService:
     return _service
 
 
+def _request_id(request: Request) -> str:
+    """X-Request-ID 透传（§3.1）：中间件生成并回写响应头，信封 request_id 取同一值。"""
+    return str(getattr(request.state, "request_id", "") or uuid.uuid4().hex)
+
+
 def _ok(data: DataT, request_id: str) -> ApiResponse[DataT]:
     return ApiResponse(code=0, message="ok", data=data, request_id=request_id)
 
@@ -75,8 +80,8 @@ def _snapshot_payload(snapshot: FlowSnapshot) -> FlowSnapshotResponse:
 
 
 @router.get("/health")
-async def get_health() -> ApiResponse[HealthResponse]:
-    request_id = uuid.uuid4().hex
+async def get_health(request: Request) -> ApiResponse[HealthResponse]:
+    request_id = _request_id(request)
     report = await health.run_checks(AppConfig())
     return _ok(report, request_id)
 
@@ -85,17 +90,19 @@ async def get_health() -> ApiResponse[HealthResponse]:
     "/optimize",
     description="有副作用端点：禁止客户端自动重试（MUST-15，重复提交将产生重复流程）。",
 )
-async def post_optimize(req: OptimizeRequest) -> ApiResponse[FlowSnapshotResponse]:
-    request_id = uuid.uuid4().hex
+async def post_optimize(
+    request: Request, req: OptimizeRequest
+) -> ApiResponse[FlowSnapshotResponse]:
+    request_id = _request_id(request)
     svc = await get_service()
     snapshot = await svc.optimize(_USER_ID, req.project, req.sentence, request_id=request_id)
     return _ok(_snapshot_payload(snapshot), request_id)
 
 
 @router.get("/progress/{flow_id}")
-async def get_progress(flow_id: str) -> StreamingResponse:
+async def get_progress(request: Request, flow_id: str) -> StreamingResponse:
     """SSE 进度流：1s 轮询快照；DONE/ABORTED/ASKING/护栏推送后关闭；客户端断开即停。"""
-    request_id = uuid.uuid4().hex
+    request_id = _request_id(request)
 
     async def _events() -> AsyncIterator[str]:
         while True:
@@ -127,9 +134,11 @@ async def get_progress(flow_id: str) -> StreamingResponse:
 
 
 @router.post("/followup/{flow_id}")
-async def post_followup(flow_id: str, req: FollowupRequest) -> ApiResponse[FlowSnapshotResponse]:
+async def post_followup(
+    request: Request, flow_id: str, req: FollowupRequest
+) -> ApiResponse[FlowSnapshotResponse]:
     """三模式分发（互斥由契约校验保证）：批量答复 / 逃生 / 软护栏裁决（MUST-26）。"""
-    request_id = uuid.uuid4().hex
+    request_id = _request_id(request)
     svc = await get_service()
     if req.escape:
         snapshot = await svc.escape(_USER_ID, flow_id, request_id=request_id)
@@ -145,16 +154,16 @@ async def post_followup(flow_id: str, req: FollowupRequest) -> ApiResponse[FlowS
 
 
 @router.get("/result/{flow_id}")
-async def get_result(flow_id: str) -> ApiResponse[FlowSnapshotResponse]:
-    request_id = uuid.uuid4().hex
+async def get_result(request: Request, flow_id: str) -> ApiResponse[FlowSnapshotResponse]:
+    request_id = _request_id(request)
     svc = await get_service()
     snapshot = await svc.resume(_USER_ID, flow_id, request_id=request_id)
     return _ok(_snapshot_payload(snapshot), request_id)
 
 
 @router.post("/feedback")
-async def post_feedback(req: FeedbackRequest) -> ApiResponse[None]:
-    request_id = uuid.uuid4().hex
+async def post_feedback(request: Request, req: FeedbackRequest) -> ApiResponse[None]:
+    request_id = _request_id(request)
     svc = await get_service()
     await svc.feedback(
         _USER_ID,
@@ -168,17 +177,19 @@ async def post_feedback(req: FeedbackRequest) -> ApiResponse[None]:
 
 
 @router.get("/preference")
-async def get_preference() -> ApiResponse[PreferenceVectorPayload]:
-    request_id = uuid.uuid4().hex
+async def get_preference(request: Request) -> ApiResponse[PreferenceVectorPayload]:
+    request_id = _request_id(request)
     svc = await get_service()
     pref = await svc.get_preference(_USER_ID)
     return _ok(PreferenceVectorPayload(**pref), request_id)
 
 
 @router.put("/preference")
-async def put_preference(req: PreferenceUpdateRequest) -> ApiResponse[PreferenceVectorPayload]:
+async def put_preference(
+    request: Request, req: PreferenceUpdateRequest
+) -> ApiResponse[PreferenceVectorPayload]:
     """T6-11 转正：部分更新 + clip01（超界截断而非拒绝），返回更新后向量。"""
-    request_id = uuid.uuid4().hex
+    request_id = _request_id(request)
     svc = await get_service()
     values = {k: v for k, v in req.model_dump().items() if v is not None}
     pref = await svc.set_preference(_USER_ID, values)
@@ -186,9 +197,9 @@ async def put_preference(req: PreferenceUpdateRequest) -> ApiResponse[Preference
 
 
 @router.get("/history")
-async def get_history() -> ApiResponse[list[HistoryItemPayload]]:
+async def get_history(request: Request) -> ApiResponse[list[HistoryItemPayload]]:
     """T6-11 转正：脱敏会话摘要（id/时间/state/项目名，无原句明文，MUST-19）。"""
-    request_id = uuid.uuid4().hex
+    request_id = _request_id(request)
     svc = await get_service()
     items = await svc.list_history(_USER_ID)
     return _ok(
@@ -206,24 +217,24 @@ async def get_history() -> ApiResponse[list[HistoryItemPayload]]:
 
 
 @router.get("/settings")
-async def get_settings() -> ApiResponse[SettingsResponse]:
-    request_id = uuid.uuid4().hex
+async def get_settings(request: Request) -> ApiResponse[SettingsResponse]:
+    request_id = _request_id(request)
     svc = await get_service()
     return _ok(SettingsResponse(**await svc.get_settings()), request_id)
 
 
 @router.put("/settings")
-async def put_settings(req: SettingsUpdate) -> ApiResponse[SettingsResponse]:
+async def put_settings(request: Request, req: SettingsUpdate) -> ApiResponse[SettingsResponse]:
     """T6-11：模型段写设置文件（0600），流程段写 app_settings 表；密钥恒脱敏返回。"""
-    request_id = uuid.uuid4().hex
+    request_id = _request_id(request)
     svc = await get_service()
     view = await svc.update_settings(req.model_dump(exclude_none=True))
     return _ok(SettingsResponse(**view), request_id)
 
 
 @router.get("/project/scan")
-async def get_project_scan(project: str) -> ApiResponse[ScanResponse]:
-    request_id = uuid.uuid4().hex
+async def get_project_scan(request: Request, project: str) -> ApiResponse[ScanResponse]:
+    request_id = _request_id(request)
     svc = await get_service()
     stats = await svc.scan_project(project)
     return _ok(ScanResponse(**stats), request_id)
