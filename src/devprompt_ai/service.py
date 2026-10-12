@@ -269,6 +269,44 @@ class ForgeService:
         """GET /history 转正（T6-11）：脱敏会话摘要（无原句明文，MUST-19）。"""
         return await self._sessions.list_recent(user_id, limit)
 
+    async def rename_session(self, user_id: str, session_id: str, title: str) -> None:
+        """PATCH /history/{session_id} 重命名：写 custom_title（截断 ≤80）。
+
+        CAS 冲突（乐观锁 MUST-11）重试一次；仍失败抛 6003。
+        """
+        clean = title.strip()[:80]
+        session = await self._load_owned(user_id, session_id)
+        session.data["custom_title"] = clean
+        if not await self._sessions.save(session):
+            session = await self._load_owned(user_id, session_id)  # 重新加载取新版本
+            session.data["custom_title"] = clean
+            if not await self._sessions.save(session):
+                raise StateError(
+                    "会话版本冲突，拒绝写入（乐观锁）",
+                    code=6003,
+                    context={"session_id": session_id},
+                )
+
+    async def pin_session(self, user_id: str, session_id: str, pinned: bool) -> None:
+        """PATCH /history/{session_id} 置顶：写 pinned（布尔）；CAS 冲突重试一次后抛 6003。"""
+        value = bool(pinned)
+        session = await self._load_owned(user_id, session_id)
+        session.data["pinned"] = value
+        if not await self._sessions.save(session):
+            session = await self._load_owned(user_id, session_id)
+            session.data["pinned"] = value
+            if not await self._sessions.save(session):
+                raise StateError(
+                    "会话版本冲突，拒绝写入（乐观锁）",
+                    code=6003,
+                    context={"session_id": session_id},
+                )
+
+    async def delete_session(self, user_id: str, session_id: str) -> None:
+        """DELETE /history/{session_id}：归属校验后物理删除。"""
+        await self._load_owned(user_id, session_id)
+        await self._sessions.delete(session_id)
+
     async def get_settings(self) -> dict[str, Any]:
         """F-604 读设置（T6-11）：有效配置视图（env 已并入）；api_key 恒脱敏，候选上限锁定只读。"""
         cfg = self._cfg
@@ -623,6 +661,13 @@ class ForgeService:
             target=target,
             facts=facts,
         )
+
+    async def _load_owned(self, user_id: str, session_id: str) -> FlowSession:
+        """归属校验（不限定状态，区别于 _require）：不存在/非本人抛 6003。"""
+        session = await self._sessions.load(session_id)
+        if session is None or session.user_id != user_id:
+            raise StateError("流程 ID 不存在", code=6003, context={"session_id": session_id})
+        return session
 
     async def _require(self, user_id: str, session_id: str, allowed: set[FlowState]) -> FlowSession:
         session = await self._sessions.load(session_id)

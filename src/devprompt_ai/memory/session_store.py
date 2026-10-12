@@ -91,14 +91,14 @@ class SQLiteSessionStore:
         return await asyncio.to_thread(_run)
 
     async def list_recent(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
-        """GET /history 数据源（T6-11 转正）：updated_at 倒序；脱敏——payload 仅取项目名。"""
+        """GET /history 数据源：pinned 优先 + updated_at 倒序；脱敏——payload 仅取项目名与标题。"""
 
         def _run() -> list[SessionSummary]:
             with self._connect() as conn:
                 rows = conn.execute(
                     "SELECT session_id, state, payload, updated_at FROM forge_sessions"
-                    " WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?",
-                    (user_id, limit),
+                    " WHERE user_id = ?",
+                    (user_id,),
                 ).fetchall()
             out: list[SessionSummary] = []
             for session_id, state, payload_raw, updated_at in rows:
@@ -107,14 +107,31 @@ class SQLiteSessionStore:
                 except json.JSONDecodeError:
                     payload = {}
                 project = Path(str(payload.get("project_root", ""))).name
+                custom = payload.get("custom_title")
+                title = str(custom) if custom else str(payload.get("sentence", "")).strip()[:40]
                 out.append(
                     SessionSummary(
                         session_id=session_id,
                         state=state,
                         project=project,
                         updated_at=updated_at,
+                        title=title,
+                        pinned=bool(payload.get("pinned", False)),
                     )
                 )
-            return out
+            # 全部取出后 Python 排序再截取：置顶优先 + updated_at 倒序。
+            # 会话量小（本地工具），避免 SQL 排序先行截断导致置顶项被 limit 丢出。
+            out.sort(key=lambda s: (s.pinned, s.updated_at), reverse=True)
+            return out[:limit]
+
+        return await asyncio.to_thread(_run)
+
+    async def delete(self, session_id: str) -> bool:
+        """物理删除会话：DELETE FROM forge_sessions；rowcount>0 为 True（不存在返回 False）。"""
+
+        def _run() -> bool:
+            with self._connect() as conn:
+                cur = conn.execute("DELETE FROM forge_sessions WHERE session_id = ?", (session_id,))
+                return cur.rowcount > 0
 
         return await asyncio.to_thread(_run)

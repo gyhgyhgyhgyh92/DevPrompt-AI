@@ -43,17 +43,27 @@ class FakeStore:
         return True
 
     async def list_recent(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
-        out = [
-            SessionSummary(
-                session_id=s.session_id,
-                state=s.state,
-                project=str(s.data.get("project_root", "")),
-                updated_at="2026-10-12T00:00:00Z",
+        out: list[SessionSummary] = []
+        for s in self.items.values():
+            if s.user_id != user_id:
+                continue
+            sentence = str(s.data.get("sentence", "")).strip()
+            title = str(s.data.get("custom_title") or sentence[:40])
+            out.append(
+                SessionSummary(
+                    session_id=s.session_id,
+                    state=s.state,
+                    project=str(s.data.get("project_root", "")),
+                    updated_at="2026-10-12T00:00:00Z",
+                    title=title,
+                    pinned=bool(s.data.get("pinned", False)),
+                )
             )
-            for s in self.items.values()
-            if s.user_id == user_id
-        ]
+        out.sort(key=lambda s: (s.pinned, s.updated_at), reverse=True)
         return out[:limit]
+
+    async def delete(self, session_id: str) -> bool:
+        return self.items.pop(session_id, None) is not None
 
 
 class FakeDecider:
@@ -499,14 +509,15 @@ async def test_set_preference_clips_out_of_range() -> None:
 
 
 async def test_list_history_returns_summaries() -> None:
-    """GET /history 转正：会话摘要脱敏（无原句明文，MUST-19）。"""
+    """GET /history 转正：会话摘要脱敏（title 为原句截断，MUST-19 修订后允许）。"""
     svc, _ = _service()
     await svc.optimize("local", "/tmp/demo-proj", "改提交按钮", request_id="r1")
     items = await svc.list_history("local")
     assert len(items) == 1
     assert items[0].state in {"ASKING", "DONE"}
     assert items[0].project == "/tmp/demo-proj"  # FakeStore 摘要直传；真实 store 取 basename
-    assert "改提交按钮" not in str(items[0])
+    assert items[0].title == "改提交按钮"  # 无 custom_title → 原句截断（≤40）
+    assert items[0].pinned is False
 
 
 async def test_update_settings_writes_applies_and_masks(
@@ -640,3 +651,103 @@ async def test_update_settings_carries_provider(
     assert read_model_settings()["provider"] == "DeepSeek"
     reloaded = AppConfig(_env_file=None)  # type: ignore[call-arg]
     assert reloaded.llm_provider == "DeepSeek"
+
+
+# ---------- Task 1：Web 会话管理（rename/pin/delete，T1.3） ----------
+
+
+class FailNextStore(FakeStore):
+    """可编程注入 CAS 冲突：fail_next>0 时后续 save 返回 False（用后自减）。"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.fail_next = 0
+        self.attempts = 0
+
+    async def save(self, session: FlowSession) -> bool:
+        self.attempts += 1
+        if self.fail_next > 0:
+            self.fail_next -= 1
+            return False
+        return await super().save(session)
+
+
+async def test_rename_session_sets_custom_title() -> None:
+    """PATCH 重命名：strip 后写 custom_title，list_history 的 title 取自定义值（优先原句）。"""
+    svc, store = _service()
+    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    await svc.rename_session("local", snap.session_id, "  我的新标题  ")
+    assert store.items[snap.session_id].data["custom_title"] == "我的新标题"  # strip
+    items = await svc.list_history("local")
+    assert items[0].title == "我的新标题"
+
+
+async def test_rename_session_truncates_to_80() -> None:
+    svc, store = _service()
+    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    await svc.rename_session("local", snap.session_id, "x" * 100)
+    assert len(store.items[snap.session_id].data["custom_title"]) == 80
+
+
+async def test_pin_session_sets_flag_and_orders_first() -> None:
+    """PATCH 置顶：pinned 落 payload，且置顶项排在同侪之前（list_history 排序）。"""
+    svc, store = _service()
+    first = await svc.optimize("local", ".", "第一个会话", request_id="r1")
+    await svc.optimize("local", ".", "第二个会话", request_id="r2")
+    await svc.pin_session("local", first.session_id, True)
+    items = await svc.list_history("local")
+    assert store.items[first.session_id].data["pinned"] is True
+    assert items[0].session_id == first.session_id
+    assert items[0].pinned is True
+
+
+async def test_session_management_missing_raises_6003() -> None:
+    svc, _ = _service()
+    for coro in (
+        svc.rename_session("local", "nope", "t"),
+        svc.pin_session("local", "nope", True),
+        svc.delete_session("local", "nope"),
+    ):
+        with pytest.raises(StateError) as ei:
+            await coro
+        assert ei.value.code == 6003
+
+
+async def test_session_management_wrong_owner_raises_6003() -> None:
+    svc, store = _service()
+    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    store.items[snap.session_id].user_id = "other"
+    with pytest.raises(StateError) as ei:
+        await svc.rename_session("local", snap.session_id, "t")
+    assert ei.value.code == 6003
+
+
+async def test_delete_session_removes() -> None:
+    svc, store = _service()
+    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    await svc.delete_session("local", snap.session_id)
+    assert snap.session_id not in store.items
+    assert await svc.list_history("local") == []
+
+
+async def test_rename_session_retries_cas_once() -> None:
+    """MUST-11：首次 CAS 失败 → 重载取新版本重试成功。"""
+    store = FailNextStore()
+    svc, _ = _service(store=store)
+    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    store.fail_next = 1  # 仅注入一次冲突，避免影响 optimize 期间的正常转移
+    before = store.attempts
+    await svc.rename_session("local", snap.session_id, "重试标题")
+    assert store.attempts == before + 2  # 首次失败 + 重试成功
+    assert store.items[snap.session_id].data["custom_title"] == "重试标题"
+
+
+async def test_rename_session_cas_conflict_twice_raises_6003() -> None:
+    """首次 + 重试均冲突（fail_next=2）→ 抛 6003（不无限重试）。"""
+    store = FailNextStore()
+    svc, _ = _service(store=store)
+    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    store.fail_next = 2
+    with pytest.raises(StateError) as ei:
+        await svc.rename_session("local", snap.session_id, "t")
+    assert ei.value.code == 6003

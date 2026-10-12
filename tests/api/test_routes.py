@@ -34,6 +34,9 @@ class FakeForgeService:
         self.preference_updates: list[dict[str, float]] = []
         self.settings_updates: list[dict[str, Any]] = []
         self.adoption_clear_calls: list[str] = []
+        self.rename_calls: list[tuple[str, str]] = []
+        self.pin_calls: list[tuple[str, bool]] = []
+        self.delete_calls: list[str] = []
         self.settings_view: dict[str, Any] = {
             "model_service": {
                 "provider": "DeepSeek",
@@ -100,8 +103,19 @@ class FakeForgeService:
                 state="DONE",
                 project="demo",
                 updated_at="2026-10-12T00:00:00Z",
+                title="示例标题",
+                pinned=True,
             )
         ]
+
+    async def rename_session(self, user_id: str, session_id: str, title: str) -> None:
+        self.rename_calls.append((session_id, title))
+
+    async def pin_session(self, user_id: str, session_id: str, pinned: bool) -> None:
+        self.pin_calls.append((session_id, pinned))
+
+    async def delete_session(self, user_id: str, session_id: str) -> None:
+        self.delete_calls.append(session_id)
 
     async def get_settings(self) -> dict[str, Any]:
         return dict(self.settings_view)
@@ -328,7 +342,7 @@ async def test_put_preference_partial_update_passthrough(
 async def test_get_history_returns_summaries(
     client: httpx.AsyncClient, fake_service: FakeForgeService
 ) -> None:
-    """T6-11 转正：GET /history 仅 id/时间/state/项目名（无原句明文，MUST-19）。"""
+    """T6-11/T1.4：GET /history 仅 id/时间/state/项目名/标题/置顶（无原句明文，MUST-19）。"""
     resp = await client.get("/api/v1/history")
     assert resp.status_code == 200
     items = resp.json()["data"]
@@ -338,9 +352,46 @@ async def test_get_history_returns_summaries(
             "state": "DONE",
             "project": "demo",
             "updated_at": "2026-10-12T00:00:00Z",
+            "title": "示例标题",
+            "pinned": True,
         }
     ]
     assert "sentence" not in items[0]
+
+
+async def test_patch_history_rename_and_pin_passthrough(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """T1.4：PATCH /history/{session_id} 透传 title/pinned，None 字段不提交。"""
+    resp = await client.patch("/api/v1/history/s1", json={"title": "新标题", "pinned": True})
+    assert resp.status_code == 200
+    assert resp.json()["data"] is None
+    assert fake_service.rename_calls == [("s1", "新标题")]
+    assert fake_service.pin_calls == [("s1", True)]
+
+
+async def test_patch_history_title_only_leaves_pinned_untouched(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    resp = await client.patch("/api/v1/history/s1", json={"title": "仅改标题"})
+    assert resp.status_code == 200
+    assert fake_service.rename_calls == [("s1", "仅改标题")]
+    assert fake_service.pin_calls == []  # pinned=None → 不提交
+
+
+async def test_patch_history_empty_422(client: httpx.AsyncClient) -> None:
+    """title/pinned 均缺省 → 422（model_validator 拦截空更新）。"""
+    resp = await client.patch("/api/v1/history/s1", json={})
+    assert resp.status_code == 422
+
+
+async def test_delete_history_passthrough(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    resp = await client.delete("/api/v1/history/s1")
+    assert resp.status_code == 200
+    assert resp.json()["data"] is None
+    assert fake_service.delete_calls == ["s1"]
 
 
 async def test_settings_get_put_roundtrip(

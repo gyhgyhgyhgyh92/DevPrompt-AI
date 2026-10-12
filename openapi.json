@@ -509,8 +509,13 @@
         "type": "object"
       },
       "HistoryItemPayload": {
-        "description": "GET /history 会话摘要（脱敏：无原句明文，MUST-19）。",
+        "description": "GET /history 会话摘要（脱敏：无原句明文，MUST-19）。\n\ntitle：自定义标题优先，否则原句截断（≤40）；pinned：置顶标记（排序优先级）。",
         "properties": {
+          "pinned": {
+            "default": false,
+            "title": "Pinned",
+            "type": "boolean"
+          },
           "project": {
             "title": "Project",
             "type": "string"
@@ -521,6 +526,11 @@
           },
           "state": {
             "title": "State",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
             "type": "string"
           },
           "updated_at": {
@@ -535,6 +545,35 @@
           "updated_at"
         ],
         "title": "HistoryItemPayload",
+        "type": "object"
+      },
+      "HistoryUpdateRequest": {
+        "description": "PATCH /history/{session_id} 请求体：title/pinned 至少一项非 None（None = 保持不变）。",
+        "properties": {
+          "pinned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "HistoryUpdateRequest",
         "type": "object"
       },
       "LockedSettings": {
@@ -1245,7 +1284,7 @@
     },
     "/api/v1/history": {
       "get": {
-        "description": "T6-11 转正：脱敏会话摘要（id/时间/state/项目名，无原句明文，MUST-19）。",
+        "description": "T6-11 转正：脱敏会话摘要（id/时间/state/项目名/标题/置顶，无原句明文，MUST-19）。",
         "operationId": "get_history_api_v1_history_get",
         "responses": {
           "200": {
@@ -1260,6 +1299,94 @@
           }
         },
         "summary": "Get History"
+      }
+    },
+    "/api/v1/history/{session_id}": {
+      "delete": {
+        "description": "会话管理（T1.4）：删除会话。",
+        "operationId": "delete_history_api_v1_history__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_NoneType_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete History"
+      },
+      "patch": {
+        "description": "会话管理（T1.4）：重命名/置顶——None 字段不提交（exclude_none）；一致性由后续 GET 保证。",
+        "operationId": "patch_history_api_v1_history__session_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HistoryUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_NoneType_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch History"
       }
     },
     "/api/v1/optimize": {

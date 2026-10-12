@@ -73,12 +73,17 @@ class FlowSession:
 
 @dataclass(slots=True)
 class SessionSummary:
-    """F-501 会话摘要（GET /history 渲染用）：脱敏——不含原句明文（MUST-19）。"""
+    """F-501 会话摘要（GET /history 渲染用）：脱敏——不含原句明文（MUST-19）。
+
+    title：自定义标题优先，否则原句截断（≤40）；pinned：置顶标记。
+    """
 
     session_id: str
     state: str
     project: str
     updated_at: str
+    title: str = ""
+    pinned: bool = False
 
 
 class SessionStore(Protocol):
@@ -91,5 +96,9 @@ class SessionStore(Protocol):
         ...
 
     async def list_recent(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
-        """最近会话摘要（updated_at 倒序）；项目名 = project_root 的 basename（脱敏）。"""
+        """最近会话摘要（pinned 优先 + updated_at 倒序）；项目名 = project_root basename。"""
+        ...
+
+    async def delete(self, session_id: str) -> bool:
+        """物理删除会话；rowcount>0 为 True（不存在返回 False）。"""
         ...

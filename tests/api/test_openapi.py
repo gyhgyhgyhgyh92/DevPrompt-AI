@@ -1,4 +1,4 @@
-"""OpenAPI 契约冻结测试（T6-2）：导出物与 app.openapi() 一致 + 12 操作在案（10 路径）。"""
+"""OpenAPI 契约冻结测试（T6-2）：导出物与 app.openapi() 一致 + 15 操作在案（12 路径）。"""
 
 from __future__ import annotations
 
@@ -24,19 +24,21 @@ def _load_export_module() -> Any:
     return mod
 
 
-def test_openapi_covers_thirteen_operations() -> None:
-    """11 路径 / 13 操作（preference/settings 各 GET+PUT，另有 DELETE adoptions）。"""
+def test_openapi_covers_fifteen_operations() -> None:
+    """12 路径 / 15 操作：preference/settings 各 GET+PUT，history PATCH+DELETE。"""
     doc = create_app().openapi()
     paths: dict[str, Any] = doc["paths"]
-    assert len(paths) == 11
+    assert len(paths) == 12
     assert all(p.startswith("/api/v1/") for p in paths)
     operations = sum(
-        len([m for m in ops if m in {"get", "put", "post", "delete"}]) for ops in paths.values()
+        len([m for m in ops if m in {"get", "put", "post", "patch", "delete"}])
+        for ops in paths.values()
     )
-    assert operations == 13
+    assert operations == 15
     assert set(paths["/api/v1/settings"]) >= {"get", "put"}
     assert set(paths["/api/v1/preference"]) >= {"get", "put"}
     assert "delete" in paths["/api/v1/preference/adoptions"]
+    assert {"patch", "delete"} <= set(paths["/api/v1/history/{session_id}"])
 
 
 def test_committed_openapi_matches_app() -> None:

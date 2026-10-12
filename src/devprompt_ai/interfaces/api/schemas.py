@@ -214,12 +214,30 @@ class PreferenceUpdateRequest(BaseModel):
 
 
 class HistoryItemPayload(BaseModel):
-    """GET /history 会话摘要（脱敏：无原句明文，MUST-19）。"""
+    """GET /history 会话摘要（脱敏：无原句明文，MUST-19）。
+
+    title：自定义标题优先，否则原句截断（≤40）；pinned：置顶标记（排序优先级）。
+    """
 
     session_id: str
     state: str
     project: str
     updated_at: str
+    title: str = ""
+    pinned: bool = False
+
+
+class HistoryUpdateRequest(BaseModel):
+    """PATCH /history/{session_id} 请求体：title/pinned 至少一项非 None（None = 保持不变）。"""
+
+    title: str | None = None
+    pinned: bool | None = None
+
+    @model_validator(mode="after")
+    def _at_least_one_field(self) -> HistoryUpdateRequest:
+        if self.title is None and self.pinned is None:
+            raise ValueError("title 与 pinned 至少提供一项")
+        return self
 
 
 class AdoptionsClearResponse(BaseModel):

@@ -37,6 +37,9 @@ class FakeStore:
             if s.user_id == user_id
         ][:limit]
 
+    async def delete(self, session_id: str) -> bool:
+        return self.items.pop(session_id, None) is not None
+
 
 def test_all_states_have_transitions() -> None:
     from devprompt_ai.state import TRANSITIONS

@@ -23,6 +23,7 @@ from devprompt_ai.interfaces.api.schemas import (
     FollowupRequest,
     HealthResponse,
     HistoryItemPayload,
+    HistoryUpdateRequest,
     OptimizeRequest,
     PreferenceUpdateRequest,
     PreferenceVectorPayload,
@@ -219,7 +220,7 @@ async def delete_preference_adoptions(
 
 @router.get("/history")
 async def get_history(request: Request) -> ApiResponse[list[HistoryItemPayload]]:
-    """T6-11 转正：脱敏会话摘要（id/时间/state/项目名，无原句明文，MUST-19）。"""
+    """T6-11 转正：脱敏会话摘要（id/时间/state/项目名/标题/置顶，无原句明文，MUST-19）。"""
     request_id = _request_id(request)
     svc = await get_service()
     items = await svc.list_history(_USER_ID)
@@ -230,11 +231,37 @@ async def get_history(request: Request) -> ApiResponse[list[HistoryItemPayload]]
                 state=i.state,
                 project=i.project,
                 updated_at=i.updated_at,
+                title=i.title,
+                pinned=i.pinned,
             )
             for i in items
         ],
         request_id,
     )
+
+
+@router.patch("/history/{session_id}")
+async def patch_history(
+    request: Request, session_id: str, req: HistoryUpdateRequest
+) -> ApiResponse[None]:
+    """会话管理（T1.4）：重命名/置顶——None 字段不提交（exclude_none）；一致性由后续 GET 保证。"""
+    request_id = _request_id(request)
+    svc = await get_service()
+    payload = req.model_dump(exclude_none=True)
+    if "title" in payload:
+        await svc.rename_session(_USER_ID, session_id, payload["title"])
+    if "pinned" in payload:
+        await svc.pin_session(_USER_ID, session_id, payload["pinned"])
+    return _ok(None, request_id)
+
+
+@router.delete("/history/{session_id}")
+async def delete_history(request: Request, session_id: str) -> ApiResponse[None]:
+    """会话管理（T1.4）：删除会话。"""
+    request_id = _request_id(request)
+    svc = await get_service()
+    await svc.delete_session(_USER_ID, session_id)
+    return _ok(None, request_id)
 
 
 @router.get("/settings")
