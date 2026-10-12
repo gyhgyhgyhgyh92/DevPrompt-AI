@@ -26,7 +26,7 @@
 | 四 | W2 服务层 | 状态机 + 统一服务入口 + 单套生成 | 服务可完成单套提示词生成，含反问机制 | ✅ 已完成（2026-10-07，8 笔提交 579f410~；135 测试全绿 + mock e2e 六段全路径 PASS 含 --session 恢复；真实 LLM 端到端待 .env 配置后补跑）。**2026-10-10 注记：CLI 形态已随 BREAKING 变更删除，本阶段 service/state 成果不受影响，交互改经阶段 4.5 Web HTTP 层承载** |
 | 4.5 | Web HTTP 层（提前实现，原属阶段六 T6-1） | `interfaces/api` 9 端点：GET /health、POST /optimize、GET /progress/{flow_id} SSE、POST /followup/{flow_id}、GET /result/{flow_id}、POST /feedback、GET+PUT /preference、GET /history、GET /project/scan（preference PUT 与 history 为 501/9004，阶段五接入）。**2026-10-12 注记：阶段六新增 GET+PUT /settings（设置中心 F-604，T6-11），端点总数 9 → 11** | 9 端点路由薄壳可用且零业务逻辑（MUST-10） | ✅ 已完成（2026-10-10，143 测试全绿）。React UI 仍属阶段六 |
 | 五 | W3 三套差异化与加权推荐 | 三套生成 + 双阈值推荐 + 排序准确率实测 | **排序准确率 ≥80%（W3 门禁，需标注指标来源）** | ✅ 已完成（2026-10-11，7 笔提交 e85caf7~；257 测试全绿；三套生成/加权推荐/L3 偏好/Jev 双路径落地）。**生死线判定：排序准确率 58/100 = 58% ＜ 80%（LLM 排序准确率，报告 eval/recall/report-ranking-2026-10-11.md），触发 MUST-25 决策树；项目所有者 2026-10-11 裁决「方案甲」：LLMFallbackDecider 转正决策层，重排 W3–W4 排期，价值主张改为「LLM 决策 + ripgrep 精确取证」；Jev 路径保留（MUST-12 双路径不变），获批后按 MUST-25 重测** |
-| 六 | W4 全栈 Web 与记忆完善 | React 前端 + 契约对齐 + 三层记忆注入（HTTP 接口已提前至阶段 4.5） | Web 全栈可用（HTTP API + React 前端），记忆三层均生效 | ⬜ 未开始 |
+| 六 | W4 全栈 Web 与记忆完善 | React 前端 + 契约对齐 + 三层记忆注入（HTTP 接口已提前至阶段 4.5） | Web 全栈可用（HTTP API + React 前端），记忆三层均生效 | ⬜ 未开始（实施计划已定稿：doc-阶段/2026-10-12-阶段六-W4全栈Web与记忆完善-实施计划.md，7 子阶段 6A~6G；UI 设计真源：doc-阶段/2026-10-12-阶段六-前端UI原型与设置中心设计.md） |
 | 七 | 整体验收与交付 | 测试收口、CI 全绿、文档同步、打包交付 | MUST-29 六项门禁全绿，覆盖率 ≥70% | ⬜ 未开始 |
 
 **依赖关系图**（箭头表示「完成后才可启动」）：
