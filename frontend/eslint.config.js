@@ -5,4 +5,10 @@ export default tseslint.config(
   { ignores: ['dist/', 'src/schemas/openapi.generated.ts'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { console: 'readonly', process: 'readonly' },
+    },
+  },
 )

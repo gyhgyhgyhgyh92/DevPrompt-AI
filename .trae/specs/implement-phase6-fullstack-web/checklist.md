@@ -17,8 +17,8 @@
 - [x] GET /history 转正：脱敏返回（id/时间/state/项目名），无原句明文
 - [x] 十固定事件接线（标准库 logging，依 MUST-04 裁决替代 structlog）；生产 INFO 级不落盘原句与完整路径
 - [x] MUST-19 宪法措辞修订落地（env > settings 文件），三份配套文档同步
-- [ ] 前端目录树与 §5.1 diff 为零（含 components/settings 组、useSettingsStore、schemas/settings.ts）
-- [ ] tokens.css 全 CSS Variables；data-theme 切换机制可用
+- [x] 前端目录树与 §5.1 diff 为零（含 components/settings 组、useSettingsStore、schemas/settings.ts）
+- [x] tokens.css 全 CSS Variables；data-theme 切换机制可用
 - [ ] check:contract 通过（openapi.generated.ts 自动生成，Zod 与生成类型一致）
 - [ ] 三 store 齐备；SSE 消息 store 内处理；close() 写 effect cleanup（单测断言）
 - [ ] 畸形响应被 Zod 拒绝且不重试（MUST-15）

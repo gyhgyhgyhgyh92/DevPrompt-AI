@@ -433,6 +433,41 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | eslint | `^9` |
 | prettier | `^3` |
 | vitest | 最新稳定 |
+| jsdom（dev） | `^30.1.2` |
+| @testing-library/react（dev） | `^16.3.3` |
+| @testing-library/dom（dev） | `^10.4.2` |
+| @testing-library/user-event（dev） | `^14.6.7` |
+| typescript-eslint（dev） | `^8.71.0` |
+| @eslint/js（dev） | `^9.39.5` |
+| openapi-typescript（dev） | `^7.13.0` |
+
+**T6-3 前端工程基座新增 dev 依赖登记（2026-10-12，MUST-24b）**
+
+版本号均经 npm 官方 registry 核实（`pnpm info <pkg> version`），并与 `frontend/pnpm-lock.yaml` 锁定版本一致：
+
+| 包 | registry 最新 | 锁定版本 |
+|---|---|---|
+| jsdom | 30.1.2 | 30.1.2 |
+| @testing-library/react | 16.3.3 | 16.3.3 |
+| @testing-library/dom | 10.4.2 | 10.4.2 |
+| @testing-library/user-event | 14.6.7 | 14.6.7 |
+| typescript-eslint | 8.71.1 | 8.71.0（`^8.71.0` 区间内） |
+| @eslint/js | 10.0.1 | 9.39.5（受 `eslint ^9` 约束，不跨主版本） |
+| openapi-typescript | 7.13.0 | 7.13.0 |
+| vitest | 5.0.4 | 5.0.4（对齐「最新稳定」要求） |
+| vite-tsconfig-paths | 6.1.1 | 6.1.1（§6.1 原有 `^6.0`，未改要求） |
+
+**选择理由（MUST-04：1–4 级能力不可替代，方落 5 级新增）**
+
+| 依赖 | 为什么原生能力/已登记依赖不可替代 |
+|---|---|
+| jsdom | Vitest `environment: 'jsdom'` 的宿主环境本体，JS/TS 标准库无 DOM 实现；无它则组件测试只能跑 Node 环境，`@testing-library/react` 无法渲染 |
+| @testing-library/react（含 peer @testing-library/dom） | React 19 已移除 `react-dom/test-utils`（含 `act` 移出），React 自身不提供测试渲染器；Testing Library 是 React 官方文档指向的组件测试标准 |
+| @testing-library/user-event | 模拟真实用户事件链（指针/键盘/输入时序），`fireEvent` 无法覆盖交互语义；组件交互测试事实标准 |
+| typescript-eslint + @eslint/js | ESLint 9 flat config 下解析 TS 语法与类型规则的官方实现，ESLint 核心不解析 TypeScript（§6.1 已列 eslint，二者为其配套） |
+| openapi-typescript | F-705 契约管线指定工具（Pydantic → OpenAPI → TS 类型自动生成），属已登记技术决策，无标准库等价能力 |
+
+已排除项连带确认：未引入 Tailwind / UI 组件库 / CSS-in-JS / Redux Toolkit / React Query（F-701），主题切换用 CSS Variables + `data-theme`，滑条/开关为自研组件。
 
 ## 6.2 后端
 

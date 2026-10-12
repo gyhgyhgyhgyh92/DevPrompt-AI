@@ -1,0 +1,29 @@
+/* 阶段指示器样式（BEM；PhaseIndicator 组件在 T6-5 落地，此处先定样式基调）。 */
+
+.phase-indicator {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.phase-indicator__step {
+  padding: var(--space-1) var(--space-3);
+  font: var(--font-code-medium);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
+}
+
+.phase-indicator__step--done {
+  color: var(--color-success-500);
+  border-color: var(--color-success-500);
+}
+
+.phase-indicator__step--current {
+  color: var(--color-text-brand);
+  border-color: var(--color-primary-500);
+}
+
+.phase-indicator__step--pending {
+  color: var(--color-text-muted);
+}

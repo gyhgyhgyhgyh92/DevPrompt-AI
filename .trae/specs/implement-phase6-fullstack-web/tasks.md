@@ -9,12 +9,12 @@
   - [x] 1.3 十固定事件接线（flow.started/completed、decider.switched、recommendation.made/skipped、state.truncated、followup.guardrail、followup.escaped、cache.hit/miss；MUST-04 裁决走标准库 logging）；测试断言生产 INFO 级不落盘原句与完整路径
   - [x] 1.4 scripts/export-openapi.py + pytest 调 app.openapi() 导出 openapi.json 入库；两次导出 diff 为零（契约冻结证据）
   - [x] 1.5 门禁（ruff/mypy/pytest/架构检查/契约冒烟）+ 提交 `feat(api)`
-- [ ] Task 2: 6B 前端工程基座（T6-3）：Vite 工程 + tokens.css + check:contract 管线
-  - [ ] 2.1 pnpm create vite（react-ts）+ 技术栈 §6.1 依赖安装（提交 pnpm-lock.yaml，MUST-24 frozen）；禁 Tailwind/组件库/Redux/React Query
-  - [ ] 2.2 按 §5.1 建目录骨架（router/pages/components{ui,optimize,history,preference,settings}/stores/hooks/api/schemas/styles/utils/types/assets），空模块占位导出保证 tsc 通过
-  - [ ] 2.3 styles/tokens.css：设计 token 全 CSS Variables（品牌蓝/中性面板/暗色优先/语义色），data-theme 切换机制预留
-  - [ ] 2.4 scripts/check-contract.mjs：openapi-typescript 生成 openapi.generated.ts（入库勿手改）→ check:contract = 重新生成 + git diff --exit-code
-  - [ ] 2.5 Vitest 冒烟用例 + ESLint/Prettier 配置 + 四脚本接入 CI + 提交 `feat(web)`
+- [x] Task 2: 6B 前端工程基座（T6-3）：Vite 工程 + tokens.css + check:contract 管线
+  - [x] 2.1 pnpm create vite（react-ts）+ 技术栈 §6.1 依赖安装（提交 pnpm-lock.yaml，MUST-24 frozen）；禁 Tailwind/组件库/Redux/React Query
+  - [x] 2.2 按 §5.1 建目录骨架（router/pages/components{ui,optimize,history,preference,settings}/stores/hooks/api/schemas/styles/utils/types/assets），空模块占位导出保证 tsc 通过
+  - [x] 2.3 styles/tokens.css：设计 token 全 CSS Variables（品牌蓝/中性面板/暗色优先/语义色），data-theme 切换机制预留
+  - [x] 2.4 scripts/check-contract.mjs：openapi-typescript 生成 openapi.generated.ts（入库勿手改）→ check:contract = 重新生成 + git diff --exit-code
+  - [x] 2.5 Vitest 冒烟用例 + ESLint/Prettier 配置 + 四脚本接入 CI + 提交 `feat(web)`
 - [ ] Task 3: 6C 状态管理与 API 层（T6-6）：三 store + api 层 + useSSE（依赖 Task 2）
   - [ ] 3.1 api/ 五文件（client 信封解包/request_id 透传、endpoints、interceptors、errors、types；SSE 订阅封装、超时与中止）
   - [ ] 3.2 schemas/ 手写 Zod（optimize/preference/settings/common），必须与 openapi.generated.ts 对齐；校验失败不重试（MUST-15）
