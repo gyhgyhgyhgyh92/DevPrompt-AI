@@ -91,7 +91,7 @@ class SQLiteSessionStore:
         return await asyncio.to_thread(_run)
 
     async def list_recent(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
-        """GET /history 数据源：pinned 优先 + updated_at 倒序；脱敏——payload 仅取项目名与标题。"""
+        """GET /history 数据源：pinned 优先 + updated_at 倒序；脱敏——payload 仅取路径/名/标题。"""
 
         def _run() -> list[SessionSummary]:
             with self._connect() as conn:
@@ -106,7 +106,8 @@ class SQLiteSessionStore:
                     payload = json.loads(payload_raw)
                 except json.JSONDecodeError:
                     payload = {}
-                project = Path(str(payload.get("project_root", ""))).name
+                project_root = str(payload.get("project_root", ""))
+                project = Path(project_root).name
                 custom = payload.get("custom_title")
                 title = str(custom) if custom else str(payload.get("sentence", "")).strip()[:40]
                 out.append(
@@ -117,6 +118,7 @@ class SQLiteSessionStore:
                         updated_at=updated_at,
                         title=title,
                         pinned=bool(payload.get("pinned", False)),
+                        project_root=project_root,
                     )
                 )
             # 全部取出后 Python 排序再截取：置顶优先 + updated_at 倒序。

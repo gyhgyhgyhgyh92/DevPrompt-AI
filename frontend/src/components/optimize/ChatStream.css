@@ -1,0 +1,264 @@
+/* 正式界面对话流（图五 1:1，spec Task 6）：颜色/间距/字号全部取 tokens.css 变量，禁硬编码色值。 */
+
+.chat-stream {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  inline-size: 100%;
+  max-inline-size: 820px;
+  margin-inline: auto;
+  padding: var(--space-6) var(--space-5);
+}
+
+.chat-stream__row {
+  display: flex;
+  inline-size: 100%;
+}
+
+.chat-stream__row--user {
+  justify-content: flex-end;
+}
+
+/* 用户消息气泡：右对齐浅灰圆角块（图五） */
+.chat-user-bubble {
+  max-inline-size: 70%;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-body-sm);
+  line-height: var(--line-height-body);
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  background: var(--bubble);
+  border-radius: var(--radius-md);
+}
+
+/* AI 回复块：左对齐 */
+
+.chat-reply {
+  display: flex;
+  flex-direction: column;
+  inline-size: 100%;
+}
+
+.chat-reply__head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.chat-reply__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--space-5);
+  block-size: var(--space-5);
+  color: var(--color-text-inverse);
+  background: var(--color-text-primary);
+  border-radius: var(--radius-sm);
+}
+
+.chat-reply__brand {
+  font: var(--font-body-medium);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+}
+
+/* 状态 / 耗时折叠行（替代原状态步进器信息位，MUST-07 只镜像） */
+.chat-reply__status {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  align-self: flex-start;
+  margin-block-start: var(--space-1);
+  padding: 0;
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+
+.chat-reply__status:hover {
+  color: var(--color-text-secondary);
+}
+
+.chat-reply__state {
+  font: var(--font-code-medium);
+}
+
+.chat-reply__caret {
+  font-size: var(--text-body-sm);
+  transition: transform 0.15s ease;
+}
+
+.chat-reply__status[aria-expanded='true'] .chat-reply__caret {
+  transform: rotate(90deg);
+}
+
+/* 阶段列表简版（展开细节） */
+.chat-reply__phases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font: var(--font-code-regular);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-muted);
+}
+
+.chat-reply__phase {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.chat-reply__phase--current {
+  color: var(--color-text-brand);
+  background: var(--color-primary-soft);
+}
+
+.chat-reply__divider {
+  block-size: 1px;
+  margin: var(--space-3) 0;
+  background: var(--divider);
+  border: none;
+}
+
+.chat-reply__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.chat-reply__error {
+  font-size: var(--text-body-sm);
+  color: var(--color-danger-500);
+}
+
+.chat-reply__message {
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+}
+
+/* 底部建议胶囊：浅灰胶囊按钮组（图五底部样式，含 → 箭头） */
+.chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block-start: var(--space-1);
+}
+
+.chat-suggestion {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+  font: var(--font-body-medium);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  background: var(--color-surface-code);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
+}
+
+.chat-suggestion:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.chat-suggestion:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* 底部操作栏：左图标组（16px 灰，悬停深）+ 右「由 AI 生成」 */
+.chat-reply__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block-start: var(--space-3);
+}
+
+.chat-reply__actions-left {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.chat-reply__action {
+  display: inline-flex;
+  padding: 0;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+
+.chat-reply__action:hover:not(:disabled) {
+  color: var(--color-text-primary);
+}
+
+.chat-reply__action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.chat-reply__generated {
+  font-size: var(--text-caption-sm);
+  color: var(--text-faint);
+}
+
+/* 上下文信息内嵌小节（原上下文面板的目标定位/取证事实重排进正文） */
+.chat-context {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-block-start: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-surface-code);
+  border-radius: var(--radius-md);
+}
+
+.chat-context__block {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.chat-context__label {
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-muted);
+}
+
+.chat-context__target {
+  padding: var(--space-1) var(--space-2);
+  overflow-wrap: anywhere;
+}
+
+.chat-context__empty {
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+}
+
+.chat-context__facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-body-xs);
+  color: var(--color-text-secondary);
+}
+
+.chat-context__fact-key {
+  font: var(--font-code-regular);
+  color: var(--color-text-primary);
+}
+
+.chat-context__fact-evidence {
+  margin-inline-start: var(--space-2);
+  color: var(--color-text-muted);
+}

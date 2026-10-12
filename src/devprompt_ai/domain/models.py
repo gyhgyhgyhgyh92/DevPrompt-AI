@@ -76,6 +76,7 @@ class SessionSummary:
     """F-501 会话摘要（GET /history 渲染用）：脱敏——不含原句明文（MUST-19）。
 
     title：自定义标题优先，否则原句截断（≤40）；pinned：置顶标记。
+    project_root：项目全路径（供「复制项目路径」）；project 为其 basename，仅列表分组展示。
     """
 
     session_id: str
@@ -84,6 +85,7 @@ class SessionSummary:
     updated_at: str
     title: str = ""
     pinned: bool = False
+    project_root: str = ""
 
 
 class SessionStore(Protocol):

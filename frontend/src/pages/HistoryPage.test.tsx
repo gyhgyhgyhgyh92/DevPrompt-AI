@@ -22,6 +22,7 @@ describe('HistoryPage 历史列表', () => {
         session_id: 'sess-1',
         state: 'DONE',
         project: 'D:/ws/repo',
+        project_root: 'D:/ws/repo',
         title: '加个导出按钮',
         pinned: false,
         updated_at: '2026-10-12T08:00:00Z',

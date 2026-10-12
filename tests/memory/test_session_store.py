@@ -98,6 +98,15 @@ async def test_list_recent_truncates_title(store) -> None:  # type: ignore[no-un
     assert len(items[0].title) == 40
 
 
+async def test_list_recent_exposes_project_root(store) -> None:  # type: ignore[no-untyped-def]
+    """project_root 全路径透出（供「复制项目路径」），project 为其 basename。"""
+    await store.init_schema()
+    await _create(store, "pr-1", sentence="原句", project_root="/home/me/repos/proj-x")
+    items = await store.list_recent("local")
+    assert items[0].project_root == "/home/me/repos/proj-x"
+    assert items[0].project == "proj-x"
+
+
 async def test_list_recent_prefers_custom_title(store) -> None:  # type: ignore[no-untyped-def]
     await store.init_schema()
     await _create(store, "t2", sentence="原句标题", custom_title="自定义标题")

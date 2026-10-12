@@ -208,10 +208,10 @@ export function ProjectSidebar() {
     }
   }
 
-  /** 复制项目路径（GET /history 的 project 字段为项目名 basename，非全路径——见报告说明）。 */
+  /** 复制项目路径：优先全路径 project_root，空则回退 basename（project，旧数据）。 */
   function handleCopyPath(item: HistoryItemPayload): void {
     setOpenMenuId(null)
-    const text = item.project
+    const text = item.project_root !== '' ? item.project_root : item.project
     void navigator.clipboard
       .writeText(text)
       .then(() => showToast('已复制'))

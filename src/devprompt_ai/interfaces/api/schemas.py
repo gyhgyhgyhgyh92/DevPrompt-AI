@@ -217,6 +217,7 @@ class HistoryItemPayload(BaseModel):
     """GET /history 会话摘要（脱敏：无原句明文，MUST-19）。
 
     title：自定义标题优先，否则原句截断（≤40）；pinned：置顶标记（排序优先级）。
+    project_root：项目全路径（供「复制项目路径」）；project 为其 basename。
     """
 
     session_id: str
@@ -225,6 +226,7 @@ class HistoryItemPayload(BaseModel):
     updated_at: str
     title: str = ""
     pinned: bool = False
+    project_root: str = ""
 
 
 class HistoryUpdateRequest(BaseModel):

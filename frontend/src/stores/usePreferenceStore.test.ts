@@ -23,6 +23,7 @@ describe('usePreferenceStore', () => {
         session_id: 'sess-1',
         state: 'DONE',
         project: 'D:/repo',
+        project_root: 'D:/repo',
         title: '加个导出按钮',
         pinned: false,
         updated_at: '2026-10-12T00:00:00Z',

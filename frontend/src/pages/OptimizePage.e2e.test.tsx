@@ -131,6 +131,13 @@ describe('mock e2e 六路径', () => {
       'prompt-card--recommended',
     )
     expect(screen.getByText('body-B')).toBeTruthy()
+
+    // 对话流形态：用户气泡（右对齐浅灰）+ AI 回复块 + 分隔线 + 由 AI 生成
+    const bubble = screen.getByText('加个导出按钮')
+    expect(bubble.className).toContain('chat-user-bubble')
+    expect(screen.getByRole('article', { name: 'AI 回复' })).toBeTruthy()
+    expect(document.querySelector('.chat-reply__divider')).not.toBeNull()
+    expect(screen.getByText('由 AI 生成')).toBeTruthy()
   })
 
   it('② 反问 → 批量答复 → DONE：澄清卡数量与 answers 提交', async () => {
@@ -174,6 +181,7 @@ describe('mock e2e 六路径', () => {
     })
     expect(await screen.findByRole('article', { name: '方案 B' })).toBeTruthy()
     expect(screen.getByText(/【推荐】B/)).toBeTruthy()
+    expect(screen.getByRole('article', { name: 'AI 回复' })).toBeTruthy()
   })
 
   it('③ ASKING → 逃生 → 单套 A 无 ranking：不显推荐徽章与评分（MUST-28）', async () => {
@@ -282,7 +290,10 @@ describe('mock e2e 六路径', () => {
     expect(screen.getByText(/【推荐】B/)).toBeTruthy()
     const recommended = screen.getByRole('article', { name: '方案 B' })
     expect(recommended.className).toContain('prompt-card--recommended')
-    const panel = screen.getByRole('complementary', { name: '上下文面板' })
+    // 刷新恢复：AI 回复块存在（旧会话无原句 → 无用户气泡，仅显状态）
+    expect(screen.getByRole('article', { name: 'AI 回复' })).toBeTruthy()
+    expect(document.querySelector('.chat-user-bubble')).toBeNull()
+    const panel = screen.getByRole('region', { name: '上下文信息' })
     expect(within(panel).getByText(/暂无目标定位|build@/)).toBeTruthy()
   })
 })

@@ -29,6 +29,7 @@ function item(overrides: Partial<HistoryItemPayload> & { session_id: string }): 
   return {
     state: 'DONE',
     project: 'proj-a',
+    project_root: '',
     updated_at: '2026-10-12T08:00:00Z',
     title: '会话A',
     pinned: false,
@@ -294,7 +295,39 @@ describe('ProjectSidebar 选中与 ⋮ 菜单（Task 5）', () => {
       value: { writeText },
       configurable: true,
     })
-    stubFetch(defaultHandler([item({ session_id: 's1', title: '会话A', project: 'proj-a' })]))
+    stubFetch(
+      defaultHandler([
+        item({
+          session_id: 's1',
+          title: '会话A',
+          project: 'proj-a',
+          project_root: '/ws/proj-a',
+        }),
+      ]),
+    )
+    renderSidebar()
+
+    await screen.findByText('会话A')
+    await user.click(screen.getByText('会话A'))
+    await user.click(screen.getByRole('button', { name: '更多操作' }))
+    await user.click(screen.getByRole('menuitem', { name: /复制项目路径/ }))
+
+    expect(writeText).toHaveBeenCalledWith('/ws/proj-a')
+    expect(await screen.findByText('已复制')).toBeTruthy()
+  })
+
+  it('project_root 为空时复制回退 basename（旧数据）', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    })
+    stubFetch(
+      defaultHandler([
+        item({ session_id: 's1', title: '会话A', project: 'proj-a', project_root: '' }),
+      ]),
+    )
     renderSidebar()
 
     await screen.findByText('会话A')
@@ -303,6 +336,5 @@ describe('ProjectSidebar 选中与 ⋮ 菜单（Task 5）', () => {
     await user.click(screen.getByRole('menuitem', { name: /复制项目路径/ }))
 
     expect(writeText).toHaveBeenCalledWith('proj-a')
-    expect(await screen.findByText('已复制')).toBeTruthy()
   })
 })

@@ -20,6 +20,7 @@ export const PreferenceUpdateRequestSchema = z.object({
 export const HistoryItemSchema = z.object({
   pinned: z.boolean(),
   project: z.string(),
+  project_root: z.string(),
   session_id: z.string(),
   state: z.string(),
   title: z.string(),

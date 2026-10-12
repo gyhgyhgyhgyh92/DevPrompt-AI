@@ -15,22 +15,22 @@
   - [x] 2.2 排版与断点基线：字号/行高/间距按图；断点 360/768/1024/1440/1920（移动优先，`--bp-*` 新增）
   - [x] 2.3 `styles/global.css`：页面级重置与布局容器（`--sidebar-width` 接入）
   - [x] 2.4 门禁（typecheck/lint/test/build）+ 提交 `feat(web)`
-- [ ] Task 3: 启动页居中主视觉卡片（图一 1:1，依赖 Task 2）
-  - [ ] 3.1 `components/optimize/ConsoleInput.tsx`（新组件，文件名=主导出名）：居中卡片结构 = 固定文案区 + 工具行（发送按钮 + 模型名只读 + 选择文件夹）+ 项目路径选择行
-  - [ ] 3.2 移除清单落实：无 ＋附件/手动审批/文件类型图标/麦克风/音频/「本地」任何元素（组件测试对每项断言零存在）
-  - [ ] 3.3 固定文案「帮你优化每一段提示词，从理清需求到上线-端到端交付生产级结果」；模型名读 `useSettingsStore`（脱敏视图的 model_id）；发送禁用防重（MUST-15）；选择文件夹 → 项目路径输入/选择（沿用 `/project/scan` 校验提示）
-  - [ ] 3.4 交互优化：输入自适应高度；提交后平滑过渡到对话流（无跳动）
-  - [ ] 3.5 测试（≥6：居中渲染/文案/六项零存在/发送禁用/提交调用/模型名只读）+ 提交 `feat(web)`
-- [ ] Task 4: 左侧固定侧边栏（图三 1:1，依赖 Task 1 + Task 2）
-  - [ ] 4.1 `components/history/ProjectSidebar.tsx`（重构 SessionSidebar 为新结构）：固定定位、顶部「项目 ⌄」+ 排序/筛选图标（视觉 1:1）
-  - [ ] 4.2 分组渲染：项目分组（文件夹图标 + 组名灰字）+ 条目（title）；间距/配色/悬停 1:1 对齐图三；分组收展（筛选图标）
-  - [ ] 4.3 数据接线：`GET /history`（title/pinned）；空态；「＋新建会话」入口保留于侧边栏（对应新增会话）
-  - [ ] 4.4 测试（≥6：分组结构/条目 title/悬停态/新建入口/空态/排序图标）+ 提交 `feat(web)`
-- [ ] Task 5: 条目选中与 ⋮ 菜单（图四 1:1，依赖 Task 4）
-  - [ ] 5.1 选中态：点击条目 → 浅灰高亮 + 左侧小图标 + 右侧 ⋮；**同步状态更新（乐观反馈，<100ms，不等待网络）**；选中后经 `GET /result/{flow_id}` 加载结果到主区（异步，不阻塞高亮）
-  - [ ] 5.2 `SessionMenu`（新组件）：菜单 4 项（置顶任务/复制项目路径/重命名/删除任务）；视觉 1:1（图标/间距/圆角/阴影/删除红色）；Esc/外点关闭；键盘可达
-  - [ ] 5.3 功能接线：置顶 `PATCH pinned`（置顶项排前）；重命名（行内编辑或小弹层）`PATCH title`；删除红色 + 二次确认 `DELETE`；复制路径 `navigator.clipboard` + toast 反馈
-  - [ ] 5.4 测试（≥8：选中高亮同步断言/菜单展开 4 项/置顶调用与排前/重命名往返/删除二次确认/复制剪贴板 mock/外点关闭/Esc）+ 提交 `feat(web)`
+- [x] Task 3: 启动页居中主视觉卡片（图一 1:1，依赖 Task 2）—— ConsoleInput 7 用例
+  - [x] 3.1 `components/optimize/ConsoleInput.tsx`（新组件）：居中卡片（max-width 720）+ 固定文案区 + 工具行（发送按钮 + 模型名只读 + 选择文件夹）+ 项目路径选择行
+  - [x] 3.2 移除清单落实：无 ＋附件/手动审批/文件类型图标/麦克风/音频/「本地」任何元素（测试逐项断言零存在）
+  - [x] 3.3 固定文案逐字；模型名读 `useSettingsStore`；发送禁用防重（MUST-15）；选择文件夹 → 项目路径
+  - [x] 3.4 交互优化：输入自适应高度；初始态与结果区切换
+  - [x] 3.5 测试（≥6）+ 提交 `feat(web)`
+- [x] Task 4: 左侧固定侧边栏（图三 1:1，依赖 Task 1 + Task 2）—— ProjectSidebar 13 用例
+  - [x] 4.1 `components/history/ProjectSidebar.tsx`：固定定位、顶部「项目」+ 排序/筛选图标；旧 SessionSidebar 已删除
+  - [x] 4.2 分组渲染：项目分组（文件夹图标 + 组名灰字）+ 条目（title）；悬停态；分组收展（筛选图标切换）
+  - [x] 4.3 数据接线：`GET /history`（title/pinned）；空态；「＋新建会话」入口（列表上方轻量按钮）
+  - [x] 4.4 测试（≥6）+ 提交 `feat(web)`
+- [x] Task 5: 条目选中与 ⋮ 菜单（图四 1:1，依赖 Task 4）—— SessionMenu 4 用例
+  - [x] 5.1 选中态：点击同步高亮（<100ms 不等待网络）+ 左侧图标 + ⋮；选中后经 `GET /result` 异步加载（不阻塞高亮）
+  - [x] 5.2 `SessionMenu`：4 项（置顶/复制路径/重命名/删除红字）；视觉对齐；Esc/外点关闭；键盘可达
+  - [x] 5.3 功能接线：置顶 PATCH 排前；重命名内联编辑 PATCH；删除二次确认 DELETE；复制路径 clipboard + toast（注：当前复制 basename，全路径随 Task 6 前置小修提供 project_root 字段后接续）
+  - [x] 5.4 测试（≥8）+ 提交 `feat(web)`
 - [ ] Task 6: 正式界面对话流（图五 1:1，依赖 Task 2 + Task 4）
   - [ ] 6.1 `components/optimize/ChatStream.tsx` 骨架：用户消息气泡（右对齐浅灰圆角块）+ AI 回复块（小图标 + DevPrompt 标识 + 耗时/状态折叠行 + 分隔线 + 正文 + 操作栏[复制/重试/反馈/由 AI 生成]）
   - [ ] 6.2 方案组嵌入：PromptCard/VariantTabs/RecommendBadge/ScoreDetail/ConfidenceNotice/上下文信息（目标定位/取证事实）重排进回复正文；追问卡 FollowupForm 以回复块形式呈现（MUST-26/27/08 全保留）

@@ -233,6 +233,7 @@ async def get_history(request: Request) -> ApiResponse[list[HistoryItemPayload]]
                 updated_at=i.updated_at,
                 title=i.title,
                 pinned=i.pinned,
+                project_root=i.project_root,
             )
             for i in items
         ],

@@ -509,7 +509,7 @@
         "type": "object"
       },
       "HistoryItemPayload": {
-        "description": "GET /history 会话摘要（脱敏：无原句明文，MUST-19）。\n\ntitle：自定义标题优先，否则原句截断（≤40）；pinned：置顶标记（排序优先级）。",
+        "description": "GET /history 会话摘要（脱敏：无原句明文，MUST-19）。\n\ntitle：自定义标题优先，否则原句截断（≤40）；pinned：置顶标记（排序优先级）。\nproject_root：项目全路径（供「复制项目路径」）；project 为其 basename。",
         "properties": {
           "pinned": {
             "default": false,
@@ -518,6 +518,11 @@
           },
           "project": {
             "title": "Project",
+            "type": "string"
+          },
+          "project_root": {
+            "default": "",
+            "title": "Project Root",
             "type": "string"
           },
           "session_id": {

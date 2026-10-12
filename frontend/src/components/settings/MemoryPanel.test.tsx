@@ -25,6 +25,7 @@ const vectorFixture: PreferenceVectorPayload = {
 const historyFixture: HistoryItemPayload[] = [
   {
     project: 'demo-repo',
+    project_root: '/ws/demo-repo',
     session_id: 'sess-1',
     state: 'DONE',
     title: '会话一',
@@ -33,6 +34,7 @@ const historyFixture: HistoryItemPayload[] = [
   },
   {
     project: 'other-repo',
+    project_root: '/ws/other-repo',
     session_id: 'sess-2',
     state: 'ASKING',
     title: '会话二',

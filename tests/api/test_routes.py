@@ -105,6 +105,7 @@ class FakeForgeService:
                 updated_at="2026-10-12T00:00:00Z",
                 title="示例标题",
                 pinned=True,
+                project_root="/tmp/demo",
             )
         ]
 
@@ -342,7 +343,7 @@ async def test_put_preference_partial_update_passthrough(
 async def test_get_history_returns_summaries(
     client: httpx.AsyncClient, fake_service: FakeForgeService
 ) -> None:
-    """T6-11/T1.4：GET /history 仅 id/时间/state/项目名/标题/置顶（无原句明文，MUST-19）。"""
+    """T6-11/T1.4：GET /history 仅 id/时间/state/名/路径/标题/置顶（无原句明文，MUST-19）。"""
     resp = await client.get("/api/v1/history")
     assert resp.status_code == 200
     items = resp.json()["data"]
@@ -354,6 +355,7 @@ async def test_get_history_returns_summaries(
             "updated_at": "2026-10-12T00:00:00Z",
             "title": "示例标题",
             "pinned": True,
+            "project_root": "/tmp/demo",
         }
     ]
     assert "sentence" not in items[0]

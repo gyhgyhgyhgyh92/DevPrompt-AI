@@ -117,7 +117,7 @@ describe('OptimizePage 三栏工作台', () => {
     expect(screen.queryByRole('complementary', { name: '上下文面板' })).toBeNull()
   })
 
-  it('上下文面板渲染快照中的目标定位与取证事实', () => {
+  it('上下文信息以内嵌小节渲染目标定位与取证事实', () => {
     const seed = snapshotFixture({
       target: { name: 'build', path: 'src/app.py', line: 12 },
       facts: [
@@ -130,7 +130,7 @@ describe('OptimizePage 三栏工作台', () => {
 
     renderPage()
 
-    const panel = screen.getByRole('complementary', { name: '上下文面板' })
+    const panel = screen.getByRole('region', { name: '上下文信息' })
     expect(within(panel).getByText('build@src/app.py:12')).toBeTruthy()
     expect(within(panel).getByText('fact_a')).toBeTruthy()
     expect(within(panel).getByText('✗')).toBeTruthy()
