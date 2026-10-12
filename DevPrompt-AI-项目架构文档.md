@@ -1137,7 +1137,9 @@ frontend/
     │   │   ├── Card.tsx
     │   │   ├── Badge.tsx
     │   │   ├── Spinner.tsx
-    │   │   └── Collapse.tsx
+    │   │   ├── Collapse.tsx
+    │   │   ├── Toggle.tsx         开关（设置中心用）
+    │   │   └── Slider.tsx         滑条（偏好/设置共用）
     │   ├── optimize/          优化流程组件
     │   │   ├── OptimizeInput.tsx
     │   │   ├── PhaseIndicator.tsx
@@ -1150,12 +1152,19 @@ frontend/
     │   │   └── CopyButton.tsx
     │   ├── history/           历史页组件
     │   │   └── HistoryItem.tsx
-    │   └── preference/        偏好页组件
-    │       ├── PreferenceEditor.tsx
-    │       └── PreferenceSlider.tsx
+    │   ├── preference/        偏好页组件
+    │   │   ├── PreferenceEditor.tsx
+    │   │   └── PreferenceSlider.tsx
+    │   └── settings/          设置中心组件（F-604，模态面板）
+    │       ├── SettingsModal.tsx      弹窗外壳 + 左侧四项导航
+    │       ├── ModelServicePanel.tsx  模型服务（供应商/密钥脱敏/测试连接）
+    │       ├── AppearancePanel.tsx    通用外观（主题/语言/字体/行为开关）
+    │       ├── MemoryPanel.tsx        长期记忆（L3 滑条/采纳历史/数据管理）
+    │       └── SecurityPanel.tsx      流程与安全（护栏参数/锁定项/清除数据）
     ├── stores/                Zustand store
     │   ├── useOptimizeStore.ts
-    │   └── usePreferenceStore.ts
+    │   ├── usePreferenceStore.ts
+    │   └── useSettingsStore.ts    设置状态（含 localStorage 读写封装）
     ├── hooks/                 自定义 Hook
     │   ├── useSSE.ts
     │   ├── useRequest.ts
@@ -1170,7 +1179,8 @@ frontend/
     │   ├── openapi.generated.ts   自动生成，勿手改
     │   ├── common.ts
     │   ├── optimize.ts
-    │   └── preference.ts
+    │   ├── preference.ts
+    │   └── settings.ts           设置契约校验（F-604）
     ├── styles/                全局样式与 token
     │   ├── tokens.css         CSS Variables 设计 token
     │   ├── global.css
