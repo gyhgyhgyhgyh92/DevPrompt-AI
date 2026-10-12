@@ -15,8 +15,8 @@ export type FlowState =
   | 'DONE'
   | 'ABORTED'
 
-/** 快照状态（后端 `service.py` SnapshotStatus）。 */
-export type SnapshotStatus = 'ask' | 'done' | 'guardrail'
+/** 快照状态（后端 `service.py` SnapshotStatus + SSE 专有扩展值 aborted，见契约 FlowSnapshotResponse.status）。 */
+export type SnapshotStatus = 'ask' | 'done' | 'guardrail' | 'aborted'
 
 /** 方案档位（后端 domain VariantLevel）。 */
 export type VariantLevel = 'A' | 'B' | 'C'

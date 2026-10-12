@@ -7,11 +7,17 @@ interface PreferenceState {
   history: readonly HistoryItemPayload[]
   setVector: (vector: PreferenceVectorPayload) => void
   setHistory: (history: readonly HistoryItemPayload[]) => void
+  reset: () => void
+}
+
+const initialState: Pick<PreferenceState, 'vector' | 'history'> = {
+  vector: null,
+  history: [],
 }
 
 export const usePreferenceStore = create<PreferenceState>()((set) => ({
-  vector: null,
-  history: [],
+  ...initialState,
   setVector: (vector) => set({ vector }),
   setHistory: (history) => set({ history }),
+  reset: () => set({ ...initialState }),
 }))

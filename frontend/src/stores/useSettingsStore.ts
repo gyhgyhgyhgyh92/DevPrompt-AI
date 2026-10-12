@@ -1,5 +1,6 @@
 import type { z } from 'zod'
 import { create } from 'zustand'
+import type { SettingsResponse } from '../api/types'
 import type { AppearanceSettings } from '../schemas/settings'
 import { AppearanceSettingsSchema } from '../schemas/settings'
 
@@ -36,15 +37,23 @@ function writeSetting(key: string, value: unknown): void {
   }
 }
 
-/** 设置状态（F-604）：仅外观类偏好进 localStorage，模型服务设置走后端 GET/PUT /settings。 */
+/**
+ * 设置状态（F-604）：模型服务/流程参数走后端 GET/PUT /settings（store 只存结果），
+ * 通用外观项进 localStorage（devprompt:v1: 前缀 + Zod 读取校验）。
+ */
 interface SettingsState {
+  /** 后端设置视图（GET/PUT /settings 数据体）。 */
+  settings: SettingsResponse | null
   appearance: AppearanceSettings
+  setSettings: (settings: SettingsResponse) => void
   setAppearance: (appearance: AppearanceSettings) => void
   resetAppearance: () => void
 }
 
 export const useSettingsStore = create<SettingsState>()((set) => ({
+  settings: null,
   appearance: readSetting(APPEARANCE_KEY, defaultAppearance, AppearanceSettingsSchema),
+  setSettings: (settings) => set({ settings }),
   setAppearance: (appearance) => {
     writeSetting(APPEARANCE_KEY, appearance)
     set({ appearance })

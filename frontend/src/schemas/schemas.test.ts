@@ -1,0 +1,134 @@
+import { describe, expect, it } from 'vitest'
+import {
+  FeedbackRequestSchema,
+  FlowSnapshotSchema,
+  FollowupRequestSchema,
+  RankingViewSchema,
+  VariantSchema,
+} from './optimize'
+import { HistoryListSchema, PreferenceVectorSchema } from './preference'
+import { SettingsResponseSchema } from './settings'
+
+describe('schemas/optimize 契约校验', () => {
+  it('FollowupRequest 三模式各自合法', () => {
+    expect(
+      FollowupRequestSchema.safeParse({ answers: { target: 'Foo' }, escape: false }).success,
+    ).toBe(true)
+    expect(FollowupRequestSchema.safeParse({ escape: true }).success).toBe(true)
+    expect(
+      FollowupRequestSchema.safeParse({ escape: false, guardrail_action: 'continue' }).success,
+    ).toBe(true)
+  })
+
+  it('FollowupRequest 三模式互斥：任意混用均拒绝', () => {
+    expect(
+      FollowupRequestSchema.safeParse({ answers: { target: 'Foo' }, escape: true }).success,
+    ).toBe(false)
+    expect(
+      FollowupRequestSchema.safeParse({ escape: true, guardrail_action: 'generate' }).success,
+    ).toBe(false)
+    expect(
+      FollowupRequestSchema.safeParse({
+        answers: { target: 'Foo' },
+        escape: false,
+        guardrail_action: 'continue',
+      }).success,
+    ).toBe(false)
+  })
+
+  it('FlowSnapshotSchema 接受最小快照，可选字段缺省', () => {
+    const parsed = FlowSnapshotSchema.safeParse({
+      session_id: 'sess-1',
+      state: 'INIT',
+      status: 'ask',
+      message: '',
+    })
+    expect(parsed.success).toBe(true)
+  })
+
+  it('FlowSnapshotSchema 拒绝畸形快照', () => {
+    expect(
+      FlowSnapshotSchema.safeParse({ state: 'INIT', status: 'ask', message: '' }).success,
+    ).toBe(false)
+    expect(
+      FlowSnapshotSchema.safeParse({ session_id: 's', state: 'INIT', status: 'ask', variants: 'x' })
+        .success,
+    ).toBe(false)
+    expect(
+      FlowSnapshotSchema.safeParse({
+        session_id: 's',
+        state: 'INIT',
+        status: 'ask',
+        message: '',
+        questions: [{ key: 'target' }],
+      }).success,
+    ).toBe(false)
+  })
+
+  it('RankingView / Variant 载荷字段类型不匹配即拒绝', () => {
+    expect(
+      RankingViewSchema.safeParse({
+        confidence: 'high',
+        fit: 1,
+        gap: 1,
+        marked: true,
+        pref: 1,
+        reason: '',
+        total: 1,
+        variant: 'A',
+      }).success,
+    ).toBe(false)
+    expect(VariantSchema.safeParse({ body: '', level: 'A' }).success).toBe(false)
+  })
+
+  it('FeedbackRequest variant 超出 A/B/C 档位即拒绝', () => {
+    expect(
+      FeedbackRequestSchema.safeParse({ session_id: 's', action: 'adopt', variant: 'D' }).success,
+    ).toBe(false)
+  })
+})
+
+describe('schemas/preference 与 settings 契约校验', () => {
+  it('PreferenceVector 四维必须是数字', () => {
+    expect(
+      PreferenceVectorSchema.safeParse({
+        detail_level: 0.25,
+        include_diff: 0.75,
+        specify_tests: 'x',
+        max_files_norm: 0.9,
+      }).success,
+    ).toBe(false)
+  })
+
+  it('HistoryList 元素缺字段即拒绝', () => {
+    expect(
+      HistoryListSchema.safeParse([{ session_id: 's', state: 'DONE', project: 'p' }]).success,
+    ).toBe(false)
+  })
+
+  it('SettingsResponse 拒绝类型不匹配与缺锁定项', () => {
+    const base = {
+      model_service: {
+        api_key_masked: 'sk-••••3f7a',
+        base_url: '',
+        decider: 'auto',
+        model_id: 'demo',
+        timeout: 60,
+      },
+      process: {
+        followup_cost_budget: 1,
+        followup_soft_round_guard: 10,
+        telemetry: true,
+      },
+      locked: { candidate_limit: 25 },
+    }
+    expect(SettingsResponseSchema.safeParse(base).success).toBe(true)
+    expect(
+      SettingsResponseSchema.safeParse({
+        ...base,
+        process: { ...base.process, telemetry: 'yes' },
+      }).success,
+    ).toBe(false)
+    expect(SettingsResponseSchema.safeParse({ ...base, locked: {} }).success).toBe(false)
+  })
+})

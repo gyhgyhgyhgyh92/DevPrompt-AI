@@ -15,13 +15,13 @@
   - [x] 2.3 styles/tokens.css：设计 token 全 CSS Variables（品牌蓝/中性面板/暗色优先/语义色），data-theme 切换机制预留
   - [x] 2.4 scripts/check-contract.mjs：openapi-typescript 生成 openapi.generated.ts（入库勿手改）→ check:contract = 重新生成 + git diff --exit-code
   - [x] 2.5 Vitest 冒烟用例 + ESLint/Prettier 配置 + 四脚本接入 CI + 提交 `feat(web)`
-- [ ] Task 3: 6C 状态管理与 API 层（T6-6）：三 store + api 层 + useSSE（依赖 Task 2）
-  - [ ] 3.1 api/ 五文件（client 信封解包/request_id 透传、endpoints、interceptors、errors、types；SSE 订阅封装、超时与中止）
-  - [ ] 3.2 schemas/ 手写 Zod（optimize/preference/settings/common），必须与 openapi.generated.ts 对齐；校验失败不重试（MUST-15）
-  - [ ] 3.3 useOptimizeStore：流程快照/三套/ranking 视图；SSE 消息 store 内处理；断流不自动重连；恢复 = GET /result/{flow_id}
-  - [ ] 3.4 usePreferenceStore（向量+采纳历史）与 useSettingsStore（后端设置 + localStorage 外观项，键前缀 devprompt:v1: + Zod 读取校验）
-  - [ ] 3.5 useSSE：EventSource 生命周期，close() 写 effect cleanup（单测断言 unmount 关闭）
-  - [ ] 3.6 单测 ≥15 用例（SSE cleanup/畸形响应拒绝等）+ MUST-16 静态检查（useShallow）+ 提交 `feat(web)`
+- [x] Task 3: 6C 状态管理与 API 层（T6-6）：三 store + api 层 + useSSE（依赖 Task 2）
+  - [x] 3.1 api/ 五文件（client 信封解包/request_id 透传、endpoints、interceptors、errors、types；SSE 订阅封装、超时与中止）
+  - [x] 3.2 schemas/ 手写 Zod（optimize/preference/settings/common），必须与 openapi.generated.ts 对齐；校验失败不重试（MUST-15）
+  - [x] 3.3 useOptimizeStore：流程快照/三套/ranking 视图；SSE 消息 store 内处理；断流不自动重连；恢复 = GET /result/{flow_id}
+  - [x] 3.4 usePreferenceStore（向量+采纳历史）与 useSettingsStore（后端设置 + localStorage 外观项，键前缀 devprompt:v1: + Zod 读取校验）
+  - [x] 3.5 useSSE：EventSource 生命周期，close() 写 effect cleanup（单测断言 unmount 关闭）
+  - [x] 3.6 单测 ≥15 用例（SSE cleanup/畸形响应拒绝等）+ MUST-16 静态检查（useShallow）+ 提交 `feat(web)`——实际 53 用例全绿（1 冒烟 + 52 新增）
 - [ ] Task 4: 6D 三页面与工作台布局（T6-4）：三路由 + OptimizePage 三栏（依赖 Task 3）
   - [ ] 4.1 路由表 + AppShell（标题栏：logo/项目 chip/API 状态 pill/⚙ 设置入口占位；三栏骨架容器）
   - [ ] 4.2 OptimizePage 三态容器（输入→反问→结果，由 FlowSnapshot.status ask/done/guardrail 驱动）

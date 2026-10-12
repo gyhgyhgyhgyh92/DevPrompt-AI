@@ -19,10 +19,10 @@
 - [x] MUST-19 宪法措辞修订落地（env > settings 文件），三份配套文档同步
 - [x] 前端目录树与 §5.1 diff 为零（含 components/settings 组、useSettingsStore、schemas/settings.ts）
 - [x] tokens.css 全 CSS Variables；data-theme 切换机制可用
-- [ ] check:contract 通过（openapi.generated.ts 自动生成，Zod 与生成类型一致）
-- [ ] 三 store 齐备；SSE 消息 store 内处理；close() 写 effect cleanup（单测断言）
-- [ ] 畸形响应被 Zod 拒绝且不重试（MUST-15）
-- [ ] 无 `useStore(s => ({...}))` 违规形态（MUST-16）
+- [x] check:contract 通过（openapi.generated.ts 自动生成，Zod 与生成类型一致）
+- [x] 三 store 齐备；SSE 消息 store 内处理；close() 写 effect cleanup（单测断言）
+- [x] 畸形响应被 Zod 拒绝且不重试（MUST-15）
+- [x] 无 `useStore(s => ({...}))` 违规形态（MUST-16）
 - [ ] 三页面可访问、路由切换正常、刷新后流程状态不丢失（GET /result 恢复）
 - [ ] OptimizePage 三栏工作台布局成型；步进器仅镜像 9 态（MUST-07）
 - [ ] 上下文面板只读渲染目标定位/取证事实/L3 向量
