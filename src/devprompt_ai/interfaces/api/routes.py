@@ -16,6 +16,7 @@ from devprompt_ai.domain.errors import StateError
 from devprompt_ai.interfaces.api import health
 from devprompt_ai.interfaces.api.schemas import (
     ApiResponse,
+    FactPayload,
     FeedbackRequest,
     FlowSnapshotResponse,
     FollowupRequest,
@@ -28,6 +29,7 @@ from devprompt_ai.interfaces.api.schemas import (
     ScanResponse,
     SettingsResponse,
     SettingsUpdate,
+    SymbolPayload,
     UnknownItemPayload,
     VariantPayload,
 )
@@ -64,6 +66,7 @@ def _ok(data: DataT, request_id: str) -> ApiResponse[DataT]:
 def _snapshot_payload(snapshot: FlowSnapshot) -> FlowSnapshotResponse:
     """快照渲染（dataclass → 契约模型；VariantDraft/RankingView 需逐字段镜像）。"""
     ranking = snapshot.ranking
+    target = snapshot.target
     return FlowSnapshotResponse(
         session_id=snapshot.session_id,
         status=snapshot.status,
@@ -75,6 +78,12 @@ def _snapshot_payload(snapshot: FlowSnapshot) -> FlowSnapshotResponse:
         cleared=snapshot.cleared,
         variants=[VariantPayload(**v.model_dump()) for v in snapshot.variants],
         ranking=RankingViewPayload(**dataclasses.asdict(ranking)) if ranking is not None else None,
+        target=SymbolPayload(name=target.name, path=target.path, line=target.line)
+        if target is not None
+        else None,
+        facts=[
+            FactPayload(key=f.key, passed=f.passed, evidence=f.evidence) for f in snapshot.facts
+        ],
         message=snapshot.message,
     )
 

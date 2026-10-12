@@ -216,6 +216,30 @@
         "title": "ApiResponse[list[HistoryItemPayload]]",
         "type": "object"
       },
+      "FactPayload": {
+        "description": "取证事实只读透出（F-104 七项判定结果）。",
+        "properties": {
+          "evidence": {
+            "title": "Evidence",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "passed",
+          "evidence"
+        ],
+        "title": "FactPayload",
+        "type": "object"
+      },
       "FeedbackRequest": {
         "description": "POST /feedback 请求体：variant 采纳 / +edited_text 编辑采纳 / 两者皆无=跳过。",
         "properties": {
@@ -272,6 +296,13 @@
             "title": "Cleared",
             "type": "array"
           },
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/FactPayload"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
           "message": {
             "default": "",
             "title": "Message",
@@ -305,6 +336,16 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SymbolPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "variants": {
             "items": {
@@ -901,6 +942,30 @@
           }
         },
         "title": "SettingsUpdate",
+        "type": "object"
+      },
+      "SymbolPayload": {
+        "description": "目标定位（上下文面板，设计 §1.2）：symbol@path:line。",
+        "properties": {
+          "line": {
+            "default": 0,
+            "title": "Line",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path"
+        ],
+        "title": "SymbolPayload",
         "type": "object"
       },
       "UnknownItemPayload": {

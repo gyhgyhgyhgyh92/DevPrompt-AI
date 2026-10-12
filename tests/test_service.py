@@ -464,6 +464,18 @@ async def test_feedback_edited_full_chain_updates_vector() -> None:
 # ---------- T6-11 转正与 F-604 设置（6A） ----------
 
 
+async def test_snapshot_carries_target_and_facts() -> None:
+    """上下文面板数据源（设计 §1.2）：快照只读透出目标定位与取证事实（additive 契约）。"""
+    svc, _ = _service()
+    snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+    assert snap.target is not None
+    assert snap.target.name == "SubmitButton"
+    assert snap.target.path == "src/ui/button.tsx"
+    assert snap.target.line == 12
+    assert snap.facts  # 取证事实非空
+    assert all(f.key and f.evidence for f in snap.facts)
+
+
 async def test_set_preference_clips_out_of_range() -> None:
     """PUT /preference 转正：部分更新 + clip01（超界截断而非拒绝），未知维度快速失败。"""
     svc, _ = _service()

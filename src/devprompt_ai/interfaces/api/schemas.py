@@ -75,6 +75,22 @@ class RankingViewPayload(BaseModel):
     total: float
 
 
+class SymbolPayload(BaseModel):
+    """目标定位（上下文面板，设计 §1.2）：symbol@path:line。"""
+
+    name: str
+    path: str
+    line: int = 0
+
+
+class FactPayload(BaseModel):
+    """取证事实只读透出（F-104 七项判定结果）。"""
+
+    key: str
+    passed: bool
+    evidence: str
+
+
 class FlowSnapshotResponse(BaseModel):
     """FlowSnapshot 的 HTTP 渲染形态（status 含 SSE 专有扩展值 "aborted"）。
 
@@ -88,6 +104,8 @@ class FlowSnapshotResponse(BaseModel):
     cleared: list[str] = Field(default_factory=list)
     variants: list[VariantPayload] = Field(default_factory=list)
     ranking: RankingViewPayload | None = None
+    target: SymbolPayload | None = None
+    facts: list[FactPayload] = Field(default_factory=list)
     message: str = ""
 
 

@@ -121,6 +121,8 @@ def check_component_names() -> list[str]:
         return violations
     for f in sorted(component_dir.rglob("*.tsx")):
         expected = f.stem
+        if "." in expected:
+            continue  # 测试文件（*.test.tsx 等）非组件，不适用「文件名=主导出名」（§5.3）
         export_re = re.compile(
             rf"export\s+(?:default\s+)?(?:function|const)\s+{expected}\b"
             rf"|export\s+default\s+{expected}\b"

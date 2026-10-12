@@ -85,6 +85,8 @@ class FlowSnapshot:
     cleared: list[str] = field(default_factory=list)
     variants: list[VariantDraft] = field(default_factory=list)
     ranking: RankingView | None = None
+    target: Symbol | None = None  # 上下文面板（设计 §1.2）：目标定位 symbol@path:line
+    facts: list[FactResult] = field(default_factory=list)  # 取证事实只读透出
     message: str = ""
 
 
@@ -161,7 +163,7 @@ class ForgeService:
         session.data["facts"] = [
             {"key": f.key, "passed": f.passed, "evidence": f.evidence} for f in facts
         ]
-        session.data["target"] = {"name": top.name, "path": top.path}
+        session.data["target"] = {"name": top.name, "path": top.path, "line": top.line}
         await transition(session, FlowState.PROBING, self._sessions)
         return await self._probe_and_route(session, request_id=request_id)
 
@@ -570,6 +572,18 @@ class ForgeService:
     def _snapshot(self, session: FlowSession, status: SnapshotStatus) -> FlowSnapshot:
         questions = [UnknownItem(**u) for u in session.data.get("unknowns", [])]
         ranking_data = session.data.get("ranking")
+        target_data = session.data.get("target")
+        target = (
+            Symbol(
+                name=str(target_data["name"]),
+                path=str(target_data["path"]),
+                line=int(target_data.get("line", 0)),
+                kind="function",
+            )
+            if isinstance(target_data, dict)
+            else None
+        )
+        facts = [FactResult(**f) for f in session.data.get("facts", [])]
         return FlowSnapshot(
             session_id=session.session_id,
             status=status,
@@ -578,6 +592,8 @@ class ForgeService:
             cleared=sorted(session.data.get("clarifications", {}).keys()),
             variants=[VariantDraft(**v) for v in session.data.get("variants", [])],
             ranking=RankingView(**ranking_data) if isinstance(ranking_data, dict) else None,
+            target=target,
+            facts=facts,
         )
 
     async def _require(self, user_id: str, session_id: str, allowed: set[FlowState]) -> FlowSession:
