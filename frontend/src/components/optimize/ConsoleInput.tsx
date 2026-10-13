@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { pickProjectFolder, scanProject } from '../../api/endpoints'
+import { scanProject } from '../../api/endpoints'
 import { useSettingsStore } from '../../stores/useSettingsStore'
+import { FolderPickerModal } from './FolderPickerModal'
 import './ConsoleInput.css'
 
 /** 启动页主视觉固定文案（逐字，spec Task 3）：作为输入区占位展示，用户输入时隐藏。 */
@@ -48,7 +49,7 @@ export function ConsoleInput({ isSubmitting, onSubmit }: ConsoleInputProps) {
   const modelId = useSettingsStore((s) => s.settings?.model_service.model_id ?? '')
   const [sentence, setSentence] = useState('')
   const [project, setProject] = useState('')
-  const [isPicking, setPicking] = useState(false)
+  const [isFolderPickerOpen, setFolderPickerOpen] = useState(false)
   const [projectError, setProjectError] = useState<string | null>(null)
 
   const isDisabled = isSubmitting || sentence.trim() === '' || project.trim() === ''
@@ -68,21 +69,12 @@ export function ConsoleInput({ isSubmitting, onSubmit }: ConsoleInputProps) {
     }
   }
 
-  /** 系统原生文件夹选择（POST /project/pick）：取消（空串）保持原状不报错；仅接受本机真实目录。 */
-  async function handlePickFolder(): Promise<void> {
-    setPicking(true)
-    try {
-      const { path } = await pickProjectFolder()
-      if (path !== '') {
-        setProject(path)
-        setProjectError(null)
-        void validateProject(path)
-      }
-    } catch {
-      setProjectError('无法打开系统文件夹选择器')
-    } finally {
-      setPicking(false)
-    }
+  /** 页内浏览器确认回调（F-601）：写入后复校验（沿用 GET /project/scan；失败提示不自动重试 MUST-15）。 */
+  function handleSelectFolder(path: string): void {
+    setProject(path)
+    setProjectError(null)
+    setFolderPickerOpen(false)
+    void validateProject(path)
   }
 
   return (
@@ -122,8 +114,7 @@ export function ConsoleInput({ isSubmitting, onSubmit }: ConsoleInputProps) {
             className="console-input__folder-toggle"
             aria-label="选择文件夹（本地）"
             title={project.trim() !== '' ? project : undefined}
-            disabled={isPicking}
-            onClick={() => void handlePickFolder()}
+            onClick={() => setFolderPickerOpen(true)}
           >
             <FolderIcon />
             <span>{project.trim() !== '' ? baseName(project) : '选择文件夹（本地）'}</span>
@@ -131,6 +122,12 @@ export function ConsoleInput({ isSubmitting, onSubmit }: ConsoleInputProps) {
         </div>
         {projectError !== null ? <p className="console-input__error">{projectError}</p> : null}
       </form>
+      <FolderPickerModal
+        open={isFolderPickerOpen}
+        initialPath={project}
+        onSelect={handleSelectFolder}
+        onClose={() => setFolderPickerOpen(false)}
+      />
     </div>
   )
 }

@@ -34,7 +34,16 @@ export const ScanResponseSchema = z.object({
   total_symbols: z.number(),
 })
 
-/** POST /project/pick 数据体（契约 ProjectPickResponse）：取消为空串。 */
-export const ProjectPickResponseSchema = z.object({
+/** GET /project/browse 条目（契约 BrowseEntryPayload）。 */
+export const BrowseEntryPayloadSchema = z.object({
+  name: z.string(),
   path: z.string(),
+})
+
+/** GET /project/browse 数据体（契约 BrowseResponse）：path="" 为驱动器列表模式。 */
+export const BrowseResponseSchema = z.object({
+  path: z.string(),
+  parent: z.string().nullable(),
+  entries: z.array(BrowseEntryPayloadSchema),
+  truncated: z.boolean(),
 })

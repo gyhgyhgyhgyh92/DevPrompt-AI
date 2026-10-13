@@ -753,54 +753,44 @@ async def test_rename_session_cas_conflict_twice_raises_6003() -> None:
     assert ei.value.code == 6003
 
 
-# ---------- 原生文件夹选择器（POST /project/pick） ----------
+# ---------- 目录浏览（GET /project/browse） ----------
 
 
-async def test_pick_project_folder_returns_existing_dir(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """选择成功：后端校验「存在且为目录」后返回绝对路径（用户裁定强度）。"""
+async def test_browse_directory_empty_returns_drives(monkeypatch: pytest.MonkeyPatch) -> None:
+    """空 path：驱动器列表透传（path 空串 + parent None，由 harness 探测）。"""
     import devprompt_ai.service as service_module
+    from devprompt_ai.harness.browse import BrowseEntry, BrowseListing
 
-    picked = str(tmp_path)
+    async def _fake_drives() -> BrowseListing:
+        return BrowseListing(path="", parent=None, entries=(BrowseEntry(name="C:\\", path="C:\\"),))
 
-    async def _fake_pick() -> str:
-        return picked
-
-    monkeypatch.setattr(service_module, "pick_folder_dialog", _fake_pick)
+    monkeypatch.setattr(service_module, "list_drives", _fake_drives)
     svc, _ = _service()
-    assert await svc.pick_project_folder() == picked
+    listing = await svc.browse_directory("")
+    assert listing.path == ""
+    assert listing.parent is None
+    assert [e.path for e in listing.entries] == ["C:\\"]
 
 
-async def test_pick_project_folder_cancel_returns_empty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """用户取消对话框：空串原样返回（前端据此保持原选择、不报错）。"""
-    import devprompt_ai.service as service_module
-
-    async def _fake_pick() -> str:
-        return ""
-
-    monkeypatch.setattr(service_module, "pick_folder_dialog", _fake_pick)
+async def test_browse_directory_lists_subdirs(tmp_path: Path) -> None:
+    """真实目录：仅列一级子目录（文件不列），路径为规范化绝对路径，携带上级。"""
+    (tmp_path / "alpha").mkdir()
+    (tmp_path / "beta").mkdir()
+    (tmp_path / "note.txt").write_text("x", encoding="utf-8")
     svc, _ = _service()
-    assert await svc.pick_project_folder() == ""
+    listing = await svc.browse_directory(str(tmp_path))
+    assert listing.path == str(tmp_path)
+    assert [e.name for e in listing.entries] == ["alpha", "beta"]
+    assert listing.parent is not None
 
 
-async def test_pick_project_folder_invalid_dir_raises_2001(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """非目录（MUST-20 防线）：抛 RetrievalError 2001，错误消息不含路径本体（MUST-19）。"""
-    import devprompt_ai.service as service_module
+async def test_browse_directory_missing_raises_2001(tmp_path: Path) -> None:
+    """不存在路径：RetrievalError 2001，错误消息不含路径本体（MUST-19）。"""
     from devprompt_ai.domain.errors import RetrievalError
 
     missing = str(tmp_path / "not-exist-dir")
-
-    async def _fake_pick() -> str:
-        return missing
-
-    monkeypatch.setattr(service_module, "pick_folder_dialog", _fake_pick)
     svc, _ = _service()
     with pytest.raises(RetrievalError) as err:
-        await svc.pick_project_folder()
+        await svc.browse_directory(missing)
     assert err.value.code == 2001
     assert missing not in str(err.value)

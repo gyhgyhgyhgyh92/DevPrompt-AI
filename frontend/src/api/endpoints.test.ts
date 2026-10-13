@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   clearAdoptions,
+  getBrowse,
   getHealth,
   getHistory,
   getPreference,
@@ -9,7 +10,6 @@ import {
   postFeedback,
   postFollowup,
   postOptimize,
-  pickProjectFolder,
   putPreference,
   putSettings,
   scanProject,
@@ -142,13 +142,21 @@ describe('api/endpoints 12 操作', () => {
     )
   })
 
-  it('pickProjectFolder 以 POST 调用（无 body）；取消返回空串路径', async () => {
-    const fetchMock = stubFetchJson(envelope({ path: '' }))
+  it('getBrowse 以 GET 携带编码 path 调用；空 path 不携带参数（驱动器列表）', async () => {
+    const fetchMock = stubFetchJson(
+      envelope({ path: 'D:/ws/repo', parent: 'D:/ws', entries: [], truncated: false }),
+    )
 
-    await expect(pickProjectFolder()).resolves.toEqual({ path: '' })
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/project/pick')
-    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST')
+    await expect(getBrowse('D:/我的 项目')).resolves.toMatchObject({ path: 'D:/ws/repo' })
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `/api/v1/project/browse?path=${encodeURIComponent('D:/我的 项目')}`,
+    )
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('GET')
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined()
+
+    fetchMock.mockClear()
+    await getBrowse('')
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/project/browse')
   })
 })
 

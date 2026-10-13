@@ -7,7 +7,6 @@ import dataclasses
 import difflib
 import json
 import logging
-import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -17,7 +16,7 @@ from devprompt_ai.common.secrets import mask_secret
 from devprompt_ai.config import MODEL_KEY_MAP, AppConfig
 from devprompt_ai.domain.decision.followup import GuardrailState, UnknownItem, build_unknowns
 from devprompt_ai.domain.decision.port import DecisionPort, VariantScore
-from devprompt_ai.domain.errors import RetrievalError, StateError
+from devprompt_ai.domain.errors import StateError
 from devprompt_ai.domain.generate.ports import GeneratePort, GenerationContext, VariantDraft
 from devprompt_ai.domain.generate.variants import expand_levels, resolve_level
 from devprompt_ai.domain.models import (
@@ -36,7 +35,7 @@ from devprompt_ai.domain.retrieval.candidates import MAX_CANDIDATES, build_candi
 from devprompt_ai.domain.retrieval.facts import verify_facts
 from devprompt_ai.domain.retrieval.locate import locate_symbol
 from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader
-from devprompt_ai.harness.dialog import pick_folder_dialog
+from devprompt_ai.harness.browse import BrowseListing, list_drives, list_subdirectories
 from devprompt_ai.harness.llm import LLMGenerator, last_usage
 from devprompt_ai.harness.process import LocalCommandRunner, LocalFileReader, SymbolTableProvider
 from devprompt_ai.memory.settings_store import write_model_settings, write_process_settings
@@ -426,17 +425,15 @@ class ForgeService:
             "kind_counts": ranked,
         }
 
-    async def pick_project_folder(self) -> str:
-        """系统原生目录选择（POST /project/pick）：返回绝对路径；取消空串；非目录 2001（MUST-20）。
+    async def browse_directory(self, path: str) -> BrowseListing:
+        """目录浏览（GET /project/browse，F-601 页内文件夹选择器数据源）。
 
-        校验强度=存在且为目录（用户裁定）：不拒绝 UNC/映射盘；错误消息不回传路径本体（MUST-19）。
+        path 为空串 → 驱动器列表；否则返回该目录一级子目录——不存在 2001、不可读 2002
+        （路径规范化与防护在 harness/browse.py 内完成，MUST-20）。
         """
-        path = await pick_folder_dialog()
-        if path == "":
-            return ""
-        if not await asyncio.to_thread(os.path.isdir, path):
-            raise RetrievalError("所选路径不是有效目录（请重新选择）", code=2001)
-        return path
+        if path.strip() == "":
+            return await list_drives()
+        return await list_subdirectories(path)
 
     # ---- 内部 ----
 

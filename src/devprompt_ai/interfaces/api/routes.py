@@ -17,6 +17,8 @@ from devprompt_ai.interfaces.api import health
 from devprompt_ai.interfaces.api.schemas import (
     AdoptionsClearResponse,
     ApiResponse,
+    BrowseEntryPayload,
+    BrowseResponse,
     FactPayload,
     FeedbackRequest,
     FlowSnapshotResponse,
@@ -27,7 +29,6 @@ from devprompt_ai.interfaces.api.schemas import (
     OptimizeRequest,
     PreferenceUpdateRequest,
     PreferenceVectorPayload,
-    ProjectPickResponse,
     RankingViewPayload,
     ScanResponse,
     SettingsResponse,
@@ -290,9 +291,18 @@ async def get_project_scan(request: Request, project: str) -> ApiResponse[ScanRe
     return _ok(ScanResponse(**stats), request_id)
 
 
-@router.post("/project/pick")
-async def post_project_pick(request: Request) -> ApiResponse[ProjectPickResponse]:
-    """系统原生文件夹选择器（F-601/F-602）：仅返回真实存在的目录；取消返回空串。"""
+@router.get("/project/browse")
+async def get_project_browse(request: Request, path: str = "") -> ApiResponse[BrowseResponse]:
+    """目录浏览（F-601 页内文件夹选择器）：path 空=驱动器列表；含上级与截断标志。"""
     request_id = _request_id(request)
     svc = await get_service()
-    return _ok(ProjectPickResponse(path=await svc.pick_project_folder()), request_id)
+    listing = await svc.browse_directory(path)
+    return _ok(
+        BrowseResponse(
+            path=listing.path,
+            parent=listing.parent,
+            entries=[BrowseEntryPayload(name=e.name, path=e.path) for e in listing.entries],
+            truncated=listing.truncated,
+        ),
+        request_id,
+    )

@@ -113,13 +113,17 @@ describe('mock e2e 六路径', () => {
       ranking: rankingMarked,
     })
     stubApi([
-      { match: '/project/pick', payload: envelope({ path: 'D:/ws/repo' }) },
+      {
+        match: '/project/browse',
+        payload: envelope({ path: 'D:/ws/repo', parent: 'D:/ws', entries: [], truncated: false }),
+      },
       { match: '/optimize', payload: envelope(done) },
       { match: '/history', payload: envelope([]) },
     ])
 
     renderPage()
     await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
+    await user.click(await screen.findByRole('button', { name: '选择当前文件夹' }))
     expect(await screen.findByText('repo')).toBeTruthy()
     await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
     await user.click(screen.getByRole('button', { name: '发送' }))
@@ -157,7 +161,10 @@ describe('mock e2e 六路径', () => {
       ranking: rankingMarked,
     })
     const mock = stubApi([
-      { match: '/project/pick', payload: envelope({ path: 'D:/ws/repo' }) },
+      {
+        match: '/project/browse',
+        payload: envelope({ path: 'D:/ws/repo', parent: 'D:/ws', entries: [], truncated: false }),
+      },
       { match: '/optimize', payload: envelope(asked) },
       { match: '/followup', payload: envelope(done) },
       { match: '/history', payload: envelope([]) },
@@ -165,6 +172,7 @@ describe('mock e2e 六路径', () => {
 
     renderPage()
     await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
+    await user.click(await screen.findByRole('button', { name: '选择当前文件夹' }))
     expect(await screen.findByText('repo')).toBeTruthy()
     await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
     await user.click(screen.getByRole('button', { name: '发送' }))
@@ -198,7 +206,10 @@ describe('mock e2e 六路径', () => {
       ranking: null,
     })
     const mock = stubApi([
-      { match: '/project/pick', payload: envelope({ path: 'D:/ws/repo' }) },
+      {
+        match: '/project/browse',
+        payload: envelope({ path: 'D:/ws/repo', parent: 'D:/ws', entries: [], truncated: false }),
+      },
       { match: '/optimize', payload: envelope(asked) },
       { match: '/followup', payload: envelope(escaped) },
       { match: '/history', payload: envelope([]) },
@@ -206,6 +217,7 @@ describe('mock e2e 六路径', () => {
 
     renderPage()
     await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
+    await user.click(await screen.findByRole('button', { name: '选择当前文件夹' }))
     expect(await screen.findByText('repo')).toBeTruthy()
     await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
     await user.click(screen.getByRole('button', { name: '发送' }))

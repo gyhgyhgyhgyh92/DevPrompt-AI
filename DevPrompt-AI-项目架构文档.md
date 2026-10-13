@@ -1055,7 +1055,9 @@ src/devprompt_ai/
 ├── harness/
 │   ├── runner.py              openai-agents Runner 封装
 │   ├── llm.py                 多供应商客户端
-│   └── guardrails.py          输出校验
+│   ├── guardrails.py          输出校验
+│   ├── process.py             检索 I/O Protocol 实现（CommandRunner/FileReader）+ 符号表编排（F-101）
+│   └── browse.py              目录浏览 I/O（F-601 页内文件夹选择器数据源，GET /project/browse）
 ├── memory/
 │   ├── store.py               SQL 封装（唯一允许写 SQL 处）
 │   ├── schema.py              表结构与迁移
@@ -1143,18 +1145,19 @@ frontend/
     │   │   ├── Toggle.tsx         开关（设置中心用）
     │   │   └── Slider.tsx         滑条（偏好/设置共用）
     │   ├── optimize/          优化流程组件
-    │   │   ├── OptimizeInput.tsx
-    │   │   ├── PhaseIndicator.tsx
+    │   │   ├── ConsoleInput.tsx     启动页主视觉输入卡片（对话式重构）
+    │   │   ├── FolderPickerModal.tsx  页内文件夹选择器（F-601，GET /project/browse 供数）
+    │   │   ├── ChatStream.tsx       对话流（用户气泡 → AI 回复块 → 方案组嵌入）
     │   │   ├── PromptCard.tsx
     │   │   ├── VariantTabs.tsx
     │   │   ├── RecommendBadge.tsx
     │   │   ├── ScoreDetail.tsx
     │   │   ├── ConfidenceNotice.tsx
     │   │   ├── FollowupForm.tsx
-    │   │   ├── CopyButton.tsx
-    │   │   ├── SessionSidebar.tsx  会话侧栏（T6-4 工作台左栏：新建会话/历史会话/侧栏导航）
-    │   │   └── ContextPanel.tsx    上下文面板（T6-4 工作台右栏：目标定位/取证事实/L3 偏好条）
+    │   │   └── CopyButton.tsx
     │   ├── history/           历史页组件
+    │   │   ├── ProjectSidebar.tsx  固定侧边栏（图三：项目分组 + 会话条目）
+    │   │   ├── SessionMenu.tsx     会话 ⋮ 菜单（置顶/复制路径/重命名/删除）
     │   │   └── HistoryItem.tsx
     │   ├── preference/        偏好页组件
     │   │   ├── PreferenceEditor.tsx

@@ -132,10 +132,25 @@ class ScanResponse(BaseModel):
     kind_counts: dict[str, int]
 
 
-class ProjectPickResponse(BaseModel):
-    """POST /project/pick 数据体：所选目录绝对路径；用户取消为空串（F-601）。"""
+class BrowseEntryPayload(BaseModel):
+    """目录浏览条目：展示名 + 完整路径（F-601 页内文件夹选择器）。"""
 
-    path: str = ""
+    name: str
+    path: str
+
+
+class BrowseResponse(BaseModel):
+    """GET /project/browse 数据体：path="" 为驱动器列表模式（F-601）。
+
+    字段无默认值（响应必有值）：带默认值会被 OpenAPI 标记非必填，生成的前端类型
+    将含 undefined，削弱收窄（T6-2 契约管线（生成类型）无 `?` 前提）。
+    """
+
+    path: str
+    # 上级目录：None=无上级（驱动器列表）；""=驱动器根（回驱动器列表）；其余=上级路径
+    parent: str | None
+    entries: list[BrowseEntryPayload]
+    truncated: bool
 
 
 class ModelServiceSettings(BaseModel):

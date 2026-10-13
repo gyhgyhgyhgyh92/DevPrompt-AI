@@ -81,7 +81,7 @@
   background: var(--divider);
 }
 
-/* 第二行：选择文件夹（本地，系统原生对话框） */
+/* 第二行：选择文件夹（本地，页内浏览器模态） */
 .console-input__folder {
   display: flex;
   flex-wrap: wrap;
@@ -104,11 +104,6 @@
 
 .console-input__folder-toggle:hover {
   background: var(--hover);
-}
-
-.console-input__folder-toggle:disabled {
-  cursor: default;
-  opacity: 0.6;
 }
 
 .console-input__error {

@@ -46,6 +46,37 @@
         "title": "ApiResponse[AdoptionsClearResponse]",
         "type": "object"
       },
+      "ApiResponse_BrowseResponse_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BrowseResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[BrowseResponse]",
+        "type": "object"
+      },
       "ApiResponse_FlowSnapshotResponse_": {
         "properties": {
           "code": {
@@ -164,37 +195,6 @@
         "title": "ApiResponse[PreferenceVectorPayload]",
         "type": "object"
       },
-      "ApiResponse_ProjectPickResponse_": {
-        "properties": {
-          "code": {
-            "default": 0,
-            "title": "Code",
-            "type": "integer"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ProjectPickResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "message": {
-            "default": "ok",
-            "title": "Message",
-            "type": "string"
-          },
-          "request_id": {
-            "default": "",
-            "title": "Request Id",
-            "type": "string"
-          }
-        },
-        "title": "ApiResponse[ProjectPickResponse]",
-        "type": "object"
-      },
       "ApiResponse_ScanResponse_": {
         "properties": {
           "code": {
@@ -290,6 +290,64 @@
           }
         },
         "title": "ApiResponse[list[HistoryItemPayload]]",
+        "type": "object"
+      },
+      "BrowseEntryPayload": {
+        "description": "目录浏览条目：展示名 + 完整路径（F-601 页内文件夹选择器）。",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path"
+        ],
+        "title": "BrowseEntryPayload",
+        "type": "object"
+      },
+      "BrowseResponse": {
+        "description": "GET /project/browse 数据体：path=\"\" 为驱动器列表模式（F-601）。\n\n字段无默认值（响应必有值）：带默认值会被 OpenAPI 标记非必填，生成的前端类型\n将含 undefined，削弱收窄（T6-2 契约管线（生成类型）无 `?` 前提）。",
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/BrowseEntryPayload"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "parent",
+          "entries",
+          "truncated"
+        ],
+        "title": "BrowseResponse",
         "type": "object"
       },
       "FactPayload": {
@@ -956,18 +1014,6 @@
         "title": "ProcessUpdate",
         "type": "object"
       },
-      "ProjectPickResponse": {
-        "description": "POST /project/pick 数据体：所选目录绝对路径；用户取消为空串（F-601）。",
-        "properties": {
-          "path": {
-            "default": "",
-            "title": "Path",
-            "type": "string"
-          }
-        },
-        "title": "ProjectPickResponse",
-        "type": "object"
-      },
       "RankingViewPayload": {
         "description": "service.RankingView 的契约镜像（F-403/F-404 加权推荐视图）。",
         "properties": {
@@ -1588,23 +1634,45 @@
         "summary": "Get Progress"
       }
     },
-    "/api/v1/project/pick": {
-      "post": {
-        "description": "系统原生文件夹选择器（F-601/F-602）：仅返回真实存在的目录；取消返回空串。",
-        "operationId": "post_project_pick_api_v1_project_pick_post",
+    "/api/v1/project/browse": {
+      "get": {
+        "description": "目录浏览（F-601 页内文件夹选择器）：path 空=驱动器列表；含上级与截断标志。",
+        "operationId": "get_project_browse_api_v1_project_browse_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_ProjectPickResponse_"
+                  "$ref": "#/components/schemas/ApiResponse_BrowseResponse_"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
-        "summary": "Post Project Pick"
+        "summary": "Get Project Browse"
       }
     },
     "/api/v1/project/scan": {

@@ -154,13 +154,17 @@ describe('OptimizePage 三栏工作台', () => {
       questions: [{ key: 'target', reason: '缺目标定位', best_guess: 'build()', ask: '改哪里？' }],
     })
     const mock = stubApi([
-      { match: '/project/pick', payload: envelope({ path: 'D:/ws/repo' }) },
+      {
+        match: '/project/browse',
+        payload: envelope({ path: 'D:/ws/repo', parent: 'D:/ws', entries: [], truncated: false }),
+      },
       { match: '/optimize', payload: envelope(asked) },
       { match: '/history', payload: envelope([]) },
     ])
 
     renderPage()
     await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
+    await user.click(await screen.findByRole('button', { name: '选择当前文件夹' }))
     expect(await screen.findByText('repo')).toBeTruthy()
     await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
     await user.click(screen.getByRole('button', { name: '发送' }))

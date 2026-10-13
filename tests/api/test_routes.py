@@ -11,6 +11,7 @@ import pytest
 
 from devprompt_ai.domain.errors import StateError
 from devprompt_ai.domain.models import SessionSummary
+from devprompt_ai.harness.browse import BrowseEntry, BrowseListing
 from devprompt_ai.interfaces.api import health, routes
 from devprompt_ai.interfaces.api.app import create_app
 from devprompt_ai.service import FlowSnapshot, RankingView, SnapshotStatus
@@ -60,7 +61,11 @@ class FakeForgeService:
             "total_files": 2,
             "kind_counts": {"function": 2, "class": 1},
         }
-        self.pick_path: str = "D:/ws/repo"
+        self.browse_listing: BrowseListing = BrowseListing(
+            path="D:/ws/repo",
+            parent="D:/ws",
+            entries=(BrowseEntry(name="src", path="D:/ws/repo/src"),),
+        )
 
     async def optimize(
         self, user_id: str, project_root: str, sentence: str, *, request_id: str
@@ -154,8 +159,8 @@ class FakeForgeService:
     async def scan_project(self, project_root: str) -> dict[str, Any]:
         return dict(self.scan)
 
-    async def pick_project_folder(self) -> str:
-        return self.pick_path
+    async def browse_directory(self, path: str) -> BrowseListing:
+        return self.browse_listing
 
     def _next(self, session_id: str = "s1") -> FlowSnapshot:
         if self.fail_with is not None:
@@ -436,26 +441,36 @@ async def test_project_scan(client: httpx.AsyncClient, fake_service: FakeForgeSe
     assert data["kind_counts"]["function"] == 2
 
 
-async def test_project_pick_returns_path(
+async def test_project_browse_returns_listing(
     client: httpx.AsyncClient, fake_service: FakeForgeService
 ) -> None:
-    """POST /project/pick：返回所选目录路径；X-Request-ID 头与信封一致。"""
-    resp = await client.post("/api/v1/project/pick")
+    """GET /project/browse：返回 path/parent/entries/truncated；X-Request-ID 头与信封一致。"""
+    resp = await client.get("/api/v1/project/browse", params={"path": "D:/ws/repo"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["code"] == 0
-    assert body["data"] == {"path": "D:/ws/repo"}
+    assert body["data"] == {
+        "path": "D:/ws/repo",
+        "parent": "D:/ws",
+        "entries": [{"name": "src", "path": "D:/ws/repo/src"}],
+        "truncated": False,
+    }
     assert resp.headers["x-request-id"] == body["request_id"]
 
 
-async def test_project_pick_cancel_returns_empty(
+async def test_project_browse_empty_path_returns_drives(
     client: httpx.AsyncClient, fake_service: FakeForgeService
 ) -> None:
-    """用户取消对话框：空串成功响应（非错误），前端据此保持原状。"""
-    fake_service.pick_path = ""
-    resp = await client.post("/api/v1/project/pick")
+    """无 path 参数：驱动器列表模式（path 空串 + parent null）。"""
+    fake_service.browse_listing = BrowseListing(path="", parent=None)
+    resp = await client.get("/api/v1/project/browse")
     assert resp.status_code == 200
-    assert resp.json()["data"] == {"path": ""}
+    assert resp.json()["data"] == {
+        "path": "",
+        "parent": None,
+        "entries": [],
+        "truncated": False,
+    }
 
 
 async def test_error_response_uniform_shape(

@@ -25,7 +25,7 @@ def _load_export_module() -> Any:
 
 
 def test_openapi_covers_sixteen_operations() -> None:
-    """13 路径 / 16 操作：preference/settings 各 GET+PUT，history PATCH+DELETE，project pick。"""
+    """13 路径 / 16 操作：preference/settings 各 GET+PUT，history PATCH+DELETE，project browse。"""
     doc = create_app().openapi()
     paths: dict[str, Any] = doc["paths"]
     assert len(paths) == 13
@@ -39,7 +39,7 @@ def test_openapi_covers_sixteen_operations() -> None:
     assert set(paths["/api/v1/preference"]) >= {"get", "put"}
     assert "delete" in paths["/api/v1/preference/adoptions"]
     assert {"patch", "delete"} <= set(paths["/api/v1/history/{session_id}"])
-    assert "post" in paths["/api/v1/project/pick"]
+    assert "get" in paths["/api/v1/project/browse"]
 
 
 def test_committed_openapi_matches_app() -> None:

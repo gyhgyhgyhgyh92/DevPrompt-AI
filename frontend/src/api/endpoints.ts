@@ -1,8 +1,8 @@
 import type { z } from 'zod'
 import {
+  BrowseResponseSchema,
   EmptyDataSchema,
   HealthResponseSchema,
-  ProjectPickResponseSchema,
   ScanResponseSchema,
 } from '../schemas/common'
 import {
@@ -23,6 +23,7 @@ import { API_BASE_URL, openEventStream, request, type SseHandlers } from './clie
 import { contractError } from './errors'
 import type {
   AdoptionsClearResponse,
+  BrowseResponse,
   FeedbackRequest,
   FlowSnapshotResponse,
   FollowupRequest,
@@ -32,7 +33,6 @@ import type {
   OptimizeRequest,
   PreferenceUpdateRequest,
   PreferenceVectorPayload,
-  ProjectPickResponse,
   ScanResponse,
   SettingsResponse,
   SettingsUpdate,
@@ -52,7 +52,8 @@ export const ENDPOINTS = {
   historyItem: (sessionId: string) => `${API_BASE_URL}/history/${encodeURIComponent(sessionId)}`,
   projectScan: (project: string) =>
     `${API_BASE_URL}/project/scan?project=${encodeURIComponent(project)}`,
-  projectPick: `${API_BASE_URL}/project/pick`,
+  projectBrowse: (path: string) =>
+    `${API_BASE_URL}/project/browse${path === '' ? '' : `?path=${encodeURIComponent(path)}`}`,
   settings: `${API_BASE_URL}/settings`,
 } as const
 
@@ -200,16 +201,13 @@ export function scanProject(project: string, signal?: AbortSignal): Promise<Scan
 }
 
 /**
- * 系统原生文件夹选择（F-601/F-602）：后端弹本机对话框返回绝对路径；取消返回空串。
- * 超时放宽至 310s（略大于后端 300s，保证后端超时错误优先返回）；hasSideEffect——
- * 潜在自动重试会重复弹窗（MUST-15）。
+ * 目录浏览（F-601 页内文件夹选择器数据源）：path 空串返回驱动器列表；
+ * 逐级导航由组件在用户交互时按需调用（GET，无副作用）。
  */
-export function pickProjectFolder(signal?: AbortSignal): Promise<ProjectPickResponse> {
-  return request(ENDPOINTS.projectPick, {
-    method: 'POST',
-    schema: ProjectPickResponseSchema,
+export function getBrowse(path: string, signal?: AbortSignal): Promise<BrowseResponse> {
+  return request(ENDPOINTS.projectBrowse(path), {
+    method: 'GET',
+    schema: BrowseResponseSchema,
     signal,
-    timeoutMs: 310_000,
-    hasSideEffect: true,
   })
 }

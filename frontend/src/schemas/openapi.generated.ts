@@ -183,20 +183,20 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/project/pick": {
+    "/api/v1/project/browse": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
         /**
-         * Post Project Pick
-         * @description 系统原生文件夹选择器（F-601/F-602）：仅返回真实存在的目录；取消返回空串。
+         * Get Project Browse
+         * @description 目录浏览（F-601 页内文件夹选择器）：path 空=驱动器列表；含上级与截断标志。
          */
-        post: operations["post_project_pick_api_v1_project_pick_post"];
+        get: operations["get_project_browse_api_v1_project_browse_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -289,6 +289,25 @@ export interface components {
              */
             request_id: string;
         };
+        /** ApiResponse[BrowseResponse] */
+        ApiResponse_BrowseResponse_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["BrowseResponse"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
         /** ApiResponse[FlowSnapshotResponse] */
         ApiResponse_FlowSnapshotResponse_: {
             /**
@@ -366,25 +385,6 @@ export interface components {
              */
             request_id: string;
         };
-        /** ApiResponse[ProjectPickResponse] */
-        ApiResponse_ProjectPickResponse_: {
-            /**
-             * Code
-             * @default 0
-             */
-            code: number;
-            data?: components["schemas"]["ProjectPickResponse"] | null;
-            /**
-             * Message
-             * @default ok
-             */
-            message: string;
-            /**
-             * Request Id
-             * @default
-             */
-            request_id: string;
-        };
         /** ApiResponse[ScanResponse] */
         ApiResponse_ScanResponse_: {
             /**
@@ -442,6 +442,33 @@ export interface components {
              * @default
              */
             request_id: string;
+        };
+        /**
+         * BrowseEntryPayload
+         * @description 目录浏览条目：展示名 + 完整路径（F-601 页内文件夹选择器）。
+         */
+        BrowseEntryPayload: {
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+        };
+        /**
+         * BrowseResponse
+         * @description GET /project/browse 数据体：path="" 为驱动器列表模式（F-601）。
+         *
+         *     字段无默认值（响应必有值）：带默认值会被 OpenAPI 标记非必填，生成的前端类型
+         *     将含 undefined，削弱收窄（T6-2 契约管线（生成类型）无 `?` 前提）。
+         */
+        BrowseResponse: {
+            /** Entries */
+            entries: components["schemas"]["BrowseEntryPayload"][];
+            /** Parent */
+            parent: string | null;
+            /** Path */
+            path: string;
+            /** Truncated */
+            truncated: boolean;
         };
         /**
          * FactPayload
@@ -725,17 +752,6 @@ export interface components {
             followup_soft_round_guard?: number | null;
             /** Telemetry */
             telemetry?: boolean | null;
-        };
-        /**
-         * ProjectPickResponse
-         * @description POST /project/pick 数据体：所选目录绝对路径；用户取消为空串（F-601）。
-         */
-        ProjectPickResponse: {
-            /**
-             * Path
-             * @default
-             */
-            path: string;
         };
         /**
          * RankingViewPayload
@@ -1166,9 +1182,11 @@ export interface operations {
             };
         };
     };
-    post_project_pick_api_v1_project_pick_post: {
+    get_project_browse_api_v1_project_browse_get: {
         parameters: {
-            query?: never;
+            query?: {
+                path?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1181,7 +1199,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_ProjectPickResponse_"];
+                    "application/json": components["schemas"]["ApiResponse_BrowseResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

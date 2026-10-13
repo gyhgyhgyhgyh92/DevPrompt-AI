@@ -1,0 +1,194 @@
+/*
+ * 页内文件夹选择器（F-601）样式：BEM 命名；
+ * 颜色/间距/圆角全部引用 tokens.css 变量（MUST-17 禁硬编码）。
+ * overlay 为 fixed 定位：模态恒处于浏览器视口内（不脱离页面，不产生系统桌面窗口）。
+ */
+
+.folder-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--color-overlay);
+}
+
+.folder-picker {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: min(72vh, 640px);
+  overflow: hidden;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.folder-picker:focus {
+  outline: none;
+}
+
+.folder-picker__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.folder-picker__title {
+  font: var(--font-body-bold);
+  color: var(--color-text-primary);
+}
+
+.folder-picker__close {
+  padding: var(--space-1) var(--space-3);
+  font: var(--font-body-medium);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.folder-picker__close:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+}
+
+.folder-picker__pathbar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.folder-picker__up {
+  flex: 0 0 auto;
+  padding: var(--space-1) var(--space-3);
+  font: var(--font-body-medium);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.folder-picker__up:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+}
+
+.folder-picker__up:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.folder-picker__path {
+  min-width: 0;
+  overflow: hidden;
+  font: var(--font-code-regular);
+  color: var(--color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-picker__body {
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-2) var(--space-3);
+  overflow-y: auto;
+}
+
+.folder-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.folder-picker__item {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font: var(--font-body-regular);
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.folder-picker__item:hover {
+  background: var(--hover);
+}
+
+.folder-picker__item-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-picker__hint {
+  margin: var(--space-2) var(--space-3);
+  font: var(--font-body-regular);
+  color: var(--color-text-muted);
+}
+
+.folder-picker__error {
+  margin: var(--space-2) var(--space-3);
+  font: var(--font-body-regular);
+  color: var(--danger);
+}
+
+.folder-picker__footer {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.folder-picker__cancel {
+  padding: var(--space-1) var(--space-4);
+  font: var(--font-body-medium);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.folder-picker__cancel:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+}
+
+.folder-picker__confirm {
+  padding: var(--space-1) var(--space-4);
+  font: var(--font-body-medium);
+  color: var(--brand);
+  cursor: pointer;
+  background: var(--brand-btn);
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.folder-picker__confirm:hover:not(:disabled) {
+  background: var(--brand-btn-hover);
+}
+
+.folder-picker__confirm:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}

@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse, SettingsResponse } from '../../api/types'
@@ -26,12 +26,12 @@ const settingsFixture: SettingsResponse = {
   locked: { candidate_limit: 25 },
 }
 
-/** URL 分流 stub：/project/pick 与 /project/scan 各取自己的 JSON（其余回 null）。 */
-function stubFetchByUrl(payloadByPath: { pick: unknown; scan?: unknown }) {
+/** URL 分流 stub：/project/browse 与 /project/scan 各取自己的 JSON（其余回 null）。 */
+function stubFetchByUrl(payloadByPath: { browse: unknown; scan?: unknown }) {
   const mock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = String(input)
-    const payload = url.includes('/project/pick')
-      ? payloadByPath.pick
+    const payload = url.includes('/project/browse')
+      ? payloadByPath.browse
       : url.includes('/project/scan')
         ? (payloadByPath.scan ?? envelope({ total_symbols: 1, total_files: 1, kind_counts: {} }))
         : envelope(null)
@@ -43,6 +43,11 @@ function stubFetchByUrl(payloadByPath: { pick: unknown; scan?: unknown }) {
   })
   vi.stubGlobal('fetch', mock)
   return mock
+}
+
+/** browse 载荷快捷构造：默认落在目标项目目录（path='D:/ws/repo'）。 */
+function browsePayload(path: string, parent: string | null = null) {
+  return envelope({ path, parent, entries: [], truncated: false })
 }
 
 beforeEach(() => {
@@ -86,7 +91,7 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
     expect(screen.queryByRole('button', { name: '本地' })).toBeNull()
   })
 
-  it('不再存在「项目路径」手动输入文本框（移除手输，仅原生对话框）', () => {
+  it('不再存在「项目路径」手动输入文本框（移除手输，仅页内浏览器）', () => {
     render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
 
     expect(screen.queryByRole('textbox', { name: '项目路径' })).toBeNull()
@@ -99,19 +104,25 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
     expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('点击「选择文件夹（本地）」经 POST /project/pick 选择并显示 basename，提交透传路径', async () => {
+  it('点击「选择文件夹（本地）」打开页内浏览器，选择后显示 basename 并透传路径', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
-    const fetchMock = stubFetchByUrl({ pick: envelope({ path: 'D:/ws/repo' }) })
+    const fetchMock = stubFetchByUrl({ browse: browsePayload('D:/ws/repo', 'D:/ws') })
     render(<ConsoleInput isSubmitting={false} onSubmit={onSubmit} />)
 
     await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
     await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
 
+    // 页内模态（DOM 内渲染，非系统桌面窗口）
+    expect(await screen.findByRole('dialog', { name: '选择项目文件夹（本地）' })).toBeTruthy()
+    await user.click(await screen.findByRole('button', { name: '选择当前文件夹' }))
+
     expect(await screen.findByText('repo')).toBeTruthy()
-    const pickCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/project/pick'))
-    expect(pickCall).toBeTruthy()
-    expect(pickCall?.[1]?.method).toBe('POST')
+    expect(screen.queryByRole('dialog', { name: '选择项目文件夹（本地）' })).toBeNull()
+    const browseCall = fetchMock.mock.calls.find((call) =>
+      String(call[0]).includes('/project/browse'),
+    )
+    expect(browseCall).toBeTruthy()
     // 选择后沿用 scan 复校验（失败提示路径依赖，不再有手输）
     const scanCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/project/scan'))
     expect(scanCall).toBeTruthy()
@@ -120,35 +131,34 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
     expect(onSubmit).toHaveBeenCalledWith('加个导出按钮', 'D:/ws/repo')
   })
 
-  it('取消选择（空串）保持原状且不报错，发送仍禁用', async () => {
+  it('取消关闭页内浏览器保持原状且不报错，发送仍禁用', async () => {
     const user = userEvent.setup()
-    stubFetchByUrl({ pick: envelope({ path: '' }) })
+    stubFetchByUrl({ browse: browsePayload('D:/ws/repo') })
     render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
 
     await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
+    expect(await screen.findByRole('dialog', { name: '选择项目文件夹（本地）' })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: '取消' }))
 
-    await waitFor(() =>
-      expect(
-        (screen.getByRole('button', { name: '选择文件夹（本地）' }) as HTMLButtonElement).disabled,
-      ).toBe(false),
-    )
-    expect(screen.queryByText('无法打开系统文件夹选择器')).toBeNull()
+    expect(screen.queryByRole('dialog', { name: '选择项目文件夹（本地）' })).toBeNull()
     expect(screen.getByRole('button', { name: '选择文件夹（本地）' }).textContent).toContain(
       '选择文件夹（本地）',
     )
     expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('选择失败（业务错误）显示「无法打开系统文件夹选择器」', async () => {
+  it('浏览器加载失败（业务错误）在模态内显示错误，可取消后保持原状', async () => {
     const user = userEvent.setup()
     stubFetchByUrl({
-      pick: { code: 2001, message: '所选路径不是有效目录', request_id: 'r', data: null },
+      browse: { code: 2001, message: '目录不存在或不可访问', request_id: 'r', data: null },
     })
     render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
 
     await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
 
-    expect(await screen.findByText('无法打开系统文件夹选择器')).toBeTruthy()
+    expect(await screen.findByText('无法读取该文件夹，请重试')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: '取消' }))
+    expect(screen.queryByText('无法读取该文件夹，请重试')).toBeNull()
     expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
