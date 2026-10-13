@@ -1429,12 +1429,12 @@ export function useAdoptVariant() {
 **localStorage 键命名规范**：
 
 ```
-devprompt:preference        偏好向量缓存
-devprompt:draft             输入草稿
-devprompt:last-project      最近使用的项目路径
+devprompt:v1:preference        偏好向量缓存
+devprompt:v1:draft             输入草稿
+devprompt:v1:last-project      最近使用的项目路径
 ```
 
-统一前缀避免与其他应用冲突。所有 key 必须有 TTL 与版本前缀（如 `devprompt:v1:preference`），便于将来变更结构时安全失效。
+统一前缀避免与其他应用冲突。所有 key 必须带版本前缀（如 `devprompt:v1:preference`，2026-10-13 定稿），便于将来变更结构时安全失效；TTL 暂不强制、后续按需补。
 
 **敏感数据不入 localStorage**：项目路径可存（原句不存，涉及用户代码内容）。
 
