@@ -17,11 +17,20 @@ PICK_DIALOG_TIMEOUT = 300.0
 """系统对话框等待超时（秒）：用户驱动模态，显式放宽；超时由 run_command 杀进程。"""
 
 # 单 argv 传参（create_subprocess_exec 无 shell）：脚本内只用单引号，避免引号转义歧义
+# 置顶机制：uvicorn 为无窗口后台进程，Windows 前台锁定（ForegroundLockTimeout）拦截其
+# 子进程的窗口激活——对话框会藏在浏览器等其他窗口后面，用户误以为失败（真实用户实测
+# 暴露）。以隐藏的 TopMost owner 承载模态对话框（owned 窗口随 owner 处于顶层 band），
+# 强制其显示在最前，无需依赖激活权限。
 _PS_SCRIPT = (
     "Add-Type -AssemblyName System.Windows.Forms; "
+    "$owner = New-Object System.Windows.Forms.Form; "
+    "$owner.FormBorderStyle = 'None'; $owner.ShowInTaskbar = $false; "
+    "$owner.TopMost = $true; $owner.Opacity = 0; $owner.Size = '1,1'; "
+    "$owner.StartPosition = 'Manual'; $owner.Location = '-10000,-10000'; "
+    "$owner.Show(); "
     "$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
     "$d.Description = '选择项目文件夹（本地）'; $d.UseDescriptionForTitle = $true; "
-    "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) "
+    "if ($d.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) "
     "{ [Console]::Out.Write($d.SelectedPath) }"
 )
 
