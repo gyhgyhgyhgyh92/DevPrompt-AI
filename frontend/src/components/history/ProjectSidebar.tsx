@@ -7,8 +7,15 @@ import { usePreferenceStore } from '../../stores/usePreferenceStore'
 import { SessionMenu } from './SessionMenu'
 import './ProjectSidebar.css'
 
-/** 排序模式（顶部排序图标切换）：置顶优先（默认，与后端排序一致）/ 纯时间倒序。 */
-type SortMode = 'pinned' | 'time'
+/** 排序：单一既定顺序——置顶优先，其次更新时间倒序（与后端排序口径一致）。 */
+function sortItems(items: readonly HistoryItemPayload[]): HistoryItemPayload[] {
+  const copy = [...items]
+  copy.sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+    return b.updated_at.localeCompare(a.updated_at)
+  })
+  return copy
+}
 
 /** toast 显示时长（自研轻量提示，2s 消失）。 */
 const TOAST_DURATION_MS = 2000
@@ -48,11 +55,12 @@ function DotIcon() {
   )
 }
 
-function SortIcon() {
+/** 一键收纳图标（图一）：竖向边界 + 左向双箭头（收起侧边栏语义，自绘 SVG，MUST-04）。 */
+function CollapseIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
       <path
-        d="M4 3v10M4 13l-2-2M4 13l2-2M12 13V3M12 3l-2 2M12 3l2 2"
+        d="M13.5 3.5v9M9.5 4.5 6 8l3.5 3.5M5.5 4.5 2 8l3.5 3.5"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.2"
@@ -63,32 +71,9 @@ function SortIcon() {
   )
 }
 
-function FilterIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path
-        d="M2 4h12M4 8h8M6.5 12h3"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
-}
-
 /** 条目标题回退：无 custom_title 且无原句（旧数据）时拼「项目名 · 状态」（spec 假设 3）。 */
 function itemTitle(item: HistoryItemPayload): string {
   return item.title !== '' ? item.title : `${item.project} · ${item.state}`
-}
-
-function sortItems(items: readonly HistoryItemPayload[], mode: SortMode): HistoryItemPayload[] {
-  const copy = [...items]
-  copy.sort((a, b) => {
-    if (mode === 'pinned' && a.pinned !== b.pinned) return a.pinned ? -1 : 1
-    return b.updated_at.localeCompare(a.updated_at)
-  })
-  return copy
 }
 
 /** 按项目分组（保持排序后首现顺序），组序由首条目决定。 */
@@ -106,15 +91,19 @@ function groupByProject(
 
 /**
  * 左侧固定侧边栏（图三 1:1，spec Task 4/5，F-602/F-703）。
- * 顶部「项目 ⌄」+ 排序/筛选图标；按项目分组渲染会话条目；选中同步高亮 + ⋮ 菜单（置顶/复制/重命名/删除）。
+ * 顶部「项目」+ 一键收纳按钮（2026-10-13：原 ⌄ 箭头替换；排序/筛选图标已移除）；
+ * 列表恒按项目分组、置顶优先排序；选中同步高亮 + ⋮ 菜单（置顶/复制/重命名/删除）。
  * 数据自 GET /history（store 只存结果，MUST-16：数据获取在此组件 effect 内，不入 store）。
  */
-export function ProjectSidebar() {
+interface ProjectSidebarProps {
+  /** 一键收纳（F-602）：收起整个侧边栏（由外壳 App 接管折叠态与恢复入口）。 */
+  onCollapse: () => void
+}
+
+export function ProjectSidebar({ onCollapse }: ProjectSidebarProps) {
   const navigate = useNavigate()
   const history = usePreferenceStore((s) => s.history)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [sortMode, setSortMode] = useState<SortMode>('pinned')
-  const [isGrouped, setGrouped] = useState(true)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
@@ -218,7 +207,7 @@ export function ProjectSidebar() {
       .catch(() => showToast('复制失败'))
   }
 
-  const sorted = sortItems(history, sortMode)
+  const sorted = sortItems(history)
 
   function renderRow(item: HistoryItemPayload) {
     const isSelected = selectedId === item.session_id
@@ -303,30 +292,15 @@ export function ProjectSidebar() {
   return (
     <aside className="project-sidebar" aria-label="项目">
       <div className="project-sidebar__head">
-        <span className="project-sidebar__title">
-          项目
-          <span aria-hidden="true">⌄</span>
-        </span>
-        <div className="project-sidebar__actions">
-          <button
-            type="button"
-            className="project-sidebar__icon-btn"
-            aria-label="排序"
-            aria-pressed={sortMode === 'pinned'}
-            onClick={() => setSortMode((mode) => (mode === 'pinned' ? 'time' : 'pinned'))}
-          >
-            <SortIcon />
-          </button>
-          <button
-            type="button"
-            className="project-sidebar__icon-btn"
-            aria-label="筛选"
-            aria-pressed={isGrouped}
-            onClick={() => setGrouped((grouped) => !grouped)}
-          >
-            <FilterIcon />
-          </button>
-        </div>
+        <span className="project-sidebar__title">项目</span>
+        <button
+          type="button"
+          className="project-sidebar__collapse"
+          aria-label="收起侧边栏"
+          onClick={onCollapse}
+        >
+          <CollapseIcon />
+        </button>
       </div>
 
       <button type="button" className="project-sidebar__new" onClick={handleNewSession}>
@@ -334,19 +308,15 @@ export function ProjectSidebar() {
       </button>
 
       <div className="project-sidebar__list">
-        {isGrouped ? (
-          groupByProject(sorted).map((group) => (
-            <section className="project-sidebar__group" key={group.project}>
-              <div className="project-sidebar__group-head">
-                <FolderIcon />
-                <span>{group.project}</span>
-              </div>
-              <ul className="project-sidebar__items">{group.items.map(renderRow)}</ul>
-            </section>
-          ))
-        ) : (
-          <ul className="project-sidebar__items">{sorted.map(renderRow)}</ul>
-        )}
+        {groupByProject(sorted).map((group) => (
+          <section className="project-sidebar__group" key={group.project}>
+            <div className="project-sidebar__group-head">
+              <FolderIcon />
+              <span>{group.project}</span>
+            </div>
+            <ul className="project-sidebar__items">{group.items.map(renderRow)}</ul>
+          </section>
+        ))}
         {history.length === 0 ? <p className="project-sidebar__empty">暂无历史会话</p> : null}
       </div>
 

@@ -1146,7 +1146,7 @@ frontend/
     │   │   └── Slider.tsx         滑条（偏好/设置共用）
     │   ├── optimize/          优化流程组件
     │   │   ├── ConsoleInput.tsx     启动页主视觉输入卡片（对话式重构；含模型下拉 F-604 多模型）
-    │   │   ├── FolderPickerModal.tsx  页内文件夹选择器（F-601，GET /project/browse 供数）
+    │   │   ├── FolderPickerModal.tsx  页内文件夹选择器（F-601；GET /project/browse 供数，地址栏右侧搜索＝`q` 子树递归）
     │   │   ├── ChatStream.tsx       对话流（用户气泡 → AI 回复块 → 方案组嵌入）
     │   │   ├── PromptCard.tsx
     │   │   ├── VariantTabs.tsx
@@ -1156,7 +1156,7 @@ frontend/
     │   │   ├── FollowupForm.tsx
     │   │   └── CopyButton.tsx
     │   ├── history/           历史页组件
-    │   │   ├── ProjectSidebar.tsx  固定侧边栏（图三：项目分组 + 会话条目）
+    │   │   ├── ProjectSidebar.tsx  固定侧边栏（图三：头部「项目」+一键收纳，项目分组 + 会话条目）
     │   │   ├── SessionMenu.tsx     会话 ⋮ 菜单（置顶/复制路径/重命名/删除）
     │   │   └── HistoryItem.tsx
     │   ├── preference/        偏好页组件

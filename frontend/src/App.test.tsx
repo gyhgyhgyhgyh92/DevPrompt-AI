@@ -88,3 +88,24 @@ describe('App 响应式抽屉（<768 侧边栏折叠）', () => {
     expect(screen.queryByRole('button', { name: '关闭侧边栏' })).toBeNull()
   })
 })
+
+describe('App 一键收纳（F-602，2026-10-13）', () => {
+  it('点击「收起侧边栏」→ shell 加 --sidebar-collapsed 并关抽屉；点 ☰ 恢复', async () => {
+    const user = userEvent.setup()
+    stubFetch()
+    const { container } = render(<App />)
+
+    const shell = (): HTMLElement => container.querySelector('.app-shell') as HTMLElement
+    expect(shell().className).toBe('app-shell')
+
+    await user.click(screen.getByRole('button', { name: '收起侧边栏' }))
+
+    // 桌面端折叠：shell 类切换；侧栏节点仍在（隐藏由 CSS ≥768 规则负责，jsdom 不生效）
+    expect(shell().className).toBe('app-shell app-shell--sidebar-collapsed')
+    expect(container.querySelector('.project-sidebar')).not.toBeNull()
+    expect(drawer(container).className).toBe('app-drawer')
+
+    await user.click(screen.getByRole('button', { name: '打开侧边栏' }))
+    expect(shell().className).toBe('app-shell')
+  })
+})

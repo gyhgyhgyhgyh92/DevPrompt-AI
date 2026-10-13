@@ -67,10 +67,10 @@ function defaultHandler(items: readonly HistoryItemPayload[]): Handler {
   }
 }
 
-function renderSidebar() {
+function renderSidebar(onCollapse: () => void = vi.fn()) {
   return render(
     <MemoryRouter>
-      <ProjectSidebar />
+      <ProjectSidebar onCollapse={onCollapse} />
     </MemoryRouter>,
   )
 }
@@ -158,8 +158,7 @@ describe('ProjectSidebar 分组与结构（Task 4）', () => {
     expect(useOptimizeStore.getState().sessionId).toBeNull()
   })
 
-  it('排序图标切换置顶优先/时间倒序（默认置顶优先）', async () => {
-    const user = userEvent.setup()
+  it('排序恒为置顶优先 → 时间倒序（无排序图标，2026-10-13 移除）', async () => {
     stubFetch(
       defaultHandler([
         item({
@@ -180,10 +179,21 @@ describe('ProjectSidebar 分组与结构（Task 4）', () => {
 
     await screen.findByText('置顶较旧')
     expect(itemTitles()).toEqual(['置顶较旧', '较新'])
+    expect(screen.queryByRole('button', { name: '排序' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '筛选' })).toBeNull()
+  })
 
-    await user.click(screen.getByRole('button', { name: '排序' }))
+  it('头部仅保留「项目」+ 一键收纳按钮（图一，原 ⌄/排序/筛选已移除）', async () => {
+    const onCollapse = vi.fn()
+    stubFetch(defaultHandler([item({ session_id: 's1', title: '会话A' })]))
+    renderSidebar(onCollapse)
 
-    expect(itemTitles()).toEqual(['较新', '置顶较旧'])
+    await screen.findByText('会话A')
+    expect(screen.getByText('项目')).toBeTruthy()
+    expect(document.querySelectorAll('.project-sidebar__collapse')).toHaveLength(1)
+
+    await userEvent.setup().click(screen.getByRole('button', { name: '收起侧边栏' }))
+    expect(onCollapse).toHaveBeenCalledTimes(1)
   })
 })
 

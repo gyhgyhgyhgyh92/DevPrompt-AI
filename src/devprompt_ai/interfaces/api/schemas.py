@@ -133,11 +133,12 @@ class ScanResponse(BaseModel):
 
 
 class BrowseEntryPayload(BaseModel):
-    """目录浏览条目：展示名 + 完整路径 + 修改时间（F-601 页内文件夹选择，文件不出现）。"""
+    """目录浏览条目：展示名 + 完整路径 + 修改时间；搜索结果附相对父路径（F-601）。"""
 
     name: str
     path: str
     modified_at: str | None
+    rel_parent: str | None  # 搜索结果专用（直接子级为空串）；普通列举为 null
 
 
 class BrowseResponse(BaseModel):

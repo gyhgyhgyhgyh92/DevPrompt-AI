@@ -11,6 +11,9 @@ export interface FolderPickerModalProps {
   onClose: () => void
 }
 
+/** 搜索防抖（实时输入响应，避免逐键递归扫描；决策 10）。 */
+const SEARCH_DEBOUNCE_MS = 250
+
 /** 触屏（coarse pointer）单击即进入目录；鼠标语义单击选中、双击进入（触屏无 dblclick）。 */
 function isCoarsePointer(): boolean {
   return typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
@@ -51,13 +54,26 @@ function FolderIcon() {
   )
 }
 
+/** 搜索图标（图二，自绘 SVG，MUST-04）：放大镜（圆 + 手柄）。 */
+function SearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M10.2 10.2 13.5 13.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  )
+}
+
 /**
  * 页内文件夹选择器（F-601「选择文件夹（本地）」，Win11 风格复刻）：完全嵌入浏览器页面
  * （DOM 模态，属于页面视口），不弹系统桌面窗口。浏览器沙箱禁读本地绝对路径，目录条目
- * （名称 + 修改日期；仅目录，文件不出现——用户裁定）由后端 GET /project/browse 提供；
+ * （名称 + 修改日期；仅目录，文件不出现——用户裁定）由后端 GET /project/browse 提供。
  * 排序（名称升序）由后端固定。
  * 交互：后退/前进/上级 + 地址栏面包屑跳转；单击选中（触屏单击即进入）、双击进入；
  * Esc/✕ 关闭、焦点入面板并归还；确认返回当前所在目录。
+ * 搜索（图二，2026-10-13 新增，参考 Win11 资源管理器）：地址栏同行右侧搜索框，250ms 防抖
+ * 实时响应；命中当前文件夹**子树**（含子目录递归，后端 `q` 参数），结果附相对路径提示；
+ * 范围控制——驱动器列表态禁用；导航即退出搜索；Esc 清空查询（不关闭模态）。
  */
 export function FolderPickerModal(props: FolderPickerModalProps) {
   const { open, initialPath, onSelect, onClose } = props
@@ -67,6 +83,12 @@ export function FolderPickerModal(props: FolderPickerModalProps) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [history, setHistory] = useState<string[]>([])
   const [cursor, setCursor] = useState(0)
+  const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  // 基准目录（搜索范围）：导航时更新；搜索响应 `path` 仍返回基准目录，范围不漂移（决策 8）
+  const basePathRef = useRef('')
+  // 是否处于搜索态：用于「归空时恢复普通列表」且避免 open 时重复加载
+  const isSearchActiveRef = useRef(false)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
 
@@ -91,7 +113,7 @@ export function FolderPickerModal(props: FolderPickerModalProps) {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [open, onClose])
 
-  // 打开时从 initialPath 加载（空串=驱动器列表）并重置导航历史；取消标记防卸载后 setState
+  // 打开时从 initialPath 加载（空串=驱动器列表）并重置导航历史与搜索；取消标记防卸载后 setState
   useEffect(() => {
     if (!open) return
     let cancelled = false
@@ -100,6 +122,10 @@ export function FolderPickerModal(props: FolderPickerModalProps) {
     setSelectedPath(null)
     setHistory([initialPath])
     setCursor(0)
+    basePathRef.current = initialPath
+    isSearchActiveRef.current = false
+    setQuery('')
+    setDebouncedQuery('')
     getBrowse(initialPath)
       .then((next) => {
         if (!cancelled) setListing(next)
@@ -115,19 +141,56 @@ export function FolderPickerModal(props: FolderPickerModalProps) {
     }
   }, [open, initialPath])
 
-  /** 加载目录（loading/error 状态 + 失败保留旧视图）。 */
-  function load(path: string): void {
+  // 防抖：输入即响应，250ms 后落到 debouncedQuery；清空立即生效（不等待防抖）
+  useEffect(() => {
+    if (!open) return
+    if (query === '') {
+      setDebouncedQuery('')
+      return
+    }
+    const timer = setTimeout(() => setDebouncedQuery(query), SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [open, query])
+
+  // 搜索加载：debouncedQuery 非空 → 以基准目录递归搜索；归空 → 恢复基准目录普通列表
+  useEffect(() => {
+    if (!open) return
+    const trimmed = debouncedQuery.trim()
+    const base = basePathRef.current
+    if (trimmed !== '') {
+      if (base === '') return
+      isSearchActiveRef.current = true
+      load(base, trimmed)
+      return
+    }
+    if (isSearchActiveRef.current) {
+      isSearchActiveRef.current = false
+      if (base !== '') load(base)
+    }
+  }, [open, debouncedQuery])
+
+  /** 加载目录（loading/error 状态 + 失败保留旧视图）；query 非空为子树递归搜索。 */
+  function load(path: string, searchQuery = ''): void {
     setLoading(true)
     setLoadError('')
     setSelectedPath(null)
-    getBrowse(path)
+    getBrowse(path, searchQuery)
       .then((next) => setListing(next))
       .catch(() => setLoadError('无法读取该文件夹，请重试'))
       .finally(() => setLoading(false))
   }
 
-  /** 用户导航：截断前进栈后入栈并加载（历史栈驱动后退/前进可用性）。 */
+  /** 退出搜索：清空查询并立即归零防抖值（避免与导航加载重复请求）。 */
+  function exitSearch(): void {
+    isSearchActiveRef.current = false
+    setQuery('')
+    setDebouncedQuery('')
+  }
+
+  /** 用户导航：截断前进栈后入栈并加载；同时退出搜索并更新基准目录。 */
   function navigateTo(path: string): void {
+    exitSearch()
+    basePathRef.current = path
     const next = [...history.slice(0, cursor + 1), path]
     setHistory(next)
     setCursor(next.length - 1)
@@ -138,6 +201,8 @@ export function FolderPickerModal(props: FolderPickerModalProps) {
     if (cursor <= 0) return
     const target = history[cursor - 1]
     if (target === undefined) return
+    exitSearch()
+    basePathRef.current = target
     setCursor(cursor - 1)
     load(target)
   }
@@ -146,6 +211,8 @@ export function FolderPickerModal(props: FolderPickerModalProps) {
     if (cursor >= history.length - 1) return
     const target = history[cursor + 1]
     if (target === undefined) return
+    exitSearch()
+    basePathRef.current = target
     setCursor(cursor + 1)
     load(target)
   }
@@ -170,7 +237,9 @@ export function FolderPickerModal(props: FolderPickerModalProps) {
   const canGoUp = listing !== null && listing.parent !== null && !isLoading
   const canConfirm = listing !== null && listing.path !== '' && !isLoading
   const segments = listing !== null ? breadcrumbSegments(listing.path) : ['此电脑']
+  const isSearchMode = debouncedQuery.trim() !== ''
   const entryCount = listing?.entries.length ?? 0
+  const canSearch = listing !== null && listing.path !== ''
 
   return (
     <div className="folder-picker-overlay">
@@ -248,6 +317,33 @@ export function FolderPickerModal(props: FolderPickerModalProps) {
               )
             })}
           </nav>
+          <div className="folder-picker__search">
+            <SearchIcon />
+            <input
+              className="folder-picker__search-input"
+              aria-label="搜索当前文件夹"
+              placeholder="搜索"
+              value={query}
+              disabled={!canSearch}
+              onChange={(event) => setQuery(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.stopPropagation()
+                  setQuery('')
+                }
+              }}
+            />
+            {query !== '' ? (
+              <button
+                type="button"
+                className="folder-picker__search-clear"
+                aria-label="清除搜索"
+                onClick={() => setQuery('')}
+              >
+                ✕
+              </button>
+            ) : null}
+          </div>
         </div>
         <div className="folder-picker__columns" aria-hidden="true">
           <span>名称</span>
@@ -257,7 +353,9 @@ export function FolderPickerModal(props: FolderPickerModalProps) {
           {loadError !== '' ? <p className="folder-picker__error">{loadError}</p> : null}
           {isLoading ? <p className="folder-picker__hint">加载中…</p> : null}
           {!isLoading && loadError === '' && listing !== null && entryCount === 0 ? (
-            <p className="folder-picker__hint">此文件夹下没有子文件夹</p>
+            <p className="folder-picker__hint">
+              {isSearchMode ? '未找到匹配的文件夹' : '此文件夹下没有子文件夹'}
+            </p>
           ) : null}
           <ul className="folder-picker__list">
             {(listing?.entries ?? []).map((entry) => (
@@ -282,6 +380,9 @@ export function FolderPickerModal(props: FolderPickerModalProps) {
                   <span className="folder-picker__item-label">
                     <FolderIcon />
                     <span className="folder-picker__item-name">{entry.name}</span>
+                    {entry.rel_parent ? (
+                      <span className="folder-picker__item-rel">{entry.rel_parent}</span>
+                    ) : null}
                   </span>
                   <span className="folder-picker__item-date">
                     {formatDateTime(entry.modified_at)}
@@ -291,12 +392,18 @@ export function FolderPickerModal(props: FolderPickerModalProps) {
             ))}
           </ul>
           {listing?.truncated ? (
-            <p className="folder-picker__hint">目录过大，仅显示部分子文件夹</p>
+            <p className="folder-picker__hint">
+              {isSearchMode ? '结果过多，仅显示前 500 项' : '目录过大，仅显示部分子文件夹'}
+            </p>
           ) : null}
         </div>
         <footer className="folder-picker__footer">
           <span className="folder-picker__status">
-            {listing !== null ? `${entryCount} 个文件夹` : ''}
+            {listing !== null
+              ? isSearchMode
+                ? `${entryCount} 个搜索结果`
+                : `${entryCount} 个文件夹`
+              : ''}
           </span>
           <button type="button" className="folder-picker__cancel" onClick={onClose}>
             取消

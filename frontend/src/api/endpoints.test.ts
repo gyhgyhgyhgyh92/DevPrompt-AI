@@ -159,6 +159,17 @@ describe('api/endpoints 12 操作', () => {
     await getBrowse('')
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/project/browse')
   })
+
+  it('getBrowse 携带 q 时追加编码 &q=（子树递归搜索）', async () => {
+    const fetchMock = stubFetchJson(
+      envelope({ path: 'D:/ws', parent: 'D:/', entries: [], truncated: false }),
+    )
+
+    await getBrowse('D:/ws', '我的 项目')
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `/api/v1/project/browse?path=${encodeURIComponent('D:/ws')}&q=${encodeURIComponent('我的 项目')}`,
+    )
+  })
 })
 
 describe('api/endpoints 偏好与设置', () => {

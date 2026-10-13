@@ -46,6 +46,8 @@ def test_openapi_covers_sixteen_operations() -> None:
     assert "models" in settings_schemas["SettingsUpdate"]["properties"]
     assert "active_model_id" in settings_schemas["SettingsUpdate"]["properties"]
     assert "ModelEntryView" in settings_schemas
+    # 页内文件夹搜索（F-601，2026-10-13）：browse 条目含 rel_parent（无新增路径）
+    assert "rel_parent" in settings_schemas["BrowseEntryPayload"]["properties"]
 
 
 def test_committed_openapi_matches_app() -> None:

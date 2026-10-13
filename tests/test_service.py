@@ -893,6 +893,25 @@ async def test_browse_directory_lists_subdirs(tmp_path: Path) -> None:
     assert listing.parent is not None
 
 
+async def test_browse_directory_query_passthrough(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """query 透传（F-601 递归搜索）：非空 query 交由 harness 搜索路径，返回其响应。"""
+    import devprompt_ai.service as service_module
+    from devprompt_ai.harness.browse import BrowseListing
+
+    captured: list[tuple[str, str]] = []
+
+    async def _fake_list(path: str, query: str = "") -> BrowseListing:
+        captured.append((path, query))
+        return BrowseListing(path=path, parent=None)
+
+    monkeypatch.setattr(service_module, "list_subdirectories", _fake_list)
+    svc, _ = _service()
+    await svc.browse_directory(str(tmp_path), "wo")
+    assert captured == [(str(tmp_path), "wo")]
+
+
 async def test_browse_directory_missing_raises_2001(tmp_path: Path) -> None:
     """不存在路径：RetrievalError 2001，错误消息不含路径本体（MUST-19）。"""
     from devprompt_ai.domain.errors import RetrievalError

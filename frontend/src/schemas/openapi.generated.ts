@@ -192,7 +192,7 @@ export interface paths {
         };
         /**
          * Get Project Browse
-         * @description 目录浏览（F-601 页内文件夹选择器）：path 空=驱动器列表；含上级与截断标志。
+         * @description 目录浏览（F-601）：path 空=驱动器列表；q 非空=当前目录子树递归搜索（仅目录）。
          */
         get: operations["get_project_browse_api_v1_project_browse_get"];
         put?: never;
@@ -445,7 +445,7 @@ export interface components {
         };
         /**
          * BrowseEntryPayload
-         * @description 目录浏览条目：展示名 + 完整路径 + 修改时间（F-601 页内文件夹选择，文件不出现）。
+         * @description 目录浏览条目：展示名 + 完整路径 + 修改时间；搜索结果附相对父路径（F-601）。
          */
         BrowseEntryPayload: {
             /** Modified At */
@@ -454,6 +454,8 @@ export interface components {
             name: string;
             /** Path */
             path: string;
+            /** Rel Parent */
+            rel_parent: string | null;
         };
         /**
          * BrowseResponse
@@ -1237,6 +1239,7 @@ export interface operations {
         parameters: {
             query?: {
                 path?: string;
+                q?: string;
             };
             header?: never;
             path?: never;

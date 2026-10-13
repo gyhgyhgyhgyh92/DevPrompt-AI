@@ -75,8 +75,11 @@ class FakeForgeService:
         self.browse_listing: BrowseListing = BrowseListing(
             path="D:/ws/repo",
             parent="D:/ws",
-            entries=(BrowseEntry(name="src", path="D:/ws/repo/src", modified_at=None),),
+            entries=(
+                BrowseEntry(name="src", path="D:/ws/repo/src", modified_at=None, rel_parent=None),
+            ),
         )
+        self.browse_calls: list[tuple[str, str]] = []
 
     async def optimize(
         self, user_id: str, project_root: str, sentence: str, *, request_id: str
@@ -170,7 +173,8 @@ class FakeForgeService:
     async def scan_project(self, project_root: str) -> dict[str, Any]:
         return dict(self.scan)
 
-    async def browse_directory(self, path: str) -> BrowseListing:
+    async def browse_directory(self, path: str, query: str = "") -> BrowseListing:
+        self.browse_calls.append((path, query))
         return self.browse_listing
 
     def _next(self, session_id: str = "s1") -> FlowSnapshot:
@@ -501,10 +505,22 @@ async def test_project_browse_returns_listing(
     assert body["data"] == {
         "path": "D:/ws/repo",
         "parent": "D:/ws",
-        "entries": [{"name": "src", "path": "D:/ws/repo/src", "modified_at": None}],
+        "entries": [
+            {"name": "src", "path": "D:/ws/repo/src", "modified_at": None, "rel_parent": None}
+        ],
         "truncated": False,
     }
     assert resp.headers["x-request-id"] == body["request_id"]
+
+
+async def test_project_browse_query_passthrough(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """q 参数透传（F-601 递归搜索）：service 收到 (path, query){无 q 时为空串}。"""
+    await client.get("/api/v1/project/browse", params={"path": "D:/ws", "q": "wo"})
+    assert fake_service.browse_calls[-1] == ("D:/ws", "wo")
+    await client.get("/api/v1/project/browse", params={"path": "D:/ws"})
+    assert fake_service.browse_calls[-1] == ("D:/ws", "")
 
 
 async def test_project_browse_empty_path_returns_drives(

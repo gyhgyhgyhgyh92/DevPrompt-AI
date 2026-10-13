@@ -5,8 +5,10 @@ F-601 页内文件夹选择数据源（GET /project/browse）。
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -78,3 +80,105 @@ def test_list_drives_shape() -> None:
     assert listing.parent is None
     assert all(re.fullmatch(r"[A-Z]:\\", e.path) for e in listing.entries)
     assert all(e.modified_at is None for e in listing.entries)
+
+
+# ---------- 递归搜索（F-601，2026-10-13） ----------
+
+
+def _build_tree(root: Path) -> None:
+    """构造测试树：root/{deep-root, Works/deepseek-a, Works/DevPrompt, Toolkit/deep, alpha}。"""
+    (root / "deep-root").mkdir()
+    (root / "Works" / "deepseek-a").mkdir(parents=True)
+    (root / "Works" / "DevPrompt").mkdir()
+    (root / "Toolkit" / "deep").mkdir(parents=True)
+    (root / "alpha").mkdir()
+    (root / "note.txt").write_bytes(b"x")  # 文件不参与搜索
+
+
+async def test_search_recursive_matches_with_rel_parent(tmp_path: Path) -> None:
+    """递归命中多级子目录；rel_parent 直接子级为 ""、更深为父级相对路径；仅目录、忽略文件名。"""
+    _build_tree(tmp_path)
+    listing = await list_subdirectories(str(tmp_path), "deep")
+    assert listing.path == str(tmp_path)  # 基准目录不变（范围不漂移）
+    names = {e.name: e.rel_parent for e in listing.entries}
+    assert set(names) == {"deep-root", "deepseek-a", "deep"}  # DevPrompt 不含 "deep"，不应命中
+    assert names["deep-root"] == ""  # 基准目录直接子级
+    assert names["deepseek-a"] == "Works"
+    assert names["deep"] == "Toolkit"
+    assert all(e.modified_at is not None for e in listing.entries)
+
+
+async def test_search_is_case_insensitive_and_sorted_by_depth(tmp_path: Path) -> None:
+    """大小写不敏感；结果按（相对深度, 相对路径, 名称）升序（浅层优先）。"""
+    _build_tree(tmp_path)
+    listing = await list_subdirectories(str(tmp_path), "DEEP")
+    depths = [
+        0 if not e.rel_parent else (e.rel_parent or "").count("\\") + 1 for e in listing.entries
+    ]
+    assert depths == sorted(depths)
+    assert depths[0] == 0  # 基准目录直接子级排在更深的命中之前
+    assert listing.entries[0].name == "deep-root"
+
+
+async def test_search_no_match_returns_empty(tmp_path: Path) -> None:
+    _build_tree(tmp_path)
+    listing = await list_subdirectories(str(tmp_path), "zzz-not-exist")
+    assert listing.entries == ()
+    assert listing.truncated is False
+
+
+async def test_search_blank_query_falls_back_to_listing(tmp_path: Path) -> None:
+    """空/纯空白 query 走一级列举（回归既有行为）。"""
+    _build_tree(tmp_path)
+    listing = await list_subdirectories(str(tmp_path), "   ")
+    assert [e.name for e in listing.entries] == [
+        "alpha",
+        "deep-root",
+        "Toolkit",
+        "Works",
+    ]  # 名称不区分大小写升序
+    assert all(e.rel_parent is None for e in listing.entries)
+
+
+async def test_search_truncates_by_hit_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """命中数达 MAX_BROWSE_ENTRIES 即截断（置 truncated）。"""
+    import devprompt_ai.harness.browse as browse_module
+
+    monkeypatch.setattr(browse_module, "MAX_BROWSE_ENTRIES", 2)
+    for name in ("m1", "m2", "m3"):
+        (tmp_path / name).mkdir()
+    listing = await list_subdirectories(str(tmp_path), "m")
+    assert len(listing.entries) == 2
+    assert listing.truncated is True
+
+
+async def test_search_truncates_by_depth_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """深度达 MAX_SEARCH_DEPTH 即停止（更深命中不返回，置 truncated）。"""
+    import devprompt_ai.harness.browse as browse_module
+
+    monkeypatch.setattr(browse_module, "MAX_SEARCH_DEPTH", 1)
+    (tmp_path / "lvl1" / "match-deep").mkdir(parents=True)
+    listing = await list_subdirectories(str(tmp_path), "match")
+    assert listing.entries == ()
+    assert listing.truncated is True
+
+
+async def test_search_skips_unreadable_subdir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """不可读子目录被跳过，不中断整次搜索（同层其它命中仍返回）。"""
+    (tmp_path / "match-a").mkdir()
+    (tmp_path / "blocked").mkdir()
+    (tmp_path / "blocked" / "match-b").mkdir()
+    real_scandir = os.scandir
+
+    def flaky(path: Any) -> Any:
+        if str(path).endswith("blocked"):
+            raise PermissionError(path)
+        return real_scandir(path)
+
+    monkeypatch.setattr(os, "scandir", flaky)  # browse 模块与本测试共用同一 os 模块对象
+    listing = await list_subdirectories(str(tmp_path), "match")
+    assert [e.name for e in listing.entries] == ["match-a"]

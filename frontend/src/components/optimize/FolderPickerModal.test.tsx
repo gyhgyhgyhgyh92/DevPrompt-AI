@@ -12,6 +12,8 @@ interface EntrySpec {
   name: string
   path: string
   modified_at?: string | null
+  /** 搜索结果专用：相对基准目录的父路径（直接子级为 ''）；普通列举省略 → null。 */
+  rel_parent?: string | null
 }
 
 interface ListingSpec {
@@ -21,12 +23,16 @@ interface ListingSpec {
   truncated?: boolean
 }
 
-/** 按 ?path= 参数分流的 browse stub：'' 键为驱动器列表；未配置路径回 2001 业务错误。 */
+/** 按 (?path=, ?q=) 分流的 browse stub：无 q → key=`path`（普通列举）；
+ *  有 q → key=`path|q`（当前目录子树递归搜索）；'' 键为驱动器列表；未配置回 2001 业务错误。 */
 function stubBrowse(listings: Record<string, ListingSpec>) {
   const mock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
-    const match = /[?&]path=([^&]*)/.exec(url)
-    const key = match !== null ? decodeURIComponent(match[1] as string) : ''
+    const pathMatch = /[?&]path=([^&]*)/.exec(url)
+    const path = pathMatch !== null ? decodeURIComponent(pathMatch[1] as string) : ''
+    const qMatch = /[?&]q=([^&]*)/.exec(url)
+    const query = qMatch !== null ? decodeURIComponent(qMatch[1] as string) : ''
+    const key = query === '' ? path : `${path}|${query}`
     const spec = listings[key]
     const payload =
       spec === undefined
@@ -38,6 +44,7 @@ function stubBrowse(listings: Record<string, ListingSpec>) {
               name: e.name,
               path: e.path,
               modified_at: e.modified_at ?? null,
+              rel_parent: e.rel_parent ?? null,
             })),
             truncated: spec.truncated ?? false,
           })
@@ -68,6 +75,16 @@ const dRoot: ListingSpec = {
   ],
 }
 const dWorks: ListingSpec = { path: 'D:\\Works', parent: 'D:\\', entries: [] }
+
+/** 搜索 D:\ 子树命中「works」：一条直接子级（rel_parent=''）+ 一条更深层（rel_parent='Backup'）。 */
+const dRootSearchWorks: ListingSpec = {
+  path: 'D:\\',
+  parent: '',
+  entries: [
+    { name: 'Works', path: 'D:\\Works', rel_parent: '' },
+    { name: 'WorksOld', path: 'D:\\Backup\\WorksOld', rel_parent: 'Backup' },
+  ],
+}
 
 afterEach(() => {
   cleanup()
@@ -249,6 +266,115 @@ describe('FolderPickerModal 页内文件夹选择器（F-601）', () => {
     render(<FolderPickerModal open={false} initialPath="" onSelect={vi.fn()} onClose={vi.fn()} />)
 
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+})
+
+describe('FolderPickerModal 搜索（图二，2026-10-13）', () => {
+  it('驱动器列表态搜索输入禁用', async () => {
+    stubBrowse({ '': drives })
+    render(<FolderPickerModal open initialPath="" onSelect={vi.fn()} onClose={vi.fn()} />)
+
+    await screen.findByRole('button', { name: 'C:\\' })
+    expect(
+      (screen.getByRole('textbox', { name: '搜索当前文件夹' }) as HTMLInputElement).disabled,
+    ).toBe(true)
+  })
+
+  it('输入后防抖触发带 q 的递归请求并渲染结果（含相对路径提示）', async () => {
+    const user = userEvent.setup()
+    const mock = stubBrowse({ 'D:\\': dRoot, 'D:\\|works': dRootSearchWorks })
+    render(<FolderPickerModal open initialPath={'D:\\'} onSelect={vi.fn()} onClose={vi.fn()} />)
+
+    await screen.findByRole('button', { name: 'Works' })
+    await user.type(screen.getByRole('textbox', { name: '搜索当前文件夹' }), 'works')
+
+    await waitFor(() =>
+      expect(mock.mock.calls.some(([input]) => String(input).includes('q=works'))).toBe(true),
+    )
+    await screen.findByRole('button', { name: 'WorksOld' })
+    expect(screen.getByText('2 个搜索结果')).toBeTruthy()
+    // 仅更深层结果（rel_parent='Backup'）显示相对路径提示；直接子级（''）不显示
+    const rels = document.querySelectorAll('.folder-picker__item-rel')
+    expect(rels).toHaveLength(1)
+    expect(rels[0]?.textContent).toBe('Backup')
+  })
+
+  it('无命中显示「未找到匹配的文件夹」', async () => {
+    const user = userEvent.setup()
+    stubBrowse({ 'D:\\': dRoot, 'D:\\|zzz': { path: 'D:\\', parent: '', entries: [] } })
+    render(<FolderPickerModal open initialPath={'D:\\'} onSelect={vi.fn()} onClose={vi.fn()} />)
+
+    await screen.findByRole('button', { name: 'Works' })
+    await user.type(screen.getByRole('textbox', { name: '搜索当前文件夹' }), 'zzz')
+
+    expect(await screen.findByText('未找到匹配的文件夹')).toBeTruthy()
+  })
+
+  it('清除搜索恢复普通列表（恢复请求不再带 q，且仅新增一次）', async () => {
+    const user = userEvent.setup()
+    const mock = stubBrowse({ 'D:\\': dRoot, 'D:\\|works': dRootSearchWorks })
+    render(<FolderPickerModal open initialPath={'D:\\'} onSelect={vi.fn()} onClose={vi.fn()} />)
+
+    await screen.findByRole('button', { name: 'Works' })
+    await user.type(screen.getByRole('textbox', { name: '搜索当前文件夹' }), 'works')
+    await screen.findByRole('button', { name: 'WorksOld' })
+
+    const callsBeforeClear = mock.mock.calls.length
+    await user.click(screen.getByRole('button', { name: '清除搜索' }))
+
+    await screen.findByRole('button', { name: 'Archive' })
+    expect(screen.queryByRole('button', { name: 'WorksOld' })).toBeNull()
+    expect(String(mock.mock.calls[callsBeforeClear]?.[0])).not.toContain('q=')
+    expect(mock.mock.calls).toHaveLength(callsBeforeClear + 1)
+  })
+
+  it('双击搜索结果进入该目录并退出搜索（搜索框清空）', async () => {
+    const user = userEvent.setup()
+    stubBrowse({ 'D:\\': dRoot, 'D:\\|works': dRootSearchWorks, 'D:\\Works': dWorks })
+    render(<FolderPickerModal open initialPath={'D:\\'} onSelect={vi.fn()} onClose={vi.fn()} />)
+
+    await screen.findByRole('button', { name: 'Works' })
+    await user.type(screen.getByRole('textbox', { name: '搜索当前文件夹' }), 'works')
+    await screen.findByRole('button', { name: 'WorksOld' })
+
+    await user.dblClick(screen.getByRole('button', { name: 'Works' }))
+
+    expect(await screen.findByText('此文件夹下没有子文件夹')).toBeTruthy()
+    expect(
+      (screen.getByRole('textbox', { name: '搜索当前文件夹' }) as HTMLInputElement).value,
+    ).toBe('')
+  })
+
+  it('搜索框 Esc 清空查询（stopPropagation，不关闭模态）', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    stubBrowse({ 'D:\\': dRoot, 'D:\\|works': dRootSearchWorks })
+    render(<FolderPickerModal open initialPath={'D:\\'} onSelect={vi.fn()} onClose={onClose} />)
+
+    await screen.findByRole('button', { name: 'Works' })
+    const input = screen.getByRole('textbox', { name: '搜索当前文件夹' })
+    await user.type(input, 'works')
+    await screen.findByRole('button', { name: 'WorksOld' })
+
+    await user.type(input, '{Escape}')
+
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('textbox', { name: '搜索当前文件夹' }) as HTMLInputElement).value,
+      ).toBe(''),
+    )
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('搜索态 truncated 显示「结果过多，仅显示前 500 项」', async () => {
+    const user = userEvent.setup()
+    stubBrowse({ 'D:\\': dRoot, 'D:\\|works': { ...dRootSearchWorks, truncated: true } })
+    render(<FolderPickerModal open initialPath={'D:\\'} onSelect={vi.fn()} onClose={vi.fn()} />)
+
+    await screen.findByRole('button', { name: 'Works' })
+    await user.type(screen.getByRole('textbox', { name: '搜索当前文件夹' }), 'works')
+
+    expect(await screen.findByText('结果过多，仅显示前 500 项')).toBeTruthy()
   })
 })
 

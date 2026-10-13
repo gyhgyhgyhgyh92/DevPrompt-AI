@@ -102,6 +102,18 @@ pre {
   display: none;
 }
 
+/* 一键收纳（F-602，2026-10-13）：桌面端（≥768）折叠时隐藏侧边栏、主区撑满，
+ * 并由标题栏 ☰ 承担恢复入口；<768 仍走既有抽屉语义（此处不介入，避免抽屉内被隐藏）。 */
+@media (min-width: 768px) {
+  .app-shell--sidebar-collapsed .project-sidebar {
+    display: none;
+  }
+
+  .app-shell--sidebar-collapsed .app-titlebar__menu {
+    display: inline-flex;
+  }
+}
+
 /* 汉堡按钮（☰）：唤出窄屏抽屉；≥768 隐藏（见文件末尾媒体查询） */
 .app-titlebar__menu {
   display: none;

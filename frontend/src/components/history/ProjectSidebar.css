@@ -12,7 +12,7 @@
   border-inline-end: 1px solid var(--divider);
 }
 
-/* 顶部行：项目 ⌄ + 排序/筛选图标 */
+/* 顶部行：「项目」+ 一键收纳按钮（2026-10-13：原 ⌄ 箭头 → 收纳；排序/筛选已移除） */
 .project-sidebar__head {
   display: flex;
   gap: var(--space-2);
@@ -30,12 +30,7 @@
   color: var(--color-text-primary);
 }
 
-.project-sidebar__actions {
-  display: inline-flex;
-  gap: var(--space-1);
-}
-
-.project-sidebar__icon-btn {
+.project-sidebar__collapse {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -48,12 +43,9 @@
   border-radius: var(--radius-sm);
 }
 
-.project-sidebar__icon-btn:hover {
+.project-sidebar__collapse:hover {
+  color: var(--color-text-primary);
   background: var(--hover);
-}
-
-.project-sidebar__icon-btn[aria-pressed='true'] {
-  color: var(--brand);
 }
 
 /* 新建会话入口（列表上方轻量按钮） */

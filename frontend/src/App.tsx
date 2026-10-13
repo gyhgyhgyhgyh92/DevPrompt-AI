@@ -25,6 +25,8 @@ export function App() {
   const [isSettingsOpen, setSettingsOpen] = useState(false)
   // 窄屏（<768）侧边栏抽屉开合；纯表现层状态，不进 store，不含任何业务判定（MUST-07/08）
   const [isDrawerOpen, setDrawerOpen] = useState(false)
+  // 一键收纳（F-602，2026-10-13）：桌面端收起整个侧边栏；与抽屉共用同一状态位（窄屏=关抽屉）
+  const [isSidebarCollapsed, setSidebarCollapsed] = useState(false)
   const { sessionId, state, sseStatus } = useOptimizeStore(
     useShallow((s) => ({ sessionId: s.sessionId, state: s.state, sseStatus: s.sseStatus })),
   )
@@ -58,16 +60,35 @@ export function App() {
   const activeProject =
     sessionId === null ? undefined : history.find((item) => item.session_id === sessionId)?.project
 
+  /** 窄屏判定（jsdom 无 matchMedia 时兜底 false，沿用项目既有防御先例）。 */
+  function isNarrowViewport(): boolean {
+    return (
+      typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 767px)').matches
+    )
+  }
+
+  /** 标题栏 ☰：桌面端折叠时展开；否则唤出窄屏抽屉。 */
+  function handleMenuClick(): void {
+    if (!isNarrowViewport() && isSidebarCollapsed) setSidebarCollapsed(false)
+    else setDrawerOpen(true)
+  }
+
+  /** 侧边栏一键收纳：关闭窄屏抽屉并置折叠态（桌面收起、窄屏等价关抽屉）。 */
+  function handleCollapse(): void {
+    setDrawerOpen(false)
+    setSidebarCollapsed(true)
+  }
+
   return (
     <BrowserRouter>
-      <div className="app-shell">
+      <div className={isSidebarCollapsed ? 'app-shell app-shell--sidebar-collapsed' : 'app-shell'}>
         <header className="app-titlebar">
           <button
             type="button"
             className="app-titlebar__menu"
             aria-label="打开侧边栏"
             aria-expanded={isDrawerOpen}
-            onClick={() => setDrawerOpen(true)}
+            onClick={handleMenuClick}
           >
             ☰
           </button>
@@ -90,7 +111,7 @@ export function App() {
         </header>
         <div className="app-body">
           <div className={isDrawerOpen ? 'app-drawer app-drawer--open' : 'app-drawer'}>
-            <ProjectSidebar />
+            <ProjectSidebar onCollapse={handleCollapse} />
           </div>
           {isDrawerOpen ? (
             <button

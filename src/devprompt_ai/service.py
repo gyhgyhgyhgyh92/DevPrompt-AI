@@ -507,15 +507,16 @@ class ForgeService:
             "kind_counts": ranked,
         }
 
-    async def browse_directory(self, path: str) -> BrowseListing:
+    async def browse_directory(self, path: str, query: str = "") -> BrowseListing:
         """目录浏览（GET /project/browse，F-601 页内文件夹选择器数据源）。
 
-        path 为空串 → 驱动器列表；否则返回该目录一级子目录——不存在 2001、不可读 2002
-        （路径规范化与防护在 harness/browse.py 内完成，MUST-20）。
+        path 为空串 → 驱动器列表（此时忽略 query）；否则返回该目录条目——query 非空为
+        **子树递归搜索**（仅目录，结果附相对父路径），否则一级子目录列举；不存在 2001、
+        不可读 2002（路径规范化与防护在 harness/browse.py 内完成，MUST-20）。
         """
         if path.strip() == "":
             return await list_drives()
-        return await list_subdirectories(path)
+        return await list_subdirectories(path, query)
 
     # ---- 内部 ----
 

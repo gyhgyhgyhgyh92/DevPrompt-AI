@@ -52,8 +52,12 @@ export const ENDPOINTS = {
   historyItem: (sessionId: string) => `${API_BASE_URL}/history/${encodeURIComponent(sessionId)}`,
   projectScan: (project: string) =>
     `${API_BASE_URL}/project/scan?project=${encodeURIComponent(project)}`,
-  projectBrowse: (path: string) =>
-    `${API_BASE_URL}/project/browse${path === '' ? '' : `?path=${encodeURIComponent(path)}`}`,
+  projectBrowse: (path: string, query: string) =>
+    `${API_BASE_URL}/project/browse${
+      path === ''
+        ? ''
+        : `?path=${encodeURIComponent(path)}${query === '' ? '' : `&q=${encodeURIComponent(query)}`}`
+    }`,
   settings: `${API_BASE_URL}/settings`,
 } as const
 
@@ -201,11 +205,12 @@ export function scanProject(project: string, signal?: AbortSignal): Promise<Scan
 }
 
 /**
- * 目录浏览（F-601 页内文件夹选择器数据源）：path 空串返回驱动器列表；
- * 逐级导航由组件在用户交互时按需调用（GET，无副作用）。
+ * 目录浏览（F-601 页内文件夹选择器数据源）：path 空串返回驱动器列表；`query` 非空时
+ * 由后端对当前目录子树**递归搜索**（仅目录，条目附 `rel_parent`）。逐级导航与实时搜索
+ * 均由组件在用户交互时按需调用（GET，无副作用）。
  */
-export function getBrowse(path: string, signal?: AbortSignal): Promise<BrowseResponse> {
-  return request(ENDPOINTS.projectBrowse(path), {
+export function getBrowse(path: string, query = '', signal?: AbortSignal): Promise<BrowseResponse> {
+  return request(ENDPOINTS.projectBrowse(path, query), {
     method: 'GET',
     schema: BrowseResponseSchema,
     signal,

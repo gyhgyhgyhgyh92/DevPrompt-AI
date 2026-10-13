@@ -292,17 +292,21 @@ async def get_project_scan(request: Request, project: str) -> ApiResponse[ScanRe
 
 
 @router.get("/project/browse")
-async def get_project_browse(request: Request, path: str = "") -> ApiResponse[BrowseResponse]:
-    """目录浏览（F-601 页内文件夹选择器）：path 空=驱动器列表；含上级与截断标志。"""
+async def get_project_browse(
+    request: Request, path: str = "", q: str = ""
+) -> ApiResponse[BrowseResponse]:
+    """目录浏览（F-601）：path 空=驱动器列表；q 非空=当前目录子树递归搜索（仅目录）。"""
     request_id = _request_id(request)
     svc = await get_service()
-    listing = await svc.browse_directory(path)
+    listing = await svc.browse_directory(path, q)
     return _ok(
         BrowseResponse(
             path=listing.path,
             parent=listing.parent,
             entries=[
-                BrowseEntryPayload(name=e.name, path=e.path, modified_at=e.modified_at)
+                BrowseEntryPayload(
+                    name=e.name, path=e.path, modified_at=e.modified_at, rel_parent=e.rel_parent
+                )
                 for e in listing.entries
             ],
             truncated=listing.truncated,
