@@ -16,31 +16,10 @@ function isCoarsePointer(): boolean {
   return typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
 }
 
-/** 字节格式化（资源管理器风格：B/KB/MB/GB/TB，1024 进制 1 位小数）。 */
-export function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  const units = ['KB', 'MB', 'GB', 'TB']
-  let value = bytes / 1024
-  let unit = 0
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024
-    unit += 1
-  }
-  return `${value.toFixed(1)} ${units[unit]}`
-}
-
 /** 日期格式化（后端本地 ISO 秒精度 → `YYYY/MM/DD HH:mm`；字符串切分，不走 Date 解析避时区偏移）。 */
 export function formatDateTime(iso: string | null): string {
   if (iso === null || iso.length < 16) return ''
   return `${iso.slice(0, 10).replaceAll('-', '/')} ${iso.slice(11, 16)}`
-}
-
-/** 类型列文案（目录→「文件夹」；文件→「MD 文件」；无后缀→「文件」）。 */
-function fileKindLabel(entry: BrowseEntryPayload): string {
-  if (entry.kind === 'dir') return '文件夹'
-  const dot = entry.name.lastIndexOf('.')
-  const ext = dot > 0 ? entry.name.slice(dot + 1) : ''
-  return ext !== '' ? `${ext.toUpperCase()} 文件` : '文件'
 }
 
 /** 面包屑分段（纯展示）：path='' → 仅「此电脑」；否则「此电脑」+ 路径分段。 */
@@ -72,27 +51,13 @@ function FolderIcon() {
   )
 }
 
-function FileIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path
-        d="M4 1.5h5l3 3V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2.5a1 1 0 0 1 1-1Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-      />
-      <path d="M9 1.5v3h3" fill="none" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  )
-}
-
 /**
- * 页内文件资源管理器（F-601「选择文件夹（本地）」，Win11 风格复刻）：
- * 完全嵌入浏览器页面（DOM 模态，属于页面视口），不弹系统桌面窗口。浏览器沙箱禁读
- * 本地绝对路径，条目（目录 + 文件，含名称/修改日期/类型/大小）由后端
- * GET /project/browse 提供；排序（目录在前）由后端固定。
- * 交互：后退/前进/上级 + 地址栏面包屑跳转；单击选中（触屏单击即进入）、双击进入目录
- * （文件只读）；Esc/✕ 关闭、焦点入面板并归还；确认返回当前所在目录。
+ * 页内文件夹选择器（F-601「选择文件夹（本地）」，Win11 风格复刻）：完全嵌入浏览器页面
+ * （DOM 模态，属于页面视口），不弹系统桌面窗口。浏览器沙箱禁读本地绝对路径，目录条目
+ * （名称 + 修改日期；仅目录，文件不出现——用户裁定）由后端 GET /project/browse 提供；
+ * 排序（名称升序）由后端固定。
+ * 交互：后退/前进/上级 + 地址栏面包屑跳转；单击选中（触屏单击即进入）、双击进入；
+ * Esc/✕ 关闭、焦点入面板并归还；确认返回当前所在目录。
  */
 export function FolderPickerModal(props: FolderPickerModalProps) {
   const { open, initialPath, onSelect, onClose } = props
@@ -191,11 +156,11 @@ export function FolderPickerModal(props: FolderPickerModalProps) {
 
   function handleEntryClick(entry: BrowseEntryPayload): void {
     setSelectedPath(entry.path)
-    if (entry.kind === 'dir' && isCoarsePointer()) navigateTo(entry.path)
+    if (isCoarsePointer()) navigateTo(entry.path)
   }
 
   function handleEntryDoubleClick(entry: BrowseEntryPayload): void {
-    if (entry.kind === 'dir') navigateTo(entry.path)
+    navigateTo(entry.path)
   }
 
   if (!open) return null
@@ -287,14 +252,12 @@ export function FolderPickerModal(props: FolderPickerModalProps) {
         <div className="folder-picker__columns" aria-hidden="true">
           <span>名称</span>
           <span className="folder-picker__col-date">修改日期</span>
-          <span className="folder-picker__col-kind">类型</span>
-          <span className="folder-picker__col-size">大小</span>
         </div>
         <div className="folder-picker__body">
           {loadError !== '' ? <p className="folder-picker__error">{loadError}</p> : null}
           {isLoading ? <p className="folder-picker__hint">加载中…</p> : null}
           {!isLoading && loadError === '' && listing !== null && entryCount === 0 ? (
-            <p className="folder-picker__hint">此文件夹为空</p>
+            <p className="folder-picker__hint">此文件夹下没有子文件夹</p>
           ) : null}
           <ul className="folder-picker__list">
             {(listing?.entries ?? []).map((entry) => (
@@ -310,34 +273,30 @@ export function FolderPickerModal(props: FolderPickerModalProps) {
                   onClick={() => handleEntryClick(entry)}
                   onDoubleClick={() => handleEntryDoubleClick(entry)}
                   onKeyDown={(event) => {
-                    if (event.key === 'Enter' && entry.kind === 'dir') {
+                    if (event.key === 'Enter') {
                       event.preventDefault()
                       navigateTo(entry.path)
                     }
                   }}
                 >
                   <span className="folder-picker__item-label">
-                    {entry.kind === 'dir' ? <FolderIcon /> : <FileIcon />}
+                    <FolderIcon />
                     <span className="folder-picker__item-name">{entry.name}</span>
                   </span>
                   <span className="folder-picker__item-date">
                     {formatDateTime(entry.modified_at)}
-                  </span>
-                  <span className="folder-picker__item-kind">{fileKindLabel(entry)}</span>
-                  <span className="folder-picker__item-size">
-                    {entry.size !== null ? formatSize(entry.size) : ''}
                   </span>
                 </button>
               </li>
             ))}
           </ul>
           {listing?.truncated ? (
-            <p className="folder-picker__hint">目录过大，仅显示部分项目</p>
+            <p className="folder-picker__hint">目录过大，仅显示部分子文件夹</p>
           ) : null}
         </div>
         <footer className="folder-picker__footer">
           <span className="folder-picker__status">
-            {listing !== null ? `${entryCount} 个项目` : ''}
+            {listing !== null ? `${entryCount} 个文件夹` : ''}
           </span>
           <button type="button" className="folder-picker__cancel" onClick={onClose}>
             取消

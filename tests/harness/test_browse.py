@@ -1,6 +1,6 @@
-"""harness/browse.py 单测：条目元数据/排序、上级推导、截断、错误码。
+"""harness/browse.py 单测：仅目录+修改时间、排序、上级推导、截断、错误码。
 
-F-601 页内文件资源管理器数据源（GET /project/browse）。
+F-601 页内文件夹选择数据源（GET /project/browse）。
 """
 
 from __future__ import annotations
@@ -31,27 +31,21 @@ def test_parent_of_subdir_returns_parent() -> None:
     assert _parent_of("D:\\Works") == "D:\\"
 
 
-async def test_list_entries_dirs_before_files_with_metadata(tmp_path: Path) -> None:
-    """目录在前、文件在后（各自名称升序）；文件含真实 size 与 ISO 修改时间；目录 size=None。"""
+async def test_list_entries_only_dirs_with_modified_at(tmp_path: Path) -> None:
+    """仅列目录（文件不出现）；名称不区分大小写升序；条目携带 ISO 修改时间。"""
     (tmp_path / "beta").mkdir()
     (tmp_path / "Alpha").mkdir()
     (tmp_path / "zeta").mkdir()
     (tmp_path / "note.txt").write_bytes(b"hello")
-    (tmp_path / "a.md").write_bytes(b"x" * 1536)
 
     listing = await list_subdirectories(str(tmp_path))
 
     assert listing.path == str(tmp_path)
     assert listing.truncated is False
-    assert [e.name for e in listing.entries] == ["Alpha", "beta", "zeta", "a.md", "note.txt"]
-    assert [e.kind for e in listing.entries] == ["dir"] * 3 + ["file"] * 2
+    assert [e.name for e in listing.entries] == ["Alpha", "beta", "zeta"]
     for e in listing.entries:
         assert e.path.startswith(str(tmp_path))
         assert e.modified_at is not None and _ISO_RE.match(e.modified_at) is not None
-    files = {e.name: e for e in listing.entries if e.kind == "file"}
-    assert all(e.size is None for e in listing.entries if e.kind == "dir")
-    assert files["note.txt"].size == 5
-    assert files["a.md"].size == 1536
 
 
 async def test_list_subdirectories_missing_raises_2001(tmp_path: Path) -> None:
@@ -66,7 +60,7 @@ async def test_list_subdirectories_missing_raises_2001(tmp_path: Path) -> None:
 async def test_list_subdirectories_truncates_over_limit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """超过上限：按既定序（目录在前）截断并置 truncated 标志（前端提示）。"""
+    """超过上限：按名称序截断并置 truncated 标志（前端提示）。"""
     import devprompt_ai.harness.browse as browse_module
 
     monkeypatch.setattr(browse_module, "MAX_BROWSE_ENTRIES", 2)
@@ -78,14 +72,9 @@ async def test_list_subdirectories_truncates_over_limit(
 
 
 def test_list_drives_shape() -> None:
-    """驱动器列表：path 空串 + parent None；条目 kind=dir 且无元数据。
-
-    探测依赖真实盘符，仅验证形状。
-    """
+    """驱动器列表：path 空串 + parent None；条目无元数据（探测依赖真实盘符，仅验形状）。"""
     listing = _list_drives_sync()
     assert listing.path == ""
     assert listing.parent is None
     assert all(re.fullmatch(r"[A-Z]:\\", e.path) for e in listing.entries)
-    assert all(
-        e.kind == "dir" and e.size is None and e.modified_at is None for e in listing.entries
-    )
+    assert all(e.modified_at is None for e in listing.entries)

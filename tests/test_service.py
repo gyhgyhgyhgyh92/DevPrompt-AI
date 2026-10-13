@@ -762,9 +762,7 @@ async def test_browse_directory_empty_returns_drives(monkeypatch: pytest.MonkeyP
     from devprompt_ai.harness.browse import BrowseEntry, BrowseListing
 
     async def _fake_drives() -> BrowseListing:
-        return BrowseListing(
-            path="", parent=None, entries=(BrowseEntry(name="C:\\", path="C:\\", kind="dir"),)
-        )
+        return BrowseListing(path="", parent=None, entries=(BrowseEntry(name="C:\\", path="C:\\"),))
 
     monkeypatch.setattr(service_module, "list_drives", _fake_drives)
     svc, _ = _service()
@@ -775,15 +773,14 @@ async def test_browse_directory_empty_returns_drives(monkeypatch: pytest.MonkeyP
 
 
 async def test_browse_directory_lists_subdirs(tmp_path: Path) -> None:
-    """真实目录：目录在前、文件在后（文件带元数据），路径为规范化绝对路径，携带上级。"""
+    """真实目录：仅列子目录（文件不出现），路径为规范化绝对路径，携带上级与修改时间。"""
     (tmp_path / "alpha").mkdir()
     (tmp_path / "beta").mkdir()
     (tmp_path / "note.txt").write_text("x", encoding="utf-8")
     svc, _ = _service()
     listing = await svc.browse_directory(str(tmp_path))
     assert listing.path == str(tmp_path)
-    assert [e.name for e in listing.entries] == ["alpha", "beta", "note.txt"]
-    assert [e.kind for e in listing.entries] == ["dir", "dir", "file"]
+    assert [e.name for e in listing.entries] == ["alpha", "beta"]
     assert listing.parent is not None
 
 

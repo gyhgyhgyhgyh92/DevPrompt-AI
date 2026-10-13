@@ -2,7 +2,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse } from '../../api/types'
-import { FolderPickerModal, formatDateTime, formatSize } from './FolderPickerModal'
+import { FolderPickerModal, formatDateTime } from './FolderPickerModal'
 
 function envelope<T>(data: T): ApiResponse<T> {
   return { code: 0, message: 'ok', request_id: 'test-rid', data }
@@ -11,8 +11,6 @@ function envelope<T>(data: T): ApiResponse<T> {
 interface EntrySpec {
   name: string
   path: string
-  kind?: 'dir' | 'file'
-  size?: number | null
   modified_at?: string | null
 }
 
@@ -39,8 +37,6 @@ function stubBrowse(listings: Record<string, ListingSpec>) {
             entries: spec.entries.map((e) => ({
               name: e.name,
               path: e.path,
-              kind: e.kind ?? 'dir',
-              size: e.size ?? null,
               modified_at: e.modified_at ?? null,
             })),
             truncated: spec.truncated ?? false,
@@ -67,14 +63,8 @@ const dRoot: ListingSpec = {
   path: 'D:\\',
   parent: '',
   entries: [
-    { name: 'Works', path: 'D:\\Works' },
-    {
-      name: 'readme.md',
-      path: 'D:\\readme.md',
-      kind: 'file',
-      size: 1536,
-      modified_at: '2026-10-13T14:30:00',
-    },
+    { name: 'Works', path: 'D:\\Works', modified_at: '2026-10-13T14:30:00' },
+    { name: 'Archive', path: 'D:\\Archive' },
   ],
 }
 const dWorks: ListingSpec = { path: 'D:\\Works', parent: 'D:\\', entries: [] }
@@ -84,7 +74,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('FolderPickerModal 页内文件资源管理器（F-601）', () => {
+describe('FolderPickerModal 页内文件夹选择器（F-601）', () => {
   it('open 时加载驱动器列表；工具行与确认按钮初始状态正确', async () => {
     stubBrowse({ '': drives })
     render(<FolderPickerModal open initialPath="" onSelect={vi.fn()} onClose={vi.fn()} />)
@@ -93,9 +83,7 @@ describe('FolderPickerModal 页内文件资源管理器（F-601）', () => {
     expect(screen.getByText('此电脑')).toBeTruthy()
     expect(screen.getByText('名称')).toBeTruthy()
     expect(screen.getByText('修改日期')).toBeTruthy()
-    expect(screen.getByText('类型')).toBeTruthy()
-    expect(screen.getByText('大小')).toBeTruthy()
-    expect(screen.getByText('2 个项目')).toBeTruthy()
+    expect(screen.getByText('2 个文件夹')).toBeTruthy()
     expect((screen.getByRole('button', { name: '后退' }) as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByRole('button', { name: '前进' }) as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByRole('button', { name: '返回上级' }) as HTMLButtonElement).disabled).toBe(
@@ -106,62 +94,48 @@ describe('FolderPickerModal 页内文件资源管理器（F-601）', () => {
     ).toBe(true)
   })
 
-  it('鼠标语义下单击目录仅选中（不进入），双击才进入；出发返回上级', async () => {
+  it('修改日期列按格式化显示（无日期留空）；单击仅选中，双击进入', async () => {
     const user = userEvent.setup()
-    const mock = stubBrowse({ '': drives, 'D:\\': dRoot, 'D:\\Works': dWorks })
+    const mock = stubBrowse({
+      '': drives,
+      'D:\\': dRoot,
+      'D:\\Archive': { path: 'D:\\Archive', parent: 'D:\\', entries: [] },
+    })
     render(<FolderPickerModal open initialPath="" onSelect={vi.fn()} onClose={vi.fn()} />)
 
-    const dDrive = await screen.findByRole('button', { name: 'D:\\' })
-    await user.click(dDrive)
-    expect(dDrive.className).toContain('folder-picker__item--selected')
-    expect(mock.mock.calls).toHaveLength(1) // 单击未触发第二次加载
+    await user.dblClick(await screen.findByRole('button', { name: 'D:\\' }))
+    await screen.findByRole('button', { name: 'Works' })
+    expect(screen.getByText('2026/10/13 14:30')).toBeTruthy()
+    expect(screen.getByText('2 个文件夹')).toBeTruthy()
 
-    await user.dblClick(dDrive)
-    expect(await screen.findByRole('button', { name: 'Works' })).toBeTruthy()
+    const archive = screen.getByRole('button', { name: 'Archive' })
+    await user.click(archive)
+    expect(archive.className).toContain('folder-picker__item--selected')
+    expect(mock.mock.calls).toHaveLength(2) // 单击未触发第三次加载
 
-    await user.dblClick(screen.getByRole('button', { name: 'Works' }))
-    expect(await screen.findByText('此文件夹为空')).toBeTruthy()
+    await user.dblClick(archive)
+    await waitFor(() => expect(screen.getByText('此文件夹下没有子文件夹')).toBeTruthy())
+  })
+
+  it('返回上级逐级回退（驱动器根回驱动器列表）', async () => {
+    const user = userEvent.setup()
+    stubBrowse({ '': drives, 'D:\\': dRoot, 'D:\\Works': dWorks })
+    render(<FolderPickerModal open initialPath="" onSelect={vi.fn()} onClose={vi.fn()} />)
+
+    await user.dblClick(await screen.findByRole('button', { name: 'D:\\' }))
+    await user.dblClick(await screen.findByRole('button', { name: 'Works' }))
+    expect(await screen.findByText('此文件夹下没有子文件夹')).toBeTruthy()
     await waitFor(() =>
       expect(
         (screen.getByRole('button', { name: '选择当前文件夹' }) as HTMLButtonElement).disabled,
       ).toBe(false),
     )
 
-    // 返回上级：D:\Works → D:\，再一次（D:\ 的 parent=""）回驱动器列表
     await user.click(screen.getByRole('button', { name: '返回上级' }))
     expect(await screen.findByRole('button', { name: 'Works' })).toBeTruthy()
     await user.click(screen.getByRole('button', { name: '返回上级' }))
     expect(await screen.findByRole('button', { name: 'C:\\' })).toBeTruthy()
     expect(screen.getByText('此电脑')).toBeTruthy()
-  })
-
-  it('文件行展示元数据（日期/类型/大小）且双击不进入（只读）', async () => {
-    const user = userEvent.setup()
-    const mock = stubBrowse({ '': drives, 'D:\\': dRoot })
-    render(<FolderPickerModal open initialPath="" onSelect={vi.fn()} onClose={vi.fn()} />)
-
-    await user.dblClick(await screen.findByRole('button', { name: 'D:\\' }))
-    const fileRow = await screen.findByRole('button', { name: 'readme.md' })
-    expect(screen.getByText('2026/10/13 14:30')).toBeTruthy()
-    expect(screen.getByText('MD 文件')).toBeTruthy()
-    expect(screen.getByText('1.5 KB')).toBeTruthy()
-
-    const calls = mock.mock.calls.length
-    await user.dblClick(fileRow)
-    expect(mock.mock.calls).toHaveLength(calls) // 文件不触发导航
-  })
-
-  it('列表渲染顺序为目录在前、文件在后（后端排序透传）', async () => {
-    const user = userEvent.setup()
-    stubBrowse({ '': drives, 'D:\\': dRoot })
-    render(<FolderPickerModal open initialPath="" onSelect={vi.fn()} onClose={vi.fn()} />)
-
-    await user.dblClick(await screen.findByRole('button', { name: 'D:\\' }))
-    await screen.findByRole('button', { name: 'readme.md' })
-    const names = Array.from(document.querySelectorAll('.folder-picker__item-name')).map(
-      (n) => n.textContent,
-    )
-    expect(names).toEqual(['Works', 'readme.md'])
   })
 
   it('后退/前进沿历史栈导航', async () => {
@@ -171,14 +145,14 @@ describe('FolderPickerModal 页内文件资源管理器（F-601）', () => {
 
     await user.dblClick(await screen.findByRole('button', { name: 'D:\\' }))
     await user.dblClick(await screen.findByRole('button', { name: 'Works' }))
-    expect(await screen.findByText('此文件夹为空')).toBeTruthy()
+    expect(await screen.findByText('此文件夹下没有子文件夹')).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: '后退' }))
     expect(await screen.findByRole('button', { name: 'Works' })).toBeTruthy()
     expect((screen.getByRole('button', { name: '前进' }) as HTMLButtonElement).disabled).toBe(false)
 
     await user.click(screen.getByRole('button', { name: '前进' }))
-    expect(await screen.findByText('此文件夹为空')).toBeTruthy()
+    expect(await screen.findByText('此文件夹下没有子文件夹')).toBeTruthy()
   })
 
   it('面包屑点击跳转（点击「此电脑」回驱动器列表）', async () => {
@@ -188,13 +162,13 @@ describe('FolderPickerModal 页内文件资源管理器（F-601）', () => {
 
     await user.dblClick(await screen.findByRole('button', { name: 'D:\\' }))
     await user.dblClick(await screen.findByRole('button', { name: 'Works' }))
-    expect(await screen.findByText('此文件夹为空')).toBeTruthy()
+    expect(await screen.findByText('此文件夹下没有子文件夹')).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: '此电脑' }))
     expect(await screen.findByRole('button', { name: 'C:\\' })).toBeTruthy()
   })
 
-  it('聚焦目录行按 Enter 进入（键盘操作）', async () => {
+  it('聚焦行按 Enter 进入（键盘操作）', async () => {
     const user = userEvent.setup()
     stubBrowse({ '': drives, 'D:\\': dRoot })
     render(<FolderPickerModal open initialPath="" onSelect={vi.fn()} onClose={vi.fn()} />)
@@ -205,7 +179,7 @@ describe('FolderPickerModal 页内文件资源管理器（F-601）', () => {
     expect(await screen.findByRole('button', { name: 'Works' })).toBeTruthy()
   })
 
-  it('触屏（coarse pointer）单击目录即进入', async () => {
+  it('触屏（coarse pointer）单击即进入', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }))
     stubBrowse({ '': drives, 'D:\\': dRoot })
@@ -235,7 +209,7 @@ describe('FolderPickerModal 页内文件资源管理器（F-601）', () => {
       <FolderPickerModal open initialPath={'D:\\Works'} onSelect={vi.fn()} onClose={vi.fn()} />,
     )
 
-    expect(await screen.findByText('此文件夹为空')).toBeTruthy()
+    expect(await screen.findByText('此文件夹下没有子文件夹')).toBeTruthy()
     // 面包屑分段渲染（此电脑 › D: › Works），末段为当前位置
     expect(screen.getByText('此电脑')).toBeTruthy()
     expect(screen.getByText('D:')).toBeTruthy()
@@ -268,7 +242,7 @@ describe('FolderPickerModal 页内文件资源管理器（F-601）', () => {
     stubBrowse({ '': { ...drives, truncated: true } })
     render(<FolderPickerModal open initialPath="" onSelect={vi.fn()} onClose={vi.fn()} />)
 
-    expect(await screen.findByText('目录过大，仅显示部分项目')).toBeTruthy()
+    expect(await screen.findByText('目录过大，仅显示部分子文件夹')).toBeTruthy()
   })
 
   it('open=false 不渲染任何内容', () => {
@@ -279,13 +253,6 @@ describe('FolderPickerModal 页内文件资源管理器（F-601）', () => {
 })
 
 describe('FolderPickerModal 格式工具', () => {
-  it('formatSize 按 1024 进制格式化', () => {
-    expect(formatSize(512)).toBe('512 B')
-    expect(formatSize(1536)).toBe('1.5 KB')
-    expect(formatSize(1048576)).toBe('1.0 MB')
-    expect(formatSize(20 * 1024 * 1024)).toBe('20.0 MB')
-  })
-
   it('formatDateTime 直接切分 ISO 字符串（不做时区转换）', () => {
     expect(formatDateTime('2026-10-13T14:30:00')).toBe('2026/10/13 14:30')
     expect(formatDateTime(null)).toBe('')

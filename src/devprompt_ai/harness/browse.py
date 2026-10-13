@@ -1,13 +1,13 @@
 """目录浏览 I/O（F-601 页内文件资源管理器数据源，GET /project/browse）。
 
-列出目录 + 文件（含名称/修改时间/大小元数据，资源管理器样式展示）；驱动器列表以
-A-Z 探测实现（`os.listdrives()` 需 Python 3.12+，项目基线 3.10，见 pyproject）。
-排序由后端固定：目录在前、文件在后，各自名称不区分大小写升序（前端零排序逻辑）。
+仅列目录（本交互目的即选择文件夹，文件不出现——用户裁定），条目携带修改时间；
+驱动器列表以 A-Z 探测实现（`os.listdrives()` 需 Python 3.12+，项目基线 3.10，见
+pyproject）。排序由后端固定：名称不区分大小写升序（前端零排序逻辑）。
 同步磁盘 I/O 经 asyncio.to_thread 包装（MUST-13：不在事件循环直接阻塞）。
 
 路径安全（MUST-20）：入口统一 normpath/abspath 规范化；不存在 → 2001、
 不可读（权限）→ 2002；错误文案不含路径本体（MUST-19）。单条目 OSError（受保护
-文件/坏链接等）跳过不中断整表；条目总数超过 MAX_BROWSE_ENTRIES 按既定序截断并置
+目录/坏链接等）跳过不中断整表；条目总数超过 MAX_BROWSE_ENTRIES 按既定序截断并置
 truncated（响应携带标志供前端提示）。
 """
 
@@ -18,7 +18,6 @@ import os
 import string
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
 
 from devprompt_ai.domain.errors import RetrievalError
 
@@ -28,12 +27,10 @@ MAX_BROWSE_ENTRIES = 500
 
 @dataclass(frozen=True)
 class BrowseEntry:
-    """目录/文件条目：展示名 + 完整路径 + 类型与元数据。"""
+    """目录条目：展示名 + 完整路径 + 修改时间。"""
 
     name: str
     path: str
-    kind: Literal["dir", "file"]
-    size: int | None = None  # 文件字节数；目录与驱动器为 None（资源管理器不展示目录大小）
     modified_at: str | None = None  # 本地时间 ISO（YYYY-MM-DDTHH:MM:SS）；驱动器为 None
 
 
@@ -49,9 +46,9 @@ class BrowseListing:
 
 
 def _list_drives_sync() -> BrowseListing:
-    """逐盘符探测（A-Z）：存在即为可用驱动器，路径取 ``X:\\`` 形态（kind=dir 可进入）。"""
+    """逐盘符探测（A-Z）：存在即为可用驱动器，路径取 ``X:\\`` 形态。"""
     entries = tuple(
-        BrowseEntry(name=f"{letter}:\\", path=f"{letter}:\\", kind="dir")
+        BrowseEntry(name=f"{letter}:\\", path=f"{letter}:\\")
         for letter in string.ascii_uppercase
         if os.path.isdir(f"{letter}:\\")
     )
@@ -59,31 +56,28 @@ def _list_drives_sync() -> BrowseListing:
 
 
 def _iter_entries(root: str) -> list[BrowseEntry]:
-    """列出目录 + 文件（目录在前、文件在后，各自名称升序）。
+    """列出子目录（名称升序；仅目录——文件不出现，用户裁定）。
 
     Windows 上 ``DirEntry.stat()`` 数据来自目录扫描（无额外系统调用）；单条目
-    OSError（受保护文件/坏链接）跳过不中断整表。
+    OSError（受保护目录/坏链接）跳过不中断整表。
     """
-    dirs: list[BrowseEntry] = []
-    files: list[BrowseEntry] = []
+    entries: list[BrowseEntry] = []
     with os.scandir(root) as it:
         for fs_entry in it:
             try:
-                is_dir = fs_entry.is_dir()
+                if not fs_entry.is_dir():
+                    continue
                 stat = fs_entry.stat()
                 item = BrowseEntry(
                     name=fs_entry.name,
                     path=os.path.join(root, fs_entry.name),
-                    kind="dir" if is_dir else "file",
-                    size=None if is_dir else stat.st_size,
                     modified_at=datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
                 )
             except OSError:
                 continue
-            (dirs if is_dir else files).append(item)
-    dirs.sort(key=lambda e: e.name.lower())
-    files.sort(key=lambda e: e.name.lower())
-    return [*dirs, *files]
+            entries.append(item)
+    entries.sort(key=lambda e: e.name.lower())
+    return entries
 
 
 def _parent_of(normalized: str) -> str:
@@ -120,5 +114,5 @@ async def list_drives() -> BrowseListing:
 
 
 async def list_subdirectories(path: str) -> BrowseListing:
-    """列出 path 下的一级条目（目录 + 文件，含元数据；规范化 + 存在性/权限校验）。"""
+    """列出 path 下的一级子目录（含修改时间；规范化 + 存在性/权限校验）。"""
     return await asyncio.to_thread(_list_entries_sync, path)

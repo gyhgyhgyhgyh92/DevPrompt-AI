@@ -293,16 +293,8 @@
         "type": "object"
       },
       "BrowseEntryPayload": {
-        "description": "目录浏览条目：展示名 + 完整路径 + 类型与元数据（F-601 页内文件资源管理器）。",
+        "description": "目录浏览条目：展示名 + 完整路径 + 修改时间（F-601 页内文件夹选择，文件不出现）。",
         "properties": {
-          "kind": {
-            "enum": [
-              "dir",
-              "file"
-            ],
-            "title": "Kind",
-            "type": "string"
-          },
           "modified_at": {
             "anyOf": [
               {
@@ -321,24 +313,11 @@
           "path": {
             "title": "Path",
             "type": "string"
-          },
-          "size": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Size"
           }
         },
         "required": [
           "name",
           "path",
-          "kind",
-          "size",
           "modified_at"
         ],
         "title": "BrowseEntryPayload",

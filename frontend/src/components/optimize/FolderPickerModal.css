@@ -1,5 +1,5 @@
 /*
- * 页内文件资源管理器（F-601，Win11 风格复刻）样式：BEM 命名；
+ * 页内文件夹选择器（F-601，Win11 风格复刻）样式：BEM 命名；
  * 颜色/间距/圆角全部引用 tokens.css 变量（MUST-17 禁硬编码）。
  * overlay 为 fixed 定位：模态恒处于浏览器视口内（不脱离页面，不产生系统桌面窗口）。
  */
@@ -142,10 +142,10 @@
   white-space: nowrap;
 }
 
-/* 详情列头（grid 列与条目行一致；装饰性，aria-hidden） */
+/* 列头（grid 列与条目行一致：名称 / 修改日期；装饰性，aria-hidden） */
 .folder-picker__columns {
   display: grid;
-  grid-template-columns: 2fr 1.1fr 0.9fr 0.6fr;
+  grid-template-columns: 2fr 1.2fr;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3) var(--space-1);
   font-size: var(--text-body-xs);
@@ -171,7 +171,7 @@
 
 .folder-picker__item {
   display: grid;
-  grid-template-columns: 2fr 1.1fr 0.9fr 0.6fr;
+  grid-template-columns: 2fr 1.2fr;
   gap: var(--space-2);
   align-items: center;
   width: 100%;
@@ -213,9 +213,7 @@
   white-space: nowrap;
 }
 
-.folder-picker__item-date,
-.folder-picker__item-kind,
-.folder-picker__item-size {
+.folder-picker__item-date {
   overflow: hidden;
   font-size: var(--text-body-xs);
   color: var(--color-text-secondary);
@@ -283,21 +281,6 @@
   opacity: 0.55;
 }
 
-/* 窄屏（≤768）：隐藏「修改日期」「类型」两列 */
-@media (max-width: 768px) {
-  .folder-picker__columns,
-  .folder-picker__item {
-    grid-template-columns: 1fr 0.6fr;
-  }
-
-  .folder-picker__col-date,
-  .folder-picker__col-kind,
-  .folder-picker__item-date,
-  .folder-picker__item-kind {
-    display: none;
-  }
-}
-
 /* 超窄屏（≤480）：仅保留「名称」列；状态栏隐藏 */
 @media (max-width: 480px) {
   .folder-picker__columns,
@@ -305,8 +288,8 @@
     grid-template-columns: 1fr;
   }
 
-  .folder-picker__col-size,
-  .folder-picker__item-size {
+  .folder-picker__col-date,
+  .folder-picker__item-date {
     display: none;
   }
 

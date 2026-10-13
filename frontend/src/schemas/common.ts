@@ -34,12 +34,10 @@ export const ScanResponseSchema = z.object({
   total_symbols: z.number(),
 })
 
-/** GET /project/browse 条目（契约 BrowseEntryPayload）：kind 区分目录/文件，文件含元数据。 */
+/** GET /project/browse 条目（契约 BrowseEntryPayload）：仅目录，携带修改时间。 */
 export const BrowseEntryPayloadSchema = z.object({
   name: z.string(),
   path: z.string(),
-  kind: z.enum(['dir', 'file']),
-  size: z.number().nullable(),
   modified_at: z.string().nullable(),
 })
 
