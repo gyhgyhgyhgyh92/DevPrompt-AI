@@ -696,6 +696,123 @@
         "title": "LockedSettings",
         "type": "object"
       },
+      "ModelEntryUpdate": {
+        "description": "PUT /settings models 段条目：id=None 为新增（后端生成）；api_key None/空=保留原值。",
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          }
+        },
+        "title": "ModelEntryUpdate",
+        "type": "object"
+      },
+      "ModelEntryView": {
+        "description": "注册表条目脱敏视图（F-604 多模型）：api_key 恒脱敏，is_active 标记当前生效项。",
+        "properties": {
+          "api_key_masked": {
+            "title": "Api Key Masked",
+            "type": "string"
+          },
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "provider",
+          "base_url",
+          "model_id",
+          "api_key_masked",
+          "is_active"
+        ],
+        "title": "ModelEntryView",
+        "type": "object"
+      },
       "ModelServiceSettings": {
         "description": "F-604 模型服务设置视图：api_key 恒脱敏（MUST-19，明文不进响应）。",
         "properties": {
@@ -1103,7 +1220,7 @@
         "type": "object"
       },
       "SettingsResponse": {
-        "description": "GET/PUT /settings 数据体（T6-11）。",
+        "description": "GET/PUT /settings 数据体（T6-11）。\n\n``models`` 为多模型注册表脱敏视图（F-604，2026-10-13）；字段无默认值（响应必有值）。",
         "properties": {
           "locked": {
             "$ref": "#/components/schemas/LockedSettings"
@@ -1111,11 +1228,19 @@
           "model_service": {
             "$ref": "#/components/schemas/ModelServiceSettings"
           },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelEntryView"
+            },
+            "title": "Models",
+            "type": "array"
+          },
           "process": {
             "$ref": "#/components/schemas/ProcessSettings"
           }
         },
         "required": [
+          "models",
           "model_service",
           "process",
           "locked"
@@ -1124,8 +1249,19 @@
         "type": "object"
       },
       "SettingsUpdate": {
-        "description": "PUT /settings 请求体（T6-11）。",
+        "description": "PUT /settings 请求体（T6-11 + 多模型注册表 F-604）。\n\n``models`` 为整表替换（None=不动注册表）；``active_model_id`` 切换当前生效条目\n（切换后该条目整体镜像进 model_service，由 service 层执行）。",
         "properties": {
+          "active_model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Model Id"
+          },
           "model_service": {
             "anyOf": [
               {
@@ -1135,6 +1271,20 @@
                 "type": "null"
               }
             ]
+          },
+          "models": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ModelEntryUpdate"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Models"
           },
           "process": {
             "anyOf": [

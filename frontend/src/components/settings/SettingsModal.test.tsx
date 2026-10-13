@@ -18,6 +18,7 @@ vi.mock('../../api/endpoints', () => ({
 }))
 
 const settingsFixture: SettingsResponse = {
+  models: [],
   model_service: {
     api_key_masked: 'sk-••••3f7a',
     base_url: 'https://api.example.com',

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse, SettingsResponse } from '../../api/types'
@@ -11,12 +11,34 @@ function envelope<T>(data: T): ApiResponse<T> {
   return { code: 0, message: 'ok', request_id: 'test-rid', data }
 }
 
+const MODEL_ENTRIES: SettingsResponse['models'] = [
+  {
+    id: 'm-1',
+    label: 'DeepSeek · deepseek-flash',
+    provider: 'DeepSeek',
+    base_url: 'https://api.deepseek.com',
+    model_id: 'deepseek-flash',
+    api_key_masked: 'sk-••••3f7a',
+    is_active: true,
+  },
+  {
+    id: 'm-2',
+    label: 'OpenAI 兼容 · gpt-x',
+    provider: 'OpenAI 兼容',
+    base_url: 'https://api.openai.com/v1',
+    model_id: 'gpt-x',
+    api_key_masked: 'sk-••••9a2b',
+    is_active: false,
+  },
+]
+
 const settingsFixture: SettingsResponse = {
+  models: MODEL_ENTRIES,
   model_service: {
     api_key_masked: 'sk-••••3f7a',
     base_url: 'https://api.deepseek.com',
     decider: 'auto',
-    model_id: 'deepseek-chat',
+    model_id: 'deepseek-flash',
     provider: 'DeepSeek',
     temperature: null,
     max_tokens: null,
@@ -162,17 +184,55 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
     expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('模型名只读展示当前设置；未配置时显「未配置模型」', () => {
+  it('模型下拉默认展示当前生效模型完整名称，选项为全部注册表条目', () => {
     useSettingsStore.setState({ settings: settingsFixture })
-    const { unmount } = render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
-    expect(screen.getByText('deepseek-chat')).toBeTruthy()
-    // 只读纯文本：不是按钮/输入，不可交互
-    expect(screen.queryByRole('button', { name: 'deepseek-chat' })).toBeNull()
-    unmount()
-
-    useSettingsStore.setState({ settings: null })
     render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
-    expect(screen.getByText('未配置模型')).toBeTruthy()
+
+    const select = screen.getByRole('combobox', { name: '选择模型' }) as HTMLSelectElement
+    expect(select.value).toBe('m-1')
+    const options = Array.from(select.options).map((o) => o.textContent)
+    expect(options).toEqual(['DeepSeek · deepseek-flash', 'OpenAI 兼容 · gpt-x'])
+    expect(select.selectedOptions[0]?.textContent).toBe('DeepSeek · deepseek-flash')
+  })
+
+  it('切换模型经 PUT /settings 提交 active_model_id 并更新展示', async () => {
+    const user = userEvent.setup()
+    const switched = {
+      ...settingsFixture,
+      models: [
+        { ...MODEL_ENTRIES[0]!, is_active: false },
+        { ...MODEL_ENTRIES[1]!, is_active: true },
+      ],
+    }
+    const fetchMock = stubFetchByUrl({ browse: envelope(null) })
+    fetchMock.mockImplementation(async () => ({
+      status: 200,
+      headers: { get: () => null },
+      json: async () => envelope(switched),
+    }))
+    useSettingsStore.setState({ settings: settingsFixture })
+    render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
+
+    await user.selectOptions(screen.getByRole('combobox', { name: '选择模型' }), 'm-2')
+
+    const putCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/settings'))
+    expect(putCall).toBeTruthy()
+    expect(putCall?.[1]?.method).toBe('PUT')
+    expect(String(putCall?.[1]?.body)).toContain('"active_model_id":"m-2"')
+    await waitFor(() =>
+      expect((screen.getByRole('combobox', { name: '选择模型' }) as HTMLSelectElement).value).toBe(
+        'm-2',
+      ),
+    )
+  })
+
+  it('注册表为空时下拉展示「未配置模型」且禁用', () => {
+    useSettingsStore.setState({ settings: { ...settingsFixture, models: [] } })
+    render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
+
+    const select = screen.getByRole('combobox', { name: '选择模型' }) as HTMLSelectElement
+    expect(select.disabled).toBe(true)
+    expect(select.options[0]?.textContent).toBe('未配置模型')
   })
 
   it('提交中发送按钮禁用', () => {

@@ -47,9 +47,27 @@
   flex: 1;
 }
 
-.console-input__model {
+/* 模型下拉（F-604 多模型注册表）：默认展示当前生效模型完整名称，选项来自注册表 */
+.console-input__model-select {
+  max-inline-size: 180px;
+  padding: var(--space-1) var(--space-1);
+  overflow: hidden;
   font-size: var(--text-body-xs);
   color: var(--color-text-muted);
+  text-overflow: ellipsis;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.console-input__model-select:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.console-input__model-select:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .console-input__send {

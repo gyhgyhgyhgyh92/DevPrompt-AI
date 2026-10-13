@@ -355,7 +355,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | GET | `/project/scan` | 项目符号表扫描（符号总数 / 文件数 / 类型分布） |
 | GET | `/project/browse` | 文件资源管理器数据源（页内）：path 空=驱动器列表；条目为目录（名称/修改日期），名称升序 |
 | GET | `/settings` | 读取设置（模型服务脱敏 + 流程参数 + 锁定项；T6-11） |
-| PUT | `/settings` | 更新设置（模型段 → settings.json 0600；流程段 → app_settings 表） |
+| PUT | `/settings` | 更新设置（模型段 → settings.json 0600；流程段 → app_settings 表）；2026-10-13 增 `models`/`active_model_id` 多模型注册表段（整表替换 + 切换生效项） |
 | DELETE | `/preference/adoptions` | 清空服务端采纳历史，返回清空条数（D-6F-4 关闭） |
 
 ## 4.8 配置管理
@@ -364,7 +364,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 |---|---|
 | 配置读取 | Pydantic Settings |
 | 优先级 | init > 环境变量 > 本地设置（settings.json + app_settings 表）> .env > 默认值 |
-| 存储 | `.env`（不入库） + `.env.example`（入库）+ `settings.json`（0600，密钥唯一落盘处） |
+| 存储 | `.env`（不入库） + `.env.example`（入库）+ `settings.json`（0600，密钥唯一落盘处；含 `model_service` 生效配置段与 `models`/`active_model_id` 多模型注册表段） |
 
 **存储路径配置**：`DB_PATH`（默认 `~/.devprompt-ai/devprompt.db`）经环境变量覆盖；数据目录不存在时启动自动创建。**密钥边界（MUST-19 修订后，真源 §13 2026-10-12）**：API Key 仅可存本地 `settings.json`（0600）与 `.env`，不入 SQLite、不进日志，GET 回显恒脱敏。
 

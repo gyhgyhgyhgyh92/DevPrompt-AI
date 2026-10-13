@@ -167,6 +167,29 @@ class ModelServiceSettings(BaseModel):
     max_tokens: int | None = None
 
 
+class ModelEntryView(BaseModel):
+    """注册表条目脱敏视图（F-604 多模型）：api_key 恒脱敏，is_active 标记当前生效项。"""
+
+    id: str
+    label: str
+    provider: str
+    base_url: str
+    model_id: str
+    api_key_masked: str
+    is_active: bool
+
+
+class ModelEntryUpdate(BaseModel):
+    """PUT /settings models 段条目：id=None 为新增（后端生成）；api_key None/空=保留原值。"""
+
+    id: str | None = None
+    label: str | None = None
+    provider: str | None = None
+    base_url: str | None = None
+    model_id: str | None = None
+    api_key: str | None = None
+
+
 class ProcessSettings(BaseModel):
     """F-604 流程参数视图（app_settings 表持久化）。"""
 
@@ -182,8 +205,12 @@ class LockedSettings(BaseModel):
 
 
 class SettingsResponse(BaseModel):
-    """GET/PUT /settings 数据体（T6-11）。"""
+    """GET/PUT /settings 数据体（T6-11）。
 
+    ``models`` 为多模型注册表脱敏视图（F-604，2026-10-13）；字段无默认值（响应必有值）。
+    """
+
+    models: list[ModelEntryView]
     model_service: ModelServiceSettings
     process: ProcessSettings
     locked: LockedSettings
@@ -211,8 +238,14 @@ class ProcessUpdate(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
-    """PUT /settings 请求体（T6-11）。"""
+    """PUT /settings 请求体（T6-11 + 多模型注册表 F-604）。
 
+    ``models`` 为整表替换（None=不动注册表）；``active_model_id`` 切换当前生效条目
+    （切换后该条目整体镜像进 model_service，由 service 层执行）。
+    """
+
+    models: list[ModelEntryUpdate] | None = None
+    active_model_id: str | None = None
     model_service: ModelServiceUpdate | None = None
     process: ProcessUpdate | None = None
 

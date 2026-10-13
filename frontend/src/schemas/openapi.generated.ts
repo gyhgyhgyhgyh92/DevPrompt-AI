@@ -622,6 +622,44 @@ export interface components {
             candidate_limit: number;
         };
         /**
+         * ModelEntryUpdate
+         * @description PUT /settings models 段条目：id=None 为新增（后端生成）；api_key None/空=保留原值。
+         */
+        ModelEntryUpdate: {
+            /** Api Key */
+            api_key?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Id */
+            id?: string | null;
+            /** Label */
+            label?: string | null;
+            /** Model Id */
+            model_id?: string | null;
+            /** Provider */
+            provider?: string | null;
+        };
+        /**
+         * ModelEntryView
+         * @description 注册表条目脱敏视图（F-604 多模型）：api_key 恒脱敏，is_active 标记当前生效项。
+         */
+        ModelEntryView: {
+            /** Api Key Masked */
+            api_key_masked: string;
+            /** Base Url */
+            base_url: string;
+            /** Id */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Label */
+            label: string;
+            /** Model Id */
+            model_id: string;
+            /** Provider */
+            provider: string;
+        };
+        /**
          * ModelServiceSettings
          * @description F-604 模型服务设置视图：api_key 恒脱敏（MUST-19，明文不进响应）。
          */
@@ -794,18 +832,29 @@ export interface components {
         /**
          * SettingsResponse
          * @description GET/PUT /settings 数据体（T6-11）。
+         *
+         *     ``models`` 为多模型注册表脱敏视图（F-604，2026-10-13）；字段无默认值（响应必有值）。
          */
         SettingsResponse: {
             locked: components["schemas"]["LockedSettings"];
             model_service: components["schemas"]["ModelServiceSettings"];
+            /** Models */
+            models: components["schemas"]["ModelEntryView"][];
             process: components["schemas"]["ProcessSettings"];
         };
         /**
          * SettingsUpdate
-         * @description PUT /settings 请求体（T6-11）。
+         * @description PUT /settings 请求体（T6-11 + 多模型注册表 F-604）。
+         *
+         *     ``models`` 为整表替换（None=不动注册表）；``active_model_id`` 切换当前生效条目
+         *     （切换后该条目整体镜像进 model_service，由 service 层执行）。
          */
         SettingsUpdate: {
+            /** Active Model Id */
+            active_model_id?: string | null;
             model_service?: components["schemas"]["ModelServiceUpdate"] | null;
+            /** Models */
+            models?: components["schemas"]["ModelEntryUpdate"][] | null;
             process?: components["schemas"]["ProcessUpdate"] | null;
         };
         /**

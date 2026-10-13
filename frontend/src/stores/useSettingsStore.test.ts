@@ -4,6 +4,7 @@ import type { SettingsResponse } from '../api/types'
 const APPEARANCE_KEY = 'devprompt:v1:appearance'
 
 const settingsFixture: SettingsResponse = {
+  models: [],
   model_service: {
     api_key_masked: 'sk-••••3f7a',
     base_url: 'https://api.example.com',

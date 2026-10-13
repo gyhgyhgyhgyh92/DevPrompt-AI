@@ -15,8 +15,10 @@ from devprompt_ai.memory import settings_store
 from devprompt_ai.memory.settings_store import (
     SettingsStoreError,
     load_local_settings,
+    read_model_registry,
     read_model_settings,
     read_process_settings,
+    write_model_registry,
     write_model_settings,
     write_process_settings,
 )
@@ -121,3 +123,47 @@ def test_settings_module_paths_default_to_home(
     assert settings_store._settings_file_path() is not None
     assert str(settings_store._settings_file_path()).endswith("settings.json")
     assert str(settings_store._db_path()).endswith("devprompt.db")
+
+
+def test_read_model_registry_missing_and_corrupt(
+    local_paths: tuple[Path, Path],
+) -> None:
+    """注册表缺失/损坏均静默返回空表（列表降级为空，不影响 model_service）。"""
+    settings_file, _ = local_paths
+    assert read_model_registry() == {"models": [], "active_model_id": ""}
+    settings_file.write_text("{not-json", encoding="utf-8")
+    assert read_model_registry() == {"models": [], "active_model_id": ""}
+
+
+def test_write_model_registry_roundtrip_and_active_keeps(
+    local_paths: tuple[Path, Path],
+) -> None:
+    """整表写入回读一致；active_model_id=None 不覆盖既有激活位；与 model_service 共存。"""
+    settings_file, _ = local_paths
+    entries = [
+        {
+            "id": "m-1",
+            "label": "A",
+            "provider": "DeepSeek",
+            "base_url": "https://a",
+            "api_key": "sk-a-1234567890",
+            "model_id": "deepseek-flash",
+        },
+    ]
+    write_model_registry(entries, "m-1")
+    write_model_settings({"base_url": "https://a"})  # 同文件共存
+    registry = read_model_registry()
+    assert registry["models"][0]["id"] == "m-1"
+    assert registry["active_model_id"] == "m-1"
+    assert read_model_settings()["base_url"] == "https://a"
+
+    write_model_registry(entries, None)  # None 保留既有激活位
+    assert read_model_registry()["active_model_id"] == "m-1"
+    doc = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert doc["models"][0]["api_key"] == "sk-a-1234567890"  # 明文仅落设置文件
+
+
+def test_write_model_registry_disabled_rejects(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_FILE", "")
+    with pytest.raises(SettingsStoreError):
+        write_model_registry([], None)

@@ -47,6 +47,7 @@ const snapshot = {
 }
 
 const settings = {
+  models: [],
   model_service: {
     api_key_masked: 'sk-••••3f7a',
     base_url: 'https://api.example.com',
@@ -204,12 +205,29 @@ describe('api/endpoints 偏好与设置', () => {
   })
 
   it('getSettings / putSettings 读写设置视图', async () => {
-    stubFetchJson(envelope(settings))
+    const fetchMock = stubFetchJson(envelope(settings))
 
     await expect(getSettings()).resolves.toMatchObject({ locked: { candidate_limit: 25 } })
     await expect(putSettings({ process: { telemetry: false } })).resolves.toMatchObject({
       model_service: { decider: 'auto' },
     })
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/v1/settings')
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe('PUT')
+  })
+
+  it('putSettings 多模型段（models + active_model_id）随请求体透传', async () => {
+    const fetchMock = stubFetchJson(envelope(settings))
+
+    await putSettings({
+      models: [
+        { id: 'm-1', label: 'A', provider: 'DeepSeek', base_url: 'https://a', model_id: 'x' },
+      ],
+      active_model_id: 'm-1',
+    })
+
+    const body = String(fetchMock.mock.calls[0]?.[1]?.body)
+    expect(body).toContain('"models"')
+    expect(body).toContain('"active_model_id":"m-1"')
   })
 
   it('设置响应契约破坏（telemetry 非布尔）抛契约错误', async () => {

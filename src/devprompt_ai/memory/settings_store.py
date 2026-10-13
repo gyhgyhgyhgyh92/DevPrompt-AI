@@ -4,6 +4,10 @@ MUST-19 修订后语义（真源 §13 2026-10-12 批准）：密钥不入库（S
 本地设置文件（0600 权限）为密钥唯一落盘处。AppConfig 加载链：init > 环境变量 >
 本地设置（本模块） > .env > 默认值——环境变量优先，本地设置兜底。
 
+同一文件还承载多模型注册表（F-604，2026-10-13）：`models`（条目列表）+ `active_model_id`
+（当前生效条目）——各条目 api_key 与 model_service 同处 0600 文件，密钥边界不变；
+`model_service` 段仍是 AppConfig 的唯一取值来源（激活条目由 service 层镜像写入）。
+
 SQL 仅在 memory/（MUST-06）。sqlite3 同步 API 的使用处经 asyncio.to_thread 包装（MUST-13）。
 测试隔离：DEVPROMPT_SETTINGS_FILE / DEVPROMPT_SETTINGS_DB 环境变量可覆盖路径，空值禁用。
 """
@@ -24,6 +28,10 @@ _DEFAULT_DB = "~/.devprompt-ai/devprompt.db"
 _BUSY_TIMEOUT_MS = 5000
 _FILE_PERMISSIONS = 0o600
 
+# 多模型注册表在 settings.json 中的键（F-604：模型列表 + 当前生效条目 id）
+_REGISTRY_KEY = "models"
+_ACTIVE_KEY = "active_model_id"
+
 
 class SettingsStoreError(RuntimeError):
     """设置落盘失败（本地设置被禁用 / 磁盘不可写）。"""
@@ -39,8 +47,8 @@ def _db_path() -> Path | None:
     return Path(raw).expanduser() if raw else None
 
 
-def read_model_settings() -> dict[str, Any]:
-    """读 settings.json 的 model_service 段；缺失/损坏静默返回 {}（默认值兜底）。"""
+def _read_doc() -> dict[str, Any]:
+    """读 settings.json 全文；文件缺失/损坏/非对象静默返回 {}（调用方按需兜底）。"""
     path = _settings_file_path()
     if path is None or not path.exists():
         return {}
@@ -48,24 +56,15 @@ def read_model_settings() -> dict[str, Any]:
         doc = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
-    section = doc.get("model_service")
-    return dict(section) if isinstance(section, dict) else {}
+    return doc if isinstance(doc, dict) else {}
 
 
-def write_model_settings(values: dict[str, Any]) -> None:
-    """合并写 settings.json（None 值不覆盖既有值；原子替换 + 0600 权限）。"""
+def _write_doc(doc: dict[str, Any], disabled_message: str) -> None:
+    """原子替换写 settings.json 全文并强制 0600（tempfile + replace，避免半成品文件）。"""
     path = _settings_file_path()
     if path is None:
-        raise SettingsStoreError("设置文件已禁用（DEVPROMPT_SETTINGS_FILE 为空），无法写模型配置")
+        raise SettingsStoreError(disabled_message)
     path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        doc: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        doc = {}
-    section = dict(doc.get("model_service") or {})
-    section.update({k: v for k, v in values.items() if v is not None})
-    doc["model_service"] = section
-    # 原子写（tempfile + replace）避免半成品文件；随后强制 0600
     fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".settings-", suffix=".json")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -75,6 +74,47 @@ def write_model_settings(values: dict[str, Any]) -> None:
         Path(tmp_name).unlink(missing_ok=True)
         raise SettingsStoreError(f"设置文件写入失败：{exc}") from exc
     os.chmod(path, _FILE_PERMISSIONS)
+
+
+def read_model_settings() -> dict[str, Any]:
+    """读 settings.json 的 model_service 段；缺失/损坏静默返回 {}（默认值兜底）。"""
+    section = _read_doc().get("model_service")
+    return dict(section) if isinstance(section, dict) else {}
+
+
+def write_model_settings(values: dict[str, Any]) -> None:
+    """合并写 settings.json 的 model_service 段（None 值不覆盖既有值；原子替换 + 0600）。"""
+    doc = _read_doc()
+    section = dict(doc.get("model_service") or {})
+    section.update({k: v for k, v in values.items() if v is not None})
+    doc["model_service"] = section
+    _write_doc(doc, "设置文件已禁用（DEVPROMPT_SETTINGS_FILE 为空），无法写模型配置")
+
+
+def read_model_registry() -> dict[str, Any]:
+    """读 settings.json 的模型注册表：返回 ``{"models": [...], "active_model_id": str}``。
+
+    缺失/损坏静默返回空表（列表展示降级为空，不影响 model_service 生效配置）。
+    """
+    doc = _read_doc()
+    raw_models = doc.get(_REGISTRY_KEY)
+    models: list[dict[str, Any]] = []
+    if isinstance(raw_models, list):
+        models = [dict(item) for item in raw_models if isinstance(item, dict)]
+    active = doc.get(_ACTIVE_KEY)
+    return {"models": models, "active_model_id": active if isinstance(active, str) else ""}
+
+
+def write_model_registry(models: list[dict[str, Any]], active_model_id: str | None) -> None:
+    """整表写注册表：``models`` 全量替换；``active_model_id`` None 不覆盖既有值。
+
+    与 ``write_model_settings`` 共用同一原子替换 + 0600 实现（MUST-19：密钥唯一落盘处不变）。
+    """
+    doc = _read_doc()
+    doc[_REGISTRY_KEY] = [dict(item) for item in models]
+    if active_model_id is not None:
+        doc[_ACTIVE_KEY] = active_model_id
+    _write_doc(doc, "设置文件已禁用（DEVPROMPT_SETTINGS_FILE 为空），无法写模型注册表")
 
 
 def read_process_settings() -> dict[str, Any]:

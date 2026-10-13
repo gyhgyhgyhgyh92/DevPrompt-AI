@@ -8,6 +8,7 @@ import difflib
 import json
 import logging
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -38,7 +39,12 @@ from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader
 from devprompt_ai.harness.browse import BrowseListing, list_drives, list_subdirectories
 from devprompt_ai.harness.llm import LLMGenerator, last_usage
 from devprompt_ai.harness.process import LocalCommandRunner, LocalFileReader, SymbolTableProvider
-from devprompt_ai.memory.settings_store import write_model_settings, write_process_settings
+from devprompt_ai.memory.settings_store import (
+    read_model_registry,
+    write_model_registry,
+    write_model_settings,
+    write_process_settings,
+)
 from devprompt_ai.observability.logging import emit, emit_error, set_telemetry
 from devprompt_ai.state import FlowState, load_or_create, transition
 
@@ -308,10 +314,56 @@ class ForgeService:
         await self._load_owned(user_id, session_id)
         await self._sessions.delete(session_id)
 
+    def _registry_view(self) -> list[dict[str, Any]]:
+        """注册表脱敏视图（F-604 多模型）：api_key 恒脱敏；is_active 由激活位比对得出。"""
+        registry = read_model_registry()
+        active_id = registry["active_model_id"]
+        return [
+            {
+                "id": str(entry.get("id", "")),
+                "label": str(entry.get("label", "")),
+                "provider": str(entry.get("provider", "")),
+                "base_url": str(entry.get("base_url", "")),
+                "model_id": str(entry.get("model_id", "")),
+                "api_key_masked": mask_secret(str(entry.get("api_key", ""))),
+                "is_active": str(entry.get("id", "")) == active_id,
+            }
+            for entry in registry["models"]
+        ]
+
+    @staticmethod
+    def _merge_registry_entries(
+        incoming: list[dict[str, Any]], existing: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """整表替换解析：id 缺省则生成（m- + uuid）；api_key 空则沿用同 id 旧值；label 空则派生。"""
+        by_id = {str(e.get("id")): e for e in existing if e.get("id")}
+        merged: list[dict[str, Any]] = []
+        for raw in incoming:
+            entry_id = str(raw.get("id") or "").strip() or f"m-{uuid.uuid4().hex[:8]}"
+            old = by_id.get(entry_id, {})
+            api_key = raw.get("api_key")
+            if api_key in (None, ""):
+                api_key = str(old.get("api_key", ""))
+            provider = str(raw.get("provider") or "").strip()
+            model_id = str(raw.get("model_id") or "").strip()
+            label = str(raw.get("label") or "").strip() or f"{provider} · {model_id}"
+            merged.append(
+                {
+                    "id": entry_id,
+                    "label": label,
+                    "provider": provider,
+                    "base_url": str(raw.get("base_url") or "").strip(),
+                    "api_key": str(api_key or ""),
+                    "model_id": model_id,
+                }
+            )
+        return merged
+
     async def get_settings(self) -> dict[str, Any]:
         """F-604 读设置（T6-11）：有效配置视图（env 已并入）；api_key 恒脱敏，候选上限锁定只读。"""
         cfg = self._cfg
         return {
+            "models": self._registry_view(),
             "model_service": {
                 "provider": cfg.llm_provider,
                 "base_url": cfg.llm_base_url,
@@ -331,12 +383,42 @@ class ForgeService:
         }
 
     async def update_settings(self, update: dict[str, Any]) -> dict[str, Any]:
-        """PUT /settings（T6-11）：模型段写设置文件（0600）、流程段写 app_settings 表并应用。
+        """PUT /settings（T6-11 + 多模型注册表 F-604）：模型段写设置文件（0600）、流程段写表并应用。
 
+        多模型注册表：``models`` 整表替换（api_key 空=沿用同 id 旧值）；``active_model_id`` 切换后
+        把该条目**整体镜像**写入 model_service（provider/base_url/api_key/model_id）——AppConfig 与
+        llm.py 取值路径零改动，密钥仍只落 0600 文件（MUST-19）。显式 model_service 段仍受支持。
         api_key 语义：空值/None = 保持不变；仅显式新值落盘（明文只进设置文件，不进库不进日志）。
         """
         model_in: dict[str, Any] = dict(update.get("model_service") or {})
         process_in: dict[str, Any] = dict(update.get("process") or {})
+        models_in = update.get("models")
+        active_in = update.get("active_model_id")
+
+        # 注册表处理先于显式 model_service 段（后者若给同键可覆盖镜像值）
+        if models_in is not None or active_in not in (None, ""):
+            registry = read_model_registry()
+            merged = (
+                self._merge_registry_entries([dict(m) for m in models_in], registry["models"])
+                if models_in is not None
+                else registry["models"]
+            )
+            active_id = str(active_in).strip() if active_in not in (None, "") else ""
+            if active_id and not any(str(e.get("id")) == active_id for e in merged):
+                active_id = ""  # 激活位指向不存在条目：忽略该切换
+            await asyncio.to_thread(write_model_registry, merged, active_id or None)
+            active_entry = next((e for e in merged if str(e.get("id")) == active_id), None)
+            if active_entry is not None:
+                mirror = {
+                    "provider": str(active_entry.get("provider", "")),
+                    "base_url": str(active_entry.get("base_url", "")),
+                    "api_key": str(active_entry.get("api_key", "")),
+                    "model_id": str(active_entry.get("model_id", "")),
+                }
+                await asyncio.to_thread(write_model_settings, mirror)
+                for src_key, value in mirror.items():
+                    setattr(self._cfg, MODEL_KEY_MAP[src_key], value)
+
         api_key = model_in.pop("api_key", None)
         if api_key:  # 非空才替换（空值/None = 不变）
             model_in["api_key"] = api_key

@@ -653,6 +653,115 @@ async def test_update_settings_carries_provider(
     assert reloaded.llm_provider == "DeepSeek"
 
 
+# ---------- 多模型注册表（F-604，2026-10-13） ----------
+
+
+async def test_settings_models_registry_roundtrip_and_activation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """整表写入 + 激活整条生效：视图脱敏/is_active 正确；激活后运行配置与落盘镜像该条目。"""
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_FILE", str(tmp_path / "settings.json"))
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_DB", str(tmp_path / "settings.db"))
+    svc, _ = _service()
+
+    view = await svc.update_settings(
+        {
+            "models": [
+                {
+                    "label": "A",
+                    "provider": "DeepSeek",
+                    "base_url": "https://a.example",
+                    "api_key": "sk-aaaa-1234567890",
+                    "model_id": "deepseek-flash",
+                },
+                {
+                    "label": "B",
+                    "provider": "OpenAI 兼容",
+                    "base_url": "https://b.example",
+                    "api_key": "sk-bbbb-1234567890",
+                    "model_id": "gpt-x",
+                },
+            ],
+            "active_model_id": "",
+        }
+    )
+    assert len(view["models"]) == 2
+    assert all(m["is_active"] is False for m in view["models"])  # 未指定激活位
+    assert view["models"][0]["api_key_masked"] == "sk-••••7890"
+    assert "sk-aaaa-1234567890" not in str(view)  # 回显恒脱敏（MUST-19）
+
+    first_id = view["models"][0]["id"]
+    assert first_id.startswith("m-")  # 后端生成 id
+
+    # 激活第二条：整条生效（base_url/api_key/model_id 全部镜像进运行配置）
+    second_id = view["models"][1]["id"]
+    view2 = await svc.update_settings({"active_model_id": second_id})
+    active = [m for m in view2["models"] if m["is_active"]]
+    assert [m["id"] for m in active] == [second_id]
+    assert svc._cfg.llm_base_url == "https://b.example"
+    assert svc._cfg.llm_model == "gpt-x"
+    assert svc._cfg.llm_api_key == "sk-bbbb-1234567890"
+    from devprompt_ai.memory.settings_store import read_model_settings
+
+    assert read_model_settings()["model_id"] == "gpt-x"  # 镜像已落盘
+
+
+async def test_settings_models_api_key_retention_and_label_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """同 id 条目 api_key 留空=沿用旧密钥；label 留空按 provider · model_id 派生。"""
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_FILE", str(tmp_path / "settings.json"))
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_DB", str(tmp_path / "settings.db"))
+    svc, _ = _service()
+
+    view = await svc.update_settings(
+        {
+            "models": [
+                {
+                    "provider": "DeepSeek",
+                    "base_url": "https://a.example",
+                    "api_key": "sk-keep-1234567890",
+                    "model_id": "deepseek-chat",
+                }
+            ]
+        }
+    )
+    entry = view["models"][0]
+    assert entry["label"] == "DeepSeek · deepseek-chat"  # label 派生
+    assert entry["api_key_masked"] == "sk-••••7890"
+
+    # 第二次整表替换：同 id 且 api_key 为空 → 密钥保留
+    view2 = await svc.update_settings(
+        {
+            "models": [
+                {
+                    "id": entry["id"],
+                    "label": "改名",
+                    "provider": "DeepSeek",
+                    "base_url": "https://a2.example",
+                    "model_id": "deepseek-chat",
+                }
+            ]
+        }
+    )
+    assert view2["models"][0]["label"] == "改名"
+    assert view2["models"][0]["api_key_masked"] == "sk-••••7890"
+
+
+async def test_settings_empty_registry_leaves_model_service_untouched(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """零回归：注册表为空且无激活位时，不触碰既有 model_service 配置。"""
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_FILE", str(tmp_path / "settings.json"))
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_DB", str(tmp_path / "settings.db"))
+    svc, _ = _service()
+
+    await svc.update_settings({"model_service": {"base_url": "https://keep.example"}})
+    view = await svc.update_settings({"models": []})
+    assert view["models"] == []
+    assert svc._cfg.llm_base_url == "https://keep.example"
+
+
 # ---------- Task 1：Web 会话管理（rename/pin/delete，T1.3） ----------
 
 

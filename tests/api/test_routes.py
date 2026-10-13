@@ -39,6 +39,17 @@ class FakeForgeService:
         self.pin_calls: list[tuple[str, bool]] = []
         self.delete_calls: list[str] = []
         self.settings_view: dict[str, Any] = {
+            "models": [
+                {
+                    "id": "m-1",
+                    "label": "DeepSeek · mock-model",
+                    "provider": "DeepSeek",
+                    "base_url": "https://mock.local",
+                    "model_id": "mock-model",
+                    "api_key_masked": "sk-••••3f7a",
+                    "is_active": True,
+                }
+            ],
             "model_service": {
                 "provider": "DeepSeek",
                 "base_url": "https://mock.local",
@@ -415,6 +426,10 @@ async def test_settings_get_put_roundtrip(
     assert data["model_service"]["api_key_masked"] == "sk-••••3f7a"
     assert "api_key" not in data["model_service"]
     assert data["locked"]["candidate_limit"] == 25
+    # 多模型注册表视图（F-604，2026-10-13）：条目 api_key 恒脱敏，is_active 标注当前生效项
+    assert data["models"][0]["id"] == "m-1"
+    assert data["models"][0]["api_key_masked"] == "sk-••••3f7a"
+    assert data["models"][0]["is_active"] is True
 
     put_resp = await client.put(
         "/api/v1/settings",
@@ -430,6 +445,40 @@ async def test_settings_get_put_roundtrip(
             "process": {"telemetry": False},
         }
     ]
+
+
+async def test_settings_put_models_and_activation_passthrough(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """PUT /settings 多模型段透传（F-604）：models 与 active_model_id 原样交 service。"""
+    resp = await client.put(
+        "/api/v1/settings",
+        json={
+            "models": [
+                {
+                    "id": "m-1",
+                    "label": "A",
+                    "provider": "DeepSeek",
+                    "base_url": "https://a",
+                    "model_id": "deepseek-flash",
+                }
+            ],
+            "active_model_id": "m-1",
+        },
+    )
+    assert resp.status_code == 200
+    assert fake_service.settings_updates[-1] == {
+        "models": [
+            {
+                "id": "m-1",
+                "label": "A",
+                "provider": "DeepSeek",
+                "base_url": "https://a",
+                "model_id": "deepseek-flash",
+            }
+        ],
+        "active_model_id": "m-1",
+    }
 
 
 async def test_project_scan(client: httpx.AsyncClient, fake_service: FakeForgeService) -> None:

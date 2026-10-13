@@ -1145,7 +1145,7 @@ frontend/
     │   │   ├── Toggle.tsx         开关（设置中心用）
     │   │   └── Slider.tsx         滑条（偏好/设置共用）
     │   ├── optimize/          优化流程组件
-    │   │   ├── ConsoleInput.tsx     启动页主视觉输入卡片（对话式重构）
+    │   │   ├── ConsoleInput.tsx     启动页主视觉输入卡片（对话式重构；含模型下拉 F-604 多模型）
     │   │   ├── FolderPickerModal.tsx  页内文件夹选择器（F-601，GET /project/browse 供数）
     │   │   ├── ChatStream.tsx       对话流（用户气泡 → AI 回复块 → 方案组嵌入）
     │   │   ├── PromptCard.tsx
@@ -1164,7 +1164,7 @@ frontend/
     │   │   └── PreferenceSlider.tsx
     │   └── settings/          设置中心组件（F-604，模态面板）
     │       ├── SettingsModal.tsx      弹窗外壳 + 左侧四项导航
-    │       ├── ModelServicePanel.tsx  模型服务（供应商/密钥脱敏/测试连接）
+    │       ├── ModelServicePanel.tsx  模型列表管理（F-604：新增/编辑/删除/设为当前 + 全局调用参数）
     │       ├── AppearancePanel.tsx    通用外观（主题/语言/字体/行为开关）
     │       ├── MemoryPanel.tsx        长期记忆（L3 滑条/采纳历史/数据管理）
     │       └── SecurityPanel.tsx      流程与安全（护栏参数/锁定项/清除数据）

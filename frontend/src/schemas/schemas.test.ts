@@ -141,6 +141,7 @@ describe('schemas/preference 与 settings 契约校验', () => {
 
   it('SettingsResponse 拒绝类型不匹配与缺锁定项', () => {
     const base = {
+      models: [],
       model_service: {
         api_key_masked: 'sk-••••3f7a',
         base_url: '',
@@ -166,9 +167,10 @@ describe('schemas/preference 与 settings 契约校验', () => {
     expect(SettingsResponseSchema.safeParse({ ...base, locked: {} }).success).toBe(false)
   })
 
-  it('ModelServiceSettings.provider 为必填字符串', () => {
+  it('ModelServiceSettings.provider 为必填字符串（缺 models 亦判失败）', () => {
     expect(
       SettingsResponseSchema.safeParse({
+        models: [],
         model_service: {
           api_key_masked: '',
           base_url: '',

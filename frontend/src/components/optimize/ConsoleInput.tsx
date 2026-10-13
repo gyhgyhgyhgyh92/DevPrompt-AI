@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { scanProject } from '../../api/endpoints'
+import { putSettings, scanProject } from '../../api/endpoints'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { FolderPickerModal } from './FolderPickerModal'
 import './ConsoleInput.css'
@@ -43,16 +43,39 @@ function FolderIcon() {
 
 /**
  * 启动页居中主视觉输入卡片（图一 1:1，spec Task 3，F-602/F-703）。
- * 仅含发送按钮 / 模型名只读 / 选择文件夹（本地，系统原生对话框）；不含附件/审批/麦克风/音频等已移除元素。
+ * 仅含发送按钮 / 模型下拉（F-604 多模型注册表）/ 选择文件夹（本地，页内浏览器）；
+ * 不含附件/审批/麦克风/音频等已移除元素。
  */
 export function ConsoleInput({ isSubmitting, onSubmit }: ConsoleInputProps) {
-  const modelId = useSettingsStore((s) => s.settings?.model_service.model_id ?? '')
+  // 订阅 settings 单字段（selector 内禁返回新引用：`?? []` 会触发无限重渲染，MUST-16）
+  const settings = useSettingsStore((s) => s.settings)
+  const setSettings = useSettingsStore((s) => s.setSettings)
+  const entries = settings?.models ?? []
   const [sentence, setSentence] = useState('')
   const [project, setProject] = useState('')
   const [isFolderPickerOpen, setFolderPickerOpen] = useState(false)
+  const [isSwitchingModel, setSwitchingModel] = useState(false)
   const [projectError, setProjectError] = useState<string | null>(null)
 
   const isDisabled = isSubmitting || sentence.trim() === '' || project.trim() === ''
+
+  // 当前生效条目（默认展示其完整名称 label）；无激活位时回退首条（防御未激活态）
+  const activeEntry = entries.find((m) => m.is_active) ?? entries[0]
+  const activeId = activeEntry?.id ?? ''
+
+  /** 切换模型（F-604）：经 PUT /settings 落库并整条生效；失败提示不自动重试（MUST-15）。 */
+  async function handleSelectModel(id: string): Promise<void> {
+    setSwitchingModel(true)
+    try {
+      const next = await putSettings({ active_model_id: id })
+      setSettings(next)
+      setProjectError(null)
+    } catch {
+      setProjectError('模型切换失败，请稍后重试')
+    } finally {
+      setSwitchingModel(false)
+    }
+  }
 
   /** 选择成功后复校验（沿用 GET /project/scan；顺路预热符号表缓存；失败提示不自动重试 MUST-15）。 */
   async function validateProject(raw: string): Promise<void> {
@@ -97,7 +120,20 @@ export function ConsoleInput({ isSubmitting, onSubmit }: ConsoleInputProps) {
         />
         <div className="console-input__tools">
           <span className="console-input__spacer" />
-          <span className="console-input__model">{modelId !== '' ? modelId : '未配置模型'}</span>
+          <select
+            className="console-input__model-select"
+            aria-label="选择模型"
+            value={activeId}
+            disabled={entries.length === 0 || isSwitchingModel}
+            onChange={(event) => void handleSelectModel(event.currentTarget.value)}
+          >
+            {entries.length === 0 ? <option value="">未配置模型</option> : null}
+            {entries.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
           <button
             type="submit"
             className="console-input__send"

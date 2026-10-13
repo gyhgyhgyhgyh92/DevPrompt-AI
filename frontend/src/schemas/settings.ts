@@ -35,9 +35,33 @@ export const LockedSchema = z.object({
   candidate_limit: z.number(),
 })
 
+/** 模型注册表条目脱敏视图（契约 ModelEntryView；api_key 恒脱敏，MUST-19）。 */
+export const ModelEntryViewSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  provider: z.string(),
+  base_url: z.string(),
+  model_id: z.string(),
+  api_key_masked: z.string(),
+  is_active: z.boolean(),
+})
+
+export type ModelEntryView = z.infer<typeof ModelEntryViewSchema>
+
+/** PUT /settings models 段条目（契约 ModelEntryUpdate；id 空=新增，api_key 空=保留原值）。 */
+export const ModelEntryUpdateSchema = z.object({
+  id: z.string().nullish(),
+  label: z.string().nullish(),
+  provider: z.string().nullish(),
+  base_url: z.string().nullish(),
+  model_id: z.string().nullish(),
+  api_key: z.string().nullish(),
+})
+
 /** GET/PUT /settings 数据体（契约 SettingsResponse；locked 项仅只读渲染，MUST-08）。 */
 export const SettingsResponseSchema = z.object({
   locked: LockedSchema,
+  models: z.array(ModelEntryViewSchema),
   model_service: ModelServiceSchema,
   process: ProcessSchema,
 })
@@ -61,8 +85,10 @@ export const ProcessUpdateSchema = z.object({
   telemetry: z.boolean().nullish(),
 })
 
-/** PUT /settings 请求体（契约 SettingsUpdate）。 */
+/** PUT /settings 请求体（契约 SettingsUpdate；models 整表替换，active_model_id 切换生效项）。 */
 export const SettingsUpdateSchema = z.object({
+  models: z.array(ModelEntryUpdateSchema).nullish(),
+  active_model_id: z.string().nullish(),
   model_service: ModelServiceUpdateSchema.nullish(),
   process: ProcessUpdateSchema.nullish(),
 })

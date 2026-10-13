@@ -40,6 +40,12 @@ def test_openapi_covers_sixteen_operations() -> None:
     assert "delete" in paths["/api/v1/preference/adoptions"]
     assert {"patch", "delete"} <= set(paths["/api/v1/history/{session_id}"])
     assert "get" in paths["/api/v1/project/browse"]
+    # 多模型注册表（F-604，2026-10-13）：无新增路径，仅 /settings 契约增字段（防漏更）
+    settings_schemas = doc["components"]["schemas"]
+    assert "models" in settings_schemas["SettingsResponse"]["properties"]
+    assert "models" in settings_schemas["SettingsUpdate"]["properties"]
+    assert "active_model_id" in settings_schemas["SettingsUpdate"]["properties"]
+    assert "ModelEntryView" in settings_schemas
 
 
 def test_committed_openapi_matches_app() -> None:
