@@ -64,7 +64,11 @@ class FakeForgeService:
         self.browse_listing: BrowseListing = BrowseListing(
             path="D:/ws/repo",
             parent="D:/ws",
-            entries=(BrowseEntry(name="src", path="D:/ws/repo/src"),),
+            entries=(
+                BrowseEntry(
+                    name="src", path="D:/ws/repo/src", kind="dir", size=None, modified_at=None
+                ),
+            ),
         )
 
     async def optimize(
@@ -452,7 +456,15 @@ async def test_project_browse_returns_listing(
     assert body["data"] == {
         "path": "D:/ws/repo",
         "parent": "D:/ws",
-        "entries": [{"name": "src", "path": "D:/ws/repo/src"}],
+        "entries": [
+            {
+                "name": "src",
+                "path": "D:/ws/repo/src",
+                "kind": "dir",
+                "size": None,
+                "modified_at": None,
+            }
+        ],
         "truncated": False,
     }
     assert resp.headers["x-request-id"] == body["request_id"]

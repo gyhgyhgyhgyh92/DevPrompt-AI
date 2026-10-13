@@ -509,7 +509,7 @@ git config --get-all remote.origin.push
 | PATCH | `/history/{session_id}` | 会话管理：重命名 / 置顶（对话式重构契约增补） |
 | DELETE | `/history/{session_id}` | 删除会话（对话式重构契约增补） |
 | GET | `/project/scan` | 项目符号表扫描，返回符号总数 / 文件数 / 类型分布（F-101 只读透出） |
-| GET | `/project/browse` | 目录浏览（页内文件夹选择器数据源）：path 空=驱动器列表；返回子目录、上级与截断标志（2026-10-13 页内方案） |
+| GET | `/project/browse` | 文件资源管理器数据源（页内）：path 空=驱动器列表；条目含目录+文件（名称/修改日期/类型/大小元数据），目录在前排序；返回上级与截断标志（2026-10-13 页内方案） |
 | GET | `/settings` | 读取设置（模型服务 + 流程参数），密钥字段恒脱敏返回——**阶段六（T6-11）接入** |
 | PUT | `/settings` | 更新设置：模型配置写入本地设置文件（密钥不入库不进日志，MUST-19 边界见 F-604）；流程参数写 SQLite——**阶段六（T6-11）接入** |
 | DELETE | `/preference/adoptions` | 清空服务端采纳历史，返回清空条数（D-6F-4 关闭；2026-10-12 契约增补） |

@@ -133,10 +133,13 @@ class ScanResponse(BaseModel):
 
 
 class BrowseEntryPayload(BaseModel):
-    """目录浏览条目：展示名 + 完整路径（F-601 页内文件夹选择器）。"""
+    """目录浏览条目：展示名 + 完整路径 + 类型与元数据（F-601 页内文件资源管理器）。"""
 
     name: str
     path: str
+    kind: Literal["dir", "file"]
+    size: int | None
+    modified_at: str | None
 
 
 class BrowseResponse(BaseModel):

@@ -1,5 +1,5 @@
 /*
- * 页内文件夹选择器（F-601）样式：BEM 命名；
+ * 页内文件资源管理器（F-601，Win11 风格复刻）样式：BEM 命名；
  * 颜色/间距/圆角全部引用 tokens.css 变量（MUST-17 禁硬编码）。
  * overlay 为 fixed 定位：模态恒处于浏览器视口内（不脱离页面，不产生系统桌面窗口）。
  */
@@ -18,8 +18,8 @@
 .folder-picker {
   display: flex;
   flex-direction: column;
-  width: min(560px, 100%);
-  max-height: min(72vh, 640px);
+  width: min(880px, 100%);
+  height: min(72vh, 640px);
   overflow: hidden;
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border-subtle);
@@ -35,8 +35,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--color-border-subtle);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--divider);
 }
 
 .folder-picker__title {
@@ -59,70 +59,127 @@
   border-color: var(--color-border-strong);
 }
 
-.folder-picker__pathbar {
+/* 导航工具行：后退/前进/上级 + 地址栏面包屑 */
+.folder-picker__toolbar {
   display: flex;
-  gap: var(--space-3);
+  gap: var(--space-1);
   align-items: center;
-  padding: var(--space-3) var(--space-5);
-  border-bottom: 1px solid var(--color-border-subtle);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--divider);
 }
 
-.folder-picker__up {
+.folder-picker__nav {
+  display: inline-flex;
   flex: 0 0 auto;
-  padding: var(--space-1) var(--space-3);
-  font: var(--font-body-medium);
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--space-8);
+  block-size: var(--space-6);
+  font-size: var(--text-body-md);
   color: var(--color-text-secondary);
   cursor: pointer;
   background: transparent;
-  border: 1px solid var(--color-border-subtle);
+  border: none;
   border-radius: var(--radius-sm);
 }
 
-.folder-picker__up:hover:not(:disabled) {
+.folder-picker__nav:hover:not(:disabled) {
   color: var(--color-text-primary);
-  border-color: var(--color-border-strong);
+  background: var(--hover);
 }
 
-.folder-picker__up:disabled {
+.folder-picker__nav:disabled {
   cursor: default;
-  opacity: 0.55;
+  opacity: 0.4;
 }
 
-.folder-picker__path {
+.folder-picker__breadcrumb {
+  display: flex;
+  flex: 1;
+  gap: var(--space-1);
+  align-items: center;
   min-width: 0;
-  overflow: hidden;
+  padding: var(--space-1) var(--space-2);
   font: var(--font-code-regular);
   color: var(--color-text-secondary);
+  overflow: hidden;
+}
+
+.folder-picker__crumb {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+  min-width: 0;
+}
+
+.folder-picker__crumb-link {
+  padding: 0 var(--space-1);
+  font: var(--font-code-regular);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.folder-picker__crumb-link:hover {
+  color: var(--color-text-primary);
+  background: var(--hover);
+}
+
+.folder-picker__crumb-sep {
+  color: var(--color-text-muted);
+}
+
+.folder-picker__crumb-current {
+  min-width: 0;
+  padding: 0 var(--space-1);
+  overflow: hidden;
+  font: var(--font-code-medium);
+  color: var(--color-text-primary);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 详情列头（grid 列与条目行一致；装饰性，aria-hidden） */
+.folder-picker__columns {
+  display: grid;
+  grid-template-columns: 2fr 1.1fr 0.9fr 0.6fr;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--divider);
 }
 
 .folder-picker__body {
   flex: 1;
   min-height: 0;
-  padding: var(--space-2) var(--space-3);
+  padding: 0 var(--space-2) var(--space-2);
   overflow-y: auto;
 }
 
 .folder-picker__list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 1px;
   padding: 0;
   margin: 0;
   list-style: none;
 }
 
 .folder-picker__item {
-  display: flex;
+  display: grid;
+  grid-template-columns: 2fr 1.1fr 0.9fr 0.6fr;
   gap: var(--space-2);
   align-items: center;
   width: 100%;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-3);
   font: var(--font-body-regular);
   color: var(--color-text-primary);
   text-align: left;
-  cursor: pointer;
+  cursor: default;
   background: transparent;
   border: none;
   border-radius: var(--radius-sm);
@@ -132,9 +189,36 @@
   background: var(--hover);
 }
 
+.folder-picker__item--selected,
+.folder-picker__item--selected:hover {
+  background: var(--color-primary-100);
+}
+
+.folder-picker__item-label {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-width: 0;
+}
+
+.folder-picker__item-label svg {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+}
+
 .folder-picker__item-name {
   min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-picker__item-date,
+.folder-picker__item-kind,
+.folder-picker__item-size {
+  overflow: hidden;
+  font-size: var(--text-body-xs);
+  color: var(--color-text-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -154,9 +238,15 @@
 .folder-picker__footer {
   display: flex;
   gap: var(--space-3);
-  justify-content: flex-end;
+  align-items: center;
   padding: var(--space-3) var(--space-5);
-  border-top: 1px solid var(--color-border-subtle);
+  border-top: 1px solid var(--divider);
+}
+
+.folder-picker__status {
+  flex: 1;
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
 }
 
 .folder-picker__cancel {
@@ -191,4 +281,36 @@
 .folder-picker__confirm:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+/* 窄屏（≤768）：隐藏「修改日期」「类型」两列 */
+@media (max-width: 768px) {
+  .folder-picker__columns,
+  .folder-picker__item {
+    grid-template-columns: 1fr 0.6fr;
+  }
+
+  .folder-picker__col-date,
+  .folder-picker__col-kind,
+  .folder-picker__item-date,
+  .folder-picker__item-kind {
+    display: none;
+  }
+}
+
+/* 超窄屏（≤480）：仅保留「名称」列；状态栏隐藏 */
+@media (max-width: 480px) {
+  .folder-picker__columns,
+  .folder-picker__item {
+    grid-template-columns: 1fr;
+  }
+
+  .folder-picker__col-size,
+  .folder-picker__item-size {
+    display: none;
+  }
+
+  .folder-picker__status {
+    display: none;
+  }
 }

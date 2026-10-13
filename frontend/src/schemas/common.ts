@@ -34,10 +34,13 @@ export const ScanResponseSchema = z.object({
   total_symbols: z.number(),
 })
 
-/** GET /project/browse 条目（契约 BrowseEntryPayload）。 */
+/** GET /project/browse 条目（契约 BrowseEntryPayload）：kind 区分目录/文件，文件含元数据。 */
 export const BrowseEntryPayloadSchema = z.object({
   name: z.string(),
   path: z.string(),
+  kind: z.enum(['dir', 'file']),
+  size: z.number().nullable(),
+  modified_at: z.string().nullable(),
 })
 
 /** GET /project/browse 数据体（契约 BrowseResponse）：path="" 为驱动器列表模式。 */

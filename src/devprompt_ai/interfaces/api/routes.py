@@ -301,7 +301,16 @@ async def get_project_browse(request: Request, path: str = "") -> ApiResponse[Br
         BrowseResponse(
             path=listing.path,
             parent=listing.parent,
-            entries=[BrowseEntryPayload(name=e.name, path=e.path) for e in listing.entries],
+            entries=[
+                BrowseEntryPayload(
+                    name=e.name,
+                    path=e.path,
+                    kind=e.kind,
+                    size=e.size,
+                    modified_at=e.modified_at,
+                )
+                for e in listing.entries
+            ],
             truncated=listing.truncated,
         ),
         request_id,

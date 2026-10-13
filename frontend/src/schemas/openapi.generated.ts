@@ -445,13 +445,22 @@ export interface components {
         };
         /**
          * BrowseEntryPayload
-         * @description 目录浏览条目：展示名 + 完整路径（F-601 页内文件夹选择器）。
+         * @description 目录浏览条目：展示名 + 完整路径 + 类型与元数据（F-601 页内文件资源管理器）。
          */
         BrowseEntryPayload: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "dir" | "file";
+            /** Modified At */
+            modified_at: string | null;
             /** Name */
             name: string;
             /** Path */
             path: string;
+            /** Size */
+            size: number | null;
         };
         /**
          * BrowseResponse
