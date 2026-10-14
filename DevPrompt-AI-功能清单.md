@@ -703,6 +703,8 @@ frontend/src/
 
 ## F-801 检索质量实测（分段门禁）
 
+> **达标口径（2026-10-14 用户裁决）**：第二段排序准确率 SHALL 以 **Jev 路径**实测满足 ≥80%；LLM 路径实测 58%（2026-10-11，报告 eval/recall/report-ranking-2026-10-11.md）不再作为达标依据；Jev 就绪后重测。
+
 ### 第一段 · 候选集召回率（W1 硬门禁，离线可测）
 
 **内容**：
@@ -725,6 +727,8 @@ frontend/src/
 - 需 `DecisionPort` 可用
 
 **Jev 未获批时的执行**：用 `LLMFallbackDecider` 测得，指标标注为「LLM 排序准确率」，**不得与「Jev 排序准确率」混用**。Jev 到位后需重测。
+
+> **2026-10-14 口径更新**：本段达标 SHALL 以 **Jev 路径**实测满足 ≥80%；LLM 路径实测 58%（2026-10-11）不再作为达标依据；Jev 就绪后重测。**截至 2026-10-14 因 `TYPESAFE_API_KEY` 缺失，Jev 路径重测尚未执行（阶段七 F-801 第二段阻塞；用户 2026-10-14 裁决「推进 Jev 获批并重测」）。**
 
 **通过标准**：排序准确率 ≥ 80%
 
@@ -758,6 +762,8 @@ frontend/src/
 
 **验收**：全部通过；覆盖率不低于 70%。
 
+**阶段七验收**：已通过——后端覆盖率 **93%**（≥70%），后端测试 **350 passed / 2 skipped**；SHOULD-10 必测边界全覆盖（新增 `tests/test_boundaries_phase7.py` 6 例补第⑧项，dev 依赖 `pytest-cov>=7.1,<8`）。数据见真源 §13 2026-10-14。
+
 ## F-804 流程恢复一致性测试
 
 > 原「形态一致性测试」（CLI 与 Web 比对）已随 CLI 形态废除（v1.2 BREAKING）重定义；本条按审查报告「中等 6」拆分为两条可执行验收（2026-10-10，阶段五 5A）。
@@ -773,11 +779,15 @@ frontend/src/
 - ② 评分与推荐标记一致性：mock 决策层下，两种形态的 ranking 视图 fit/pref/total/confidence/gap/marked/reason 七字段逐字段相等
 - ①② 任一不过即 F-804 不通过；不一致项必须有明确原因说明并记录，不得静默
 
+**阶段七验收**：已通过——新增 `tests/test_flow_recovery.py`（2 例，mock 决策层 + 固定种子）：①三套方案正文 diff 为空 ②ranking 视图七字段（fit/pref/total/confidence/gap/marked/reason）逐字段相等。数据见真源 §13 2026-10-14。
+
 ## F-805 成本监控
 
 **内容**：统计单次优化的 token 消耗与费用，Jev 与 LLM 分别计。
 
 **验收**：输出成本明细；state 大小超限时截断而非报错，且有日志记录。
+
+**阶段七验收**：已通过——新增 `src/devprompt_ai/common/cost.py` + `tests/test_cost_monitoring.py`（9 例），`FlowSnapshotResponse` 增 `cost`（`jev_tokens`/`llm_tokens`/`total_tokens`/`jev_source`/`llm_source`，Jev 与 LLM 分别计；additive，契约仍 13 路径/16 操作）；state 超限截断且有日志。数据见真源 §13 2026-10-14。
 
 ---
 

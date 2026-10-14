@@ -8,18 +8,18 @@
 
 ## 目录
 
-- [第零章 架构总览](#第零章-架构总览)
-- [第一部分 后端](#第一部分-后端)
+- [第零章 架构总览](#第零章--架构总览)
+- [第一部分 后端](#第一部分--后端)
   - [1. 环境与启动](#1-环境与启动)
   - [2. 全局规范](#2-全局规范)
   - [3. 接口一致性](#3-接口一致性)
   - [4. 核心支撑模块](#4-核心支撑模块)
-- [第二部分 前端](#第二部分-前端)
+- [第二部分 前端](#第二部分--前端)
   - [5. 目录结构](#5-目录结构)
   - [6. 状态管控](#6-状态管控)
   - [7. 组件标准](#7-组件标准)
   - [8. 请求封装](#8-请求封装)
-- [第三部分 附录](#第三部分-附录)
+- [第三部分 附录](#第三部分--附录)
 
 ---
 
@@ -61,7 +61,7 @@ DevPrompt AI 采用四层架构，依赖方向严格单向向下，不可逆向�
                     │             │            │
                     ▼             ▼            ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  基础设施层  harness/ + memory/ + decision/impl                    │
+│  基础设施层  harness/ + memory/ + decision/                        │
 │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐    │
 │  │ harness/   │ │ memory/    │ │ decision/  │ │ config.py  │    │
 │  │ Runner     │ │ L1/L2/L3   │ │ jev.py     │ │            │    │
@@ -94,9 +94,9 @@ DevPrompt AI 采用四层架构，依赖方向严格单向向下，不可逆向�
 └────────┬────────────────┘
          │  仅通过 Protocol 交互
          ▼
-┌─────────────────────────┐
-│  harness/ memory/ impl/ │  基础设施实现
-└─────────────────────────┘
+┌─────────────────────────────┐
+│  harness/ memory/ decision/ │  基础设施实现
+└─────────────────────────────┘
 ```
 
 ## 0.3 三条不可违反的架构约束
@@ -222,6 +222,17 @@ uv run uvicorn devprompt_ai.interfaces.api.app:app --port 8000
 
 **回滚策略**：保留上一版本 wheel；健康检查失败即回滚；L1/L2/L3 记忆数据向后兼容，不随版本回滚丢失。
 
+**回滚可执行步骤（T7-7）**：
+
+```
+1. 升级前保留上一版本 wheel（dist/ 上一构建产物，勿覆盖）
+2. 发现故障 → 重装上一版本 wheel：uv pip install --reinstall <上一版>.whl
+3. 重启服务（uvicorn 重载）
+4. GET /api/v1/health —— 失败（is_healthy=false 或不可达）即判定本次升级失败，
+   回滚至上一版本 wheel 并再次重启；成功后保留新版本
+L1/L2/L3 数据向后兼容，回滚无需数据迁移
+```
+
 ### 1.6 环境变量
 
 **LLM 供应商（必填）**：
@@ -270,6 +281,7 @@ uv run uvicorn devprompt_ai.interfaces.api.app:app --port 8000
 | `DATA_DIR` | `~/.devprompt-ai` | 本地数据目录（L1/L3 SQLite 数据库、检索缓存等） |
 | `CORS_ORIGINS` | `http://localhost:5173` | 逗号分隔 |
 | `DB_PATH` | `~/.devprompt-ai/devprompt.db` | SQLite 单文件库（L1/L3；WAL 模式，环境变量可覆盖） |
+| `DEVPROMPT_FRONTEND_DIST` | 空 | 前端 `dist` 目录覆盖（打包部署时指向产物；缺省回落仓库根 `frontend/dist`） |
 
 ### 1.7 三环境配置差异
 
@@ -314,7 +326,7 @@ uv run uvicorn devprompt_ai.interfaces.api.app:app --port 8000
 | 前端组件 | `PascalCase.tsx` | `PromptCard.tsx` |
 | 前端页面 | `PascalCase.tsx` | `OptimizePage.tsx` |
 | 前端 Hook | `useXxx.ts` | `useOptimizeStore.ts` |
-| 前端类型 | `PascalCase.ts` | `ranking.ts` |
+| 前端类型 | `PascalCase.ts` 或小写分组 | `optimize.ts` |
 | 前端 Store | `useXxxStore.ts` | `usePreferenceStore.ts` |
 | 配置文件 | `lowercase` 或 `kebab-case` | `pyproject.toml`、`.env.example` |
 
@@ -484,18 +496,7 @@ main              受保护，发布分支
 | `feature/*` | `develop` | 合并前需 CI 全绿 + 至少一人评审 |
 | `hotfix/*` | `main` | 可绕过 develop，合并后需回合 develop |
 
-**CI 门禁**（`main` 与 `develop` 均强制）：
-
-| 检查 | 阻断条件 |
-|---|---|
-| Ruff Lint | 有 error |
-| Ruff Format | 有未格式化文件 |
-| mypy | 有类型错误 |
-| pytest | 有失败 |
-| 前端 tsc | 有类型错误 |
-| 前端 ESLint | 有 error |
-| 架构约束检查 | 违反任一依赖方向约束 |
-| 契约冒烟测试 | 后端 schema 与前端类型不一致 |
+**CI 门禁**（`main` 与 `develop` 均强制）：**检查项以宪法 MUST-29 为准（唯一权威），本文档不重复罗列。**
 
 **版本发布**：
 
@@ -508,7 +509,7 @@ main              受保护，发布分支
 
 - 禁止向 `main` 直推
 - 禁止向 `develop` 直推
-- 禁止在 feature 分支上 `git pull --rebase` 超过 1 天（避免历史混乱）
+- 禁止对已推送的 feature 分支做 rebase（避免历史混乱）
 - 禁止提交 `node_modules`、`dist`、`.env`、日志文件
 
 ### 2.5 .gitignore 约定
@@ -572,8 +573,8 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 
 ```json
 {
-  "code": 4001,
-  "message": "候选集超出 25 条上限",
+  "code": 2006,
+  "message": "候选集超出上限",
   "data": null,
   "errors": [
     { "field": "candidates", "reason": "count_exceeded", "detail": "实际 31 条" }
@@ -630,11 +631,11 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 |---|---|---|
 | 0 | 成功 | 2xx |
 | 1 | 参数与校验 | 400 |
-| 2 | 检索与取证 | 400 / 404 |
-| 3 | 决策与置信度 | 422 / 503 |
-| 4 | 生成 | 422 / 502 |
+| 2 | 检索与取证 | 400 / 404 / 500 |
+| 3 | 决策与置信度 | 200 / 422 / 429 / 503 |
+| 4 | 生成 | 422 / 502 / 503 |
 | 5 | 外部依赖 | 502 / 503 |
-| 6 | 状态机与流程 | 409 |
+| 6 | 状态机与流程 | 404 / 409 |
 | 9 | 系统内部 | 500 |
 
 **错误码清单**：
@@ -944,7 +945,7 @@ class PreferenceStore:
 
 ### 4.6 定时任务
 
-**当前无定时任务需求。** 不引入调度框架（Celery、APScheduler、APScheduler 等）。
+**当前无定时任务需求。** 不引入调度框架（Celery、APScheduler 等）。
 
 **理由**：本项目是前台交互式工具，无周期性任务。若后续需要，只需两个场景：
 
@@ -1039,7 +1040,7 @@ src/devprompt_ai/
 │   ├── generate/
 │   │   ├── ports.py           Protocol 定义（LLM 调用）
 │   │   ├── variants.py        三套方案编排
-│   │   └── templates/         A/B/C 模板
+│   │   └── templates/         A/B/C 模板（a_conservative↔A 保守 / b_standard↔B 标准 / c_thorough↔C 激进）
 │   │       ├── a_conservative.py
 │   │       ├── b_standard.py
 │   │       └── c_thorough.py
@@ -1074,7 +1075,7 @@ src/devprompt_ai/
 ├── interfaces/                表现层（Web HTTP 薄壳，零业务逻辑）
 │   └── api/
 │       ├── __init__.py        包声明（薄壳层约束说明）
-│       ├── app.py             FastAPI 实例 + CORS 中间件 + 统一异常渲染
+│       ├── app.py             FastAPI 实例 + CORS 中间件 + 统一异常渲染；含前端 `frontend/dist` 单端口托管（SPA 回退，`/api` 不遮蔽，T7-7）
 │       ├── routes.py          路由薄壳（13 路径/16 操作；参数收拢 → 调 service → 渲染）
 │       ├── schemas.py         Pydantic v2 请求/响应契约（XxxRequest/XxxResponse）
 │       └── health.py          环境自检（rg/ctags/git 版本、DB 文件可写、LLM 配置非空）
@@ -1238,7 +1239,7 @@ styles    types      utils     utils     utils
 | 自定义 Hook | `useXxx.ts` | `useSSE.ts` |
 | Store | `useXxxStore.ts` | `useOptimizeStore.ts` |
 | API 模块 | 小写单数 | `client.ts`、`endpoints.ts` |
-| 类型定义 | `PascalCase` 或小写分组 | `ranking.ts` |
+| 类型定义 | `PascalCase` 或小写分组 | `optimize.ts` |
 | 样式文件 | `kebab-case` | `phase-indicator.css` |
 | CSS Module 类名 | `kebab-case` | `.prompt-card__title` |
 | CSS Variables | `--` + 语义 + 层级 | `--color-primary-500` |
@@ -1294,7 +1295,7 @@ styles    types      utils     utils     utils
 | 评分明细 | 全局 | 评分组件需读取 |
 | SSE 连接状态 | 全局（`useOptimizeStore`） | 跨页面共享 |
 | 偏好向量 | 全局（`usePreferenceStore`） | 两个页面都要读 |
-| 历史记录列表 | 全局（`usePreferenceStore`） | 跨页面共享 |
+| 历史采纳记录 | 全局（`usePreferenceStore`） | 与偏好同属 usePreferenceStore，跨页面共享 |
 | 输入框内容 | **局部** | 只有输入组件关心 |
 | 折叠展开状态 | **局部** | 每张卡片独立 |
 | 评分明细是否展开 | **局部** | 每张卡片独立 |
@@ -1319,7 +1320,7 @@ styles    types      utils     utils     utils
 | 返回 hook | 必须返回 `() => UseXxxStore` 形式 |
 | 不导出 action | 状态与 action 一律通过 hook 返回，不单独导出 |
 | 不在 store 内 fetch | 数据获取在 `api/` 或 `hooks/`，store 只存结果 |
-| 单一 store 单一职责 | 不把优化与历史塞进同一 store |
+| 单一 store 单一职责 | 不把优化流程状态与偏好/采纳历史塞进同一 store |
 | selector 必须精确 | 避免 `useStore()` 全量订阅导致多余渲染 |
 
 **Store 结构示例**：
@@ -1388,7 +1389,7 @@ const { variants, ranking } = useOptimizeStore(
 | Store | 负责 | 生命周期 |
 |---|---|---|
 | `useOptimizeStore` | 单次优化流程的全部状态 | 流程开始时创建，`reset()` 时清空 |
-| `usePreferenceStore` | 偏好向量与历史 | 应用级，跨页面持久 |
+| `usePreferenceStore` | 偏好向量与历史采纳记录 | 应用级，跨页面持久 |
 
 **不拆第三个 store 的理由**：SSE 状态属于优化流程，不独立；表单草稿属于组件局部，不进 store。
 

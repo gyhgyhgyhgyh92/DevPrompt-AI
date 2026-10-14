@@ -366,7 +366,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | 优先级 | init > 环境变量 > 本地设置（settings.json + app_settings 表）> .env > 默认值 |
 | 存储 | `.env`（不入库） + `.env.example`（入库）+ `settings.json`（0600，密钥唯一落盘处；含 `model_service` 生效配置段与 `models`/`active_model_id` 多模型注册表段） |
 
-**存储路径配置**：`DB_PATH`（默认 `~/.devprompt-ai/devprompt.db`）经环境变量覆盖；数据目录不存在时启动自动创建。**密钥边界（MUST-19 修订后，真源 §13 2026-10-12）**：API Key 仅可存本地 `settings.json`（0600）与 `.env`，不入 SQLite、不进日志，GET 回显恒脱敏。
+**存储路径配置**：`DB_PATH`（默认 `~/.devprompt-ai/devprompt.db`）经环境变量覆盖；数据目录不存在时启动自动创建。**前端构建产物路径**：`DEVPROMPT_FRONTEND_DIST`（空=回落仓库根 `frontend/dist`）指定打包部署时托管的 `dist` 目录（架构文档 §1.6）。**密钥边界（MUST-19 修订后，真源 §13 2026-10-12）**：API Key 仅可存本地 `settings.json`（0600）与 `.env`，不入 SQLite、不进日志，GET 回显恒脱敏。
 
 ---
 
@@ -400,19 +400,16 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | Python 测试 | pytest + pytest-asyncio | 异步测试支持 |
 | HTTP 测试 | httpx | 配合 FastAPI `TestClient` |
 | 前端测试 | Vitest | 与 Vite 同源，配置零成本 |
-| E2E 测试 | Playwright | 流程恢复一致性测试（功能清单 F-804） |
+| E2E 测试 | Playwright（**未采用**） | 流程恢复一致性测试（功能清单 F-804）；本项目从未引入 |
 | Mock | 决策层 mock | 无 Jev key 时可完整测试 |
 
 **Mock 策略**：Jev 与 LLM 两个决策实现都可 mock。W1 的准确率实测（功能清单 F-801）不依赖任何外部 API。
 
+**未采用项澄清（MUST-24b 口径，不登记版本）**：Playwright（E2E，从未引入）、structlog（结构化日志，已由标准库 `logging` 替代，见架构文档 §4.1）、asyncpg（PostgreSQL 驱动，存储定稿 SQLite 后从未需要）——三者**未采用**。
+
 ## 5.4 CI 约束（架构级强制）
 
-| 规则 | 检查方式 |
-|---|---|
-| 禁止 `service.py` 反向 import `interfaces/` | 静态检查 |
-| 前端不得出现阈值常量 | ESLint 自定义规则或 grep |
-| 后端字段变更必须触发前端类型错误 | 契约冒烟测试（固定 JSON 样例） |
-| 流程恢复一致性 | 同一 flow_id 经不同端点与时机获取快照，比对输出一致（F-804） |
+**CI 门禁以宪法 MUST-29 为准（唯一权威），本文档不重复罗列检查项。**
 
 ## 5.5 部署
 
@@ -422,6 +419,8 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | 生产 | `vite build` → `dist/` → FastAPI 静态托管，**单端口对外** |
 
 **单端口是关键决策**：避免 CORS 配置与本地 session 丢失，确保 HTTP API 与前端行为一致。
+
+**生产单端口托管（T7-7）**：FastAPI 托管 `frontend/dist`（SPA 回退，`/api` 前缀不遮蔽）；产物目录默认取仓库根 `frontend/dist`，可用环境变量 `DEVPROMPT_FRONTEND_DIST` 覆盖（打包部署时指向实际 dist 路径）。
 
 ---
 
@@ -490,6 +489,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | openai-agents | `>=0.23.1,<1.0`（尚未发布 1.0，MUST-24b 核实） |
 | typesafe-sdk | 最新（可选依赖） |
 | pytest / pytest-asyncio / httpx | 最新稳定 |
+| pytest-cov（dev） | `>=7.1,<8`（PyPI 核实 7.1.0，MUST-24b）；用途=覆盖率实测（T7-1 / F-803） |
 
 ## 6.3 外部工具（系统级依赖）
 
