@@ -91,6 +91,19 @@ class FactPayload(BaseModel):
     evidence: str
 
 
+class CostDetailPayload(BaseModel):
+    """F-805 成本明细：token 用量 Jev 与 LLM 分别计，来源如实标注。
+
+    jev_tokens 为估算（Jev 无 usage 接口）；llm_tokens 为 SDK 实际用量。
+    """
+
+    jev_tokens: int
+    llm_tokens: int
+    total_tokens: int
+    jev_source: Literal["estimated", "not_enabled"]
+    llm_source: Literal["actual", "no_call"]
+
+
 class FlowSnapshotResponse(BaseModel):
     """FlowSnapshot 的 HTTP 渲染形态（status 含 SSE 专有扩展值 "aborted"）。
 
@@ -106,6 +119,7 @@ class FlowSnapshotResponse(BaseModel):
     ranking: RankingViewPayload | None = None
     target: SymbolPayload | None = None
     facts: list[FactPayload] = Field(default_factory=list)
+    cost: CostDetailPayload | None = None  # F-805 成本明细（additive，无新增契约路径）
     message: str = ""
 
 

@@ -475,6 +475,30 @@ export interface components {
             truncated: boolean;
         };
         /**
+         * CostDetailPayload
+         * @description F-805 成本明细：token 用量 Jev 与 LLM 分别计，来源如实标注。
+         *
+         *     jev_tokens 为估算（Jev 无 usage 接口）；llm_tokens 为 SDK 实际用量。
+         */
+        CostDetailPayload: {
+            /**
+             * Jev Source
+             * @enum {string}
+             */
+            jev_source: "estimated" | "not_enabled";
+            /** Jev Tokens */
+            jev_tokens: number;
+            /**
+             * Llm Source
+             * @enum {string}
+             */
+            llm_source: "actual" | "no_call";
+            /** Llm Tokens */
+            llm_tokens: number;
+            /** Total Tokens */
+            total_tokens: number;
+        };
+        /**
          * FactPayload
          * @description 取证事实只读透出（F-104 七项判定结果）。
          */
@@ -509,6 +533,7 @@ export interface components {
         FlowSnapshotResponse: {
             /** Cleared */
             cleared?: string[];
+            cost?: components["schemas"]["CostDetailPayload"] | null;
             /** Facts */
             facts?: components["schemas"]["FactPayload"][];
             /**

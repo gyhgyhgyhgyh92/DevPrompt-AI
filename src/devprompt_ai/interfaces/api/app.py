@@ -3,18 +3,56 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.staticfiles import StaticFiles
+from starlette.types import Scope
 
 from devprompt_ai.common.process import ProcessError, ProcessTimeoutError
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.errors import DevPromptError
 from devprompt_ai.interfaces.api import routes
 from devprompt_ai.interfaces.api.schemas import ApiResponse
+
+
+class _SpaStaticFiles(StaticFiles):
+    """前端构建产物的单端口静态托管 + SPA 回退（基础设施，非业务逻辑，MUST-10 允许）。
+
+    未匹配到的非 `/api` 路径回退 `index.html`，供前端 BrowserRouter 深链接直达；
+    `/api` 前缀不参与回退（缺失 API 仍 404，避免遮蔽契约错误）。
+    """
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            # path 经 os.path.normpath 归一（Windows 下分隔符为 `\`），跨平台统一判断
+            normalized = path.replace("\\", "/").strip("/")
+            is_api = normalized == "api" or normalized.startswith("api/")
+            if exc.status_code == 404 and not is_api:
+                return await super().get_response("index.html", scope)
+            raise
+
+
+def _frontend_dist() -> Path | None:
+    """定位前端构建产物目录；缺失返回 None（跳过挂载，不影响既有 API/测试）。"""
+    candidates: list[Path] = []
+    override = os.environ.get("DEVPROMPT_FRONTEND_DIST")
+    if override:
+        candidates.append(Path(override).expanduser())
+    # 源码/可编辑安装：仓库根 = src/devprompt_ai/interfaces/api/app.py 上溯 4 层
+    candidates.append(Path(__file__).resolve().parents[4] / "frontend" / "dist")
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return None
 
 
 def _error_code(exc: Exception) -> int:
@@ -64,6 +102,11 @@ def create_app() -> FastAPI:
         app.add_exception_handler(exc_type, _render_error)
     # py3.10 下 asyncio.TimeoutError 与内建 TimeoutError 非同一类，显式覆盖
     app.add_exception_handler(asyncio.TimeoutError, _render_error)
+
+    # 单端口托管：dist 存在时挂载于最后，/api/v1/* 与应用内建路由（docs/openapi）先行匹配（MUST-10）
+    dist = _frontend_dist()
+    if dist is not None:
+        app.mount("/", _SpaStaticFiles(directory=str(dist), html=True), name="spa")
     return app
 
 

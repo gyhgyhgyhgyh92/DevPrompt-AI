@@ -19,6 +19,7 @@ from devprompt_ai.interfaces.api.schemas import (
     ApiResponse,
     BrowseEntryPayload,
     BrowseResponse,
+    CostDetailPayload,
     FactPayload,
     FeedbackRequest,
     FlowSnapshotResponse,
@@ -88,6 +89,7 @@ def _snapshot_payload(snapshot: FlowSnapshot) -> FlowSnapshotResponse:
         facts=[
             FactPayload(key=f.key, passed=f.passed, evidence=f.evidence) for f in snapshot.facts
         ],
+        cost=CostDetailPayload(**dataclasses.asdict(snapshot.cost)) if snapshot.cost else None,
         message=snapshot.message,
     )
 

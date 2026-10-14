@@ -11,6 +11,8 @@ frontend/dist/
 *.db-journal
 .devprompt-ai/
 coverage/
+.coverage
+htmlcov/
 eval/recall/report-*.md
 eval/recall/report-*.json
 eval/recall/selftest-repo/

@@ -27,6 +27,7 @@ from typesafe_sdk import (
     TypeSafeRateLimitError,
 )
 
+from devprompt_ai.common.cost import add_jev_tokens
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.decision.port import (
     FactJudgment,
@@ -163,6 +164,7 @@ class JevDecider:
         """单次 system_one 调用 + 429 手写指数退避（F-202；MUST-13：async sleep 非阻塞）。"""
         transport = self._ensure_transport()
         fitted = self._fit_state(state)
+        add_jev_tokens(_estimate_tokens(fitted))  # F-805：Jev 无 usage 回传，按送出 state 粗估
         attempt = 0
         while True:
             try:

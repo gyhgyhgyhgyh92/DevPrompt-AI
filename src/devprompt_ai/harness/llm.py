@@ -25,6 +25,7 @@ from agents import (
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ValidationError
 
+from devprompt_ai.common.cost import add_llm_tokens
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.errors import ConfigurationError, GenerationError
 from devprompt_ai.domain.generate.ports import (
@@ -57,6 +58,16 @@ def _extract_json(text: str) -> str:
 def last_usage() -> dict[str, int] | None:
     """F-805 成本监控起建：返回最近一次结构化调用的 token 用量。"""
     return _last_usage.get()
+
+
+def _record_usage(usage: object | None) -> None:
+    """记录一次调用的 token 用量：last（最近一次，兼容旧调用方）+ 累计待取（F-805）。"""
+    if usage is None:
+        _last_usage.set(None)
+        return
+    total_tokens = int(getattr(usage, "total_tokens", 0) or 0)
+    _last_usage.set({"total_tokens": total_tokens})
+    add_llm_tokens(total_tokens)
 
 
 _client: AsyncOpenAI | None = None
@@ -115,10 +126,7 @@ async def chat_structured(
         ),
     )
     result = await asyncio.wait_for(Runner.run(agent, user, max_turns=1), timeout=effective_timeout)
-    usage = getattr(result, "usage", None)
-    _last_usage.set(
-        {"total_tokens": int(getattr(usage, "total_tokens", 0) or 0)} if usage else None
-    )
+    _record_usage(getattr(result, "usage", None))
     raw = str(result.final_output)
     parsed = _parse_model(output_type, raw)
     if parsed is not None:
@@ -131,10 +139,7 @@ async def chat_structured(
     result2 = await asyncio.wait_for(
         Runner.run(agent, retry_input, max_turns=1), timeout=effective_timeout
     )
-    usage2 = getattr(result2, "usage", None)
-    _last_usage.set(
-        {"total_tokens": int(getattr(usage2, "total_tokens", 0) or 0)} if usage2 else None
-    )
+    _record_usage(getattr(result2, "usage", None))
     parsed2 = _parse_model(output_type, str(result2.final_output))
     if parsed2 is None:
         raise GenerationError(

@@ -12,9 +12,11 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from devprompt_ai.common.cost import take_tokens
 from devprompt_ai.common.hashing import sha256_hex
 from devprompt_ai.common.secrets import mask_secret
 from devprompt_ai.config import MODEL_KEY_MAP, AppConfig
+from devprompt_ai.decision.fallback import is_jev_enabled
 from devprompt_ai.domain.decision.followup import GuardrailState, UnknownItem, build_unknowns
 from devprompt_ai.domain.decision.port import DecisionPort, VariantScore
 from devprompt_ai.domain.errors import StateError
@@ -81,6 +83,21 @@ class RankingView:
     total: float
 
 
+@dataclass(frozen=True, slots=True)
+class CostBreakdown:
+    """F-805 成本明细：单次优化 token 用量，Jev 与 LLM 分别计、来源如实标注。
+
+    jev_tokens 为估算（Jev 无 usage 接口）；llm_tokens 为 SDK 实际用量。
+    jev_source=not_enabled 时 jev 恒 0（未启用 Jev，决策层走 LLM 版）。
+    """
+
+    jev_tokens: int
+    llm_tokens: int
+    total_tokens: int
+    jev_source: str
+    llm_source: str
+
+
 @dataclass(slots=True)
 class FlowSnapshot:
     """表现层快照：CLI/Web 只渲染它（MUST-10）。"""
@@ -94,6 +111,7 @@ class FlowSnapshot:
     ranking: RankingView | None = None
     target: Symbol | None = None  # 上下文面板（设计 §1.2）：目标定位 symbol@path:line
     facts: list[FactResult] = field(default_factory=list)  # 取证事实只读透出
+    cost: CostBreakdown | None = None  # F-805：token 用量明细（Jev / LLM 分别计）
     message: str = ""
 
 
@@ -120,6 +138,7 @@ class ForgeService:
         self._generator = generator
         self._symbols_provider = symbols_provider
         self._symbols_override = symbols_override
+        self._jev_enabled = is_jev_enabled(cfg)  # F-805：成本来源标注（决策层 Jev / LLM）
 
     async def optimize(
         self, user_id: str, project_root: str, sentence: str, *, request_id: str
@@ -133,7 +152,9 @@ class ForgeService:
                 "last_request_id": request_id,
                 "clarifications": {},
                 "rounds": 0,
-                "cost_tokens": 0,
+                "cost_tokens": 0,  # 总 token（护栏判定用，MUST-26 成本预算）
+                "cost_jev_tokens": 0,  # F-805：决策层 Jev 估算
+                "cost_llm_tokens": 0,  # F-805：LLM 实际用量
                 "started_at": time.time(),  # flow.completed 耗时基准（T6-9）
             }
             await transition(session, FlowState.RETRIEVING, self._sessions)
@@ -729,7 +750,33 @@ class ForgeService:
             return candidates[out.order[0]]
         return candidates[0]
 
+    def _account_usage(self, session: FlowSession) -> None:
+        """F-805：把本请求内已发生的外部模型调用用量并入会话（取用后累计器清零）。
+
+        在快照组装时调用：此刻本请求的全部 LLM/Jev 调用均已完成，一次取用即全量入账；
+        只读路径（resume）无新调用，累计器为零，不产生副作用。
+        """
+        llm_tokens, jev_tokens = take_tokens()
+        if llm_tokens:
+            session.data["cost_llm_tokens"] = (
+                int(session.data.get("cost_llm_tokens", 0)) + llm_tokens
+            )
+        if jev_tokens:
+            session.data["cost_jev_tokens"] = (
+                int(session.data.get("cost_jev_tokens", 0)) + jev_tokens
+            )
+
     def _snapshot(self, session: FlowSession, status: SnapshotStatus) -> FlowSnapshot:
+        self._account_usage(session)
+        jev_tokens = int(session.data.get("cost_jev_tokens", 0))
+        llm_tokens = int(session.data.get("cost_llm_tokens", 0))
+        cost = CostBreakdown(
+            jev_tokens=jev_tokens,
+            llm_tokens=llm_tokens,
+            total_tokens=jev_tokens + llm_tokens,
+            jev_source="estimated" if self._jev_enabled else "not_enabled",
+            llm_source="actual" if llm_tokens > 0 else "no_call",
+        )
         questions = [UnknownItem(**u) for u in session.data.get("unknowns", [])]
         ranking_data = session.data.get("ranking")
         target_data = session.data.get("target")
@@ -754,6 +801,7 @@ class ForgeService:
             ranking=RankingView(**ranking_data) if isinstance(ranking_data, dict) else None,
             target=target,
             facts=facts,
+            cost=cost,
         )
 
     async def _load_owned(self, user_id: str, session_id: str) -> FlowSession:

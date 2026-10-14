@@ -146,6 +146,14 @@ class FailoverDecider:
         self._consecutive_failures = 0
 
 
+def is_jev_enabled(cfg: AppConfig) -> bool:
+    """Jev 主路径是否启用（create_decider 的同一判定，F-805 成本来源标注复用）。
+
+    显式 decider=jev 但无 key 时实为降级，故要求 key 存在且未显式禁用。
+    """
+    return bool(cfg.typesafe_api_key) and cfg.decider != "fallback"
+
+
 def create_decider(cfg: AppConfig) -> DecisionPort:
     """决策层工厂（MUST-12 双路径）：有 TYPESAFE_API_KEY 且 decider≠fallback → Jev
     （外层套 FailoverDecider，连续 3 次失败自动切 LLM 版并记 decider.switched）；
@@ -153,7 +161,7 @@ def create_decider(cfg: AppConfig) -> DecisionPort:
 
     JevDecider 延迟导入：无 key 环境（未装 jev extra）不触发 typesafe_sdk 依赖。
     """
-    if cfg.typesafe_api_key and cfg.decider != "fallback":
+    if is_jev_enabled(cfg):
         from devprompt_ai.decision.jev import JevDecider
 
         return FailoverDecider(JevDecider(cfg), cfg)
