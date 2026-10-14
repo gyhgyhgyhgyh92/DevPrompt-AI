@@ -102,11 +102,27 @@ pre {
   display: none;
 }
 
-/* 一键收纳（F-602，2026-10-13）：桌面端（≥768）折叠时隐藏侧边栏、主区撑满，
- * 并由标题栏 ☰ 承担恢复入口；<768 仍走既有抽屉语义（此处不介入，避免抽屉内被隐藏）。 */
+/* 一键收纳（F-602，2026-10-13）：桌面端（≥768）折叠时侧栏**平滑过渡**收起（宽度滑动 + 淡出）、
+ * 主区随之撑满，并由标题栏 ☰ 承担恢复入口；<768 仍走既有抽屉语义（此处不介入，避免抽屉内被隐藏）。
+ * 2026-10-13 二次调整：由 display:none 瞬时切换改为 inline-size 归零 + opacity 淡出（禁用 display
+ * 才能产生过渡）；visibility 延迟到淡出结束后置 hidden，保持淡出可见的同时移出 tab 焦点序列。 */
 @media (min-width: 768px) {
+  .project-sidebar {
+    transition:
+      inline-size 0.22s ease,
+      opacity 0.22s ease,
+      visibility 0s;
+  }
+
   .app-shell--sidebar-collapsed .project-sidebar {
-    display: none;
+    inline-size: 0;
+    opacity: 0;
+    border-inline-end-width: 0;
+    visibility: hidden;
+    transition:
+      inline-size 0.22s ease,
+      opacity 0.22s ease,
+      visibility 0s linear 0.22s;
   }
 
   .app-shell--sidebar-collapsed .app-titlebar__menu {

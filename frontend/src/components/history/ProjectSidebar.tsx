@@ -91,7 +91,8 @@ function groupByProject(
 
 /**
  * 左侧固定侧边栏（图三 1:1，spec Task 4/5，F-602/F-703）。
- * 顶部「项目」+ 一键收纳按钮（2026-10-13：原 ⌄ 箭头替换；排序/筛选图标已移除）；
+ * 顶部「一键收纳按钮 + 项目」（2026-10-13：原 ⌄ 箭头替换为收纳、排序/筛选图标已移除；
+ * 收纳按钮统一置左，与标题栏 ☰ 同侧，过渡由 global.css 宽度滑动 + 淡出实现）；
  * 列表恒按项目分组、置顶优先排序；选中同步高亮 + ⋮ 菜单（置顶/复制/重命名/删除）。
  * 数据自 GET /history（store 只存结果，MUST-16：数据获取在此组件 effect 内，不入 store）。
  */
@@ -292,7 +293,6 @@ export function ProjectSidebar({ onCollapse }: ProjectSidebarProps) {
   return (
     <aside className="project-sidebar" aria-label="项目">
       <div className="project-sidebar__head">
-        <span className="project-sidebar__title">项目</span>
         <button
           type="button"
           className="project-sidebar__collapse"
@@ -301,6 +301,7 @@ export function ProjectSidebar({ onCollapse }: ProjectSidebarProps) {
         >
           <CollapseIcon />
         </button>
+        <span className="project-sidebar__title">项目</span>
       </div>
 
       <button type="button" className="project-sidebar__new" onClick={handleNewSession}>

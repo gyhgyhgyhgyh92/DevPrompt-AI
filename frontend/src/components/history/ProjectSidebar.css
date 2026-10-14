@@ -12,13 +12,14 @@
   border-inline-end: 1px solid var(--divider);
 }
 
-/* 顶部行：「项目」+ 一键收纳按钮（2026-10-13：原 ⌄ 箭头 → 收纳；排序/筛选已移除） */
+/* 顶部行：一键收纳按钮 + 「项目」（2026-10-13：按钮统一置左，与标题栏 ☰ 同侧；原 ⌄/排序/筛选已移除） */
 .project-sidebar__head {
   display: flex;
   gap: var(--space-2);
   align-items: center;
-  justify-content: space-between;
-  padding: var(--space-3) var(--space-3) var(--space-2);
+  justify-content: flex-start;
+  /* 左侧 padding 取 space-4，与标题栏 ☰（padding-inline-start: space-4）左边缘对齐，保证位置一致 */
+  padding: var(--space-3) var(--space-3) var(--space-2) var(--space-4);
 }
 
 .project-sidebar__title {
