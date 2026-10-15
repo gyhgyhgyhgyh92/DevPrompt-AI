@@ -375,20 +375,8 @@
         "type": "object"
       },
       "CostDetailPayload": {
-        "description": "F-805 成本明细：token 用量 Jev 与 LLM 分别计，来源如实标注。\n\njev_tokens 为估算（Jev 无 usage 接口）；llm_tokens 为 SDK 实际用量。",
+        "description": "F-805 成本明细：单次优化 token 用量（LLM 实际用量）。\n\nllm_tokens 为 SDK 实际用量；total_tokens 即 llm_tokens 合计\n（2026-10-15 起决策层为单一 LLM 实现，用量同源）。",
         "properties": {
-          "jev_source": {
-            "enum": [
-              "estimated",
-              "not_enabled"
-            ],
-            "title": "Jev Source",
-            "type": "string"
-          },
-          "jev_tokens": {
-            "title": "Jev Tokens",
-            "type": "integer"
-          },
           "llm_source": {
             "enum": [
               "actual",
@@ -407,10 +395,8 @@
           }
         },
         "required": [
-          "jev_tokens",
           "llm_tokens",
           "total_tokens",
-          "jev_source",
           "llm_source"
         ],
         "title": "CostDetailPayload",
@@ -890,16 +876,6 @@
             "title": "Base Url",
             "type": "string"
           },
-          "decider": {
-            "default": "auto",
-            "enum": [
-              "auto",
-              "jev",
-              "fallback"
-            ],
-            "title": "Decider",
-            "type": "string"
-          },
           "max_tokens": {
             "anyOf": [
               {
@@ -965,22 +941,6 @@
               }
             ],
             "title": "Base Url"
-          },
-          "decider": {
-            "anyOf": [
-              {
-                "enum": [
-                  "auto",
-                  "jev",
-                  "fallback"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Decider"
           },
           "max_tokens": {
             "anyOf": [

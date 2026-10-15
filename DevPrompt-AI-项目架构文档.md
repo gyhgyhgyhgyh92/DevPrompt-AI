@@ -64,7 +64,7 @@ DevPrompt AI 采用四层架构，依赖方向严格单向向下，不可逆向�
 │  基础设施层  harness/ + memory/ + decision/                        │
 │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐    │
 │  │ harness/   │ │ memory/    │ │ decision/  │ │ config.py  │    │
-│  │ Runner     │ │ L1/L2/L3   │ │ jev.py     │ │            │    │
+│  │ Runner     │ │ L1/L2/L3   │ │ decider    │ │            │    │
 │  │ Session    │ │ SQLite+Git │ │ fallback   │ │            │    │
 │  │ Guardrail  │ │            │ │ port.py    │ │            │    │
 │  └────────────┘ └────────────┘ └────────────┘ └────────────┘    │
@@ -115,7 +115,7 @@ DevPrompt AI 采用四层架构，依赖方向严格单向向下，不可逆向�
 
 | # | 约束 | 检查方式 |
 |---|---|---|
-| 4 | `domain/` 不得 import 下层**实现模块**（`harness/process.py`、`decision/jev.py` 等） | 静态导入检查 |
+| 4 | `domain/` 不得 import 下层**实现模块**（`harness/process.py`、`decision/fallback.py` 等） | 静态导入检查 |
 | 5 | SQL 只允许出现在 `memory/store.py` | 静态检查 |
 | 6 | 组件文件名必须与主导出名一致 | 自定义检查 |
 
@@ -153,12 +153,10 @@ DevPrompt AI 采用四层架构，依赖方向严格单向向下，不可逆向�
 ```bash
 # 方式一：uv（推荐）
 uv sync                                    # 按 uv.lock 精确安装
-uv sync --extra jev                        # 附加 Jev 决策层
 uv sync --all-extras                       # 全部可选依赖
 
 # 方式二：pip
 pip install -e ".[dev]"
-pip install -e ".[dev,jev]"
 ```
 
 **前端**：
@@ -172,7 +170,6 @@ pnpm install --frozen-lockfile             # 严格按 lockfile，CI 必用
 
 ```toml
 [project.optional-dependencies]
-jev = ["typesafe-sdk>=1.0"]        # Jev 决策层，waitlist 期间可不装
 dev = [
     "ruff>=0.14",
     "mypy>=1.13",
@@ -181,8 +178,6 @@ dev = [
     "httpx>=0.28",
 ]
 ```
-
-**Jev 声明为可选的原因**：处于 early access 候补名单，不应阻塞主流程安装。缺少该包时 `DecisionPort` 自动降级到 LLM 实现。
 
 ### 1.4 本地启动
 
@@ -208,7 +203,7 @@ uv run uvicorn devprompt_ai.interfaces.api.app:app --port 8000
 
 ```
 构建阶段
-  1. uv sync --frozen --extra dev,jev
+  1. uv sync --frozen --extra dev
   2. cd frontend && pnpm install --frozen-lockfile && pnpm build
   3. ruff check --fix && mypy
   4. pytest
@@ -243,13 +238,6 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 | `LLM_API_KEY` | `sk-xxx` | 密钥 |
 | `LLM_MODEL` | `deepseek-chat` | 模型 ID |
 
-**Jev 决策层（可选）**：
-
-| 变量 | 默认 | 说明 |
-|---|---|---|
-| `TYPESAFE_API_KEY` | 空 | 缺失则启用 LLM 降级 |
-| `JEV_MODEL_ID` | `jev-1.13.0` | 不使用别名，别名会随上游漂移 |
-
 **推荐与阈值**：
 
 | 变量 | 默认 | 说明 |
@@ -268,8 +256,7 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 | `FOLLOWUP_SOFT_ROUND_GUARD` | 10 | 反问软护栏：单流程追问轮数达此值时显式询问用户裁决（非静默终止） |
 | `FOLLOWUP_COST_BUDGET` | 空 | 反问软护栏 LLM 成本预算（空=禁用） |
 | `FACT_PROBE_THRESHOLD` | 0.75 | 事实探针通过线 |
-| `MAX_STATE_TOKENS` | 30000 | Jev state 上限，超限截断 |
-| `DECIDER` | `auto` | `auto` / `jev` / `fallback` |
+| `MAX_STATE_TOKENS` | 30000 | 决策 state 上限，超限截断 |
 
 **运行时**：
 
@@ -292,7 +279,7 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 | Tracing | 开启 | 关闭 | 关闭 |
 | L1 Session | 真实 SQLite | 内存实现 | 真实 SQLite |
 | L3 偏好 | 真实 SQLite | 临时文件 | 真实 SQLite |
-| 决策层 | `auto` | `fallback` 强制 | `auto` |
+| 决策层 | LLM | LLM | LLM |
 | CORS | 允许 `localhost:5173` | 仅本地 | 显式白名单 |
 | 缓存 | 内存 | 禁用 | 内存 |
 | 数据目录 | 项目内 `.devprompt-ai/` | 临时目录 | 环境变量指定 |
@@ -653,10 +640,10 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 | 2004 | ctags 执行失败 | 500 | 是 |
 | 2005 | 候选集为空 | 422 | 否 |
 | 2006 | 候选集超上限 | 400 | 否 |
-| 3001 | Jev 不可用且无降级实现 | 503 | 是 |
-| 3002 | Jev 返回置信度不足 | 200 | 否（业务提示） |
+| 3001 | 决策层不可用 | 503 | 是 |
+| 3002 | 决策层返回置信度不足 | 200 | 否（业务提示） |
 | 3003 | state 超出 token 上限 | 422 | 否 |
-| 3004 | Jev 速率限制 | 429 | 是 |
+| 3004 | 决策层速率限制 | 429 | 是 |
 | 4001 | 生成阶段失败 | 502 | 是 |
 | 4002 | LLM 端点不可达 | 503 | 是 |
 | 4003 | LLM 返回格式非法 | 502 | 是 |
@@ -730,7 +717,7 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 | 约束 | 写法 |
 |---|---|
 | 必填与范围 | `page_size: int = Field(20, ge=1, le=100)` |
-| 枚举值 | `decider: Literal["auto", "jev", "fallback"] = "auto"` |
+| 枚举值 | `provider: Literal["custom", "openai", "deepseek"] = "custom"` |
 | 字符串长度 | `sentence: str = Field(..., min_length=1, max_length=2000)` |
 | 跨字段 | `@model_validator(mode="after")` |
 
@@ -742,7 +729,7 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 - 枚举必须用 `Literal` 而非裸 `str`
 - 校验失败由 Pydantic 自动转为 1001–1003 错误码
 
-**Jev state 长度硬约束**：提交给 Jev 的文本必须预校验长度，超限在调用前截断并记日志，不依赖 Jev 侧报错。
+**决策 state 长度硬约束**：提交给决策层的文本必须预校验长度，超限在调用前截断并记日志，不依赖决策层侧报错。
 
 ### 3.7 接口文档生成
 
@@ -769,7 +756,7 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
         "错误码：\n"
         "- 1001 缺少 sentence\n"
         "- 2001 project_path 不存在\n"
-        "- 3004 Jev 速率限制，可重试\n"
+        "- 3004 决策层速率限制，可重试\n"
     ),
     response_model=OptimizeResponse,
 )
@@ -799,7 +786,7 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 |---|---|---|
 | DEBUG | 内部细节 | ripgrep 原始输出、检索耗时分解 |
 | INFO | 关键节点 | 流程阶段切换、决策层切换、耗时汇总 |
-| WARNING | 降级与异常情况 | Jev 不可用转降级、state 被截断、候选集偏少 |
+| WARNING | 降级与异常情况 | 决策层调用失败、state 被截断、候选集偏少 |
 | ERROR | 功能失败 | 阶段失败、LLM 不可达 |
 | CRITICAL | 进程级问题 | 无法启动、配置缺失导致无法运行 |
 
@@ -810,7 +797,6 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 | `flow.started` | 流程开始 | `flow_id`, `project_path` |
 | `flow.completed` | 流程完成 | `flow_id`, `duration_ms`, `has_recommendation` |
 | `retrieval.candidates` | 候选集生成 | `count`, `elapsed_ms` |
-| `decider.switched` | 决策层切换 | `from`, `to`, `reason` |
 | `decider.low_confidence` | 置信度不足 | `confidence`, `threshold` |
 | `recommendation.made` | 标记推荐 | `variant`, `gap`, `confidence` |
 | `recommendation.skipped` | 不标记 | `reason`, `gap` |
@@ -905,7 +891,7 @@ class PreferenceStore:
 - 配置热重载 → 清空决策结果缓存
 - 达到 TTL → 自然过期
 
-**不缓存的内容**：用户原句、LLM 生成的三套方案正文、Jev 原始响应。理由：这三项体积大且与状态强相关，缓存收益低、失效复杂、正确性风险高。
+**不缓存的内容**：用户原句、LLM 生成的三套方案正文、决策层原始响应。理由：这三项体积大且与状态强相关，缓存收益低、失效复杂、正确性风险高。
 
 **命中率埋点**：`cache.hit` / `cache.miss` 事件，日志可查，用于判断缓存是否真的有效。**连续低命中应考虑删掉缓存**——无效缓存只增加复杂度。
 
@@ -1049,10 +1035,9 @@ src/devprompt_ai/
 │       ├── preference.py      偏好向量
 │       ├── score.py           加权总分
 │       └── recommend.py       双阈值标记
-├── decision/                  决策层实现
-│   ├── jev.py                 JevDecider
-│   ├── fallback.py            LLMFallbackDecider
-│   └── prompts.py             Jev 问题模板
+├── decision/                  决策层实现（单一 LLM 实现）
+│   ├── fallback.py            LLM 决策实现（原 JevDecider 已于 2026-10-15 移除）
+│   └── prompts.py             决策问题模板
 ├── harness/
 │   ├── runner.py              openai-agents Runner 封装
 │   ├── llm.py                 多供应商客户端
@@ -1097,7 +1082,7 @@ src/devprompt_ai/
 | `domain/retrieval/ports.py` | `CommandRunner.run(args) -> str` | `harness/process.py` | 执行 ripgrep / ctags |
 | `domain/retrieval/ports.py` | `FileReader.read(path) -> str` | `harness/process.py` | 读取文件内容 |
 | `domain/retrieval/ports.py` | `FileReader.exists(path) -> bool` | `harness/process.py` | 文件存在性检查 |
-| `domain/decision/port.py` | `rank_components` / `probe_facts` / `score_prompts` | `decision/jev.py`、`decision/fallback.py` | 决策层三能力 |
+| `domain/decision/port.py` | `rank_components` / `probe_facts` / `score_prompts` | `decision/fallback.py` | 决策层三能力 |
 | `domain/generate/ports.py` | `generate(prompt) -> str` | `harness/llm.py` | LLM 单次调用 |
 | `domain/ranking/ports.py` | `get_preference` / `save_preference` | `memory/preference_store.py` | 偏好向量读写 |
 
@@ -1776,7 +1761,7 @@ return parsed.data
 |---|---|
 | 2005 候选集为空 | 显示引导，指引用户补充组件名 |
 | 3002 置信度不足 | 显示 `ConfidenceNotice`，不标记推荐 |
-| 3004 Jev 速率限制 | 提示稍后重试，禁用提交按钮几秒 |
+| 3004 决策层速率限制 | 提示稍后重试，禁用提交按钮几秒 |
 | 4002 LLM 不可达 | 提示检查 LLM 配置 |
 | 6001 非法状态转移 | 刷新状态，提示重新开始 |
 | 9001 内部异常 | 显示 requestId，便于排查 |
@@ -2019,7 +2004,7 @@ CI 中由脚本强制：
 | 4 | ctags | `ctags --version` | 有输出 |
 | 5 | LLM 配置 | `GET /api/v1/health`（需先完成第 6 步启动） | `llm_config` 项通过 |
 | 6 | 后端启动 | `uv run uvicorn devprompt_ai.interfaces.api.app:app --port 8000` | 端口监听 |
-| 7 | Jev 配置 | 检查环境变量 `TYPESAFE_API_KEY` | 有 key 则启用 Jev，无则 LLM 降级 |
+| 7 | 决策层配置 | 检查决策层为单一 LLM 实现（原 Jev 检查已于 2026-10-15 移除） | LLM 决策层可用 |
 | 8 | 前端依赖 | `cd frontend && pnpm install` | 成功 |
 | 9 | 前端启动 | `cd frontend && pnpm dev` | 页面可访问 |
 | 10 | 健康检查 | `GET /api/v1/health` | `is_healthy` 为 true |

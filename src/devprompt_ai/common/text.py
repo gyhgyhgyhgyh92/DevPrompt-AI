@@ -9,6 +9,8 @@ import re
 
 # 连续 CJK 段（含汉字扩展区）
 _CJK_RUN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+")
+# 单个 CJK 字符（与 _CJK_RUN 同区段），用于 token 粗估
+_CJK_CHAR = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
 # 连续 ASCII 词段（字母数字）
 _ASCII_RUN = re.compile(r"[A-Za-z0-9]+")
 # 驼峰边界：小写/数字→大写，或 大写串→大写+小写（HTTPServer → HTTP|Server）
@@ -51,3 +53,14 @@ def tokenize_sentence(sentence: str) -> list[str]:
         if gram not in terms:
             terms.append(gram)
     return terms
+
+
+def estimate_tokens(text: str) -> int:
+    """粗估文本 token 数（MUST-09 state 提交前预校验；无外部依赖的启发式）。
+
+    约定：CJK 字符 ≈1 token；其余字符每 4 个 ≈1 token（向上取整）。
+    仅供超限判断与截断定位，非精确计数——按 MUST-04 不引入 tokenizer 依赖。
+    """
+    cjk = len(_CJK_CHAR.findall(text))
+    other = len(text) - cjk
+    return cjk + (other + 3) // 4

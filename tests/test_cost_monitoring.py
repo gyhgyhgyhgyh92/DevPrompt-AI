@@ -1,24 +1,20 @@
-"""F-805 成本监控验收：单次优化 token 用量明细（Jev 与 LLM 分别计）+ state 截断。
+"""F-805 成本监控验收：单次优化 token 用量明细（LLM 实际用量累计）。
 
-① 快照携带 cost 明细，jev_tokens / llm_tokens 分源；Jev 未启用时 jev 计 0 且来源如实标注；
-② state 组装的硬限（MUST-09）超限即截断而非报错，并记 `state.truncated` 事件（SHOULD-08）。
+① 快照携带 cost 明细，llm_tokens / total_tokens 同源（来源如实标注 llm_source）；
+② 累计器原语：跨请求累计、取用后清零。
 
-用例不发起真实网络请求（SHOULD-11）：决策/生成用 fake，Jev 走 transport 之外直接触发
-`_fit_state`（纯函数，无需 transport）。
+用例不发起真实网络请求（SHOULD-11）：决策/生成用 fake。
 """
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
 import pytest
 
-from devprompt_ai.common.cost import add_jev_tokens, add_llm_tokens, take_tokens
+from devprompt_ai.common.cost import add_llm_tokens, take_llm_tokens
 from devprompt_ai.config import AppConfig
-from devprompt_ai.decision.fallback import is_jev_enabled
-from devprompt_ai.decision.jev import JevDecider
 from devprompt_ai.domain.decision.port import (
     FactJudgment,
     FactProbeOutput,
@@ -49,7 +45,7 @@ from devprompt_ai.service import _RANK_CACHE, CostBreakdown, FlowSnapshot, Forge
 @pytest.fixture(autouse=True)
 def _reset_cost_accumulators() -> None:
     """成本累计器为进程级 ContextVar，用例间显式清零避免跨用例污染。"""
-    take_tokens()
+    take_llm_tokens()
 
 
 @pytest.fixture(autouse=True)
@@ -80,15 +76,14 @@ class FakeStore:
 
 
 class FakeDecider:
-    """三方法全接：每次调用按 as_jev 累加估算（Jev）或实际（LLM 版）用量。"""
+    """三方法全接：每次调用累加决策层 token 用量（LLM 实际入 llm 桶）。"""
 
-    def __init__(self, confs: list[float], tokens_per_call: int, *, as_jev: bool) -> None:
+    def __init__(self, confs: list[float], tokens_per_call: int) -> None:
         self.confs = confs
         self.tokens_per_call = tokens_per_call
-        self._record = add_jev_tokens if as_jev else add_llm_tokens
 
     async def probe_facts(self, sentence: str, facts: list[FactResult]) -> FactProbeOutput:
-        self._record(self.tokens_per_call)
+        add_llm_tokens(self.tokens_per_call)
         return FactProbeOutput(
             judgments=[
                 FactJudgment(key=f.key, passed=c >= 0.75, confidence=c)
@@ -100,13 +95,13 @@ class FakeDecider:
     async def rank_components(
         self, sentence: str, candidates: list[Candidate]
     ) -> RankComponentsOutput:
-        self._record(self.tokens_per_call)
+        add_llm_tokens(self.tokens_per_call)
         return RankComponentsOutput(order=list(range(len(candidates))), confidence=0.9)
 
     async def score_prompts(
         self, context: str, variants: list[tuple[str, str]]
     ) -> ScorePromptsOutput:
-        self._record(self.tokens_per_call)
+        add_llm_tokens(self.tokens_per_call)
         return ScorePromptsOutput(
             scores=[
                 VariantScore(variant=cast(Literal["A", "B", "C"], key), score=3, confidence=0.9)
@@ -201,21 +196,17 @@ def _symbols() -> list[Symbol]:
 
 def _service(
     *,
-    with_jev: bool,
     decision_tokens_per_call: int = 100,
     llm_tokens_per_call: int = 1000,
     existing: set[str] | None = None,
 ) -> tuple[ForgeService, FakeStore]:
-    cfg = AppConfig(
-        _env_file=None,  # type: ignore[call-arg]
-        typesafe_api_key="test-key" if with_jev else "",
-    )
+    cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
     store = FakeStore()
     prefs: PreferenceStore = FakePreferenceStore()
     svc = ForgeService(
         cfg=cfg,
-        # with_jev 时决策层为 Jev（估算入 jev 桶）；否则为 LLM 版（实际入 llm 桶）
-        decider=FakeDecider([0.9] * 7, decision_tokens_per_call, as_jev=with_jev),
+        # 决策层为单一 LLM 实现（2026-10-15）：其调用与实际用量一并入 llm 桶
+        decider=FakeDecider([0.9] * 7, decision_tokens_per_call),
         sessions=store,
         preferences=prefs,
         runner=FakeRunner(),
@@ -229,42 +220,28 @@ def _service(
     return svc, store
 
 
-# ---------- ① 成本明细（Jev / LLM 分源） ----------
+# ---------- ① 成本明细（LLM 实际用量） ----------
 
 
-async def test_cost_detail_separates_jev_and_llm() -> None:
-    svc, _ = _service(with_jev=True)
+async def test_cost_detail_llm_only() -> None:
+    svc, _ = _service()
     snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
     assert snap.status == "done"
     assert snap.cost is not None
-    assert snap.cost.jev_tokens > 0  # 决策层 Jev（估算）
-    assert snap.cost.llm_tokens == 1000  # 生成器 LLM（实际）
-    assert snap.cost.total_tokens == snap.cost.jev_tokens + snap.cost.llm_tokens
-    assert snap.cost.jev_source == "estimated"
-    assert snap.cost.llm_source == "actual"
-
-
-async def test_cost_jev_disabled_zero_and_annotated() -> None:
-    svc, _ = _service(with_jev=False)
-    assert is_jev_enabled(svc._cfg) is False  # noqa: SLF001
-    snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
-    assert snap.status == "done"
-    assert snap.cost is not None
-    assert snap.cost.jev_tokens == 0  # 未启用 Jev → 计 0
-    assert snap.cost.jev_source == "not_enabled"  # 如实标注来源
-    # 决策层走 LLM 版（3 次调用 ×100）+ 生成器 1000，全部计入 llm 桶
+    # 决策层（rank_components + probe_facts + score_prompts，3 次 ×100）+ 生成器 1000
     assert snap.cost.llm_tokens == 1300
+    assert snap.cost.total_tokens == 1300
     assert snap.cost.llm_source == "actual"
 
 
 async def test_cost_accumulates_across_requests() -> None:
     """跨请求累计：optimize（ask，仅决策调用）→ followup（done，含生成）逐段入账。"""
-    svc, _ = _service(with_jev=True, existing={"src/ui/button.tsx"})
+    svc, _ = _service(existing={"src/ui/button.tsx"})
     ask = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
     assert ask.status == "ask"
     assert ask.cost is not None
-    assert ask.cost.jev_tokens == 200  # rank_components + probe_facts 各 100
-    assert ask.cost.llm_tokens == 0  # 尚未生成
+    assert ask.cost.llm_tokens == 200  # rank_components + probe_facts 各 100
+    assert ask.cost.total_tokens == 200
 
     done = await svc.ask_followup(
         "local",
@@ -274,8 +251,8 @@ async def test_cost_accumulates_across_requests() -> None:
     )
     assert done.status == "done"
     assert done.cost is not None
-    assert done.cost.jev_tokens == 400  # 追加 probe_facts + score_prompts 各 100
-    assert done.cost.llm_tokens == 1000  # 生成器入账
+    # 追加 probe_facts + score_prompts 各 100 + 生成器 1000
+    assert done.cost.llm_tokens == 1400
     assert done.cost.total_tokens == 1400
 
 
@@ -287,20 +264,12 @@ def test_snapshot_payload_renders_cost_detail() -> None:
         session_id="s1",
         status="done",
         state="DONE",
-        cost=CostBreakdown(
-            jev_tokens=10,
-            llm_tokens=20,
-            total_tokens=30,
-            jev_source="estimated",
-            llm_source="actual",
-        ),
+        cost=CostBreakdown(llm_tokens=20, total_tokens=20, llm_source="actual"),
     )
     payload = routes._snapshot_payload(snapshot)
     assert payload.cost is not None
-    assert payload.cost.jev_tokens == 10
     assert payload.cost.llm_tokens == 20
-    assert payload.cost.total_tokens == 30
-    assert payload.cost.jev_source == "estimated"
+    assert payload.cost.total_tokens == 20
     assert payload.cost.llm_source == "actual"
 
 
@@ -309,50 +278,16 @@ def test_snapshot_payload_cost_absent_when_none() -> None:
     assert routes._snapshot_payload(snapshot).cost is None
 
 
-# ---------- ② state 截断（MUST-09 / SHOULD-08） ----------
-
-
-def _jev_cfg(*, max_state_tokens: int) -> AppConfig:
-    return AppConfig(
-        _env_file=None,  # type: ignore[call-arg]
-        typesafe_api_key="test-key",
-        max_state_tokens=max_state_tokens,
-    )
-
-
-def test_state_over_limit_truncated_emits_event(caplog: pytest.LogCaptureFixture) -> None:
-    decider = JevDecider(_jev_cfg(max_state_tokens=10))
-    oversized = "上下文" * 100
-    with caplog.at_level(logging.INFO, logger="devprompt.events"):
-        fitted = decider._fit_state(oversized)  # noqa: SLF001
-    assert len(fitted) <= 10  # 截断而非报错
-    assert any(
-        r.getMessage() == "state.truncated" and getattr(r, "reason", "") == "state-over-limit"
-        for r in caplog.records
-    )
-
-
-def test_state_within_limit_not_truncated(caplog: pytest.LogCaptureFixture) -> None:
-    decider = JevDecider(_jev_cfg(max_state_tokens=10_000))
-    state = "短状态"
-    with caplog.at_level(logging.INFO, logger="devprompt.events"):
-        fitted = decider._fit_state(state)  # noqa: SLF001
-    assert fitted == state
-    assert not any(r.getMessage() == "state.truncated" for r in caplog.records)
-
-
 # ---------- 累计器原语 ----------
 
 
-def test_take_tokens_accumulates_then_resets() -> None:
+def test_take_llm_tokens_accumulates_then_resets() -> None:
     add_llm_tokens(100)
     add_llm_tokens(5)
-    add_jev_tokens(40)
-    assert take_tokens() == (105, 40)
-    assert take_tokens() == (0, 0)
+    assert take_llm_tokens() == 105
+    assert take_llm_tokens() == 0
 
 
 def test_add_zero_is_noop() -> None:
     add_llm_tokens(0)
-    add_jev_tokens(0)
-    assert take_tokens() == (0, 0)
+    assert take_llm_tokens() == 0

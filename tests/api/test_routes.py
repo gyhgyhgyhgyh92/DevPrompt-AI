@@ -55,7 +55,6 @@ class FakeForgeService:
                 "base_url": "https://mock.local",
                 "api_key_masked": "sk-••••3f7a",
                 "model_id": "mock-model",
-                "decider": "fallback",
                 "timeout": 60.0,
                 "temperature": None,
                 "max_tokens": None,

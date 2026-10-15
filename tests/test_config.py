@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.errors import ConfigurationError
@@ -24,9 +23,7 @@ def test_defaults_match_f003() -> None:
     assert cfg.followup_cost_budget == 0.0  # 0 = 禁用成本护栏
     assert cfg.db_path == "~/.devprompt-ai/devprompt.db"
     assert cfg.fact_probe_threshold == 0.75
-    assert cfg.jev_model_id == "jev-1.13.0"  # MUST-12：禁别名
     assert cfg.max_state_tokens == 30000
-    assert cfg.decider == "auto"
     # F-604 新键（T6-11）：模型调用参数 + 遥测
     assert cfg.llm_timeout == 60.0
     assert cfg.llm_temperature is None
@@ -60,12 +57,6 @@ def test_weights_must_sum_to_one(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_validate_passes_on_defaults() -> None:
     AppConfig(_env_file=None).validate()  # type: ignore[call-arg]  # 不抛即过
-
-
-def test_decider_literal(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DECIDER", "sideways")
-    with pytest.raises(ValidationError):  # pydantic 校验失败（非 Literal 成员）
-        AppConfig(_env_file=None)  # type: ignore[call-arg]
 
 
 # ---------- 本地设置加载链（T6-11：init > env > 本地设置 > .env > 默认值） ----------

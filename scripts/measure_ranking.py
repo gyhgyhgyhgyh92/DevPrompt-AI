@@ -12,9 +12,8 @@
 （匹配规则同 measure_recall：符号名与路径双等）。
 
 报告：eval/recall/report-ranking-<日期>-<mode>.json（mode = dry | real），
-含 per-repo/per-case 明细、汇总准确率与 "metric_source": "LLM 排序准确率"
-（MUST-25 第二段：真实模式用 LLMFallbackDecider 测得，
-不得与「Jev 排序准确率」混用，Jev 到位后重测）。
+含 per-repo/per-case 明细、汇总准确率与 "metric_source"（决策层为单一 LLM 实现，
+恒标注 "LLM 排序准确率"）。
 
 退出码：--dry 为链路验证（mock 决策层下准确率无意义），跑通即 0、不套用 80% 门禁；
 真实模式按 W3 门禁判定，准确率 ≥80% 返回 0，否则 1（决策树见 MUST-25：甲/乙必择一）；
@@ -45,12 +44,28 @@ from devprompt_ai.harness.process import LocalCommandRunner, SymbolTableProvider
 
 PASS_LINE = 0.8  # MUST-25 第二段：排序准确率通过线 ≥80%（仅真实模式套用）
 
-_FATAL_API_MARKERS = ("401", "402", "403", "Insufficient Balance")
-"""账户级 API 故障特征（余额耗尽/鉴权失败）：不可重试，继续测量只会产出整批无效 MISS。"""
+_MAX_ERROR_RATIO = 0.5
+"""单例错误率上限：超过即判「上游服务故障」并中止、不写报告（防 502 风暴产出无效 0%“实测”）。"""
+
+_FATAL_API_MARKERS = (
+    "401",
+    "402",
+    "403",
+    "451",
+    "Insufficient Balance",
+    "not available in your region",
+)
+"""账户级 API 故障特征（余额耗尽/鉴权失败/区域封锁）：不可重试，继续测量只会产出整批无效 MISS。"""
+
+_FATAL_ERROR_TYPES = ("APIStatusError",)
+"""账户级故障的错误类名特征：LLM 侧 APIStatusError（余额耗尽/鉴权失败/区域封锁）。"""
 
 
 def _is_fatal_api_error(exc: Exception) -> bool:
-    return "APIStatusError" in type(exc).__name__ and any(m in str(exc) for m in _FATAL_API_MARKERS)
+    name = type(exc).__name__
+    return any(t in name for t in _FATAL_ERROR_TYPES) and any(
+        m in str(exc) for m in _FATAL_API_MARKERS
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,7 +194,9 @@ async def measure_repo(
     return RepoResult(repo_id=repo_id, symbol_total=len(symbols), small_repo=small, results=results)
 
 
-def _build_payload(repos: list[RepoResult], mode: str, limit: int | None) -> dict[str, object]:
+def _build_payload(
+    repos: list[RepoResult], mode: str, limit: int | None, metric_source: str
+) -> dict[str, object]:
     total_cases = sum(len(r.results) for r in repos)
     total_hits = sum(r.hits for r in repos)
     accuracy = total_hits / total_cases if total_cases else 0.0
@@ -187,8 +204,8 @@ def _build_payload(repos: list[RepoResult], mode: str, limit: int | None) -> dic
     return {
         "date": date.today().isoformat(),
         "mode": mode,
-        "metric_source": "LLM 排序准确率",
-        "gate_applied": mode == "real",
+        "metric_source": metric_source,
+        "gate_applied": mode != "dry",
         "limit": limit,
         "total_cases": total_cases,
         "total_hits": total_hits,
@@ -250,21 +267,39 @@ async def main_async(
     manifest: dict[str, object] = json.loads(raw)
     repos = _select_repos(manifest, project_dir, all_repos)
     provider = SymbolTableProvider(LocalCommandRunner())
-    decider: DecisionPort = _DryMockDecider() if dry else create_decider(AppConfig())
-    mode = "dry" if dry else "real"
+    decider: DecisionPort
+    if dry:
+        decider = _DryMockDecider()
+        mode, metric_source = "dry", "dry"
+    else:
+        cfg = AppConfig()
+        decider = create_decider(cfg)  # 决策层为单一 LLM 实现（2026-10-15）
+        mode = "real"
+        metric_source = "LLM 排序准确率"
 
     try:
         results = [await measure_repo(r, provider, cases_root, decider, limit) for r in repos]
     except Exception as exc:  # noqa: BLE001 - 快速失败路径：账户级故障给出可操作信息
         if _is_fatal_api_error(exc):
             print(f"[abort] 账户级 API 故障，测量中止：{type(exc).__name__}: {str(exc)[:200]}")
-            print("请充值/修复 LLM 供应商账户后重跑（本次不写报告，避免无效结果污染门禁判定）。")
+            print(
+                "请修复供应商账户（充值/鉴权）或网络接入（区域封锁）后重跑"
+                "（本次不写报告，避免无效结果污染门禁判定）。"
+            )
             return 2
         raise
-    payload = _build_payload(results, mode, limit)
     total_cases = sum(len(r.results) for r in results)
     total_hits = sum(r.hits for r in results)
     accuracy = total_hits / total_cases if total_cases else 0.0
+    error_cases = sum(1 for r in results for c in r.results if c.error is not None)
+    if total_cases and error_cases / total_cases > _MAX_ERROR_RATIO:
+        print(
+            f"[abort] 单例错误率 {error_cases}/{total_cases} 超过 {_MAX_ERROR_RATIO:.0%}："
+            "疑似上游服务故障、指标不可信；不写报告（避免无效结果污染门禁判定）。"
+        )
+        print("请稍后重试或修复上游后重跑。")
+        return 2
+    payload = _build_payload(results, mode, limit, metric_source)
 
     await asyncio.to_thread(out_dir.mkdir, parents=True, exist_ok=True)
     report = out_dir / f"report-ranking-{date.today().isoformat()}-{mode}.json"
@@ -282,8 +317,8 @@ async def main_async(
     passed = accuracy >= PASS_LINE
     status = "通过" if passed else "未通过"
     print(
-        f"LLM 排序准确率 {total_hits}/{total_cases} = {accuracy:.1%}"
-        f"（{status}；门禁 ≥80%；metric_source=LLM 排序准确率）"
+        f"{metric_source} {total_hits}/{total_cases} = {accuracy:.1%}"
+        f"（{status}；门禁 ≥80%；metric_source={metric_source}）"
     )
     print(f"报告：{report}")
     return 0 if passed else 1

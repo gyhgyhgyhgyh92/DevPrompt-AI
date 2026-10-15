@@ -52,7 +52,7 @@ class ScorePromptsOutput(BaseModel):
 class DecisionPort(Protocol):
     """三类决策能力（F-201 职责表）。
 
-    实现：decision/fallback.py（LLM）、decision/jev.py（阶段五）。
+    实现：decision/fallback.py（LLM）。
     """
 
     async def rank_components(

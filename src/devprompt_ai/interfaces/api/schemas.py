@@ -92,15 +92,14 @@ class FactPayload(BaseModel):
 
 
 class CostDetailPayload(BaseModel):
-    """F-805 成本明细：token 用量 Jev 与 LLM 分别计，来源如实标注。
+    """F-805 成本明细：单次优化 token 用量（LLM 实际用量）。
 
-    jev_tokens 为估算（Jev 无 usage 接口）；llm_tokens 为 SDK 实际用量。
+    llm_tokens 为 SDK 实际用量；total_tokens 即 llm_tokens 合计
+    （2026-10-15 起决策层为单一 LLM 实现，用量同源）。
     """
 
-    jev_tokens: int
     llm_tokens: int
     total_tokens: int
-    jev_source: Literal["estimated", "not_enabled"]
     llm_source: Literal["actual", "no_call"]
 
 
@@ -176,7 +175,6 @@ class ModelServiceSettings(BaseModel):
     base_url: str = ""
     api_key_masked: str = ""
     model_id: str = ""
-    decider: Literal["auto", "jev", "fallback"] = "auto"
     timeout: float = 60.0
     temperature: float | None = None
     max_tokens: int | None = None
@@ -238,7 +236,6 @@ class ModelServiceUpdate(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     model_id: str | None = None
-    decider: Literal["auto", "jev", "fallback"] | None = None
     timeout: float | None = Field(default=None, gt=0)
     temperature: float | None = Field(default=None, ge=0)
     max_tokens: int | None = Field(default=None, gt=0)

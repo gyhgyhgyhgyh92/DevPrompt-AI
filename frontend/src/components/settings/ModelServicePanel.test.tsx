@@ -38,7 +38,6 @@ const settingsFixture: SettingsResponse = {
   model_service: {
     api_key_masked: 'sk-••••3f7a',
     base_url: 'https://api.example.com',
-    decider: 'auto',
     model_id: 'deepseek-flash',
     provider: 'DeepSeek',
     timeout: 60,
@@ -159,7 +158,7 @@ describe('ModelServicePanel 模型列表管理（F-604 多模型）', () => {
     expect(putSettings).not.toHaveBeenCalled()
   })
 
-  it('保存同时提交全局调用参数（decider/超时/温度/max_tokens）', async () => {
+  it('保存同时提交全局调用参数（超时/温度/max_tokens）', async () => {
     render(<ModelServicePanel />)
 
     fireEvent.change(screen.getByLabelText('超时（秒）'), { target: { value: '90' } })
@@ -168,7 +167,6 @@ describe('ModelServicePanel 模型列表管理（F-604 多模型）', () => {
 
     await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(1))
     const body = vi.mocked(putSettings).mock.calls[0]?.[0]
-    expect(body?.model_service?.decider).toBe('auto')
     expect(body?.model_service?.timeout).toBe(90)
     expect(body?.model_service?.max_tokens).toBe(2048)
   })

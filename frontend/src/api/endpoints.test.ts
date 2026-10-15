@@ -51,7 +51,6 @@ const settings = {
   model_service: {
     api_key_masked: 'sk-••••3f7a',
     base_url: 'https://api.example.com',
-    decider: 'auto',
     model_id: 'demo',
     provider: 'DeepSeek',
     timeout: 60,
@@ -220,7 +219,7 @@ describe('api/endpoints 偏好与设置', () => {
 
     await expect(getSettings()).resolves.toMatchObject({ locked: { candidate_limit: 25 } })
     await expect(putSettings({ process: { telemetry: false } })).resolves.toMatchObject({
-      model_service: { decider: 'auto' },
+      model_service: { model_id: 'demo' },
     })
     expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/v1/settings')
     expect(fetchMock.mock.calls[1]?.[1]?.method).toBe('PUT')

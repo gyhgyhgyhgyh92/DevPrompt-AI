@@ -12,7 +12,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-jev = ["typesafe-sdk>=0.7.2,<1.0"]
 dev = [
     "ruff>=0.14",
     "mypy>=1.13",

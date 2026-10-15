@@ -17,7 +17,7 @@ ANY_CONF_MIN: Final[float] = 0.4
 GAP_SOFT: Final[float] = 0.12
 GAP_HARD: Final[float] = 0.5
 
-REASON_CONF_BASE: Final[str] = "Jev 置信度不足，建议人工选择"
+REASON_CONF_BASE: Final[str] = "置信度不足，建议人工选择"
 REASON_CLOSE: Final[str] = "三套适配度接近，建议人工选择"
 REASON_SMALL_GAP: Final[str] = "分差较小"
 

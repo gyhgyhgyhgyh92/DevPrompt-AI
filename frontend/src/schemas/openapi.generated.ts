@@ -476,18 +476,12 @@ export interface components {
         };
         /**
          * CostDetailPayload
-         * @description F-805 成本明细：token 用量 Jev 与 LLM 分别计，来源如实标注。
+         * @description F-805 成本明细：单次优化 token 用量（LLM 实际用量）。
          *
-         *     jev_tokens 为估算（Jev 无 usage 接口）；llm_tokens 为 SDK 实际用量。
+         *     llm_tokens 为 SDK 实际用量；total_tokens 即 llm_tokens 合计
+         *     （2026-10-15 起决策层为单一 LLM 实现，用量同源）。
          */
         CostDetailPayload: {
-            /**
-             * Jev Source
-             * @enum {string}
-             */
-            jev_source: "estimated" | "not_enabled";
-            /** Jev Tokens */
-            jev_tokens: number;
             /**
              * Llm Source
              * @enum {string}
@@ -701,12 +695,6 @@ export interface components {
              * @default
              */
             base_url: string;
-            /**
-             * Decider
-             * @default auto
-             * @enum {string}
-             */
-            decider: "auto" | "jev" | "fallback";
             /** Max Tokens */
             max_tokens?: number | null;
             /**
@@ -736,8 +724,6 @@ export interface components {
             api_key?: string | null;
             /** Base Url */
             base_url?: string | null;
-            /** Decider */
-            decider?: ("auto" | "jev" | "fallback") | null;
             /** Max Tokens */
             max_tokens?: number | null;
             /** Model Id */

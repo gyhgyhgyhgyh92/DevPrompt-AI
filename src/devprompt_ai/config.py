@@ -18,15 +18,12 @@ from pydantic_settings import (
 
 from devprompt_ai.domain.errors import ConfigurationError
 
-DeciderMode = Literal["auto", "jev", "fallback"]
-
 # settings.json model_service 段键 → AppConfig 字段名（F-604 契约键与配置键分离）
 MODEL_KEY_MAP: dict[str, str] = {
     "provider": "llm_provider",
     "base_url": "llm_base_url",
     "api_key": "llm_api_key",
     "model_id": "llm_model",
-    "decider": "decider",
     "timeout": "llm_timeout",
     "temperature": "llm_temperature",
     "max_tokens": "llm_max_tokens",
@@ -57,7 +54,6 @@ class _LocalSettingsSource(PydanticBaseSettingsSource):
 
 
 class AppConfig(BaseSettings):
-    typesafe_api_key: str = ""
     llm_provider: str = ""  # F-604 供应商标识（UI 分段展示用；URL 预填由前端映射）
     llm_base_url: str = ""
     llm_api_key: str = ""
@@ -81,10 +77,8 @@ class AppConfig(BaseSettings):
     # SQLite 单文件（L1/L3；用户主目录 ~ 由 expanduser 解析，展开归 4B init_schema）
     db_path: str = "~/.devprompt-ai/devprompt.db"
     fact_probe_threshold: float = 0.75
-    jev_model_id: str = "jev-1.13.0"
     max_state_tokens: int = 30000
 
-    decider: DeciderMode = "auto"
     app_env: Literal["dev", "test", "prod"] = "dev"
     log_level: str = "INFO"
     log_dir: str = "./.logs"

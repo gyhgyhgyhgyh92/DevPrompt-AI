@@ -145,7 +145,6 @@ describe('schemas/preference 与 settings 契约校验', () => {
       model_service: {
         api_key_masked: 'sk-••••3f7a',
         base_url: '',
-        decider: 'auto',
         model_id: 'demo',
         provider: 'DeepSeek',
         timeout: 60,
@@ -174,7 +173,6 @@ describe('schemas/preference 与 settings 契约校验', () => {
         model_service: {
           api_key_masked: '',
           base_url: '',
-          decider: 'auto',
           model_id: 'demo',
           timeout: 60,
         },

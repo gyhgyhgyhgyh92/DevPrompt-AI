@@ -9,7 +9,7 @@
 
 阶段七（整体验收与交付）是项目最后一个阶段，当前状态 **⬜ 未开始**。主要缺口：
 
-- **F-801 第二段（排序准确率）门禁未达标**：LLM 路径实测 58/100 = 58% ＜ 80%（`eval/recall/report-ranking-2026-10-11.md`）。2026-10-11 曾裁「方案甲」（LLM 决策转正、Jev dormant）；**项目所有者 2026-10-14 决定改走 Jev 路径重测以真正满足门禁**，但 `TYPESAFE_API_KEY` 当前未配置 → Jev 路径**输入校验不通过**。
+- **F-801 第二段（排序准确率）门禁未达标**：LLM 路径实测 58/100 = 58% ＜ 80%（`eval/recall/report-ranking-2026-10-11.md`）。2026-10-11 曾裁「方案甲」（LLM 决策转正）；**2026-10-15 决议彻底移除 Jev（所有者批准选项 A），决策层统一为单一 LLM 实现**——F-801 第二段改以 **LLM 决策层实测**为唯一来源，实测 58%＜80% **仍未达标**。
 - **F-804 恢复一致性测试**无落地证据（`tests/` 无对应用例）。
 - **F-805 成本明细**未输出（仅内部累计 `cost_tokens`）。
 - **覆盖率未实测**（`pyproject` 无覆盖率工具），T7-1「≥70%」无法判定。
@@ -17,10 +17,10 @@
 
 ## What Changes
 
-- **新增 Jev 门禁执行路径（T7-Jev，阶段七第一道门）**：启用 `jev` extra（`typesafe-sdk`）、配置 `TYPESAFE_API_KEY`，用 `JevDecider` 重跑 F-801 第二段排序准确率实测，出具报告（逐条明细 + 指标来源标注 + 失败案例分析）。**达标（≥80%）前阶段七不得收口（T7-8 阻塞）**。
+- ~~**新增 Jev 门禁执行路径（T7-Jev，阶段七第一道门）**~~ **已按 2026-10-15 决议移除 Jev；Task 1 作废**。阶段七**不因 Jev 缺席而收口结论改变**——F-801 第二段改以 LLM 决策层实测为唯一来源，实测 58%＜80% 仍未达标，门禁（≥80%）保留。
 - **T7-1 单测收口**：SHOULD-10 必测边界全覆盖 + 覆盖率 ≥70%；**新增 dev 依赖 `pytest-cov`**（MUST-04：1–4 级无等价覆盖率能力，coverage.py/pytest-cov 为标准方案，需同步登记技术栈版本表）。
 - **T7-2 F-804 流程恢复一致性测试**：mock 决策层 + 固定种子下，两形态（HTTP `POST /optimize`→`GET /result`；resume：SSE 中断改 `GET /result` / 反问后再拉取）逐项对照。
-- **T7-3 F-805 成本监控验收**：输出单次优化 token 明细（Jev 与 LLM 分别计）；`state` 超限截断而非报错且有日志。
+- **T7-3 F-805 成本监控验收**：输出单次优化 token 明细（LLM token 明细）；`state` 超限截断而非报错且有日志。
 - **T7-4 CI 六门禁收口**（MUST-29）：Ruff Lint/Format、mypy、pytest、前端 tsc/ESLint、架构约束、契约冒烟全绿；无 `--no-verify`。
 - **T7-5 §D 13 项环境自检全清单**逐一通过（含 `GET /api/v1/health`）。
 - **T7-6 文档清理提交**（单独 `docs` 提交）：中等 8/9（错误码表 5 处不符、§3.1 示例误用 4001）、中等 11/12（Web 一期二期冲突、store 职责混用）、轻微 16 条（命名/章节号/冗余/锚点失效）；技术栈版本表口径修正（Playwright/structlog **实际未采用**，非「未登记」）；**`pyproject` 移除冗余 `aiomysql`/`PyMySQL`（BREAKING：依赖清单变更）**。
@@ -30,29 +30,16 @@
 ## Impact
 
 - Affected specs: F-801（检索质量实测）、F-802（冒烟）、F-803（核心单测）、F-804（恢复一致性）、F-805（成本监控）；MUST-25 / MUST-29 / MUST-04 / MUST-24b
-- Affected code: `src/devprompt_ai/interfaces/api/app.py`（挂载 dist）、`pyproject.toml`、`tests/`（新增 F-804 用例、覆盖率）、`eval/recall/`（Jev 重测报告）、`scripts/`（如需打包/自检脚本）、`frontend/`（无功能改动）
+- Affected code: `src/devprompt_ai/interfaces/api/app.py`（挂载 dist）、`pyproject.toml`、`tests/`（新增 F-804 用例、覆盖率）、`eval/recall/`（排序准确率实测报告）、`scripts/`（如需打包/自检脚本）、`frontend/`（无功能改动）
 - Affected docs: `DevPrompt-AI-实施真源文档.md`（§1 状态、§8.4、§13）、`DevPrompt-AI-功能清单.md`（F-801/F-803/F-804/F-805）、`DevPrompt-AI-技术栈文档.md`（版本表）、`DevPrompt-AI-项目架构文档.md`（如需）、`DevPrompt-AI-文档审查报告.md`
 
 ## ADDED Requirements
 
-### Requirement: Jev 决策层启用与 F-801 第二段重测（阶段七阻塞门）
+### Requirement: ~~Jev 决策层启用与 F-801 第二段重测~~（已作废：2026-10-15 移除 Jev；Task 1 作废）
 
-系统 SHALL 在 `TYPESAFE_API_KEY` 就绪时启用 `JevDecider`（`jev-1.13.0`，禁别名 MUST-12），并以 Jev 路径重测 F-801 第二段排序准确率，出具含逐条明细与指标来源标注的报告。Jev 路径不达标或输入缺失时，阶段七不得宣告收口。
+原 Requirement 要求启用 `JevDecider`（`jev-1.13.0`，禁别名 MUST-12）并以 Jev 路径重测 F-801 第二段排序准确率。**2026-10-15 项目所有者批准（选项 A）彻底移除 Jev**：`decision/jev.py`、`jev` extra、`typesafe-sdk`、配置键与契约字段全部删除，决策层统一为单一 LLM 实现 → 本 Requirement 与 Task 1 **作废关闭**。
 
-#### Scenario: key 就绪并达标
-
-- **WHEN** `uv sync --extra jev` 且 `TYPESAFE_API_KEY` 配置完成，运行 F-801 第二段实测
-- **THEN** 报告标注为「Jev 排序准确率」，含逐条明细与失败案例；指标 ≥ 80% 时 G1 门禁通过
-
-#### Scenario: key 缺失（输入校验不通过）
-
-- **WHEN** `TYPESAFE_API_KEY` 为空时尝试运行 Jev 重测
-- **THEN** 记 `decider.switched`（reason=`jev-no-api-key`）并**停止**：输出待确认项（需用户提供 key），**不得**以 LLM 结果冒充 Jev 指标，不得伪造达标结论
-
-#### Scenario: Jev 路径实测不达标
-
-- **WHEN** Jev 重测结果 < 80%
-- **THEN** 触发 MUST-25 决策树（甲/乙）并**上报用户裁决**，不得含糊继续；阶段七 G1 门禁不通过
+F-801 第二段改以 **LLM 决策层实测**为唯一来源（门禁 ≥80% 保留）；实测 58%＜80% **仍未达标**，**阶段七不因 Jev 缺席而收口**（结论不变：未达标，阶段七不得宣告收口）。
 
 ### Requirement: 核心单元测试收口与覆盖率（T7-1 / F-803）
 
@@ -74,12 +61,12 @@
 
 ### Requirement: 成本监控验收（T7-3 / F-805）
 
-系统 SHALL 输出单次优化的 token 消耗明细（Jev 与 LLM 分别计）；`state` 体积超限时截断并记录日志，而非报错。
+系统 SHALL 输出单次优化的 token 消耗明细（LLM token 明细）；`state` 体积超限时截断并记录日志，而非报错。
 
 #### Scenario: 成本明细与截断
 
 - **WHEN** 执行一次优化并检查成本明细
-- **THEN** 输出 token 消耗与来源（Jev/LLM）；构造超限 state 时发生截断并留有 `state.truncated` 日志
+- **THEN** 输出 token 消耗与来源（LLM）；构造超限 state 时发生截断并留有 `state.truncated` 日志
 
 ### Requirement: CI 六门禁全绿（T7-4 / MUST-29）
 
@@ -92,7 +79,7 @@
 
 ### Requirement: 环境自检清单 13 项（T7-5）
 
-系统 SHALL 逐一通过架构文档 §D 的 13 项环境自检（Python 版本 / 依赖 / rg / ctags / LLM 配置 / 后端启动 / Jev 配置 / 前端依赖 / 前端启动 / 健康检查 / Lint / 类型检查 / 测试）。
+系统 SHALL 逐一通过架构文档 §D 的 13 项环境自检（Python 版本 / 依赖 / rg / ctags / LLM 配置 / 后端启动 / 决策层配置 / 前端依赖 / 前端启动 / 健康检查 / Lint / 类型检查 / 测试）。
 
 #### Scenario: 13 项通过
 
@@ -128,9 +115,9 @@
 
 ## MODIFIED Requirements
 
-### Requirement: 阶段七出口门禁中的 F-801 第二段（保持 ≥80%，仅改指标来源）
+### Requirement: 阶段七出口门禁中的 F-801 第二段（保持 ≥80%，指标来源改为 LLM 决策层）
 
-F-801 第二段 SHALL 以 **Jev 路径**实测并满足 ≥ 80%（不再以 LLM 路径代偿）。**理由**：项目所有者 2026-10-14 裁决「推进 Jev 获批并重测」；2026-10-11 的「方案甲」（LLM 决策转正、Jev dormant）在本轮不再作为达标依据，Jev 恰为 MUST-25 原文要求的最终指标来源。
+F-801 第二段 SHALL 以 **LLM 决策层实测**并满足 ≥ 80%。**理由**：2026-10-15 项目所有者批准（选项 A）彻底移除 Jev，决策层统一为单一 LLM 实现，LLM 为唯一指标来源（MUST-25 第二段）；门禁数值（≥80%）不变。**实测 58%＜80% 仍未达标**，阶段七不得宣告收口。
 
 ### Requirement: 后端开发依赖
 

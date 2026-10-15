@@ -64,14 +64,12 @@ def test_ranking_view_rejects_missing_required_field() -> None:
 
 
 def test_cost_detail_rejects_unknown_literal_source() -> None:
-    # 畸形响应③：jev_source 取非 Literal 成员（来源如实标注契约，F-805）→ 拒绝
+    # 畸形响应③：llm_source 取非 Literal 成员（来源如实标注契约，F-805）→ 拒绝
     with pytest.raises(ValidationError):
         CostDetailPayload(
-            jev_tokens=1,
             llm_tokens=2,
             total_tokens=3,
-            jev_source="guessed",  # type: ignore[arg-type]  # 合法集仅 {estimated, not_enabled}
-            llm_source="actual",
+            llm_source="guessed",  # type: ignore[arg-type]  # 合法集仅 {actual, no_call}
         )
 
 

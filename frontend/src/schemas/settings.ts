@@ -15,7 +15,6 @@ export type AppearanceSettings = z.infer<typeof AppearanceSettingsSchema>
 export const ModelServiceSchema = z.object({
   api_key_masked: z.string(),
   base_url: z.string(),
-  decider: z.enum(['auto', 'jev', 'fallback']),
   max_tokens: z.number().nullish(),
   model_id: z.string(),
   provider: z.string(),
@@ -70,7 +69,6 @@ export const SettingsResponseSchema = z.object({
 export const ModelServiceUpdateSchema = z.object({
   api_key: z.string().nullish(),
   base_url: z.string().nullish(),
-  decider: z.enum(['auto', 'jev', 'fallback']).nullish(),
   max_tokens: z.number().nullish(),
   model_id: z.string().nullish(),
   provider: z.string().nullish(),

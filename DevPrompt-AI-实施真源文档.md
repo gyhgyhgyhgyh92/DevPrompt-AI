@@ -25,9 +25,9 @@
 | 三 | W1 检索层与可行性验证 | 检索四件套 + 决策接口 + 召回率实测 | **候选集召回率 ≥80%（生死线，离线可测）** | ✅ 已完成（2026-10-05）：3A~3J 全部实现；真实语料（5 仓 click/requests/pinia/axios/headlessui，用户全量签收 100 条标注）正式实测召回率 **95/100 = 95% ≥ 80%**（主流程复跑判定，报告 eval/recall/report-2026-10-05.md）；**阶段四开工许可已解锁** |
 | 四 | W2 服务层 | 状态机 + 统一服务入口 + 单套生成 | 服务可完成单套提示词生成，含反问机制 | ✅ 已完成（2026-10-07，8 笔提交 579f410~；135 测试全绿 + mock e2e 六段全路径 PASS 含 --session 恢复；真实 LLM 端到端待 .env 配置后补跑）。**2026-10-10 注记：CLI 形态已随 BREAKING 变更删除，本阶段 service/state 成果不受影响，交互改经阶段 4.5 Web HTTP 层承载** |
 | 4.5 | Web HTTP 层（提前实现，原属阶段六 T6-1） | `interfaces/api` 9 端点：GET /health、POST /optimize、GET /progress/{flow_id} SSE、POST /followup/{flow_id}、GET /result/{flow_id}、POST /feedback、GET+PUT /preference、GET /history、GET /project/scan（preference PUT 与 history 为 501/9004，阶段五接入）。**2026-10-12 注记：阶段六新增 GET+PUT /settings（设置中心 F-604，T6-11），路径 9 → 10（操作 10 → 12）；501 遗留已随 6A 转正** | 9 端点路由薄壳可用且零业务逻辑（MUST-10） | ✅ 已完成（2026-10-10，143 测试全绿）。React UI 仍属阶段六 |
-| 五 | W3 三套差异化与加权推荐 | 三套生成 + 双阈值推荐 + 排序准确率实测 | **排序准确率 ≥80%（W3 门禁，需标注指标来源）** | ✅ 已完成（2026-10-11，7 笔提交 e85caf7~；257 测试全绿；三套生成/加权推荐/L3 偏好/Jev 双路径落地）。**生死线判定：排序准确率 58/100 = 58% ＜ 80%（LLM 排序准确率，报告 eval/recall/report-ranking-2026-10-11.md），触发 MUST-25 决策树；项目所有者 2026-10-11 裁决「方案甲」：LLMFallbackDecider 转正决策层，重排 W3–W4 排期，价值主张改为「LLM 决策 + ripgrep 精确取证」；Jev 路径保留（MUST-12 双路径不变），获批后按 MUST-25 重测** |
+| 五 | W3 三套差异化与加权推荐 | 三套生成 + 双阈值推荐 + 排序准确率实测 | **排序准确率 ≥80%（W3 门禁，需标注指标来源）** | ✅ 已完成（2026-10-11，7 笔提交 e85caf7~；257 测试全绿；三套生成/加权推荐/L3 偏好/决策层 LLM 实现落地）。**生死线判定：排序准确率 58/100 = 58% ＜ 80%（LLM 排序准确率，报告 eval/recall/report-ranking-2026-10-11.md），触发 MUST-25 决策树；项目所有者 2026-10-11 裁决「方案甲」：LLM 决策层转正，重排 W3–W4 排期，价值主张改为「LLM 决策 + ripgrep 精确取证」；2026-10-15 移除 Jev 后决策层统一为单一 LLM 实现（MUST-12 双路径语义废除，见 §13）** |
 | 六 | W4 全栈 Web 与记忆完善 | React 前端 + 契约对齐 + 三层记忆注入（HTTP 接口已提前至阶段 4.5） | Web 全栈可用（HTTP API + React 前端），记忆三层均生效 | ✅ 已完成（2026-10-12，8 笔提交 bd4ec5a~ec5257f；后端 282 + 前端 140 测试全绿；6A~6G 全交付含 /settings 设置中心与 MUST-19 修订）。**W4 出口证据：真实浏览器 e2e（uvicorn + vite preview + DeepSeek）走通 输入→反问→三套（A/B）→推荐（B，gap 0.178，conf 0.85，marked「分差较小」）→反馈→L3 向量 EMA 逐位吻合 + 跳过中性回退精确；三层记忆逐层关闭验证通过；五文档组件清单 diff 归零（T6-10）。已知遗留：①失败请求残留 PROBING 会话 ②架构文档 §4.2 表名漂移（preferences→preference_vectors、followup_records 缺失，归 T7-6 文档清理）③清空采纳历史仅本地范围（服务端接口待契约增补）——**以上均已 2026-10-12 清偿关闭（含供应商分段落契约），见 §13** |
-| 七 | 整体验收与交付 | 测试收口、CI 全绿、文档同步、打包交付 | MUST-29 六项门禁全绿，覆盖率 ≥70% | ⛔ 部分完成（T7-1~T7-7 已交付并验证；F-801 第二段待 Jev，阻塞收口）——T7-1 后端覆盖率 93%（≥70%）、后端测试 350 passed/2 skipped；T7-2 流程恢复 2 例通过；T7-3 成本监控 9 例通过；T7-4 六门禁全绿、前端 218 passed；T7-5 §D 13 项全通过；T7-6 文档清理完成；T7-7 wheel 打包 + 单端口托管实测通过。**未闭环**：F-801 第二段 Jev 重测因 `TYPESAFE_API_KEY` 未配置而阻塞（用户 2026-10-14 裁决「推进 Jev 获批并重测」），阶段七不得宣告收口 |
+| 七 | 整体验收与交付 | 测试收口、CI 全绿、文档同步、打包交付 | MUST-29 六项门禁全绿，覆盖率 ≥70% | ⛔ 部分完成（T7-1~T7-7 已交付并验证；F-801 第二段 LLM 决策层实测未达标，阻塞收口）——T7-1 后端覆盖率 93%（≥70%）、后端测试 350 passed/2 skipped；T7-2 流程恢复 2 例通过；T7-3 成本监控 9 例通过；T7-4 六门禁全绿、前端 218 passed；T7-5 §D 13 项全通过；T7-6 文档清理完成；T7-7 wheel 打包 + 单端口托管实测通过。**未闭环**：F-801 第二段（LLM 决策层实测）实测 58/100 = 58% ＜ 80%，阶段七不得宣告收口（2026-10-15 移除 Jev 后 LLM 为唯一指标来源） |
 
 **依赖关系图**（箭头表示「完成后才可启动」）：
 
@@ -52,7 +52,7 @@
 **关键不可跳序约束**（宪法 MUST-25 / SHOULD-01）：
 
 - 阶段三召回率 <80% → 检索层重做（放宽匹配 / 相似度排序 / 分层召回），**不得进入阶段四**。
-- 阶段五排序准确率 <80% → 必须二选一：**甲**（决策层完全替换为 LLM，重排 W3–W4，价值主张改为「LLM 决策 + ripgrep 精确取证」）或**乙**（暂停开发，重新论证 Jev 适用性）。不得含糊继续。
+- 阶段五排序准确率 <80% → 必须二选一：**甲**（决策层完全替换为 LLM，重排 W3–W4，价值主张改为「LLM 决策 + ripgrep 精确取证」）或**乙**（暂停开发，重新论证决策层方案在本场景的适用性）。不得含糊继续。
 
 ---
 
@@ -83,7 +83,7 @@
 | 前端契约类型 | **OpenAPI 自动生成 TS**（`openapi-typescript`）+ Zod 手写运行时校验 |
 | 目录结构权威 | 项目架构文档 §4.8（后端）/ §5.1（前端），宪法 MUST-07b |
 | 多用户态 | 延后，`ForgeService` 全方法带 `user_id`（恒 `"local"`）预留 |
-| Jev 缺 key | `DecisionPort` 可插拔 + `LLMFallbackDecider` 自动降级 |
+| 决策层实现 | 单一 LLM 实现（原 Jev 双路径已于 2026-10-15 移除，见 §13） |
 
 ---
 
@@ -131,7 +131,7 @@
 | T3-3 | 全文定位：ripgrep 定位精确行号、组件/样式定义、稳定选择器；提取设计 token；记录关联测试文件路径 | F-103 | T3-1 | 给定项目与目标组件，输出正确路径、行号、选择器候选与 token 列表 |
 | T3-4 | 事实取证：ripgrep 逐项验证 **7 项事实**（目标文件存在 / 组件在文件中存在 / 样式 token 已定义 / 含 data-testid / 多状态样式 / 文件类型匹配 / 关联测试存在），每项输出布尔值 + 证据 | F-104 | T3-3 | 7 项全部输出明确真假值与证据，无「未知」 |
 | T3-5 | 配置管理：F-003 全部配置项、环境变量覆盖、阈值热重载、权重和 ≠1.0 启动报错 | F-003 | T2-1（可与 T3-1~4 并行） | 修改阈值无需重启即生效；权重配错给出明确错误 |
-| T3-6 | 决策层接口（LLM 版）：`DecisionPort` 协议 + `LLMFallbackDecider`；三类能力（排序/研判/打分）输出结构统一；OpenAI 兼容协议 + Chat Completions 模式 + 禁 tracing | F-201、F-004 | T3-5 | 无 Jev 密钥环境全流程可跑；结构化输出可被解析 |
+| T3-6 | 决策层接口（LLM 版）：`DecisionPort` 协议 + LLM 决策实现（决策层唯一实现）；三类能力（排序/研判/打分）输出结构统一；OpenAI 兼容协议 + Chat Completions 模式 + 禁 tracing | F-201、F-004 | T3-5 | 全流程可跑（LLM 决策层）；结构化输出可被解析 |
 | T3-7 | **召回率实测（生死线）**：≥5 个真实仓库（覆盖 React/Vue/Python 等技术栈）× 每仓 20 条原句 = **100 条**，人工标注正确目标；执行 T3-1+T3-2 测正确目标是否落在 25 条内；记录每仓符号总数，**符号总数 <25 的仓库单独标注** | F-801 第一段 | T3-2 | 召回率 ≥80%；出具报告（逐条明细 + 失败案例） |
 | T3-8 | W1 文档修复：① ~~事实探针项数统一为 7 项（修架构设计 §5.1）~~ **已消解**（架构设计文档已由用户删除，探针/取证 7 项以功能清单 F-104 为权威）；② 修正功能清单 W2 表编号错位（F-203/F-204/F-205 串位，中等 2）；③ 修复两处断链引用（§17 不存在、§5 方法签名表位置，中等 3） | 审查报告 §四 | 无（可并行） | 修改后文档无数值/编号冲突 |
 
@@ -199,20 +199,20 @@
 | T5-6 | 推荐标记（双阈值 T3）：按 MUST-27 五条**优先级顺序、命中即止**——①最高分 conf<0.6 不标；②任一档 conf<0.4 不标；③d<0.12 不标；④d≥0.5 标；⑤0.12≤d<0.5 标+「分差较小」；每种不标给具体原因文案 | F-404、MUST-27 | T5-5 | 四种情形各构造一例均正确；不标时原因文案准确 |
 | T5-7 | L3 偏好记忆：SQLite（同库 `devprompt.db`）以 `user_id` 分区间；隐式反馈更新（采纳 +1.0 / 编辑采纳 ×(1−编辑距离占比) / 跳过 → `v ← v + (0.5−v)×0.3` 趋向中性）；滑动平均衰减 0.9，裁剪 [0,1]；**补采纳历史表**（修复中等 10） | F-503 | T5-4 | 连续采纳 C 后 A 倾向下降；跳过后各维度向 0.5 回归 |
 | T5-8 | 采纳反馈：记录采纳行为；支持「编辑后采纳」计算编辑距离；写入 L3 | F-603 | T5-7 | 采纳后查询偏好向量确认对应维度更新 |
-| T5-9 | Jev 决策实现：`typesafe-sdk`（可选依赖）；`JEV_MODEL_ID=jev-1.13.0` 禁别名；state 硬限 30000 token 超限截断记 `state.truncated`；429 按指数退避重试；单次调用并行全问题；无 key 或连续失败自动切 LLM 并记 `decider.switched`（补 F-202 三处空规格：密钥=`TYPESAFE_API_KEY`、模型 ID 同上、退避=指数退避） | F-202、MUST-12 | T4-2 | 三能力独立可调；截断正确；429 正确退避；输出结构与 LLM 版完全一致 |
-| T5-10 | **排序准确率实测（W3 门禁）**：在 T3-7 样本基础上测正确目标是否排第一；需 `DecisionPort` 可用；Jev 未获批时用 `LLMFallbackDecider` 测，**指标标注「LLM 排序准确率」，不得与 Jev 混用**，Jev 到位后重测 | F-801 第二段 | T5-3、T5-9 | 准确率 ≥80%；报告含逐条明细、指标来源标注、失败案例 |
+| T5-9 | ~~Jev 决策实现~~（2026-10-15 移除 Jev 后作废）：决策层统一为单一 LLM 实现（三类能力/输出结构统一，见 T3-6）；`MAX_STATE_TOKENS=30000` 超限截断记 `state.truncated`；单次调用并行全问题 | F-202、MUST-12 | T4-2 | 无外部决策服务依赖；三类能力独立可调；截断正确；输出结构统一 |
+| T5-10 | **排序准确率实测（W3 门禁）**：在 T3-7 样本基础上测正确目标是否排第一；需 `DecisionPort` 可用；用 **LLM 决策层**测得，**指标须标注来源**（2026-10-15 移除 Jev 后 LLM 为唯一来源） | F-801 第二段 | T5-3、T5-9（或 LLM 版） | 准确率 ≥80%；报告含逐条明细、指标来源标注、失败案例 |
 | T5-11 | W3 文档修复：① 拆分 F-804 为可执行定义（中等 6：方案内容 diff 对照 + 评分/推荐标记一致性，LLM 非确定性部分不要求零差异）；② F-202 空规格补全（中等 7，随 T5-9 落地同步修文档） | 审查报告 §四 | 无（可并行） | 功能清单 F-804/F-202 可执行、无空括号 |
 
 ### 6.3 依赖关系
 
 - **前置**：阶段四出口（服务层单套生成可用）。
-- **内部链路**：T5-1 → T5-2 → T5-4 → {T5-3 并行} → T5-5 → T5-6；T5-4 → T5-7 → T5-8；T5-9 依赖 T4-2 可提前启动（Jev key 未获批则 mock 测试，SHOULD-11）；T5-10 依赖 T5-3+T5-9（或 LLM 版）；T5-11 随时可做。
+- **内部链路**：T5-1 → T5-2 → T5-4 → {T5-3 并行} → T5-5 → T5-6；T5-4 → T5-7 → T5-8；T5-9 于 2026-10-15 移除 Jev 后作废（原为 Jev 实现，现决策层统一为 LLM，见 T3-6）；T5-10 依赖 T5-3（决策层实测，可 mock 但需注明来源）；T5-11 随时可做。
 - **后续影响**：三套方案结构、评分明细、推荐结果的数据结构是阶段六前端三大组件（`PromptCard`/`ScoreDetail`/`RecommendBadge`）的渲染输入；T5-7 的偏好历史表是阶段六历史页面的数据源。
-- **未达标处置**：T5-10 <80% → 必须二选一（甲：LLM 决策重排 W3–W4 / 乙：暂停重议 Jev），记录决策后才能进阶段六。
+- **未达标处置**：T5-10 <80% → 必须二选一（甲：接受 LLM 决策落地并重排 W3–W4 / 乙：暂停重议价值主张与决策层方案），记录决策后才能进阶段六。
 
 ### 6.4 出口门禁
 
-- 服务层完成**三套输出 + 推荐标记**；Jev 与 LLM 两条路径均可运行（W3 出口条件）。
+- 服务层完成**三套输出 + 推荐标记**；决策层为单一 LLM 实现（W3 出口条件）。
 - **排序准确率 ≥80%**（含明确的指标来源标注）。
 
 ---
@@ -235,7 +235,7 @@
 | T6-6 | 状态管理：两个 Zustand store（`useOptimizeStore`/`usePreferenceStore`）；多字段订阅必用 `useShallow`；store 不 fetch、不导出 action；SSE 消息在 store 层处理；SSE `close()` 写在 effect cleanup | F-706、MUST-16、MUST-15 | T6-3 | 无 `useStore(s => ({...}))` 违规形态；页面刷新可恢复流程状态 |
 | T6-7 | 职责边界检查：前端零阈值常量、零评分计算、零推荐判定；置信度由后端返回 `ConfidenceLevel` 枚举 | F-707、MUST-08 | T6-5 | 架构约束检查脚本（T2-4）通过；grep 无 0.12/0.5/threshold |
 | T6-8 | 记忆注入：L1 → 阶段一检索（已知信息不重复问）；L2 → 阶段三生成（按项目实际规范）；L3 → 阶段三生成 + 阶段四打分；关闭任一层不影响流程正确性 | F-504、F-501 | T4-9、T5-7 | 三项记忆均可在对应环节检出影响；逐层关闭流程仍正确 |
-| T6-9 | 可观测性：structlog 结构化日志；固定事件名（flow.started/completed、decider.switched、recommendation.made/skipped、state.truncated、followup.guardrail、followup.escaped、cache.hit/miss）；生产 INFO 级不落盘原句与完整路径 | F-005、SHOULD-08/09 | T6-1 | 任意一次优化可查完整链路与耗时分解；脱敏验证通过 |
+| T6-9 | 可观测性：structlog 结构化日志；固定事件名（flow.started/completed、recommendation.made/skipped、state.truncated、followup.guardrail、followup.escaped、cache.hit/miss）；生产 INFO 级不落盘原句与完整路径 | F-005、SHOULD-08/09 | T6-1 | 任意一次优化可查完整链路与耗时分解；脱敏验证通过 |
 | T6-10 | W4 前置文档修复：组件清单四文档统一以 §5.1 为准（中等 5，随 T6-5 落地）；偏好历史表补入 §4.2 表清单（中等 10，随 T5-7 落地） | 审查报告 §四 | 无（可并行） | 四文档组件清单一致；§4.2 表清单含采纳历史表 |
 | T6-11 | 设置中心（F-604，2026-10-12 UI 原型定稿）：后端 GET+PUT /settings（模型服务 + 流程参数；API Key 存本地设置文件不入库不进日志，AppConfig 加载链扩展 env > settings，MUST-19 口径澄清见 §13）；前端 `SettingsModal` 四标签页（模型服务/通用外观/长期记忆/流程与安全，§5.1 settings 五组件 `SettingsModal`/`ModelServicePanel`/`AppearancePanel`/`MemoryPanel`/`SecurityPanel`，T6-10 核对），通用外观存前端 localStorage（`devprompt:v1:` 前缀 + Zod 校验）；候选集上限等锁定项只读渲染 | F-604、F-601 | T6-2、T6-3 | 密钥回显恒脱敏且 PUT 后落设置文件而非数据库；`/settings` 契约冒烟通过；前端业务参数零常量；候选上限锁定项不可编辑 |
 
@@ -264,7 +264,7 @@
 |---|---|---|---|---|
 | T7-1 | 核心单元测试收口：加权总分（含手工验算）、双阈值四情形、反问护栏与逃生路径、无具体未知时零提问、偏好更新与裁剪、候选集条数硬约束、事实取证七项、Zod 拒绝畸形响应（SHOULD-10 必测边界全覆盖） | F-803 | 阶段六 | 全部通过；覆盖率 ≥70% |
 | T7-2 | 流程恢复一致性测试：同一 flow_id 经不同端点与时机获取快照（SSE 中断后改用 GET /result、刷新页面重新订阅 /progress、反问提交后再次拉取），比对方案内容 diff、评分、推荐标记一致（按 T5-11 拆分后的可执行定义执行） | F-804 | 阶段六 | 一致项差异为零；不一致项有明确原因说明 |
-| T7-3 | 成本监控验收：单次优化 token 消耗与费用明细，Jev 与 LLM 分别计 | F-805 | 阶段六 | 输出成本明细；state 超限截断而非报错且有日志 |
+| T7-3 | 成本监控验收：单次优化 token 消耗与费用明细（LLM token 明细；2026-10-15 移除 Jev 后删除 `jev_tokens`/`jev_source`） | F-805 | 阶段六 | 输出成本明细；state 超限截断而非报错且有日志 |
 | T7-4 | CI 门禁全绿：Ruff Lint+Format / mypy / pytest / 前端 tsc+ESLint / 架构约束检查 / 契约冒烟测试 | MUST-29 | T7-1、T7-2 | 六项全部通过；无 `--no-verify` 记录 |
 | T7-5 | 环境自检全清单：架构文档 §D 13 项逐一通过（含健康检查 `GET /api/v1/health`） | §D | 阶段六 | 13 项全部通过 |
 | T7-6 | 文档清理提交：轻微 16 条一次性修复（命名不一致、章节号重复、不可执行规则、冗余表述、锚点失效、未登记依赖 Playwright/structlog 入技术栈版本表——**asyncpg 项已随存储定稿 SQLite 消解**、四份 CI 清单统一为 MUST-29 一份权威等） | 审查报告 §五 | 无（可提前择机） | 单独 `docs` 提交；四份 CI 清单只剩 MUST-29 一份权威 |
@@ -278,7 +278,7 @@
 
 ### 8.4 出口门禁（= 项目交付标准）
 
-- F-801 两段指标达标（第一段召回率 ≥80%；**第二段 SHALL 以 Jev 路径实测排序准确率 ≥80%**——LLM 路径实测 58%（2026-10-11）不再作为达标依据，Jev 就绪后重测；详见功能清单 F-801）。
+- F-801 两段指标达标（第一段召回率 ≥80%；**第二段 SHALL 以 LLM 决策层实测排序准确率 ≥80%**——2026-10-15 移除 Jev 后 LLM 为唯一来源；实测 58%＜80%，仍未达标；详见功能清单 F-801）。
 - F-803 全过且覆盖率 ≥70%；F-804 一致性差异为零。
 - MUST-29 六项 CI 门禁全绿；§D 自检 13 项通过。
 - 文档与代码同步（若规范或接口有变更）。
@@ -315,7 +315,7 @@
 | 中等 4 | 目录结构两套 | ✅ 已裁定：MUST-07b，§4.8/§5.1 唯一权威 | — |
 | 中等 5 | 组件清单四处不一致 | 以 §5.1 为权威，统一 `OptimizePage` | T6-5、T6-10 |
 | 中等 6 | F-804 不可执行 | 拆分为可执行定义 | T5-11① |
-| 中等 7 | F-202 三处空规格 | 补全（TYPESAFE_API_KEY / jev-1.13.0 / 指数退避） | T5-9、T5-11② |
+| 中等 7 | F-202 三处空规格 | 补全（决策层三处空规格；2026-10-15 移除 Jev 后统一为 LLM 决策层） | T5-9、T5-11② |
 | 中等 8/9 | 错误码类别表 5 处不符、§3.1 示例误用 4001 | 归入 T7-6 文档清理（以 §3.3 清单为权威） | T7-6 |
 | 中等 10 | 偏好滑动平均无历史表 | 补采纳历史表 | T5-7、T6-10 |
 | 中等 11/12 | Web 一期二期冲突、store 职责混用 | 归入 T7-6（一期即含三页面，以 F-702 为准；store 职责以 §6.3+技术栈为准） | T7-6 |
@@ -342,7 +342,7 @@
 | MUST-08 | 前端零阈值常量、零业务判定 |
 | MUST-09 | ripgrep 先压 ≤25 条候选（仅符号名+路径）→ 决策层再排序，顺序不可颠倒 |
 | MUST-11 | 同 session 状态变更串行化，非法转移返回 6001 |
-| MUST-12 | 决策层必须可降级；`JEV_MODEL_ID` 钉死 `jev-1.13.0` |
+| MUST-12 | 决策层为单一 LLM 实现（原 Jev 双路径已按所有者批准废除，见 §13） |
 | MUST-13 | 外部命令一律 `asyncio.create_subprocess_exec` + 超时；禁 `shell=True` |
 | MUST-14 | 缓存键含全部影响因子（决策结果键必含阈值配置 hash） |
 | MUST-17 | Python 全签名类型注解；TS 禁 `any`；禁裸 `except:` |
@@ -390,3 +390,5 @@
 | — | 2026-10-13 | **模型选择改造（多模型注册表，/plan 批准，用户 5 项裁定）**：启动卡片模型名只读 → **模型下拉**（默认展示当前生效模型完整名称；选项=全部已配置模型；切换经 `PUT /settings` 持久化整条生效）。①后端新注册表（`settings.json` 的 `models` + `active_model_id`；`read/write_model_registry` 与 `write_model_settings` 共用原子替换 + 0600，MUST-19 边界不变）；②契约仅扩展现有 `/settings`（`ModelEntryView`/`ModelEntryUpdate` + `SettingsResponse.models` + `SettingsUpdate.models/active_model_id`，**无新增路径**，13 路径/16 操作不变）；③service：models 整表替换（id 缺省生成 `m-`+uuid；api_key 空=沿用同 id 旧值；label 空=派生「provider · model_id」）、`active_model_id` 切换后**整条镜像**入 `model_service` → config.py/llm.py 零改动；④前端 `ModelServicePanel` 重写为**模型列表管理**（条目卡 + 设为当前/删除 + 全局调用参数 + 测试连接）、`ConsoleInput` 模型名 → select（修复 selector 返回新数组导致的无限重渲染，MUST-16）。后端 **324 passed**（+7）+ 前端 **208 passed**（+8）；实测：设置中心新增 2 条模型并保存（密钥脱敏 `sk-••••0001/0002`、后端生成 id）→ 设为当前后 `model_service.model_id=deepseek-flash` 镜像生效；启动卡片下拉默认「DeepSeek Flash」、选项 2 条；切换「GPT Test」后 `/health` 的 `llm_config` 变为 `https://api.example.com/v1 / gpt-test`（整条生效铁证）；console 零错误；1920/768/390 三档无横向滚动；视觉取证确认下拉 + 条目卡列表形态 | 用户（5 项 AskUserQuestion 裁定）+ 执行 Agent |
 | — | 2026-10-13 | **侧栏一键收纳 + 页内文件夹搜索（/plan 批准，用户 5 项裁定）**：①侧边栏头部「项目 ⌄」+ 排序/筛选图标 → 「项目」+ **一键收纳按钮**（收起整个侧边栏、主区撑满、标题栏 ☰ 恢复；`global.css` 折叠隐藏与 ☰ 显示均**限定 ≥768**，窄屏仍走既有抽屉语义、不被误隐藏），排序/筛选两图标及其 `sortMode`/`isGrouped` 状态与逻辑**整体移除**（全库 grep 零残留）；②文件夹选择器地址栏同行右侧新增**搜索框**（250ms 防抖实时响应；搜索当前目录**子树**递归、结果仅目录并附相对路径提示；范围控制——驱动器列表态禁用、导航即退出搜索、Esc 清空不关闭模态）；③后端 `GET /project/browse` 加可选 `q`（`_iter_search_matches` 栈式遍历，深度 6 / 节点 20000 / 命中 500 三重上限→置 truncated）+ 条目 `rel_parent`（搜索响应 `path` 固定基准目录防范围漂移），契约 **13 路径/16 操作不变**。后端 **333 passed**（+9，2 skipped）+ 前端 **218 passed**（+10）；实测：收纳收起/恢复（侧栏 `display:none`、主区 1440→1710 撑满、☰ 恢复）且**排序/筛选图标 DOM 零存在**；`D:\` `q=works` → 1 结果 + 截断提示、`D:\Works` `q=dev` 递归命中 `devprompt_ai`（`rel_parent=DevPrompt AI\src`）；清除恢复 3 文件夹；导航退出搜索并清空；驱动器态输入禁用；网络实测含 `&q=` 与无 q 恢复请求；console 零错误；1920/768/501 三档无横向滚动 | 用户（5 项 AskUserQuestion 裁定）+ 执行 Agent |
 | — | 2026-10-14 | **阶段七 T7-1~T7-7 交付（除 F-801 第二段阻塞）**：**T7-1** 新增 dev 依赖 `pytest-cov>=7.1,<8`（7.1.0，来源 PyPI JSON API）+ `tests/test_boundaries_phase7.py`（6 例，补 SHOULD-10 第⑧项）；**后端覆盖率 93%**（≥70% 门禁）、后端测试 **350 passed / 2 skipped**。**T7-2** 新增 `tests/test_flow_recovery.py`（2 例，mock 决策层 + 固定种子）——①三套方案正文 diff 为空 ②ranking 七字段逐字段相等。**T7-3** 新增 `src/devprompt_ai/common/cost.py` + `tests/test_cost_monitoring.py`（9 例）；`FlowSnapshotResponse` 增 `cost`（`jev_tokens`/`llm_tokens`/`total_tokens`/`jev_source`/`llm_source`，**additive，契约仍 13 路径 / 16 操作**）。**T7-4** 六门禁全绿（Ruff Lint+Format / mypy / pytest 350 / 前端 tsc+ESLint+prettier+vitest **218 passed**+build / 架构约束 / 契约冒烟 40 schema·13 端点、两次生成 SHA256 一致）；提交历史无 `--no-verify`。**T7-5** 架构文档 §D **13 项全通过**（Python 3.12.13 / rg 15.0.0 / ctags 6.1.0 / health.llm_config ok / `is_healthy=true` 5 项 checks 全 ok / Jev key 空 → LLM 降级符合期望）。**T7-6** 文档清理完成——§3.3 错误码类别表 5 处对齐、§3.1 示例 4001→2006、§6 store 职责统一、§2.4 不可执行 rebase 规则改可执行、§4.6 APScheduler 去重、目录锚点修正、§2.4/§5.4 CI 清单统一为「以 MUST-29 为准」、Playwright/structlog/asyncpg 标注**未采用**、命名对齐（`decision/`、`OptimizePage`）、**`pyproject` 移除 `aiomysql`/`PyMySQL`**（`uv.lock` 同步、代码零引用）、登记新环境变量 `DEVPROMPT_FRONTEND_DIST`。**T7-7** `uv build` 产出 `dist/devprompt_ai-0.1.0-py3-none-any.whl`；`app.py` 增 `_SpaStaticFiles`（SPA 回退，`/api` 不遮蔽）+ `_frontend_dist()` + 存在时 `mount("/")`；单端口实测 `/` 200、`/api/v1/health` `is_healthy=True`、SPA 深链 200、`/api/v1/nope` 404；L1/L2/L3 兼容 22 passed；回滚策略见架构 §1.5。**未闭环**：F-801 第二段 Jev 重测因 `TYPESAFE_API_KEY` 未配置而阻塞（用户 2026-10-14 裁决「推进 Jev 获批并重测（阻塞阶段七）」），阶段七不得宣告收口（⬜ 未开始 → ⛔ 部分完成/阻塞） | 项目所有者（裁决）+ 执行 Agent |
+| — | 2026-10-15 | **F-801 第二段 Jev 路径实测受阻（接口区域封锁 451）**：用户提供 `TYPESAFE_API_KEY`（落盘 gitignored `.env`，不入库）；`uv sync --extra jev --extra dev` 装入 `typesafe-sdk 0.7.2`（锁文件锁定；MUST-24b 核实 PyPI latest 0.7.4、0.7.2 存在）。冒烟实测 Jev 接口返回 **HTTP 451「Typesafe is not available in your region.」**（`api.typesafe.ai` 本区域不可用）→ Jev 路径在本环境**无法执行**。按 MUST-25「输入校验不通过即停止」处置：**未跑全量 100 条**（避免全 0 无效数据污染门禁判定，前次区域不可达即属此类）。加固 `scripts/measure_ranking.py`：`_is_fatal_api_error` 覆盖 `TypeSafeAPIError` 与 `401/402/403/451`/区域封锁标记 → 快速中止（exit 2）且**不写报告**；`metric_source` 按实际决策层标注（Jev / LLM 不混用）、`gate_applied` 对非 dry 生效。阶段七收口继续阻塞，待用户裁决后续路径（区域可达接入 / 方案甲 / 方案乙） | 执行 Agent（用户提供 key） |
+| — | 2026-10-15 | **BREAKING · 彻底移除 Jev（所有者批准选项 A）**：删除 decision/jev.py 与 typesafe-sdk jev extra、配置键 typesafe_api_key/typesafe_base_url/jev_model_id/jev_timeout/decider、契约 SettingsResponse/SettingsUpdate 的 decider 与 CostDetailPayload 的 jev_tokens/jev_source（前端 Zod/generated 同步，路径计数仍 13/16）；create_decider 简化为恒 LLM 实现；MUST-12「可降级双路径」语义废除。F-801 第二段按 LLM 来源判定（实测 58% <80%，仍未达标）；阶段七保持 ⛔ | 项目所有者（批准 A）+ 执行 Agent |

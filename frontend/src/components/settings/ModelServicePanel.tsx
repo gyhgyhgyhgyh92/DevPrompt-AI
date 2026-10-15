@@ -5,9 +5,6 @@ import { useSettingsStore } from '../../stores/useSettingsStore'
 import { errorMessage } from './errorMessage'
 import './settings.css'
 
-/** 决策层取值（契约 ModelServiceSettings.decider）。 */
-type Decider = SettingsResponse['model_service']['decider']
-
 /**
  * 供应商选项（F-604）：value 即契约 ModelEntryUpdate.provider 取值，
  * baseUrl 仅作切换时的预填；「自定义」不预填，保留用户已有 Base URL。
@@ -35,7 +32,6 @@ interface ModelEntryDraft {
 
 /** 全局调用参数草稿（不进注册表，仍写 model_service 段）。 */
 interface GlobalForm {
-  decider: Decider
   timeout: string
   temperature: string
   maxTokens: string
@@ -60,7 +56,6 @@ function draftsFromSettings(settings: SettingsResponse): ModelEntryDraft[] {
 function globalFromSettings(settings: SettingsResponse): GlobalForm {
   const s = settings.model_service
   return {
-    decider: s.decider,
     timeout: String(s.timeout),
     temperature: s.temperature == null ? '' : String(s.temperature),
     maxTokens: s.max_tokens == null ? '' : String(s.max_tokens),
@@ -78,7 +73,7 @@ function readOptionalNumber(raw: string): { ok: true; value: number | undefined 
 /**
  * 模型服务面板（F-604 模型服务标签页，2026-10-13 改为模型列表管理）：
  * 顶部维护多模型注册表（新增/编辑/删除/设为当前，整表经 PUT /settings 落库）；
- * 底部保留全局调用参数（决策层/超时/温度/max_tokens）与「测试连接」。
+ * 底部保留全局调用参数（超时/温度/max_tokens）与「测试连接」。
  */
 export function ModelServicePanel() {
   const settings = useSettingsStore((state) => state.settings)
@@ -151,7 +146,6 @@ export function ModelServicePanel() {
       ...(d.apiKey === '' ? {} : { api_key: d.apiKey }),
     }))
     const model_service: NonNullable<SettingsUpdate['model_service']> = {
-      decider: globalForm.decider,
       timeout: timeout.value,
       temperature: temperature.value,
       max_tokens: maxTokens.value,
@@ -323,23 +317,6 @@ export function ModelServicePanel() {
       </div>
 
       <h3 className="settings-panel__title">全局调用参数</h3>
-      <div className="settings-field">
-        <label className="settings-label" htmlFor="settings-decider">
-          决策层
-        </label>
-        <select
-          id="settings-decider"
-          className="settings-select"
-          value={globalForm.decider}
-          onChange={(event) =>
-            setGlobalForm({ ...globalForm, decider: event.currentTarget.value as Decider })
-          }
-        >
-          <option value="auto">auto（自动切换）</option>
-          <option value="jev">jev（Jev 决策）</option>
-          <option value="fallback">fallback（LLM 决策）</option>
-        </select>
-      </div>
       <div className="settings-grid">
         <div className="settings-field">
           <label className="settings-label" htmlFor="settings-timeout">

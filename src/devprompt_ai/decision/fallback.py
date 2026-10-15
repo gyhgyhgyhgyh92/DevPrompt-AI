@@ -1,13 +1,14 @@
-"""LLMFallbackDecider：DecisionPort 的 LLM 实现（F-201；无 Jev 密钥时的默认实现，MUST-12）。
+"""LLMFallbackDecider：DecisionPort 的唯一 LLM 实现（F-201；MUST-12）。
 
-create_decider 工厂提供双路径（T5-9）：有 TYPESAFE_API_KEY → JevDecider（外层套
-FailoverDecider 失败切换），无 key 或 decider=fallback → 本模块 LLM 版。
+2026-10-15 起决策层为单一 LLM 实现（原 MUST-12 双路径已按所有者批准废除）。
+create_decider 保留函数名与签名（调用方零改动），恒返回 LLMFallbackDecider。
 """
 
 from __future__ import annotations
 
 import logging
 
+from devprompt_ai.common.text import estimate_tokens
 from devprompt_ai.config import AppConfig
 from devprompt_ai.decision.prompts import (
     FACTS_SYSTEM,
@@ -26,16 +27,39 @@ from devprompt_ai.domain.decision.port import (
 from devprompt_ai.domain.models import Candidate, FactResult
 from devprompt_ai.harness.guardrails import validate_ranking
 from devprompt_ai.harness.llm import chat_structured
-from devprompt_ai.observability.logging import emit, emit_error
+from devprompt_ai.observability.logging import emit
 
 logger = logging.getLogger("devprompt.decision")
 
-_MAX_CONSECUTIVE_FAILURES = 3
-"""Jev 主路径连续失败次数阈值（MUST-12：连续失败自动切 LLM 版）。"""
+
+def _fit_state(text: str, limit: int) -> str:
+    """state 提交前预校验长度（MUST-09）：超限保留头部截断并记 state.truncated。
+
+    保留头部理由：用户需求与上下文在最前，截尾对决策语义损失最小（与移除前 jev.py
+    同一取舍）。未超限原样返回，不改动 state。截断到粗估 token ≤ limit 的最长前缀。
+    """
+    estimated = estimate_tokens(text)
+    if estimated <= limit:
+        return text
+    emit(
+        "state.truncated",
+        reason="state-over-limit",
+        estimated_tokens=estimated,
+        limit=limit,
+    )
+    # estimate_tokens 随前缀单调不减，二分定位仍 ≤ limit 的最长前缀
+    lo, hi = 0, len(text)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if estimate_tokens(text[:mid]) <= limit:
+            lo = mid
+        else:
+            hi = mid - 1
+    return text[:lo]
 
 
 class LLMFallbackDecider:
-    """三类能力同构：单次调用 + 结构化输出；输出结构与 Jev 版完全一致（MUST-12）。"""
+    """三类能力同构：单次调用 + 结构化输出。"""
 
     def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
@@ -45,11 +69,15 @@ class LLMFallbackDecider:
     ) -> RankComponentsOutput:
         listing = "\n".join(f"{i}. {c.name}  ({c.path})" for i, c in enumerate(candidates))
         # timeout 缺省即 cfg.llm_timeout（F-604 默认 60s；25 候选大 prompt 10s 必超时——实测）
+        user = _fit_state(
+            RANK_USER.format(sentence=sentence, candidates=listing),
+            self._cfg.max_state_tokens,
+        )
         out = await chat_structured(
             self._cfg,
             RankComponentsOutput,
             RANK_SYSTEM,
-            RANK_USER.format(sentence=sentence, candidates=listing),
+            user,
         )
         validate_ranking(out, len(candidates))
         return out
@@ -58,11 +86,15 @@ class LLMFallbackDecider:
         listing = "\n".join(
             f"- {f.key}: {'真' if f.passed else '假'}（证据：{f.evidence}）" for f in facts
         )
+        user = _fit_state(
+            FACTS_USER.format(sentence=sentence, facts=listing),
+            self._cfg.max_state_tokens,
+        )
         return await chat_structured(
             self._cfg,
             FactProbeOutput,
             FACTS_SYSTEM,
-            FACTS_USER.format(sentence=sentence, facts=listing),
+            user,
             # 真实冒烟（6G，2026-10-12）：DeepSeek 探针峰值 >10s 致间歇 500，弃用短超时
             # 改随 cfg.llm_timeout（可配置）；成本失控由 MUST-26 成本护栏兜底
         )
@@ -71,100 +103,18 @@ class LLMFallbackDecider:
         self, context: str, variants: list[tuple[str, str]]
     ) -> ScorePromptsOutput:
         listing = "\n\n".join(f"【方案 {key}】\n{body}" for key, body in variants)
+        user = _fit_state(
+            SCORE_USER.format(context=context, variants=listing),
+            self._cfg.max_state_tokens,
+        )
         return await chat_structured(
             self._cfg,
             ScorePromptsOutput,
             SCORE_SYSTEM,
-            SCORE_USER.format(context=context, variants=listing),
+            user,
         )
 
 
-class FailoverDecider:
-    """MUST-12 可降级：Jev 主路径连续 3 次失败 → 永久切 LLM 版并记 decider.switched（带原因）。
-
-    失败计数与切换包在 primary 外层（不侵入两种实现）；切换后不回切，避免在
-    Jev 抖动场景下反复震荡。单流程内 decider 调用串行（MUST-11），计数无并发竞争。
-    """
-
-    def __init__(
-        self, primary: DecisionPort, cfg: AppConfig, max_failures: int = _MAX_CONSECUTIVE_FAILURES
-    ) -> None:
-        self._primary = primary
-        self._cfg = cfg
-        self._max_failures = max_failures
-        self._consecutive_failures = 0
-        self._delegate: LLMFallbackDecider | None = None
-
-    async def rank_components(
-        self, sentence: str, candidates: list[Candidate]
-    ) -> RankComponentsOutput:
-        if self._delegate is not None:
-            return await self._delegate.rank_components(sentence, candidates)
-        try:
-            out = await self._primary.rank_components(sentence, candidates)
-        except Exception:
-            self._register_failure()
-            raise
-        self._reset_failures()
-        return out
-
-    async def probe_facts(self, sentence: str, facts: list[FactResult]) -> FactProbeOutput:
-        if self._delegate is not None:
-            return await self._delegate.probe_facts(sentence, facts)
-        try:
-            out = await self._primary.probe_facts(sentence, facts)
-        except Exception:
-            self._register_failure()
-            raise
-        self._reset_failures()
-        return out
-
-    async def score_prompts(
-        self, context: str, variants: list[tuple[str, str]]
-    ) -> ScorePromptsOutput:
-        if self._delegate is not None:
-            return await self._delegate.score_prompts(context, variants)
-        try:
-            out = await self._primary.score_prompts(context, variants)
-        except Exception:
-            self._register_failure()
-            raise
-        self._reset_failures()
-        return out
-
-    def _register_failure(self) -> None:
-        self._consecutive_failures += 1
-        if self._consecutive_failures >= self._max_failures:
-            self._delegate = LLMFallbackDecider(self._cfg)
-            emit_error(
-                "decider.switched",
-                reason="jev-consecutive-failures",
-                consecutive_failures=self._consecutive_failures,
-            )
-
-    def _reset_failures(self) -> None:
-        self._consecutive_failures = 0
-
-
-def is_jev_enabled(cfg: AppConfig) -> bool:
-    """Jev 主路径是否启用（create_decider 的同一判定，F-805 成本来源标注复用）。
-
-    显式 decider=jev 但无 key 时实为降级，故要求 key 存在且未显式禁用。
-    """
-    return bool(cfg.typesafe_api_key) and cfg.decider != "fallback"
-
-
 def create_decider(cfg: AppConfig) -> DecisionPort:
-    """决策层工厂（MUST-12 双路径）：有 TYPESAFE_API_KEY 且 decider≠fallback → Jev
-    （外层套 FailoverDecider，连续 3 次失败自动切 LLM 版并记 decider.switched）；
-    否则 LLM 版。显式 decider=jev 而无 key 时降级并记切换原因。
-
-    JevDecider 延迟导入：无 key 环境（未装 jev extra）不触发 typesafe_sdk 依赖。
-    """
-    if is_jev_enabled(cfg):
-        from devprompt_ai.decision.jev import JevDecider
-
-        return FailoverDecider(JevDecider(cfg), cfg)
-    if cfg.decider == "jev":
-        emit("decider.switched", reason="jev-no-api-key")
+    """决策层工厂：恒返回 LLMFallbackDecider（原 MUST-12 双路径已按所有者批准废除）。"""
     return LLMFallbackDecider(cfg)

@@ -1,6 +1,6 @@
 # DevPrompt AI · Agent 宪法
 
-> 版本 v1.2 · 2026-10-10（BREAKING：废除 CLI 形态，全面转向 Web-only 架构，批准人=项目所有者）
+> 版本 v1.3 · 2026-10-15（BREAKING：移除 Jev 双路径，决策层统一为单一 LLM 实现，批准人=项目所有者）
 > **本文件是 AI 在本项目执行任何任务时必须加载并遵守的最高规则。**
 > 规则冲突时，本文件 > 其他文档 > 一般工程惯例。
 > 详细说明见 `DevPrompt-AI-技术栈文档.md`、`DevPrompt-AI-功能清单.md`、`DevPrompt-AI-项目架构文档.md`。
@@ -124,7 +124,7 @@ harness/ + memory/ + decision/（基础设施层）
 | Protocol 定义位置 | 对应实现位置 |
 |---|---|
 | `domain/retrieval/ports.py` | `harness/process.py`（`CommandRunner`、`FileReader`） |
-| `domain/decision/port.py` | `decision/jev.py`、`decision/fallback.py` |
+| `domain/decision/port.py` | `decision/fallback.py` |
 | `domain/generate/ports.py` | `harness/llm.py` |
 | `domain/ranking/ports.py` | `memory/preference_store.py` |
 
@@ -133,7 +133,7 @@ harness/ + memory/ + decision/（基础设施层）
 | 禁止 | 说明 |
 |---|---|
 | ❌ `domain/` import `interfaces/` | 领域层不得依赖表现层 |
-| ❌ `domain/` import `harness/` / `memory/` / `decision/` 的**实现模块** | 只能用 Protocol，禁 import `harness/process.py`、`decision/jev.py` 等 |
+| ❌ `domain/` import `harness/` / `memory/` / `decision/` 的**实现模块** | 只能用 Protocol，禁 import `harness/process.py`、`decision/fallback.py` 等 |
 | ❌ `service.py` import `interfaces/` | 业务层不得反向依赖表现层 |
 | ❌ `domain/` 含任何 I/O | 文件、子进程、HTTP、DB 全部经 Protocol 注入 |
 | ❌ SQL 出现在 `memory/` 之外 | 仅 `memory/store.py` 可写 SQL |
@@ -223,16 +223,17 @@ ripgrep 先压到 ≤25 条候选（仅符号名 + 路径，不含代码正文�
 
 ## 三、代码规范
 
-### MUST-12 · 决策层必须可降级
+### MUST-12 · 决策层为单一 LLM 实现
 
-`DecisionPort` 的任何调用，都必须有 LLM 降级路径。
+`DecisionPort` 只有**一个 LLM 实现**，不设「可降级双路径」。
+
+> **2026-10-15 BREAKING（项目所有者批准，选项 A）**：原 Jev 双路径（`JevDecider` + `LLMFallbackDecider` 自动降级）已废除，决策层统一为单一 LLM 实现。`decision/jev.py` 与 `typesafe-sdk` 的 `jev` extra 删除；配置键 `typesafe_api_key`、`typesafe_base_url`、`jev_model_id`、`jev_timeout`、`decider` 移除（详见文末 BREAKING 记录 v1.3）。
 
 | 规则 | 说明 |
 |---|---|
-| Jev 无 key | 自动切 `LLMFallbackDecider`，记 `decider.switched` 日志 |
-| Jev 连续失败 | 同上，记失败原因 |
-| 两端输出结构 | 必须完全一致，调用方无感知 |
-| `JEV_MODEL_ID` | 固定 `jev-1.13.0`，**禁用别名**（别名随上游漂移会让置信度阈值失效） |
+| 实现唯一 | 决策层仅 LLM 实现，无 Jev 路径、无降级切换；三类能力（排序/研判/打分）输出结构统一，调用方无感知 |
+| 无外部决策服务 | 不再依赖 `typesafe-sdk`，不设 `JEV_MODEL_ID` 等模型 ID/别名约束 |
+| 单一来源 | 决策层原始响应不进缓存；置信度解释仍在 `domain/decision/`（MUST-08） |
 
 ### MUST-13 · 异步路径禁止阻塞调用
 
@@ -403,14 +404,14 @@ ripgrep 先压到 ≤25 条候选（仅符号名 + 路径，不含代码正文�
 |---|---|---|
 | 排序准确率（正确目标排第一） | ≥ 80% | 需 `DecisionPort` 可用 |
 
-**Jev 未获批时的执行方式**：用 `LLMFallbackDecider` 测排序准确率，测得的指标标注为「LLM 排序准确率」，**不得与「Jev 排序准确率」混用**。Jev 到位后需重测。
+**指标来源**：以 **LLM 决策层实测**排序准确率，报告须标注指标来源（2026-10-15 移除 Jev 后，LLM 为唯一来源）。**截至 2026-10-15 实测 58% ＜ 80%，仍未达标。**
 
 **未达标时的决策树**：
 
 ```
 排序准确率 < 80%
 ├─ 方案甲：决策层完全替换为 LLM，重排 W3–W4 排期，价值主张改为「LLM 决策 + ripgrep 精确取证」
-└─ 方案乙：暂停开发，重新论证 Jev 在本场景的适用性（可能结论：Jev 不适合中文代码语义判断）
+└─ 方案乙：暂停开发，重新论证决策层方案在本场景的适用性
 ```
 
 **必须明确选择甲或乙，不得含糊继续。**
@@ -458,8 +459,8 @@ d = 最高分 − 次高分
 
 | 顺序 | 条件 | 行为 |
 |---|---|---|
-| 1 | 最高分 `conf < 0.6` | **不标**，提示「Jev 置信度不足，建议人工选择」 |
-| 2 | 三档中**任一档** `conf < 0.4` | **不标**，提示「Jev 置信度不足，建议人工选择」 |
+| 1 | 最高分 `conf < 0.6` | **不标**，提示「决策置信度不足，建议人工选择」 |
+| 2 | 三档中**任一档** `conf < 0.4` | **不标**，提示「决策置信度不足，建议人工选择」 |
 | 3 | `d < 0.12` | **不标**，提示「三套适配度接近，建议人工选择」 |
 | 4 | `d ≥ 0.5` | 标【推荐】 |
 | 5 | `0.12 ≤ d < 0.5` | 标【推荐】+ 附「分差较小」 |
@@ -558,7 +559,6 @@ d = 最高分 − 次高分
 | 事件 | 触发 |
 |---|---|
 | `flow.started` / `flow.completed` | 流程起止 |
-| `decider.switched` | 决策层切换（**必须**带原因） |
 | `recommendation.made` / `skipped` | 推荐判定（**必须**带 gap 与 confidence） |
 | `state.truncated` | state 被截断 |
 | `followup.guardrail` | 反问软护栏触发（轮数/成本），等待用户裁决 |
@@ -576,7 +576,7 @@ d = 最高分 − 次高分
 
 ### SHOULD-11 · 决策层可 mock
 
-无 Jev key 时应能完整测试。**W1 第一段召回率实测不依赖任何外部 API**；第二段排序准确率必须调用决策层（无论 Jev 还是 LLM），可 mock 但需注明指标来源。
+决策层（LLM 单一实现）可 mock，无外部 LLM 时应能完整测试。**W1 第一段召回率实测不依赖任何外部 API**；第二段排序准确率必须调用决策层，可 mock 但需注明指标来源。
 
 ---
 
@@ -635,5 +635,6 @@ d = 最高分 − 次高分
 
 | 版本 | 日期 | 内容 | 批准人 |
 |---|---|---|---|
+| v1.3 | 2026-10-15 | BREAKING：移除 Jev 双路径（`decision/jev.py`、`typesafe-sdk` jev extra、配置键 typesafe_api_key/typesafe_base_url/jev_model_id/jev_timeout/decider、契约 Settings 的 decider 与 CostDetailPayload.jev_*）；决策层统一为单一 LLM 实现，废除 MUST-12「可降级双路径」语义 | 项目所有者 |
 | v1.2 | 2026-10-10 | 废除 CLI 双形态交付，全面转向 Web-only 架构；Web HTTP 层提前至阶段 4.5 实现（`interfaces/api/` 共 9 端点：health、optimize、progress/{flow_id} SSE、followup/{flow_id}、result/{flow_id}、feedback、preference、project/scan、history）；前端 React UI 仍属阶段六 | 项目所有者 |
 | v1.1 | 2026-10-06 | MUST-26 反问机制重构为无轮次上限的自适应澄清（废除轮次上限语义） | 项目所有者 |

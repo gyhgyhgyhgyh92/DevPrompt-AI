@@ -37,7 +37,6 @@ const settingsFixture: SettingsResponse = {
   model_service: {
     api_key_masked: 'sk-••••3f7a',
     base_url: 'https://api.deepseek.com',
-    decider: 'auto',
     model_id: 'deepseek-flash',
     provider: 'DeepSeek',
     temperature: null,

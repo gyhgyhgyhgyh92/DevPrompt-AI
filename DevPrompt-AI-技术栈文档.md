@@ -212,7 +212,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 
 | 决定性因素 | 说明 |
 |---|---|
-| 生态锁定 | `openai-agents`、`typesafe-sdk`、`pydantic` 均为 Python 优先或 Python 独占 |
+| 生态锁定 | `openai-agents`、`pydantic` 均为 Python 优先或 Python 独占 |
 | Web 框架 | FastAPI + Pydantic 是 Python 生态最成熟的异步 HTTP 组合 |
 | 检索实现 | `subprocess` 调 ripgrep / ctags，Python 表达最直接 |
 | 项目现状 | 你已有的工程经验（FastAPI / Vue / TS）可直接迁移 |
@@ -231,7 +231,6 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 |---|---|
 | Web 框架 | `async def` 路由 |
 | LLM 调用 | 异步 HTTP 客户端 |
-| Jev 调用 | 异步 HTTP 客户端 |
 | ripgrep 执行 | `asyncio.create_subprocess_exec` |
 | 阻塞操作 | 放入线程池（`run_in_threadpool`） |
 
@@ -242,8 +241,6 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 **优先 `uv`**（Rust 实现，解析与安装速度显著优于 pip），回退 `pip`。
 
 依赖必须锁版本。FastAPI 仍是 0.x 版本，小版本会重命名内部 helper，锁定是必要的。
-
-**`typesafe-sdk` 声明为 optional dependency**：Jev 处于 early access 候补名单，不应阻塞主流程安装。
 
 ---
 
@@ -275,8 +272,8 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 |---|---|
 | Flask | 同步模型，与 async LLM 调用链冲突；类型支持弱于 FastAPI |
 | Django | 太重（ORM、Admin、模板系统全带），本项目只需 HTTP 层 + 两张表 |
-| NestJS | 需 Node.js 生态，与 `openai-agents` / `typesafe-sdk` 不兼容 |
-| Gin / Echo | 同上，且本项目后端与决策层 SDK（`openai-agents` / `typesafe-sdk`）要求同一语言 |
+| NestJS | 需 Node.js 生态，与 `openai-agents` 不兼容 |
+| Gin / Echo | 同上，且本项目后端与决策层 SDK（`openai-agents`）要求同一语言 |
 | Spring Boot | Java 生态，与决策层依赖不兼容 |
 
 ## 4.4 数据层
@@ -315,7 +312,6 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | 项 | 选型 | 版本 | 说明 |
 |---|---|---|---|
 | Harness | `openai-agents` | `>=0.23.1,<1.0`（PyPI 实际最新 0.23.1，**尚未发布 1.0**，经 MUST-24b 核实） | Runner / Session / Guardrail / Tracing |
-| 决策 | `typesafe-sdk` | 最新 | 可选依赖，无密钥时不安装 |
 
 **`openai-agents` 关键约束**（写代码时必须遵守）：
 
@@ -333,7 +329,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | 符号抽取 | universal-ctags | 生成符号表，支持增量更新 |
 | 分词 | Python 内置 + 轻量库 | 中文按字符二元组，英文按驼峰/下划线拆分 |
 
-**不用向量检索**：本项目检索目标是「精确的代码位置」，向量相似度对符号名匹配无优势，且引入索引维护成本。Jev 的排序能力已覆盖语义相关性的判定需求。
+**不用向量检索**：本项目检索目标是「精确的代码位置」，向量相似度对符号名匹配无优势，且引入索引维护成本。决策层（LLM 实现）的排序能力已覆盖语义相关性的判定需求。
 
 ## 4.7 Web 框架端点清单
 
@@ -401,9 +397,9 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | HTTP 测试 | httpx | 配合 FastAPI `TestClient` |
 | 前端测试 | Vitest | 与 Vite 同源，配置零成本 |
 | E2E 测试 | Playwright（**未采用**） | 流程恢复一致性测试（功能清单 F-804）；本项目从未引入 |
-| Mock | 决策层 mock | 无 Jev key 时可完整测试 |
+| Mock | 决策层 mock | 无外部决策服务时可完整测试 |
 
-**Mock 策略**：Jev 与 LLM 两个决策实现都可 mock。W1 的准确率实测（功能清单 F-801）不依赖任何外部 API。
+**Mock 策略**：决策层（LLM 单一实现）可 mock。W1 的准确率实测（功能清单 F-801）不依赖任何外部 API。
 
 **未采用项澄清（MUST-24b 口径，不登记版本）**：Playwright（E2E，从未引入）、structlog（结构化日志，已由标准库 `logging` 替代，见架构文档 §4.1）、asyncpg（PostgreSQL 驱动，存储定稿 SQLite 后从未需要）——三者**未采用**。
 
@@ -487,7 +483,6 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | pydantic | `^2.10` |
 | pydantic-settings | `^2.7` |
 | openai-agents | `>=0.23.1,<1.0`（尚未发布 1.0，MUST-24b 核实） |
-| typesafe-sdk | 最新（可选依赖） |
 | pytest / pytest-asyncio / httpx | 最新稳定 |
 | pytest-cov（dev） | `>=7.1,<8`（PyPI 核实 7.1.0，MUST-24b）；用途=覆盖率实测（T7-1 / F-803） |
 
@@ -509,7 +504,6 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | FastAPI 必须锁版本 | 0.x 版本会重命名内部 helper |
 | openai-agents 锁 `>=0.23.1,<1.0` | 尚未发布 1.0；0.x 阶段 minor 可能含破坏性变更，必须用 lockfile 锁具体版本（MUST-24b） |
 | SQLite 用 WAL + busy_timeout | 多请求跨进程并发写（MUST-11）需要行级等待与 CAS 兜底 |
-| Jev 用 `jev-1.13.0` 而非别名 | 别名随上游发布漂移，会导致置信度阈值失效 |
 | React 19.3 而非更低版本 | 需 `use()` 与 `useOptimistic` |
 | 不引入 Tailwind | 已决定用 CSS Modules，Shadcn/ui 依赖 Tailwind |
 
