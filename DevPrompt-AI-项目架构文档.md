@@ -797,7 +797,6 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 | `flow.started` | 流程开始 | `flow_id`, `project_path` |
 | `flow.completed` | 流程完成 | `flow_id`, `duration_ms`, `has_recommendation` |
 | `retrieval.candidates` | 候选集生成 | `count`, `elapsed_ms` |
-| `decider.low_confidence` | 置信度不足 | `confidence`, `threshold` |
 | `recommendation.made` | 标记推荐 | `variant`, `gap`, `confidence` |
 | `recommendation.skipped` | 不标记 | `reason`, `gap` |
 | `state.truncated` | state 截断 | `original_size`, `final_size` |
