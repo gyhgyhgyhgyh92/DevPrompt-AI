@@ -140,7 +140,9 @@ class FakeForgeService:
     async def get_settings(self) -> dict[str, Any]:
         return dict(self.settings_view)
 
-    async def update_settings(self, update: dict[str, Any]) -> dict[str, Any]:
+    async def update_settings(
+        self, update: dict[str, Any], *, request_id: str = ""
+    ) -> dict[str, Any]:
         self.settings_updates.append(update)
         return dict(self.settings_view)
 

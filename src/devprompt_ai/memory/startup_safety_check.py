@@ -31,6 +31,7 @@ from devprompt_ai.memory.schema import (
     SESSIONS_DDL,
     SETTINGS_DDL,
 )
+from devprompt_ai.observability.logging import emit
 
 #: 需齐备的业务表 → DDL（顺序即补建顺序）
 _REQUIRED_TABLES: tuple[tuple[str, str], ...] = (
@@ -164,4 +165,13 @@ def run_startup_safety_check(db_path: str) -> StartupRepairReport:
         issues=tuple(issues),
     )
     record_report(report)
+    if action != ACTION_OK:
+        # 修复事件走 observability（N-1）；载荷只含计数，绝不含行内容（MUST-19）
+        emit(
+            "startup.repair",
+            action=action,
+            repaired=len(repaired),
+            quarantined=quarantined,
+            issues=len(issues),
+        )
     return report

@@ -27,9 +27,11 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "followup.escaped",
         "cache.hit",
         "cache.miss",
+        "startup.repair",
+        "settings.updated",
     }
 )
-"""SHOULD-08 固定事件名全集（九名；made/skipped 同族计一项）。emit 之外的诊断日志用普通 logging。
+"""SHOULD-08 固定事件名全集（十一名；made/skipped 同族计一项）。emit 之外的诊断日志用普通logging。
 
 2026-10-15 移除「决策层切换」事件：决策层统一为单一 LLM 实现（无降级切换），该事件已无发射点。
 """

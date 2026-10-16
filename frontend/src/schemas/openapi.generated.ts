@@ -859,8 +859,16 @@ export interface components {
          * SettingsUpdate
          * @description PUT /settings 请求体（T6-11 + 多模型注册表 F-604）。
          *
-         *     ``models`` 为整表替换（None=不动注册表）；``active_model_id`` 切换当前生效条目
-         *     （切换后该条目整体镜像进 model_service，由 service 层执行）。
+         *     **语义是「顶层 PATCH 式 + 段内 PUT 式」的混合体**（2026-10-16 显式声明）：
+         *
+         *     1. ``models`` —— **整表替换**。数组内以 ``id`` 匹配既有条目：缺 ``id`` 视为新增
+         *        （后端生成）；**列表中未出现的既有条目视为删除**。传 ``None`` 表示不动注册表。
+         *     2. ``ModelEntryUpdate.api_key`` —— 空值或 ``None`` 表示**沿用同id 的旧值**
+         *        （不覆盖、不清空）；只有显式给出的新值才落盘。
+         *     3. 其他顶层键 —— ``None`` 表示保持不变（逐键更新，非整体替换）。
+         *
+         *     ``active_model_id`` 切换当前生效条目（切换后该条目整体镜像进 model_service，
+         *     由 service 层执行）。
          */
         SettingsUpdate: {
             /** Active Model Id */

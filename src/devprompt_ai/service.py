@@ -18,7 +18,7 @@ from devprompt_ai.common.secrets import mask_secret
 from devprompt_ai.config import MODEL_KEY_MAP, AppConfig
 from devprompt_ai.domain.decision.followup import GuardrailState, UnknownItem, build_unknowns
 from devprompt_ai.domain.decision.port import DecisionPort, VariantScore
-from devprompt_ai.domain.errors import StateError
+from devprompt_ai.domain.errors import ConfigurationError, StateError
 from devprompt_ai.domain.generate.ports import GeneratePort, GenerationContext, VariantDraft
 from devprompt_ai.domain.generate.variants import expand_levels, resolve_level
 from devprompt_ai.domain.models import (
@@ -397,18 +397,45 @@ class ForgeService:
             "locked": {"candidate_limit": MAX_CANDIDATES},  # MUST-09 宪法常量，只读下发
         }
 
-    async def update_settings(self, update: dict[str, Any]) -> dict[str, Any]:
+    @staticmethod
+    def _validate_registry_entries(merged: list[dict[str, Any]]) -> list[str]:
+        """写盘前校验注册表条目。返回问题描述列表（空 = 通过）。
+
+        N-5 为什么要这一步：`_merge_registry_entries` 已做到「先算清再一次性写」，
+        但它对**内容合法性**不设防——一个 `model_id` 为空的条目会被完整写入并可能成为
+        激活项，用户得到的是「已保存」却根本调不通。宁可整单拒绝，也不要半成品。
+        """
+        problems: list[str] = []
+        for index, entry in enumerate(merged):
+            label = str(entry.get("label") or entry.get("id") or f"第 {index + 1} 项")
+            if not str(entry.get("model_id", "")).strip():
+                problems.append(f"{label}：缺少模型标识（model_id）")
+            if not str(entry.get("base_url", "")).strip():
+                problems.append(f"{label}：缺少服务地址（base_url）")
+            api_key = entry.get("api_key", "")
+            if api_key is not None and not isinstance(api_key, str):
+                problems.append(f"{label}：api_key 必须是字符串")
+        return problems
+
+    async def update_settings(
+        self, update: dict[str, Any], *, request_id: str = ""
+    ) -> dict[str, Any]:
         """PUT /settings（T6-11 + 多模型注册表 F-604）：模型段写设置文件（0600）、流程段写表并应用。
 
         多模型注册表：``models`` 整表替换（api_key 空=沿用同 id 旧值）；``active_model_id`` 切换后
         把该条目**整体镜像**写入 model_service（provider/base_url/api_key/model_id）——AppConfig 与
         llm.py 取值路径零改动，密钥仍只落 0600 文件（MUST-19）。显式 model_service 段仍受支持。
         api_key 语义：空值/None = 保持不变；仅显式新值落盘（明文只进设置文件，不进库不进日志）。
+
+        N-5 两阶段：先算清并校验全部条目 → 无误才单次原子写。任一条目不合法即整单拒绝，
+        **不触碰存储**，避免留下「已保存但调不通」的半成品。
+        N-6 部分失败可见：`skipped` 非空（如激活位指向不存在的条目）不报错但记事件与 context。
         """
         model_in: dict[str, Any] = dict(update.get("model_service") or {})
         process_in: dict[str, Any] = dict(update.get("process") or {})
         models_in = update.get("models")
         active_in = update.get("active_model_id")
+        skipped: list[str] = []
 
         # 注册表处理先于显式 model_service 段（后者若给同键可覆盖镜像值）
         if models_in is not None or active_in not in (None, ""):
@@ -418,9 +445,25 @@ class ForgeService:
                 if models_in is not None
                 else registry["models"]
             )
+            problems = self._validate_registry_entries(merged)
+            if problems:
+                raise ConfigurationError(
+                    "模型注册表校验未通过，未写入任何改动：\n"
+                    + "\n".join(f"  - {p}" for p in problems),
+                    context={"problems": problems},
+                )
             active_id = str(active_in).strip() if active_in not in (None, "") else ""
             if active_id and not any(str(e.get("id")) == active_id for e in merged):
+                skipped.append("激活位指向不存在的条目，已保持原激活项")
                 active_id = ""  # 激活位指向不存在条目：忽略该切换
+            await asyncio.to_thread(write_model_registry, merged, active_id or None)
+            if skipped:
+                emit(
+                    "settings.updated",
+                    skipped=len(skipped),
+                    reasons=skipped,
+                    request_id=request_id,
+                )
             await asyncio.to_thread(write_model_registry, merged, active_id or None)
             active_entry = next((e for e in merged if str(e.get("id")) == active_id), None)
             if active_entry is not None:
@@ -449,7 +492,11 @@ class ForgeService:
             setattr(self._cfg, key, value)
         self._cfg.validate()
         set_telemetry(self._cfg.telemetry)
-        return await self.get_settings()
+        settings = await self.get_settings()
+        if skipped:
+            # N-6：响应契约不变（不加字段），但把「跳过了什么」放进 context 供日志/测试检索
+            settings["skipped"] = skipped
+        return settings
 
     async def feedback(
         self,

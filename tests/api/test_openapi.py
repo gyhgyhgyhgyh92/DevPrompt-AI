@@ -50,6 +50,19 @@ def test_openapi_covers_sixteen_operations() -> None:
     assert "rel_parent" in settings_schemas["BrowseEntryPayload"]["properties"]
 
 
+def test_settings_update_declares_put_semantics() -> None:
+    """N-4：`models` 段的「整表替换」语义必须写进契约，否则调用方会误以为是 PATCH 合并。
+
+    契约 description 是给 API 使用者的唯一入口；语义只存在于 docstring 代码里
+    等于不存在——所以必须在 openapi 里显式声明。
+    """
+    doc = create_app().openapi()
+    desc = doc["components"]["schemas"]["SettingsUpdate"]["description"]
+    assert "整表替换" in desc
+    assert "视为删除" in desc, "必须明确「未出现的条目视为删除」——这是最容易误解的点"
+    assert "沿用" in desc, "api_key 空值语义（沿用旧值而非清空）也须声明"
+
+
 def test_committed_openapi_matches_app() -> None:
     """契约冻结：入库 openapi.json 必须与当前 app.openapi() 一致（漂移即 CI 失败）。"""
     committed = json.loads((REPO_ROOT / "openapi.json").read_text(encoding="utf-8"))

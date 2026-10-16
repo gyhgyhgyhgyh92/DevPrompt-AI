@@ -281,7 +281,7 @@ async def put_settings(request: Request, req: SettingsUpdate) -> ApiResponse[Set
     """T6-11：模型段写设置文件（0600），流程段写 app_settings 表；密钥恒脱敏返回。"""
     request_id = _request_id(request)
     svc = await get_service()
-    view = await svc.update_settings(req.model_dump(exclude_none=True))
+    view = await svc.update_settings(req.model_dump(exclude_none=True), request_id=request_id)
     return _ok(SettingsResponse(**view), request_id)
 
 
