@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -85,6 +86,19 @@ def test_main_help_exits_without_importing_app(capsys: pytest.CaptureFixture[str
         main(["--help"])
     assert exc.value.code == 0
     assert "--reload" in capsys.readouterr().out
+
+
+def test_default_port_matches_vite_dev_proxy() -> None:
+    """默认端口必须与 frontend/vite.config.ts 的 dev proxy 目标一致。
+
+    不一致时前端 `pnpm dev` 的 /api 代理会打不到后端，且开发态表现为「接口全失败」
+    而后端日志正常——这类不一致极难排查，故在此钉住。
+    """
+    vite = Path(__file__).resolve().parents[1] / "frontend" / "vite.config.ts"
+    proxy = vite.read_text(encoding="utf-8")
+    assert f"localhost:{main_module.DEFAULT_PORT}" in proxy, (
+        f"vite dev proxy 目标端口须等于 DEFAULT_PORT（{main_module.DEFAULT_PORT}）"
+    )
 
 
 def test_display_url_maps_wildcard_hosts() -> None:

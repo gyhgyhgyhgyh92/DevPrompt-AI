@@ -23,9 +23,10 @@ if TYPE_CHECKING:
 
 __all__ = ["app", "main"]  # noqa: F822 —— app 由 PEP 562 惰性提供，静态分析看不到绑定
 
-#: 默认监听配置：仅本机回环（本地工具形态，MUST-10），端口取冷门段避免与开发服务器冲突
+#: 默认监听配置：仅本机回环（本地工具形态，MUST-10），端口取 FastAPI/uvicorn 惯例 8000
+#: ——**须与 frontend/vite.config.ts 的 dev proxy 目标一致**，否则前端联调打不到后端。
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8765
+DEFAULT_PORT = 8000
 
 
 def __getattr__(name: str) -> FastAPI:
