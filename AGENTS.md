@@ -1,6 +1,6 @@
 # DevPrompt AI · Agent 宪法
 
-> 版本 v1.3 · 2026-10-15（BREAKING：移除 Jev 双路径，决策层统一为单一 LLM 实现，批准人=项目所有者）
+> 版本 v1.4 · 2026-10-16（BREAKING：MUST-25 排序门禁降为参考指标，MUST-12 决策层统一单一 LLM，批准人=项目所有者）
 > **本文件是 AI 在本项目执行任何任务时必须加载并遵守的最高规则。**
 > 规则冲突时，本文件 > 其他文档 > 一般工程惯例。
 > 详细说明见 `DevPrompt-AI-技术栈文档.md`、`DevPrompt-AI-功能清单.md`、`DevPrompt-AI-项目架构文档.md`。
@@ -136,7 +136,7 @@ harness/ + memory/ + decision/（基础设施层）
 | ❌ `domain/` import `harness/` / `memory/` / `decision/` 的**实现模块** | 只能用 Protocol，禁 import `harness/process.py`、`decision/fallback.py` 等 |
 | ❌ `service.py` import `interfaces/` | 业务层不得反向依赖表现层 |
 | ❌ `domain/` 含任何 I/O | 文件、子进程、HTTP、DB 全部经 Protocol 注入 |
-| ❌ SQL 出现在 `memory/` 之外 | 仅 `memory/store.py` 可写 SQL |
+| ❌ SQL 出现在 `memory/` 之外 | 仅 `memory/` 模块内可写 SQL（`schema.py` / `session_store.py` / `preference_store.py` / `project_notes.py`） |
 
 **执行标准**：
 - 跨层调用一律依赖 Protocol（定义在 `domain/*/ports.py`），实现在基础设施层

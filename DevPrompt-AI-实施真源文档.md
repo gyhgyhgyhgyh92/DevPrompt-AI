@@ -1,6 +1,6 @@
 # DevPrompt AI · 实施真源文档（Single Source of Truth）
 
-> 版本 v1.1 · 2026-10-10（BREAKING：废除 CLI 形态，全面转向 Web-only 架构，批准人=项目所有者）
+> 版本 v1.2 · 2026-10-16（目录树与实际实现对齐：死代码清理 + ASGI 入口 + 两页独立可用 + 延后决议登记）
 > **定位**：本文件是项目从启动到交付全生命周期的唯一执行真源，供团队 Agent 与成员按阶段领取任务、追踪进度、执行门禁。
 > **输入来源**：`AGENTS.md`（宪法）、`DevPrompt-AI-功能清单.md`（F-xxx 规格）、`DevPrompt-AI-项目架构文档.md`（§4.8/§5.1 目录权威）、`DevPrompt-AI-技术栈文档.md`（选型）、`DevPrompt-AI-文档审查报告.md`（遗留处置）。
 > **冲突处理**：`AGENTS.md` > 本文件 > 各文档；本文件与功能清单冲突时，以本文件的修正编号为准（功能清单 W2 表存在编号错位，见审查报告中等 2）。
@@ -48,6 +48,13 @@
     ↓
 阶段七 整体验收与交付
 ```
+
+> **2026-10-16 · 阶段七收口后整改（非新阶段）**：七阶段全部完成后，项目进入产品化迭代起点。
+> 本轮执行一次**完整性整改**（用户就四类问题裁定）：死代码清理与目录树对齐、`main.py` ASGI 入口 +
+> `[project.scripts]`、`/history` 与 `/preference` 两页独立可用、文档版本号与 SQL 表述漂移修正。
+> **契约零变更**（仍 13 路径 / 16 操作），八项门禁复验全绿。
+> 三项事项经用户裁定延后并登记于 §11A（D-1 localStorage TTL / D-2 多用户态 / D-3 真实 LLM 端到端常态化）。
+> 本轮**不改变**任何 F-xxx 的验收标准，仅补齐其实现完整度。
 
 **关键不可跳序约束**（宪法 MUST-25 / SHOULD-01）：
 
@@ -100,7 +107,7 @@
 | T2-1 | 初始化后端包：`pyproject.toml`（uv 管理）、按架构文档 §4.8 建目录骨架（含全部 `__init__.py` 与空模块占位）、`config.py` 空壳、`.gitignore`（按 §2.5 清单）、`.env.example`（按 F-003 配置项） | §4.8、§2.5、MUST-23 | 无 | `uv sync` 成功；目录树与 §4.8 逐文件一致 |
 | T2-2 | 配置 Python 工具链：Ruff（`line-length=100`，启用 E/W/F/I/N/UP/B/SIM/**ASYNC**）、mypy（`strict=true`）、pytest + pytest-asyncio | §2.2、MUST-13 | T2-1 | `uv run ruff check .` 与 `uv run mypy .` 在空包上零错误 |
 | T2-3 | 前端脚手架：Vite 7 + React 19.3 + TS 5.9（Project References 拆分 tsconfig）+ pnpm + ESLint flat config + prettier + Vitest；`package.json` 含 `gen:contract` / `check:contract` 脚本 | 技术栈 §1、F-705 | 无（可与 T2-1 并行） | `pnpm install --frozen-lockfile` 成功；`pnpm typecheck` 零错误 |
-| T2-4 | CI 门禁骨架：MUST-29 六项检查（Ruff Lint+Format / mypy / pytest / 前端 tsc+ESLint / 架构约束 / 契约冒烟）+ 架构约束静态检查脚本（`domain/` 禁 import 实现模块、SQL 仅 `memory/store.py`、前端无阈值常量 grep、组件文件名一致） | MUST-29、附录 B | T2-2、T2-3 | CI 在空仓库上全绿；人为注入违规 import 可被阻断（自测一次） |
+| T2-4 | CI 门禁骨架：MUST-29 六项检查（Ruff Lint+Format / mypy / pytest / 前端 tsc+ESLint / 架构约束 / 契约冒烟）+ 架构约束静态检查脚本（`domain/` 禁 import 实现模块、SQL 仅 `memory/` 模块内、前端无阈值常量 grep、组件文件名一致） | MUST-29、附录 B | T2-2、T2-3 | CI 在空仓库上全绿；人为注入违规 import 可被阻断（自测一次） |
 | T2-5 | 环境自检：Python ≥3.10（推荐 3.13）、ripgrep、universal-ctags、git、Node ^20.19/^22.12、pnpm ^10.15 | §D 清单 1–4、技术栈 §6.3 | 无 | `rg --version` / `ctags --version` 有输出；版本全部满足约束表 |
 
 ### 3.3 依赖关系
@@ -334,12 +341,29 @@
 
 ---
 
+## 11A. 延后事项登记表（2026-10-16 立项，均经用户裁定本轮不实现）
+
+> 登记规则（MUST-05）：延后不等于遗忘。每项须写明「延后理由 + 落地条件 + 恢复时的影响面」。
+> 三项均**不影响**当前交付物的可用性与门禁绿灯。
+
+| # | 事项 | 状态 | 延后理由 | 落地条件（满足即应实现） | 恢复时影响面 |
+|---|---|---|---|---|---|
+| D-1 | **localStorage TTL 过期机制** | 🔄 延后 | 当前唯一真实键 `devprompt:v1:appearance`（通用外观）是**用户主动设置**而非服务端缓存，过期语义反直觉——用户设了深色主题，30 天后被静默清空属功能回退。且 `SecurityPanel` 已提供「清除本地数据」显式入口，失效路径已闭环。 | 出现**服务端派生**的本地缓存键（如离线快照、结果镜像）时再评估；届时需一并决定 TTL 时长与过期提示 | 仅 `stores/useSettingsStore.ts` 的 `readSetting`/`writeSetting` 封装 + 新增时间戳字段；Zod schema 需容错旧格式 |
+| D-2 | **多用户态 /认证中间件（`interfaces/web/`）** | 🔄 延后 | 产品定位为**本地单用户工具**，`user_id` 恒 `"local"`；架构文档 §1.x 已明确「这是设计决策不是遗漏」，`ForgeService` 全方法首参已预留。2026-10-16 按用户裁定**删除**该目录（7 个文件均为 0 字节空文件、无任何引用方），而非保留空壳。 | 出现多用户部署需求（远程协作 / 团队共享）时。**重建 `interfaces/web/`**（认证中间件 + `user_id` 解析 + deps 注入），不得恢复空文件 | `service.py` 签名已兼容（无需改）；需新增 `interfaces/web/`、`config.py` 的 `AUTH_ENABLED`、契约侧 `user_id` 透传；**属破坏性变更**（须标 `BREAKING CHANGE:`） |
+| D-3 | **真实 LLM 端到端常态化** | 🔄 延后 | 决策层 PROBING/生成强依赖外部 LLM；CI 与本地测试无密钥时必须skip（`tests/harness/test_llm_integration.py` 已实现「无 key 自动 skip」）。2026-10-16 用户裁定本轮**不索取API Key**、不做实跑。 | 建立远端仓库并配置 CI secrets（`TYPESAFE_API_KEY` 已随 Jev 移除废弃，改用 `LLM_API_KEY` 等现行配置键）后，把该项提升为 CI 必跑项 | 零代码改动；只需 CI 配置与密钥注入。真实冒烟脚本已存在：`scripts/smoke_provider.py`（F-802 四项） |
+
+> **关联未闭环项（非延后，属实待办）**：远端仓库与分支保护尚未建立（`git remote -v` 为空），
+> 故 MUST-22「main 禁止直推 + PR 双人评审」当前**无技术强制力**，所有门禁均为本地等效验证。
+> 该项需用户手动创建远端仓库后开启，不在 Agent 可自动完成范围内。
+
+---
+
 ## 12. 全局硬约束速查（每阶段任务均受其约束）
 
 | 宪法条款 | 一句话约束 |
 |---|---|
 | MUST-04 | 新增第三方依赖是最后手段，必须先说明 1–4 级为何不可行 |
-| MUST-06 | `domain/` 纯逻辑无 I/O；跨层只经 Protocol；SQL 仅 `memory/store.py` |
+| MUST-06 | `domain/` 纯逻辑无 I/O；跨层只经 Protocol；SQL 仅 `memory/` 模块内 |
 | MUST-07/07b | 状态机只在 `state.py`；目录只认 §4.8/§5.1 |
 | MUST-08 | 前端零阈值常量、零业务判定 |
 | MUST-09 | ripgrep 先压 ≤25 条候选（仅符号名+路径）→ 决策层再排序，顺序不可颠倒 |
@@ -395,3 +419,4 @@
 | — | 2026-10-15 | **F-801 第二段 Jev 路径实测受阻（接口区域封锁 451）**：用户提供 `TYPESAFE_API_KEY`（落盘 gitignored `.env`，不入库）；`uv sync --extra jev --extra dev` 装入 `typesafe-sdk 0.7.2`（锁文件锁定；MUST-24b 核实 PyPI latest 0.7.4、0.7.2 存在）。冒烟实测 Jev 接口返回 **HTTP 451「Typesafe is not available in your region.」**（`api.typesafe.ai` 本区域不可用）→ Jev 路径在本环境**无法执行**。按 MUST-25「输入校验不通过即停止」处置：**未跑全量 100 条**（避免全 0 无效数据污染门禁判定，前次区域不可达即属此类）。加固 `scripts/measure_ranking.py`：`_is_fatal_api_error` 覆盖 `TypeSafeAPIError` 与 `401/402/403/451`/区域封锁标记 → 快速中止（exit 2）且**不写报告**；`metric_source` 按实际决策层标注（Jev / LLM 不混用）、`gate_applied` 对非 dry 生效。阶段七收口继续阻塞，待用户裁决后续路径（区域可达接入 / 方案甲 / 方案乙） | 执行 Agent（用户提供 key） |
 | — | 2026-10-15 | **BREAKING · 彻底移除 Jev（所有者批准选项 A）**：删除 decision/jev.py 与 typesafe-sdk jev extra、配置键 typesafe_api_key/typesafe_base_url/jev_model_id/jev_timeout/decider、契约 SettingsResponse/SettingsUpdate 的 decider 与 CostDetailPayload 的 jev_tokens/jev_source（前端 Zod/generated 同步，路径计数仍 13/16）；create_decider 简化为恒 LLM 实现；MUST-12「可降级双路径」语义废除。F-801 第二段按 LLM 来源判定（实测 58% <80%，仍未达标）；阶段七保持 ⛔ | 项目所有者（批准 A）+ 执行 Agent |
 | — | 2026-10-15 | **裁定「方案甲」并收口阶段七**：确认 F-801 第二段「排序准确率 ≥80%」与 2026-10-11 甲裁决冲突，裁定按甲改写——以「LLM 决策 + ripgrep 精确取证」为价值主张，原 top-1 ≥80% 降为**参考指标**（实测 58%），不再作出口门禁；阶段七由 ⛔ 收口为 ✅ | 项目所有者 |
+| — | 2026-10-16 | **完整性整改：目录树与实际实现对齐（本文件 v1.1 → v1.2，宪法 v1.3 → v1.4）**——用户就四类问题裁定并执行：①**死代码清理**（零引用复核后删除）：后端 13 个 0 字节空文件（`harness/runner.py`、`memory/store.py`、`observability/tracing.py`、`common/{files,time,types}.py`、`interfaces/web/` 全 7 文件）+ 前端 8 个 `return null` 桩组件（`ui/{Badge,Button,Card,Collapse,Spinner}`、`history/HistoryItem`、`preference/{PreferenceEditor,PreferenceSlider}`）；`PreferenceEditor` 随后按 F-702 重建为真实组件。②**ASGI 入口**：`main.py` 实现为 `interfaces/api/app.py` 实例的**再导出**（PEP 562 惰性，刻意不调 `create_app()` 以免 CORS/异常处理器状态分裂），`pyproject.toml` 补 `[project.scripts] devprompt-ai`（`--host/--port/--reload/--open`，惰性导入使 `--help` 不触发配置校验）。③**两页独立可用**：`HistoryPage` 接入既有 `PATCH/DELETE /history/{id}` + 置顶 + 打开会话 + 加载/空/失败三态；`PreferencePage` 用 `Slider` 实现四维独立编辑 + 显式保存 + 服务端回填；**契约零变更**（13 路径/16 操作未动）。④**表述漂移修正**：`memory/store.py` 删除后，宪法 MUST-06、架构文档附录 B 规则 5 与 §4.2、真源 §12 的「SQL 仅 `memory/store.py`」统一改为「SQL 仅 `memory/` 模块内」，与 `check_architecture.py` 实际判定对齐。**登记延后决议 D-1/D-2/D-3（见 §11A）**。BREAKING：无（未改契约、未改公开接口语义）；`interfaces/web/` 删除属内部结构清理，多用户态恢复路径已在 §11A D-2 与架构文档 §1.x 双处登记 | 用户（4 项裁定）+ 执行 Agent |

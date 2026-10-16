@@ -116,7 +116,7 @@ DevPrompt AI 采用四层架构，依赖方向严格单向向下，不可逆向�
 | # | 约束 | 检查方式 |
 |---|---|---|
 | 4 | `domain/` 不得 import 下层**实现模块**（`harness/process.py`、`decision/fallback.py` 等） | 静态导入检查 |
-| 5 | SQL 只允许出现在 `memory/store.py` | 静态检查 |
+| 5 | SQL 只允许出现在 `memory/` 模块内 | 静态检查 |
 | 6 | 组件文件名必须与主导出名一致 | 自定义检查 |
 
 **判定 `domain/` 是否违规的客观标准**：其单元测试可在脱离文件系统与网络的环境下运行。若某模块的测试必须真实起子进程或发请求，说明该模块混入了 I/O，违规。
@@ -824,7 +824,7 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 - 每个读写操作在 `asyncio.to_thread` 中独立开连接（`sqlite3.connect(db_path, timeout=5)`），用完即关
 - 首次使用执行 `PRAGMA journal_mode=WAL` + `busy_timeout=5000`，并经 `memory/schema.py` 幂等建表
 - L1 Session 走自定义 `SQLiteSessionStore`（`memory/session_store.py`，经 `SessionStore` Protocol 注入——SDK 自带 Session 实现面向对话历史，语义不匹配）
-- L3 偏好向量走 `memory/store.py` 封装，不向上层暴露连接对象或游标
+- L3 偏好向量走 `memory/preference_store.py` 封装，不向上层暴露连接对象或游标
 - 写操作 CAS：`UPDATE ... WHERE session_id=? AND version=?`，0 行更新即版本冲突（6001，MUST-11）
 
 **迁移策略**：
@@ -848,7 +848,7 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 
 **边界**：SQL 只允许出现在 `memory/` 模块内。`domain/` 与 `service.py` 不得出现任何 SQL 字符串。
 
-**实现方式**：`memory/store.py` 提供明确的方法，不向上层暴露连接对象或游标。
+**实现方式**：各 `memory/*.py` 存储模块提供明确的方法，不向上层暴露连接对象或游标。
 
 ```python
 class PreferenceStore:
@@ -906,8 +906,13 @@ class PreferenceStore:
 |---|---|---|
 | 参数预留 | 所有服务方法首参为 `user_id` | `service.py` |
 | 存储隔离 | 记忆层以 `user_id` 为键分区间 | `memory/` |
-| 中间件骨架 | 认证中间件位置与钩子已预留 | `interfaces/web/middleware.py` |
 | 配置预留 | `AUTH_ENABLED` 开关 | `config.py` |
+
+> **2026-10-16 注记**：原「中间件骨架 → `interfaces/web/middleware.py`」一行已移除。
+> 该目录自项目确立 Web-only 架构起从未落地（7 个文件均为 0 字节空文件、无任何模块引用），
+> 已按「目录树必须与实际实现一致」原则整体删除。启用多用户态时**重建**
+> `interfaces/web/`（认证中间件 + `user_id` 解析 + deps 注入），而非恢复空文件。
+> 延后决议与落地条件见实施真源文档延后登记表。
 
 **未来启用时的方案**：
 
@@ -955,9 +960,12 @@ class PreferenceStore:
 | `text.py` | 文本处理 | 中文按字符二元组分词、英文驼峰与下划线拆分、token 估算 |
 | `hashing.py` | 哈希 | 原句归一化后 sha256、mtime 摘要 |
 | `process.py` | 子进程管理 | ripgrep / ctags 的异步封装、超时、输出解析 |
-| `files.py` | 文件操作 | 路径规范化、目录排除规则、原子写入 |
-| `time.py` | 时间 | ISO 8601 格式化、耗时计算 |
-| `types.py` | 类型 | 跨模块共享的 TypedDict 与 Protocol |
+| `cost.py` | 成本核算 | LLM token 用量归集与费用明细（F-805） |
+| `secrets.py` | 密钥脱敏 | API Key 回显掩码（MUST-19，仅脱敏不落原值） |
+
+> `files.py` / `time.py` / `types.py` 已于 2026-10-16 删除：三者自脚手架阶段起均为 0 字节空文件、
+> 无任何引用方；所需能力分别由 `harness/process.py`（子进程与路径）、`common/cost.py`
+> （耗时）与各域 `ports.py`（Protocol 定义）覆盖。新增前须先说明现有实现为何不足。
 
 **工具库规则**：
 
@@ -1004,7 +1012,7 @@ def split_identifier(name: str) -> tuple[str, str]:
 ```
 src/devprompt_ai/
 ├── __init__.py
-├── main.py                    FastAPI 应用入口
+├── main.py                    ASGI 入口（再导出 `interfaces/api/app.py` 已创建的 app 实例，供 `uvicorn devprompt_ai.main:app`；另承载 `[project.scripts] devprompt-ai` 的 serve 入口）
 ├── service.py                 ForgeService 唯一业务入口
 ├── state.py                   优化流程状态机
 ├── config.py                  Pydantic Settings
@@ -1038,24 +1046,22 @@ src/devprompt_ai/
 │   ├── fallback.py            LLM 决策实现（原 JevDecider 已于 2026-10-15 移除）
 │   └── prompts.py             决策问题模板
 ├── harness/
-│   ├── runner.py              openai-agents Runner 封装
-│   ├── llm.py                 多供应商客户端
+│   ├── llm.py                 多供应商客户端（openai-agents Runner/Agent 直接在此封装）
 │   ├── guardrails.py          输出校验
 │   ├── process.py             检索 I/O Protocol 实现（CommandRunner/FileReader）+ 符号表编排（F-101）
-│   └── browse.py              目录浏览 I/O（F-601 页内文件夹选择器数据源，GET /project/browse）
-├── memory/
-│   ├── store.py               SQL 封装（唯一允许写 SQL 处）
-│   ├── schema.py              表结构与迁移
-│   ├── session_store.py       L1 会话存储（SQLiteSessionStore，经 SessionStore Protocol 注入）
+│   ├── browse.py              目录浏览 I/O（F-601 页内文件夹选择器数据源，GET /project/browse）
+│   └── dialog.py              Windows 原生文件夹对话框（pwsh -STA，零新依赖）
+├── memory/                    唯一允许出现 SQL 的模块
+│   ├── schema.py              表结构与迁移（WAL 初始化 + 幂等建表）
+│   ├── session_store.py       L1 会话存储（SQLiteSessionStore，经 SessionStore Protocol 注入；CAS 乐观锁）
 │   ├── preference_store.py    L3 偏好向量
 │   └── project_notes.py       L2 Git notes
 ├── common/                    纯工具，无业务语义
 │   ├── text.py
 │   ├── hashing.py
 │   ├── process.py
-│   ├── files.py
-│   ├── time.py
-│   └── types.py
+│   ├── cost.py                LLM token/费用明细（F-805）
+│   └── secrets.py             密钥脱敏（MUST-19）
 ├── interfaces/                表现层（Web HTTP 薄壳，零业务逻辑）
 │   └── api/
 │       ├── __init__.py        包声明（薄壳层约束说明）
@@ -1064,8 +1070,7 @@ src/devprompt_ai/
 │       ├── schemas.py         Pydantic v2 请求/响应契约（XxxRequest/XxxResponse）
 │       └── health.py          环境自检（rg/ctags/git 版本、DB 文件可写、LLM 配置非空）
 └── observability/
-    ├── logging.py             结构化事件日志（标准库，T6-9）
-    └── tracing.py             执行链路记录
+    └── logging.py             结构化事件日志（标准库，T6-9；固定事件全集见 SHOULD-08）
 ```
 
 ---
@@ -1118,15 +1123,10 @@ frontend/
     │   └── index.tsx          路由定义与守卫
     ├── pages/                 路由级组件
     │   ├── OptimizePage.tsx
-    │   ├── HistoryPage.tsx
-    │   └── PreferencePage.tsx
+    │   ├── HistoryPage.tsx         历史页（F-702 独立可用：列表 + 置顶/重命名/删除/复制路径/打开会话）
+    │   └── PreferencePage.tsx      偏好页（F-702 独立可用：读取 → 滑杆调整 → PUT 保存 → 服务端回填）
     ├── components/
     │   ├── ui/                通用展示组件
-    │   │   ├── Button.tsx
-    │   │   ├── Card.tsx
-    │   │   ├── Badge.tsx
-    │   │   ├── Spinner.tsx
-    │   │   ├── Collapse.tsx
     │   │   ├── Toggle.tsx         开关（设置中心用）
     │   │   └── Slider.tsx         滑条（偏好/设置共用）
     │   ├── optimize/          优化流程组件
@@ -1142,11 +1142,9 @@ frontend/
     │   │   └── CopyButton.tsx
     │   ├── history/           历史页组件
     │   │   ├── ProjectSidebar.tsx  固定侧边栏（图三：头部「项目」+一键收纳，项目分组 + 会话条目）
-    │   │   ├── SessionMenu.tsx     会话 ⋮ 菜单（置顶/复制路径/重命名/删除）
-    │   │   └── HistoryItem.tsx
+    │   │   └── SessionMenu.tsx     会话 ⋮ 菜单（置顶/复制路径/重命名/删除，二次确认）
     │   ├── preference/        偏好页组件
-    │   │   ├── PreferenceEditor.tsx
-    │   │   └── PreferenceSlider.tsx
+    │   │   └── PreferenceEditor.tsx 四维偏好编辑器（F-702 独立可用：滑杆 + 显式保存 + 放弃修改）
     │   └── settings/          设置中心组件（F-604，模态面板）
     │       ├── SettingsModal.tsx      弹窗外壳 + 左侧四项导航
     │       ├── ModelServicePanel.tsx  模型列表管理（F-604：新增/编辑/删除/设为当前 + 全局调用参数）
