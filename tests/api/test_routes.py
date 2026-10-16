@@ -101,17 +101,22 @@ class FakeForgeService:
     async def resume(self, user_id: str, session_id: str, *, request_id: str) -> FlowSnapshot:
         return self._next(session_id)
 
-    async def get_preference(self, user_id: str) -> dict[str, float]:
-        return {
-            "detail_level": 0.5,
-            "include_diff": 0.5,
-            "specify_tests": 0.5,
-            "max_files_norm": 0.5,
-        }
+    async def get_preference(
+        self, user_id: str, *, request_id: str = ""
+    ) -> tuple[dict[str, float], bool]:
+        return (
+            {
+                "detail_level": 0.5,
+                "include_diff": 0.5,
+                "specify_tests": 0.5,
+                "max_files_norm": 0.5,
+            },
+            False,
+        )
 
     async def set_preference(self, user_id: str, values: dict[str, float]) -> dict[str, float]:
         self.preference_updates.append(dict(values))
-        merged = await self.get_preference(user_id)
+        merged, _ = await self.get_preference(user_id)
         merged.update(values)
         return merged
 

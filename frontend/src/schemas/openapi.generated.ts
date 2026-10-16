@@ -129,7 +129,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Preference */
+        /**
+         * Get Preference
+         * @description GET /preference：内部补全（M-3）。读失败已由 service 降级为中性向量，
+         *     此处只把 `degraded` 标志透出为响应头——**响应契约不变**（M3 原则：不降级显式操作）。
+         *
+         *     用 FastAPI 的 `Response` 参数注入设置响应头：端点返回 pydantic 模型时无法直接
+         *     改 `response.headers`（那不是 HTTP 响应对象）。
+         */
         get: operations["get_preference_api_v1_preference_get"];
         /**
          * Put Preference

@@ -143,7 +143,7 @@ async def test_l3_preference_neutral_flow_completes() -> None:
         assert snap.ranking.reason  # 不标也必须给具体原因（MUST-27 诚实策略）
 
     # 中性偏好未被流程污染（无反馈不动 L3）
-    assert await svc.get_preference("local") == INITIAL_PREFERENCE
+    assert (await svc.get_preference("local"))[0] == INITIAL_PREFERENCE
 
     # 「按规则不标」分支：仅 A 档（逃生保守路径）→ 跳过打分，ranking=None（MUST-28）
     svc2, _ = _service(existing={"src/ui/button.tsx"}, prefs=FakePreferenceStore())

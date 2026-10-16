@@ -8,7 +8,7 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import TypeVar
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
 
 from devprompt_ai.config import AppConfig
@@ -192,10 +192,20 @@ async def post_feedback(request: Request, req: FeedbackRequest) -> ApiResponse[N
 
 
 @router.get("/preference")
-async def get_preference(request: Request) -> ApiResponse[PreferenceVectorPayload]:
+async def get_preference(
+    request: Request, response: Response
+) -> ApiResponse[PreferenceVectorPayload]:
+    """GET /preference：内部补全（M-3）。读失败已由 service 降级为中性向量，
+    此处只把 `degraded` 标志透出为响应头——**响应契约不变**（M3 原则：不降级显式操作）。
+
+    用 FastAPI 的 `Response` 参数注入设置响应头：端点返回 pydantic 模型时无法直接
+    改 `response.headers`（那不是 HTTP 响应对象）。
+    """
     request_id = _request_id(request)
     svc = await get_service()
-    pref = await svc.get_preference(_USER_ID)
+    pref, degraded = await svc.get_preference(_USER_ID, request_id=request_id)
+    if degraded:
+        response.headers["X-Degraded"] = "preference_read_fallback"
     return _ok(PreferenceVectorPayload(**pref), request_id)
 
 

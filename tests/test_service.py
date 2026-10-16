@@ -315,7 +315,7 @@ async def test_feedback_adoption_updates_l3_vector() -> None:
     snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
     assert snap.status == "done"
     await svc.feedback("local", snap.session_id, "accept", variant="C", request_id="r2")
-    pref = await svc.get_preference("local")
+    pref = (await svc.get_preference("local"))[0]
     # EMA 10% 步进：0.5 + 0.1×(0.9−0.5) = 0.54；max_files_norm: 0.5 + 0.1×(1.0−0.5) = 0.55
     assert pref["detail_level"] == pytest.approx(0.54, abs=1e-9)
     assert pref["max_files_norm"] == pytest.approx(0.55, abs=1e-9)
@@ -328,14 +328,14 @@ async def test_feedback_edited_adoption_weaker_than_direct() -> None:
     direct_svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"})
     direct = await direct_svc.optimize("local", ".", "改提交按钮", request_id="r1")
     await direct_svc.feedback("local", direct.session_id, "accept", variant="C", request_id="r2")
-    pref_direct = await direct_svc.get_preference("local")
+    pref_direct = (await direct_svc.get_preference("local"))[0]
 
     edited_svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"})
     edited = await edited_svc.optimize("local", ".", "改提交按钮", request_id="r1")
     await edited_svc.feedback(
         "local", edited.session_id, "accept", variant="C", edited_text="b!!!", request_id="r2"
     )
-    pref_edited = await edited_svc.get_preference("local")
+    pref_edited = (await edited_svc.get_preference("local"))[0]
 
     assert 0.5 < pref_edited["detail_level"] < pref_direct["detail_level"]  # 同向但弱于直接采纳
     sim = difflib.SequenceMatcher(None, "b", "b!!!").ratio()  # 相似度 0.4 → 占比 0.6 → 强度 0.4
@@ -351,7 +351,7 @@ async def test_feedback_skip_regresses_toward_neutral() -> None:
     snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
     await svc.feedback("local", snap.session_id, "accept", variant="C", request_id="r2")
     await svc.feedback("local", snap.session_id, "skip", request_id="r3")  # 两者皆无 = 跳过
-    pref = await svc.get_preference("local")
+    pref = (await svc.get_preference("local"))[0]
     # 0.54 + (0.5−0.54)×0.3 = 0.528（开放决策 #1：趋向中性，独立规则不经 EMA）
     assert pref["detail_level"] == pytest.approx(0.528, abs=1e-9)
     assert len(prefs.records) == 1  # 跳过无采纳，不追加历史
@@ -396,7 +396,7 @@ async def test_wrong_state_raises_6001() -> None:
 
 async def test_get_preference_initial_vector() -> None:
     svc, _ = _service()
-    pref = await svc.get_preference("local")
+    pref = (await svc.get_preference("local"))[0]
     assert pref == {
         "detail_level": 0.5,
         "include_diff": 0.5,
@@ -475,7 +475,7 @@ async def test_feedback_edited_full_chain_updates_vector() -> None:
     await svc.feedback(
         "local", snap.session_id, "accept", variant="C", edited_text="b!!!", request_id="r2"
     )
-    pref = await svc.get_preference("local")
+    pref = (await svc.get_preference("local"))[0]
     sim = difflib.SequenceMatcher(None, "b", "b!!!").ratio()  # 0.4 → 占比 0.6 → 强度 0.4
     assert pref["detail_level"] == pytest.approx(0.5 + 0.1 * sim * (0.9 - 0.5), abs=1e-9)
     assert len(prefs.records) == 1
@@ -625,12 +625,12 @@ async def test_clear_adoption_history_only_own_records() -> None:
     await svc.feedback("local", "s1", "accept", variant="B", request_id="r1")
     await svc.feedback("local", "s2", "accept", variant="C", request_id="r2")
     await svc.feedback("other", "s3", "accept", variant="A", request_id="r3")
-    before = await svc.get_preference("local")
+    before = (await svc.get_preference("local"))[0]
 
     cleared = await svc.clear_adoption_history("local")
     assert cleared == 2
     assert [r.user_id for r in prefs.records] == ["other"]  # 他人分区不受影响
-    assert await svc.get_preference("local") == before  # 偏好向量不动
+    assert (await svc.get_preference("local"))[0] == before  # 偏好向量不动
     assert await svc.clear_adoption_history("local") == 0  # 幂等：再次清空 0 条
 
 

@@ -1710,6 +1710,7 @@
     },
     "/api/v1/preference": {
       "get": {
+        "description": "GET /preference：内部补全（M-3）。读失败已由 service 降级为中性向量，\n此处只把 `degraded` 标志透出为响应头——**响应契约不变**（M3 原则：不降级显式操作）。\n\n用 FastAPI 的 `Response` 参数注入设置响应头：端点返回 pydantic 模型时无法直接\n改 `response.headers`（那不是 HTTP 响应对象）。",
         "operationId": "get_preference_api_v1_preference_get",
         "responses": {
           "200": {

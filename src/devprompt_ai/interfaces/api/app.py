@@ -55,6 +55,46 @@ def _frontend_dist() -> Path | None:
     return None
 
 
+#: 指纹化静态资源的缓存时长（秒）。Vite 产物带内容哈希，内容变则文件名变，
+#: 故可安全地长期强缓存；入口 HTML 必须每次回源，否则会锁死在旧版本引用上。
+_ASSET_MAX_AGE_SECONDS = 604800  # 7 天
+
+#: 入口 HTML 与根路径的缓存指令：no-store 确保发版后立即生效
+_NO_STORE = "no-store, no-cache, must-revalidate"
+
+
+async def _add_cache_headers(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """按「静态资源长缓存 / 入口 HTML 禁缓存」分流（M-11）。
+
+    借鉴 prompt-optimizer 的 nginx 配置：`/assets` 带内容指纹 → 长缓存；
+    `index.html` 与 `/` → `no-store`。缺失这一步会导致**发版后用户仍加载旧 JS**。
+    """
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/assets/"):
+        response.headers["Cache-Control"] = f"public, max-age={_ASSET_MAX_AGE_SECONDS}, immutable"
+    elif path in ("/", "/index.html"):
+        response.headers["Cache-Control"] = _NO_STORE
+    return response
+
+
+async def _add_security_headers(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """基础安全响应头（M-11）。
+
+    刻意**不加 CSP**：Vite 产物含内联样式/脚本，过严的 CSP 会直接白屏；
+    也不加 HSTS——本项目是本地工具 served over HTTP，加了反而误导。
+    """
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
+
+
 def _error_code(exc: Exception) -> int:
     """错误码映射：领域/子进程异常取其 code；超时类统一 5001（原 CLI 渲染语义平移）。"""
     if isinstance(exc, DevPromptError):
@@ -102,6 +142,9 @@ def create_app() -> FastAPI:
         app.add_exception_handler(exc_type, _render_error)
     # py3.10 下 asyncio.TimeoutError 与内建 TimeoutError 非同一类，显式覆盖
     app.add_exception_handler(asyncio.TimeoutError, _render_error)
+    # M-11 响应头：注册在路由之后，故对 SPA 回退与静态资源同样生效
+    app.middleware("http")(_add_cache_headers)
+    app.middleware("http")(_add_security_headers)
 
     # 单端口托管：dist 存在时挂载于最后，/api/v1/* 与应用内建路由（docs/openapi）先行匹配（MUST-10）
     dist = _frontend_dist()

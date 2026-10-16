@@ -30,7 +30,13 @@ from devprompt_ai.domain.models import (
     Symbol,
 )
 from devprompt_ai.domain.ranking.ports import AdoptionRecord, PreferenceStore, VariantLevel
-from devprompt_ai.domain.ranking.preference import FEATURE_TABLE, clip01, match_score, update_vector
+from devprompt_ai.domain.ranking.preference import (
+    FEATURE_TABLE,
+    INITIAL_PREFERENCE,
+    clip01,
+    match_score,
+    update_vector,
+)
 from devprompt_ai.domain.ranking.recommend import decide_mark
 from devprompt_ai.domain.ranking.score import normalize_fit, validate_weights, weighted_total
 from devprompt_ai.domain.retrieval.candidates import MAX_CANDIDATES, build_candidates
@@ -269,9 +275,26 @@ class ForgeService:
         except Exception:
             logger.exception("state.abort_failed", extra={"session_id": session.session_id})
 
-    async def get_preference(self, user_id: str) -> Preference:
-        """L3 偏好向量（F-503）：store 无记录时返回初始中性值（MUST-08：判定在 domain）。"""
-        return await self._preferences.load(user_id)
+    async def get_preference(
+        self, user_id: str, *, request_id: str = ""
+    ) -> tuple[dict[str, float], bool]:
+        """L3 偏好向量（F-503）：无记录返回初始中性值；读失败**降级**而非报错。
+
+        M-3 分流：偏好是页面挂载时自动读的**内部补全**，不是用户点击触发的显式操作。
+        读失败回落中性向量（L3 语义本就是「无历史用中性值」），流程仍可用；
+        第二个返回值是 `degraded` 标志，由路由层以响应头告知前端——
+        **响应契约不变**（降级信息走 HTTP 头而非 body）。
+
+        显式操作（如 PUT /preference 写失败）仍走 4xx，不在此降级。
+        """
+        try:
+            return await self._preferences.load(user_id), False
+        except Exception as exc:  # noqa: BLE001 - 内部补全须容错，具体原因只进日志
+            logger.warning(
+                "preference.read.degraded",
+                extra={"request_id": request_id, "reason": type(exc).__name__},
+            )
+            return dict(INITIAL_PREFERENCE), True
 
     async def set_preference(self, user_id: str, values: dict[str, float]) -> Preference:
         """PUT /preference 转正（T6-11）：部分更新 + clip01（超界截断而非拒绝），返回更新后向量。"""
@@ -848,7 +871,13 @@ class ForgeService:
     async def _require(self, user_id: str, session_id: str, allowed: set[FlowState]) -> FlowSession:
         session = await self._sessions.load(session_id)
         if session is None or session.user_id != user_id:
-            raise StateError("流程 ID 不存在", code=6003, context={"session_id": session_id})
+            # M-3：会话不存在属**显式操作**失败（用户点了侧栏条目），必须 4xx 且文案可操作——
+            # 不能降级为空快照，否则前端会误判为「会话无内容」而非「会话已失效」。
+            raise StateError(
+                "会话不存在或已过期，请从历史列表重新选择",
+                code=6003,
+                context={"session_id": session_id},
+            )
         if FlowState(session.state) not in allowed:
             raise StateError(
                 f"当前状态 {session.state} 不允许该操作",
