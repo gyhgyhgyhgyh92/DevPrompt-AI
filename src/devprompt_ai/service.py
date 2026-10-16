@@ -845,6 +845,10 @@ async def build_default(cfg: AppConfig) -> ForgeService:
     from devprompt_ai.decision.fallback import create_decider
     from devprompt_ai.memory.preference_store import SQLitePreferenceStore
     from devprompt_ai.memory.session_store import SQLiteSessionStore
+    from devprompt_ai.memory.startup_safety_check import run_startup_safety_check
+
+    # N-1 启动自愈：必须在任何 Manager 打开库之前跑，坏行隔离才有意义
+    run_startup_safety_check(cfg.db_path)
 
     sessions = SQLiteSessionStore(cfg.db_path)
     await sessions.init_schema()

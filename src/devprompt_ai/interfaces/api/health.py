@@ -9,8 +9,10 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from devprompt_ai.common.envhint import render_env_hint
 from devprompt_ai.common.process import run_command
 from devprompt_ai.config import AppConfig
+from devprompt_ai.domain.startup_report import ACTION_FAILED, latest_report
 from devprompt_ai.interfaces.api.schemas import HealthCheckItem, HealthResponse
 
 
@@ -25,12 +27,15 @@ def _probe_db_writable(db_path: str) -> str:
 
 async def run_checks(cfg: AppConfig) -> HealthResponse:
     """逐项探测并聚合；单项失败不中断其余检查（与原 doctor 行为一致）。"""
+    llm_missing = cfg.llm_problems()
+    if llm_missing:
+        llm_detail = render_env_hint(llm_missing)
+        llm_ok = False
+    else:
+        llm_detail = f"{cfg.llm_base_url} / {cfg.llm_model}"
+        llm_ok = True
     checks: list[HealthCheckItem] = [
-        HealthCheckItem(
-            name="llm_config",
-            ok=bool(cfg.llm_base_url and cfg.llm_model),
-            detail=f"{cfg.llm_base_url} / {cfg.llm_model}",
-        )
+        HealthCheckItem(name="llm_config", ok=llm_ok, detail=llm_detail)
     ]
     for tool in ("rg", "ctags", "git"):
         try:
@@ -43,4 +48,13 @@ async def run_checks(cfg: AppConfig) -> HealthResponse:
         checks.append(HealthCheckItem(name="db_writable", ok=True, detail=detail))
     except OSError as exc:
         checks.append(HealthCheckItem(name="db_writable", ok=False, detail=repr(exc)[:80]))
+    # N-1 启动自愈报告（报告类型在 domain，此处只读——薄壳禁 import memory，MUST-06）
+    repair = latest_report()
+    checks.append(
+        HealthCheckItem(
+            name="storage_repair",
+            ok=repair.action != ACTION_FAILED,
+            detail=repair.summary(),
+        )
+    )
     return HealthResponse(checks=checks, is_healthy=all(c.ok for c in checks))

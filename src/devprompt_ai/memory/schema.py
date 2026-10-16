@@ -44,3 +44,16 @@ CREATE TABLE IF NOT EXISTS app_settings (
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 """
+
+# N-1 启动自愈隔离区：integrity_check 判定损坏的行**移入此表而非直接删除**。
+# 保留原始行内容供人工取证（本地单用户工具，误删不可恢复）；row_json 可能含用户原句，
+# 因此**禁止**把该表内容写入日志或 /health 响应（MUST-19）。
+QUARANTINE_DDL = """
+CREATE TABLE IF NOT EXISTS forge_quarantine (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  table_name TEXT NOT NULL,
+  row_json   TEXT NOT NULL,
+  reason     TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+"""

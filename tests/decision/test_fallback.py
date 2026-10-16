@@ -129,7 +129,7 @@ async def test_rank_truncates_state_over_limit_and_logs(
 
 async def test_rank_state_passthrough_within_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     """未超限时 state 原样透传（MUST-09：不超限不改动 state）。"""
-    from devprompt_ai.decision.prompts import RANK_USER
+    from devprompt_ai.decision.prompts import RANK_USER, rank_evidence
 
     captured: dict[str, str] = {}
 
@@ -149,4 +149,4 @@ async def test_rank_state_passthrough_within_limit(monkeypatch: pytest.MonkeyPat
     await LLMFallbackDecider(_cfg()).rank_components("改按钮", cands)
 
     listing = "\n".join(f"{i}. {c.name}  ({c.path})" for i, c in enumerate(cands))
-    assert captured["user"] == RANK_USER.format(sentence="改按钮", candidates=listing)
+    assert captured["user"] == RANK_USER.format(evidence=rank_evidence("改按钮", listing))

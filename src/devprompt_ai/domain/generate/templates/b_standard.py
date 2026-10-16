@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
-
 from devprompt_ai.domain.generate.ports import GenerationContext
+from devprompt_ai.domain.prompt_guard import build_evidence_block
 
 SYSTEM = (
     "你是提示词优化师。基于已定位的符号路径输出标准版提示词：路径可追溯，"
@@ -13,9 +12,16 @@ SYSTEM = (
 
 
 def build_user(ctx: GenerationContext) -> str:
+    """用户消息：证据经 JSON 块包裹 + 安全声明（M-5），指令只在尾部。"""
+    evidence = build_evidence_block(
+        {
+            "用户需求": ctx.sentence,
+            "取证摘要": ctx.facts_summary,
+            "已澄清信息": ctx.clarifications,
+            "保守模式": ctx.conservative,
+        }
+    )
     return (
-        f"用户需求：{ctx.sentence}\n"
-        f"取证摘要：{ctx.facts_summary}\n"
-        f"已澄清信息：{json.dumps(ctx.clarifications, ensure_ascii=False)}\n"
+        f"{evidence}\n"
         '请输出 JSON：{"title": "...", "body": "...", "changes": ["..."], "level": "B"}'
     )

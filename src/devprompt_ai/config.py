@@ -16,6 +16,7 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
+from devprompt_ai.common.envhint import ENV_PURPOSE, render_env_hint
 from devprompt_ai.domain.errors import ConfigurationError
 
 # settings.json model_service 段键 → AppConfig 字段名（F-604 契约键与配置键分离）
@@ -111,16 +112,43 @@ class AppConfig(BaseSettings):
 
     # 签名冻结（计划 §6.3 接口标准）：与 pydantic BaseModel.validate（classmethod）语义不同，非重写
     def validate(self) -> None:  # type: ignore[override]
-        """权重之和必须为 1.0，否则明确报错（F-003 行为列，9002）。"""
+        """权重之和必须为 1.0，否则明确报错（F-003 行为列，9002）。
+
+        **不校验 LLM 三项**：本地工具允许先启动再配模型（用户 2026-10-16 裁定，
+        恢复 F-003 的「默认配置可通过」契约）。LLM 配置缺失由 `GET /health` 的
+        `llm_config` 项报告——见 `interfaces/api/health.py`。
+        """
         total = self.prefer_adapt_weight + self.prefer_history_weight
         if abs(total - 1.0) > 1e-9:
             raise ConfigurationError(
-                f"权重之和必须为 1.0，实际 {total}",
+                render_env_hint(
+                    [
+                        (
+                            "权重配置 PREFER_ADAPT_WEIGHT + PREFER_HISTORY_WEIGHT",
+                            f"两者之和必须为 1.0，实际 {total}",
+                        )
+                    ]
+                ),
                 context={
                     "prefer_adapt_weight": self.prefer_adapt_weight,
                     "prefer_history_weight": self.prefer_history_weight,
                 },
             )
+
+    def llm_problems(self) -> list[tuple[str, str]]:
+        """返回 LLM 三项中未配置者的 ``(变量名, 用途)`` 清单；齐备则返回空列表。
+
+        供 `GET /health` 生成可操作提示（不抛异常——缺配置不应阻断启动）。
+        """
+        missing: list[tuple[str, str]] = []
+        for field, env_name in (
+            ("llm_base_url", "LLM_BASE_URL"),
+            ("llm_api_key", "LLM_API_KEY"),
+            ("llm_model", "LLM_MODEL"),
+        ):
+            if not str(getattr(self, field)).strip():
+                missing.append((env_name, ENV_PURPOSE[env_name]))
+        return missing
 
     def reload(self) -> None:
         """热重载：按当前环境变量重建字段值（F-003：修改阈值无需重启即生效）。

@@ -17,6 +17,9 @@ from devprompt_ai.decision.prompts import (
     RANK_USER,
     SCORE_SYSTEM,
     SCORE_USER,
+    facts_evidence,
+    rank_evidence,
+    score_evidence,
 )
 from devprompt_ai.domain.decision.port import (
     DecisionPort,
@@ -70,7 +73,7 @@ class LLMFallbackDecider:
         listing = "\n".join(f"{i}. {c.name}  ({c.path})" for i, c in enumerate(candidates))
         # timeout 缺省即 cfg.llm_timeout（F-604 默认 60s；25 候选大 prompt 10s 必超时——实测）
         user = _fit_state(
-            RANK_USER.format(sentence=sentence, candidates=listing),
+            RANK_USER.format(evidence=rank_evidence(sentence, listing)),
             self._cfg.max_state_tokens,
         )
         out = await chat_structured(
@@ -87,7 +90,7 @@ class LLMFallbackDecider:
             f"- {f.key}: {'真' if f.passed else '假'}（证据：{f.evidence}）" for f in facts
         )
         user = _fit_state(
-            FACTS_USER.format(sentence=sentence, facts=listing),
+            FACTS_USER.format(evidence=facts_evidence(sentence, listing)),
             self._cfg.max_state_tokens,
         )
         return await chat_structured(
@@ -104,7 +107,7 @@ class LLMFallbackDecider:
     ) -> ScorePromptsOutput:
         listing = "\n\n".join(f"【方案 {key}】\n{body}" for key, body in variants)
         user = _fit_state(
-            SCORE_USER.format(context=context, variants=listing),
+            SCORE_USER.format(evidence=score_evidence(context, listing)),
             self._cfg.max_state_tokens,
         )
         return await chat_structured(
