@@ -4,6 +4,7 @@ import type { FollowupRequest } from '../api/types'
 import { getHistory, getResult, postFeedback, postFollowup, postOptimize } from '../api/endpoints'
 import { ChatStream } from '../components/optimize/ChatStream'
 import { ConsoleInput } from '../components/optimize/ConsoleInput'
+import { errorMessage } from '../components/settings/errorMessage'
 import { useSSE } from '../hooks/useSSE'
 import { useOptimizeStore } from '../stores/useOptimizeStore'
 import { usePreferenceStore } from '../stores/usePreferenceStore'
@@ -23,8 +24,9 @@ function toVariantLevel(level: string): VariantLevel | null {
   return level === 'A' || level === 'B' || level === 'C' ? level : null
 }
 
+/** 错误文案走统一降级链（按 code 查表 → 后端 message → fallback，N-7）。 */
 function toMessage(error: unknown): string {
-  return error instanceof Error ? error.message : '请求失败'
+  return errorMessage(error, '请求失败')
 }
 
 /** 优化主页（设计文档 §1.1 对话流：无会话时居中输入卡片，有会话时图五对话流）。 */

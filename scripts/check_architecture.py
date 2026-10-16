@@ -7,6 +7,7 @@
 4. 前端 ts/tsx 不得出现阈值常量（MUST-08）
 5. 组件文件名必须与主导出名一致（架构文档 §5.3）
 6. interfaces/api/ 不得 import harness/memory/decision/state 实现模块（Web 薄壳约束，MUST-06）
+7. 前端错误码映射表必须覆盖后端全部错误码（N-7/M-10；漏映射会让用户只见原始 message）
 
 退出码：0 = 通过；1 = 存在违规。
 """
@@ -18,6 +19,8 @@ from pathlib import Path
 
 SRC = Path("src/devprompt_ai")
 FRONTEND_SRC = Path("frontend/src")
+ERROR_CODES_PY = SRC / "domain" / "error_codes.py"
+ERROR_CODES_TS = FRONTEND_SRC / "schemas" / "errorCodes.ts"
 
 DOMAIN_FORBIDDEN = (
     "devprompt_ai.interfaces",
@@ -132,6 +135,32 @@ def check_component_names() -> list[str]:
     return violations
 
 
+def check_error_code_mapping() -> list[str]:
+    """前端错误码映射表必须覆盖后端全部错误码（N-7/M-10）。
+
+    为什么需要：后端 `code` 是前端查表键（MUST-19 的「错误码与文案分离」）。
+    后端新增码而前端漏映射时，用户会看到未经整理的原始 message——不是崩溃，
+    但正是本项要消除的体验缺口。这种漂移不会引起任何测试失败，只能静态比对。
+
+    断言方向是**子集**（后端码集 ⊆ 前端 key 集）：前端可有多余的兜底项，
+    但不能缺后端已登记的码。
+    """
+    violations: list[str] = []
+    if not ERROR_CODES_PY.is_file() or not ERROR_CODES_TS.is_file():
+        return violations
+
+    py_src = ERROR_CODES_PY.read_text(encoding="utf-8")
+    backend_codes = {int(m) for m in re.findall(r"^\s{4}(\d{4}):", py_src, re.MULTILINE)}
+
+    ts_src = ERROR_CODES_TS.read_text(encoding="utf-8")
+    frontend_codes = {int(m) for m in re.findall(r"^\s{2}(\d{4}):", ts_src, re.MULTILINE)}
+
+    missing = sorted(backend_codes - frontend_codes)
+    if missing:
+        violations.append(f"[MUST-19] {ERROR_CODES_TS}: 缺少后端已登记的错误码映射：{missing}")
+    return violations
+
+
 def main() -> int:
     violations = (
         check_domain_imports()
@@ -140,6 +169,7 @@ def main() -> int:
         + check_sql_outside_memory()
         + check_frontend_thresholds()
         + check_component_names()
+        + check_error_code_mapping()
     )
     if violations:
         print("架构约束检查未通过：")
