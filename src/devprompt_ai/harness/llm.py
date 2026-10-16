@@ -27,6 +27,7 @@ from pydantic import BaseModel, ValidationError
 
 from devprompt_ai.common.cost import add_llm_tokens
 from devprompt_ai.config import AppConfig
+from devprompt_ai.domain.error_codes import registered
 from devprompt_ai.domain.errors import ConfigurationError, GenerationError
 from devprompt_ai.domain.generate.ports import (
     VALID_LEVEL_SETS,
@@ -34,6 +35,11 @@ from devprompt_ai.domain.generate.ports import (
     Level,
     MultiVariantDraft,
     VariantDraft,
+)
+from devprompt_ai.domain.prompt_guard import (
+    JSON_STRICT_RULES,
+    VERIFIABLE_ANCHOR_C,
+    build_evidence_block,
 )
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -45,6 +51,11 @@ _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 def _extract_json(text: str) -> str:
     """从模型输出提取 JSON 主体：剥围栏 / 截取首尾花括号（供应商输出习惯差异兜底）。"""
+    # shortcut: 首尾截取仅在「输出恰好是一个对象、且尾部无任何右括号」时成立。
+    # 2026-10-16 真实统计 40 次调用（含项目真实三套生成 prompt）测得该脆弱形态
+    # 命中率 0/40，故不实现括号配平状态机。
+    # 升级路径：若 scripts/probe_llm_output_shape.py --real-prompt 换供应商后测得
+    # 解析失败 > 0，再实施配平状态机（离线样本见 scripts/probe_json_extraction.py）。
     text = text.strip()
     fenced = _JSON_FENCE_RE.search(text)
     if fenced:
@@ -112,11 +123,7 @@ async def chat_structured(
     _ensure_client(cfg)
     effective_timeout = timeout if timeout is not None else cfg.llm_timeout
     schema = json.dumps(output_type.model_json_schema(), ensure_ascii=False)
-    instructions = (
-        f"{system}\n\n"
-        "输出要求：只输出一个 JSON 对象（无 markdown 围栏、无解释文字），"
-        f"且必须符合如下 JSON Schema：\n{schema}"
-    )
+    instructions = f"{system}\n\n{JSON_STRICT_RULES}\n且必须符合如下 JSON Schema：\n{schema}"
     agent = Agent(
         name="devprompt-llm",
         instructions=instructions,
@@ -125,7 +132,13 @@ async def chat_structured(
             temperature=cfg.llm_temperature, max_tokens=cfg.llm_max_tokens
         ),
     )
-    result = await asyncio.wait_for(Runner.run(agent, user, max_turns=1), timeout=effective_timeout)
+    try:
+        result = await asyncio.wait_for(
+            Runner.run(agent, user, max_turns=1), timeout=effective_timeout
+        )
+    except Exception as exc:
+        # LLM 调用失败 → 细分错误码（5011~5015），供前端给精确文案（M-9）
+        raise _llm_failure_error(exc, cfg, output_type) from exc
     _record_usage(getattr(result, "usage", None))
     raw = str(result.final_output)
     parsed = _parse_model(output_type, raw)
@@ -136,9 +149,12 @@ async def chat_structured(
         f"{user}\n\n你上一轮输出无法解析为符合 Schema 的 JSON，原样如下：\n{raw[:2000]}\n\n"
         "请修正：只输出一个符合 Schema 的 JSON 对象，无围栏无解释。"
     )
-    result2 = await asyncio.wait_for(
-        Runner.run(agent, retry_input, max_turns=1), timeout=effective_timeout
-    )
+    try:
+        result2 = await asyncio.wait_for(
+            Runner.run(agent, retry_input, max_turns=1), timeout=effective_timeout
+        )
+    except Exception as exc:
+        raise _llm_failure_error(exc, cfg, output_type) from exc
     _record_usage(getattr(result2, "usage", None))
     parsed2 = _parse_model(output_type, str(result2.final_output))
     if parsed2 is None:
@@ -173,7 +189,8 @@ _TIER_CONSTRAINTS: Final[dict[str, str]] = {
     "C": (
         "C 激进版：给出完整路径、行号、组件名与设计 token 定义位置；"
         "边界预判必须覆盖多状态、响应式、暗色模式、无障碍；"
-        "结尾附显式测试指令（含测试文件路径）。"
+        "结尾附显式测试指令（含测试文件路径）。\n"
+        f"{VERIFIABLE_ANCHOR_C}"
     ),
 }
 
@@ -196,12 +213,22 @@ def _build_multi_system(levels: list[Level]) -> str:
 
 
 def _build_multi_user(ctx: GenerationContext, levels: list[Level]) -> str:
+    """用户消息：证据走 JSON 块 + 安全声明（M-5），指令在首尾。
+
+    证据字段含检索到的真实代码摘要——其中的注释/字符串可能包含指令性文本，
+    故必须经`build_evidence_block` 包裹并声明「只是素材」。
+    """
+    evidence = build_evidence_block(
+        {
+            "用户需求": ctx.sentence,
+            "取证摘要": ctx.facts_summary or "（无，禁止编造路径与行号）",
+            "已澄清信息": ctx.clarifications,
+            "保守模式": ctx.conservative,
+        }
+    )
     return (
         f"请求档位（逐一输出，顺序 A→B→C）：{sorted(levels)}\n"
-        f"用户需求：{ctx.sentence}\n"
-        f"取证摘要：{ctx.facts_summary or '（无，禁止编造路径与行号）'}\n"
-        f"已澄清信息：{json.dumps(ctx.clarifications, ensure_ascii=False)}\n"
-        f"保守模式：{ctx.conservative}\n"
+        f"{evidence}\n"
         '请输出 JSON：{"variants": [{"title": "...", "body": "...", '
         '"changes": ["..."], "level": "A"}]}，variants 数组长度与档位必须与请求档位一致。'
     )
@@ -260,3 +287,99 @@ class LLMGenerator:
             validate_variant(variant)
         draft.variants.sort(key=lambda v: _LEVEL_RANK[v.level])
         return draft
+
+
+#: LLM 调用失败场景 → 错误码（用户 2026-10-16 裁定：细分 5 个码，前端给精确文案）。
+#: 5012 与 3004 的区别：3004 是决策阶段限流，本表是生成阶段（chat_structured）限流。
+_LLM_FAILURE_CODES: Final[dict[str, int]] = {
+    "timeout": registered(5011),
+    "rate_limit": registered(5012),
+    "insufficient_quota": registered(5013),
+    "invalid_api_key": registered(5014),
+    "upstream_error": registered(5015),
+}
+
+#: 错误文本特征 → 场景（按出现顺序匹配，顺序即优先级：额度/鉴权须先于限流判断）
+_SCENARIO_SIGNALS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
+    (
+        "insufficient_quota",
+        ("insufficient", "quota", "balance", "余额", "配额", "欠费", "billing"),
+    ),
+    (
+        "invalid_api_key",
+        ("invalid api key", "incorrect api key", "unauthorized", "authentication", "鉴权", "密钥"),
+    ),
+    ("rate_limit", ("rate limit", "ratelimit", "too many requests", "429", "限流", "频率")),
+    (
+        "upstream_error",
+        (
+            "500",
+            "502",
+            "503",
+            "504",
+            "internal server",
+            "bad gateway",
+            "服务暂时不可用",
+            # 网络类异常（用户裁定：server_error_500 与 network_error 共用 5015）
+            "connection",
+            "connect error",
+            "unreachable",
+            "network",
+            "dns",
+            "getaddrinfo",
+            "socket",
+            "ssl",
+        ),
+    ),
+)
+
+
+def classify_llm_failure(exc: BaseException) -> tuple[str, int] | None:
+    """把 LLM 调用异常归类为 ``(场景名, 错误码)``；无法归类返回 None。
+
+    归类顺序：先判超时（`asyncio.TimeoutError`），再按文本特征匹配。
+    **纯文本匹配，不依赖 SDK 异常类型**——各供应商 SDK 的异常层级与命名不一致
+    （openai / httpx / agents 各自包装），文本特征是唯一稳定信号。
+    """
+    if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
+        return "timeout", _LLM_FAILURE_CODES["timeout"]
+    haystack = f"{type(exc).__name__} {exc}".lower()
+    for scenario, signals in _SCENARIO_SIGNALS:
+        if any(signal in haystack for signal in signals):
+            return scenario, _LLM_FAILURE_CODES[scenario]
+    return None
+
+
+#: 场景 → 用户可读文案（前端另持本地化文案表，此处供日志与 message 使用）
+_LLM_FAILURE_MESSAGES: Final[dict[str, str]] = {
+    "timeout": "LLM 调用超时，请稍后重试或调大 LLM_TIMEOUT",
+    "rate_limit": "供应商限流，请稍后重试",
+    "insufficient_quota": "供应商余额或配额不足，请充值后重试",
+    "invalid_api_key": "LLM 鉴权失败，请检查 API Key 是否正确",
+    "upstream_error": "LLM 上游服务异常，请稍后重试",
+}
+
+
+def _llm_failure_error(exc: BaseException, cfg: AppConfig, output_type: type[object]) -> Exception:
+    """把 LLM 调用异常转为带细分码的 GenerationError；无法归类则回退 4002。
+
+    `context["scenario"]` 是**可判别字段**，供上层分支与日志检索（MUST-03）；
+    message 只给用户可读文案，**不回显异常原文**（可能含请求片段或密钥，MUST-19）。
+    """
+    classified = classify_llm_failure(exc)
+    context: dict[str, object] = {
+        "model": cfg.llm_model,
+        "output_type": getattr(output_type, "__name__", str(output_type)),
+    }
+    if classified is None:
+        return GenerationError(
+            "LLM 端点不可达或调用失败",
+            code=registered(4002),
+            context={**context, "scenario": "unclassified"},
+        )
+    scenario, code = classified
+    return GenerationError(
+        _LLM_FAILURE_MESSAGES[scenario],
+        code=code,
+        context={**context, "scenario": scenario},
+    )
