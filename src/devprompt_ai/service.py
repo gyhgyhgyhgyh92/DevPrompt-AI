@@ -21,6 +21,8 @@ from devprompt_ai.domain.decision.port import DecisionPort, VariantScore
 from devprompt_ai.domain.errors import ConfigurationError, StateError
 from devprompt_ai.domain.generate.ports import GeneratePort, GenerationContext, VariantDraft
 from devprompt_ai.domain.generate.variants import expand_levels, resolve_level
+from devprompt_ai.domain.model_migration import normalize_overrides
+from devprompt_ai.domain.model_spec import model_specs_projection, validate_overrides
 from devprompt_ai.domain.models import (
     Candidate,
     FactResult,
@@ -354,27 +356,42 @@ class ForgeService:
         await self._sessions.delete(session_id)
 
     def _registry_view(self) -> list[dict[str, Any]]:
-        """注册表脱敏视图（F-604 多模型）：api_key 恒脱敏；is_active 由激活位比对得出。"""
+        """注册表脱敏视图（F-604 多模型）：api_key 恒脱敏；is_active 由激活位比对得出。
+
+        2026-09-17 模型管理迁移：增 `capabilities` / `param_overrides` 两个只读字段，
+        供设置中心渲染能力徽标与参数编辑器。两者已在读侧归一化，此处只做脱敏与透出。
+        """
         registry = read_model_registry()
         active_id = registry["active_model_id"]
-        return [
-            {
-                "id": str(entry.get("id", "")),
-                "label": str(entry.get("label", "")),
-                "provider": str(entry.get("provider", "")),
-                "base_url": str(entry.get("base_url", "")),
-                "model_id": str(entry.get("model_id", "")),
-                "api_key_masked": mask_secret(str(entry.get("api_key", ""))),
-                "is_active": str(entry.get("id", "")) == active_id,
-            }
-            for entry in registry["models"]
-        ]
+        views: list[dict[str, Any]] = []
+        for entry in registry["models"]:
+            entry_id = str(entry.get("id", ""))
+            capabilities = entry.get("capabilities")
+            views.append(
+                {
+                    "id": entry_id,
+                    "label": str(entry.get("label", "")),
+                    "provider": str(entry.get("provider", "")),
+                    "base_url": str(entry.get("base_url", "")),
+                    "model_id": str(entry.get("model_id", "")),
+                    "api_key_masked": mask_secret(str(entry.get("api_key", ""))),
+                    "is_active": entry_id == active_id,
+                    "capabilities": dict(capabilities) if isinstance(capabilities, dict) else {},
+                    "param_overrides": dict(entry.get("param_overrides") or {}),
+                }
+            )
+        return views
 
     @staticmethod
     def _merge_registry_entries(
         incoming: list[dict[str, Any]], existing: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
-        """整表替换解析：id 缺省则生成（m- + uuid）；api_key 空则沿用同 id 旧值；label 空则派生。"""
+        """整表替换解析：id 缺省则生成（m- + uuid）；api_key 空则沿用同 id 旧值；label 空则派生。
+
+        2026-09-17 模型管理迁移：`param_overrides` 采用**整体替换**语义（对齐源项目
+        `manager.ts:968-972`）——传入 `None` 表示沿用同 id 旧值，显式传 `{}` 表示清空。
+        绝不做深合并，否则用户删除的参数会被「礼貌地」保留回来。
+        """
         by_id = {str(e.get("id")): e for e in existing if e.get("id")}
         merged: list[dict[str, Any]] = []
         for raw in incoming:
@@ -386,6 +403,14 @@ class ForgeService:
             provider = str(raw.get("provider") or "").strip()
             model_id = str(raw.get("model_id") or "").strip()
             label = str(raw.get("label") or "").strip() or f"{provider} · {model_id}"
+
+            overrides_in = raw.get("param_overrides")
+            # 两个分支都必须走 normalize_overrides：沿用旧值时也要按**新 provider**
+            # 重新清洗——provider 从 deepseek 改成 anthropic 后，temperature 已不被支持，
+            # 直接沿用会留下一组永远不生效的参数。
+            source_overrides = old.get("param_overrides") if overrides_in is None else overrides_in
+            param_overrides = normalize_overrides(provider, source_overrides or {})
+
             merged.append(
                 {
                     "id": entry_id,
@@ -394,15 +419,21 @@ class ForgeService:
                     "base_url": str(raw.get("base_url") or "").strip(),
                     "api_key": str(api_key or ""),
                     "model_id": model_id,
+                    "param_overrides": param_overrides,
                 }
             )
         return merged
 
     async def get_settings(self) -> dict[str, Any]:
-        """F-604 读设置（T6-11）：有效配置视图（env 已并入）；api_key 恒脱敏，候选上限锁定只读。"""
+        """F-604 读设置（T6-11）：有效配置视图（env 已并入）；api_key 恒脱敏，候选上限锁定只读。
+
+        2026-09-17 模型管理迁移：增 `model_specs` 段（provider → 参数定义数组），
+        复用本端点下发而非新增路径——契约仍 13 路径 / 16 操作。
+        """
         cfg = self._cfg
         return {
             "models": self._registry_view(),
+            "model_specs": model_specs_projection(),
             "model_service": {
                 "provider": cfg.llm_provider,
                 "base_url": cfg.llm_base_url,
@@ -438,6 +469,11 @@ class ForgeService:
             api_key = entry.get("api_key", "")
             if api_key is not None and not isinstance(api_key, str):
                 problems.append(f"{label}：api_key 必须是字符串")
+            # 参数覆盖校验（2026-09-17 迁移）：错误整单拒绝，未登记参数仅告警
+            errors, _ = validate_overrides(
+                str(entry.get("provider", "")), entry.get("param_overrides") or {}
+            )
+            problems.extend(f"{label}：{message}" for message in errors)
         return problems
 
     async def update_settings(

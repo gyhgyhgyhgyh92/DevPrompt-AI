@@ -21,6 +21,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from devprompt_ai.domain.model_migration import normalize_registry
 from devprompt_ai.memory.schema import SETTINGS_DDL
 
 _DEFAULT_SETTINGS_FILE = "~/.devprompt-ai/settings.json"
@@ -94,24 +95,35 @@ def write_model_settings(values: dict[str, Any]) -> None:
 def read_model_registry() -> dict[str, Any]:
     """读 settings.json 的模型注册表：返回 ``{"models": [...], "active_model_id": str}``。
 
+    **读时归一化**（2026-09-17模型管理迁移）：逐条经 `domain.model_migration.normalize_entry`
+    补齐 `capabilities` / `param_overrides`，因此六字段的旧条目无需迁移脚本即可使用，
+    且在下次保存时自动升级为新结构。归一化**永不抛异常**——数据文件由用户手工编辑也可能出错，
+    读取失败不该让配置丢失或让服务起不来。
+
     缺失/损坏静默返回空表（列表展示降级为空，不影响 model_service 生效配置）。
     """
     doc = _read_doc()
     raw_models = doc.get(_REGISTRY_KEY)
-    models: list[dict[str, Any]] = []
-    if isinstance(raw_models, list):
-        models = [dict(item) for item in raw_models if isinstance(item, dict)]
+    models = normalize_registry(raw_models)
     active = doc.get(_ACTIVE_KEY)
-    return {"models": models, "active_model_id": active if isinstance(active, str) else ""}
+    active_id = active if isinstance(active, str) else ""
+    # 激活位指向已被删除的条目时回落为空，避免上层拿到悬空引用
+    if active_id and not any(str(item.get("id")) == active_id for item in models):
+        active_id = ""
+    return {"models": models, "active_model_id": active_id}
 
 
 def write_model_registry(models: list[dict[str, Any]], active_model_id: str | None) -> None:
     """整表写注册表：``models`` 全量替换；``active_model_id`` None 不覆盖既有值。
 
+    写入前统一经 :func:`normalize_registry` 归一化——「读时补、写时全」，
+    保证落盘结构始终是完整的（不会出现只存了六字段的老结构）。
+    非字典条目被静默丢弃（与既有读侧行为一致：脏数据不该让整个写入失败）。
+
     与 ``write_model_settings`` 共用同一原子替换 + 0600 实现（MUST-19：密钥唯一落盘处不变）。
     """
     doc = _read_doc()
-    doc[_REGISTRY_KEY] = [dict(item) for item in models]
+    doc[_REGISTRY_KEY] = normalize_registry(models)
     if active_model_id is not None:
         doc[_ACTIVE_KEY] = active_model_id
     _write_doc(doc, "设置文件已禁用（DEVPROMPT_SETTINGS_FILE 为空），无法写模型注册表")
