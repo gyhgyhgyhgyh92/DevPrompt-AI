@@ -1,6 +1,6 @@
 # DevPrompt AI · Agent 宪法
 
-> 版本 v1.4 · 2026-10-16（BREAKING：MUST-25 排序门禁降为参考指标，MUST-12 决策层统一单一 LLM，批准人=项目所有者）
+> 版本 v1.5 · 2026-10-16（新增：LLM 失败细分码 5011~5015、`code` 为前端查表键的约定、启动自愈；BREAKING 无，批准人=项目所有者）
 > **本文件是 AI 在本项目执行任何任务时必须加载并遵守的最高规则。**
 > 规则冲突时，本文件 > 其他文档 > 一般工程惯例。
 > 详细说明见 `DevPrompt-AI-技术栈文档.md`、`DevPrompt-AI-功能清单.md`、`DevPrompt-AI-项目架构文档.md`。
@@ -136,7 +136,7 @@ harness/ + memory/ + decision/（基础设施层）
 | ❌ `domain/` import `harness/` / `memory/` / `decision/` 的**实现模块** | 只能用 Protocol，禁 import `harness/process.py`、`decision/fallback.py` 等 |
 | ❌ `service.py` import `interfaces/` | 业务层不得反向依赖表现层 |
 | ❌ `domain/` 含任何 I/O | 文件、子进程、HTTP、DB 全部经 Protocol 注入 |
-| ❌ SQL 出现在 `memory/` 之外 | 仅 `memory/` 模块内可写 SQL（`schema.py` / `session_store.py` / `preference_store.py` / `project_notes.py`） |
+| ❌ SQL 出现在 `memory/` 之外 | 仅 `memory/` 模块内可写 SQL（`schema.py` / `startup_safety_check.py` / `session_store.py` / `preference_store.py` / `project_notes.py`） |
 
 **执行标准**：
 - 跨层调用一律依赖 Protocol（定义在 `domain/*/ports.py`），实现在基础设施层
@@ -319,6 +319,8 @@ ripgrep 先压到 ≤25 条候选（仅符号名 + 路径，不含代码正文�
 | ❌ 错误响应回传堆栈 | 仅返回 code + message + request_id |
 
 **执行标准**：提交前自检改动中是否含 `.env`、密钥字面量、临时路径。
+
+**补充约定（v1.5 确立）**：错误响应的 `code` 是**前端查表键**（必须登记在 `domain/error_codes.py`），`message` 只进日志与降级兜底（可含技术细节）。前端映射表 `schemas/errorCodes.ts` 须覆盖后端全部码，由 `check_architecture.py` 第 7 项强制。新增错误码时**必须同步前端映射表**，否则用户会看到未经整理的原始 message。
 
 ### MUST-20 · 路径安全
 
@@ -636,6 +638,7 @@ d = 最高分 − 次高分
 | 版本 | 日期 | 内容 | 批准人 |
 |---|---|---|---|
 | v1.4 | 2026-10-15 | 裁定方案甲：MUST-25 第二段排序准确率门禁（≥80%）降为参考指标，W3 出口以「LLM 决策 + ripgrep 精确取证」为准 | 项目所有者 |
+| v1.5 | 2026-10-16 | AI 对标优化批次（Batch 0~7）：①新增 LLM 失败细分码 5011 超时 / 5012 限流 / 5013 余额不足 / 5014 鉴权失败 / 5015 上游异常（**注意 5012 与既有 3004 语义相近但不可合并**：3004 是决策阶段限流，5012 是生成阶段）②确立「`code` 为前端查表键、`message` 只进日志」约定，并新增架构检查第 7 项强制前端映射表覆盖 ③新增启动自愈（N-1）④M-1/M-2 经真实统计 0/40后**降级取消**（见实施真源 §Batch 0）。**非 BREAKING**：契约结构未变（13 路径/16 操作），MUST-10 Web 单形态未变 | 项目所有者 |
 | v1.3 | 2026-10-15 | BREAKING：移除 Jev 双路径（`decision/jev.py`、`typesafe-sdk` jev extra、配置键 typesafe_api_key/typesafe_base_url/jev_model_id/jev_timeout/decider、契约 Settings 的 decider 与 CostDetailPayload.jev_*）；决策层统一为单一 LLM 实现，废除 MUST-12「可降级双路径」语义 | 项目所有者 |
 | v1.2 | 2026-10-10 | 废除 CLI 双形态交付，全面转向 Web-only 架构；Web HTTP 层提前至阶段 4.5 实现（`interfaces/api/` 共 9 端点：health、optimize、progress/{flow_id} SSE、followup/{flow_id}、result/{flow_id}、feedback、preference、project/scan、history）；前端 React UI 仍属阶段六 | 项目所有者 |
 | v1.1 | 2026-10-06 | MUST-26 反问机制重构为无轮次上限的自适应澄清（废除轮次上限语义） | 项目所有者 |

@@ -484,9 +484,30 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | pydantic-settings | `^2.7` |
 | openai-agents | `>=0.23.1,<1.0`（尚未发布 1.0，MUST-24b 核实） |
 | pytest / pytest-asyncio / httpx | 最新稳定 |
-| pytest-cov（dev） | `>=7.1,<8`（PyPI 核实 7.1.0，MUST-24b）；用途=覆盖率实测（T7-1 / F-803） |
+| pytest-cov（dev） | `>=7.1,<8`（PyPI核实 7.1.0，MUST-24b）；用途=覆盖率实测（T7-1 / F-803） |
+
+**2026-10-16 批次增量：零新依赖。** AI 对标优化（Batch 0~7）全部使用标准库与既有依赖实现：
+
+| 能力 | 实现方式 | 为何不引依赖 |
+|---|---|---|
+| 跨平台子进程编排 | `scripts/runner.py`，标准库 `subprocess` + `shutil.which` | 逻辑不足 200 行；`concurrently` 之类为 Node 生态，与 uv + pnpm 双包管理无关 |
+| 启动自愈| `memory/startup_safety_check.py`，标准库 `sqlite3` | `PRAGMA integrity_check` 是 SQLite 内建能力 |
+| prompt 边界声明 | `domain/prompt_guard.py` 纯文本常量 + `json.dumps` | 无需模板引擎；引 Mustache 反而要处理其转义语义 |
+| 前端错误码映射 | `schemas/errorCodes.ts` 静态对象 + 三段降级函数 | 一个查表 + 一个函数，引入 i18n 库不划算（本地工具无多语言需求） |
 
 ## 6.3 外部工具（系统级依赖）
+
+> **Windows shell约定（2026-10-16 确立）**：项目在 Windows + PowerShell 环境开发，
+> 且 `uv` 与 `pnpm` 双包管理并存。两个已知陷阱与对策：
+>
+> | 陷阱 | 后果 | 对策 |
+> |---|---|---|
+> | `.npmrc` 设 `script-shell=pwsh.exe` | pwsh 把 `--format cjs,esm` 的逗号参数拆成数组，esbuild 报 `Invalid value "cjs esm"` | **保持 Windows 默认 cmd.exe** |
+> | 直接 spawn `.cmd` 文件 | Windows 无法直接执行批处理 | 经 `ComSpec /d /s /c` 包装；`.exe`（uv/python/node）直接执行即可 |
+>
+> 平台差异集中在 `scripts/runner.py::get_runner_spec` 一个纯函数（`ComSpec||COMSPEC` 双写兜底、
+> `/d`禁AutoRun、`/s` 修正引号剥离、`shell=False` 显式声明），其余代码零平台分支。
+> 借鉴 prompt-optimizer `scripts/pnpm-runner.js`——该仓库实测踩过上述第一个坑。
 
 | 工具 | 用途 | 备注 |
 |---|---|---|

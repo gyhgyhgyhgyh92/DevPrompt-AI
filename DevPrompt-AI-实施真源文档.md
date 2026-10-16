@@ -420,3 +420,32 @@
 | — | 2026-10-15 | **BREAKING · 彻底移除 Jev（所有者批准选项 A）**：删除 decision/jev.py 与 typesafe-sdk jev extra、配置键 typesafe_api_key/typesafe_base_url/jev_model_id/jev_timeout/decider、契约 SettingsResponse/SettingsUpdate 的 decider 与 CostDetailPayload 的 jev_tokens/jev_source（前端 Zod/generated 同步，路径计数仍 13/16）；create_decider 简化为恒 LLM 实现；MUST-12「可降级双路径」语义废除。F-801 第二段按 LLM 来源判定（实测 58% <80%，仍未达标）；阶段七保持 ⛔ | 项目所有者（批准 A）+ 执行 Agent |
 | — | 2026-10-15 | **裁定「方案甲」并收口阶段七**：确认 F-801 第二段「排序准确率 ≥80%」与 2026-10-11 甲裁决冲突，裁定按甲改写——以「LLM 决策 + ripgrep 精确取证」为价值主张，原 top-1 ≥80% 降为**参考指标**（实测 58%），不再作出口门禁；阶段七由 ⛔ 收口为 ✅ | 项目所有者 |
 | — | 2026-10-16 | **完整性整改：目录树与实际实现对齐（本文件 v1.1 → v1.2，宪法 v1.3 → v1.4）**——用户就四类问题裁定并执行：①**死代码清理**（零引用复核后删除）：后端 13 个 0 字节空文件（`harness/runner.py`、`memory/store.py`、`observability/tracing.py`、`common/{files,time,types}.py`、`interfaces/web/` 全 7 文件）+ 前端 8 个 `return null` 桩组件（`ui/{Badge,Button,Card,Collapse,Spinner}`、`history/HistoryItem`、`preference/{PreferenceEditor,PreferenceSlider}`）；`PreferenceEditor` 随后按 F-702 重建为真实组件。②**ASGI 入口**：`main.py` 实现为 `interfaces/api/app.py` 实例的**再导出**（PEP 562 惰性，刻意不调 `create_app()` 以免 CORS/异常处理器状态分裂），`pyproject.toml` 补 `[project.scripts] devprompt-ai`（`--host/--port/--reload/--open`，惰性导入使 `--help` 不触发配置校验）。③**两页独立可用**：`HistoryPage` 接入既有 `PATCH/DELETE /history/{id}` + 置顶 + 打开会话 + 加载/空/失败三态；`PreferencePage` 用 `Slider` 实现四维独立编辑 + 显式保存 + 服务端回填；**契约零变更**（13 路径/16 操作未动）。④**表述漂移修正**：`memory/store.py` 删除后，宪法 MUST-06、架构文档附录 B 规则 5 与 §4.2、真源 §12 的「SQL 仅 `memory/store.py`」统一改为「SQL 仅 `memory/` 模块内」，与 `check_architecture.py` 实际判定对齐。**登记延后决议 D-1/D-2/D-3（见 §11A）**。BREAKING：无（未改契约、未改公开接口语义）；`interfaces/web/` 删除属内部结构清理，多用户态恢复路径已在 §11A D-2 与架构文档 §1.x 双处登记 | 用户（4 项裁定）+ 执行 Agent |
+
+### v2.2 Batch 0~7 执行结果（2026-10-16 全部完成）
+
+| 批次 | 项 | 结果 | 门禁基线 |
+|---|---|---|---|
+| Batch 0 | M-1 验证 | ✅ **验证后降级**：真实统计 40 次调用（含项目真实三套生成 prompt 20 次）命中脆弱形态 **0/40** → M-1/M-2 取消，Batch 3 整体撤销，**20 项 → 18 项** | 384 passed |
+| Batch 1 | N-8 / N-9 / M-9 + 码表 | ✅ 集中码表（34 码含新增 5011~5015）、可操作配置提示、注册表遍历冒烟、6 场景错误注入 | 450 passed |
+| Batch 2 | T-1~T-5 + M-5/M-6/M-7/M-8 | ✅ `domain/prompt_guard.py` 落地，六处证据块 JSON 包裹 + 边界声明 + C 档可验证锚点 | 450 passed |
+| Batch 4 | N-1 全量 / N-4 / N-5 / N-6 | ✅ 启动自愈（含 `forge_quarantine` 隔离表）、PUT 语义入契约、写盘前校验、三段结果留痕 | 468 passed |
+| Batch 5 | N-7 → M-10 | ✅ 34 码前端文案表 + 三段降级 + 架构检查第 7 项（已实测捕获漏映射） | 474 passed |
+| Batch 6 | M-3 / M-11 | ✅ 兜底分流（偏好降级带 `X-Degraded`；result 保持 4xx）+ 缓存与安全响应头 | 485 passed |
+| Batch 7 | N-10 + 文档同步 | ✅ MCP 方案文档（结论：**不建议现在做**）+ 五份文档同步 | 485 passed |
+
+**净结果**：18 项全部落地，契约仍 **13 路径 / 16 操作**，覆盖率 93%，**零新依赖**。
+
+**执行中被否决 / 修正的计划内容**（留档以免后人重犯）：
+
+| 项 | 原计划 | 实际 | 原因 |
+|---|---|---|---|
+| `GET /result` 降级 | 会话不存在 → 返回空快照 | **保持 4xx**，仅优化文案 | 空快照会让前端误判为「会话无内容」（用户裁定） |
+| `validate()` 阻断 LLM 缺失 | 按字面裁定阻断 | **不阻断**，提示移到 `/health` | 会破坏 F-003「默认配置可通过」契约，且未配模型时服务应能启动（用户裁定） |
+| 5012 与 3004 | 新增 5012 限流 | **保留两者**，码表注释区分阶段 | 3004 是决策阶段限流，5012 是生成阶段限流，同源不同阶段（用户裁定） |
+| N-1 实施范围 | 曾建议降级为「仅补建缺表」 | **全量实施**含坏行隔离 | 用户否决降级建议 |
+
+### v2.3 新增延后事项
+
+| # | 事项 | 状态 | 理由 | 落地条件 |
+|---|---|---|---|---|
+| **D-4** | 多模态（图片输入/生成） | 🔄 延后（用户 2026-10-16 明确「为后续扩展」） | 当前需求为纯文本代码检索；prompt-optimizer 的图片链路（统一 base64 + 只传元数据 + 阶段伪进度）已记录于本计划 §6 | 出现「截图/设计稿作为需求输入」的真实需求时重启评估。**关键约束**：base64 绝不能进文本 prompt（2 MB 图 ≈ 70 万 token），须走独立多模态通道；prompt 内只放`{index,label,mimeType}` 元数据并用「图1/图2」位置编号指代 |

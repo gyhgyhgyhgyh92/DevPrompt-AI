@@ -118,6 +118,7 @@ DevPrompt AI 采用四层架构，依赖方向严格单向向下，不可逆向�
 | 4 | `domain/` 不得 import 下层**实现模块**（`harness/process.py`、`decision/fallback.py` 等） | 静态导入检查 |
 | 5 | SQL 只允许出现在 `memory/` 模块内 | 静态检查 |
 | 6 | 组件文件名必须与主导出名一致 | 自定义检查 |
+| 7 | 前端错误码映射表必须覆盖后端全部错误码 | 静态比对（N-7/M-10） |
 
 **判定 `domain/` 是否违规的客观标准**：其单元测试可在脱离文件系统与网络的环境下运行。若某模块的测试必须真实起子进程或发请求，说明该模块混入了 I/O，违规。
 
@@ -648,6 +649,11 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 | 4002 | LLM 端点不可达 | 503 | 是 |
 | 4003 | LLM 返回格式非法 | 502 | 是 |
 | 5001 | 外部工具缺失 | 503 | 否 |
+| 5011 | LLM 调用超时 | 503 | 是 |
+| 5012 | 供应商速率限制（生成阶段） | 429 | 是 |
+| 5013 | 供应商余额或配额不足 | 402 | 否 |
+| 5014 | LLM 鉴权失败（api_key 无效） | 401 | 否 |
+| 5015 | 上游服务异常（网络错误或 5xx） | 502 | 是 |
 | 6001 | 非法状态转移 | 409 | 否 |
 | 6002 | 反问软护栏触发，等待用户裁决（继续追问/直接生成） | 409 | 否 |
 | 6003 | 流程 ID 不存在 | 404 | 否 |
@@ -655,6 +661,15 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 | 9002 | 配置缺失 | 500 | 否 |
 
 **错误响应必须包含**：`code`、`message`、`request_id`。`message` 使用中文且可操作（说明如何解决，不只是描述问题）。
+
+**`code` 与 `message` 的分工**（N-7确立）：
+
+| 字段 | 面向 | 约束 |
+|---|---|---|
+| `code` | **前端查表键** | 必须登记在 `domain/error_codes.py`（本节清单为其权威来源） |
+| `message` | **日志与降级兜底** | 可含技术细节（类型名、路径片段）；前端仅在后端码未映射时回落展示 |
+
+前端映射表 `frontend/src/schemas/errorCodes.ts` 必须覆盖本节全部码，由 `scripts/check_architecture.py::check_error_code_mapping` 强制（子集断言：前端可多不可少）。**理由**：后端新增码而前端漏映射时，用户会看到未经整理的原始 message——不崩溃，但正是要消除的体验缺口，且这种漂移不会引起任何测试失败。
 
 ### 3.4 异常处理规范
 
@@ -1018,7 +1033,10 @@ src/devprompt_ai/
 ├── config.py                  Pydantic Settings
 ├── domain/                    纯领域逻辑，无 I/O
 │   ├── __init__.py
-│   ├── errors.py              领域异常与错误码
+│   ├── errors.py              领域异常类型（码取自 error_codes）
+│   ├── error_codes.py         集中错误码表（架构文档 §3.3 权威清单）
+│   ├── prompt_guard.py        跨域共用 prompt 边界与安全声明（T-1~T-5）
+│   ├── startup_report.py      启动自愈报告（类型 + 进程级状态）
 │   ├── models.py              领域数据模型
 │   ├── retrieval/
 │   │   ├── ports.py           Protocol 定义（子进程 / 文件读取）
@@ -1052,7 +1070,8 @@ src/devprompt_ai/
 │   ├── browse.py              目录浏览 I/O（F-601 页内文件夹选择器数据源，GET /project/browse）
 │   └── dialog.py              Windows 原生文件夹对话框（pwsh -STA，零新依赖）
 ├── memory/                    唯一允许出现 SQL 的模块
-│   ├── schema.py              表结构与迁移（WAL 初始化 + 幂等建表）
+│   ├── schema.py              表结构与迁移（WAL 初始化 + 幂等建建表；含 forge_quarantine 隔离表）
+│   ├── startup_safety_check.py 启动自愈（N-1：integrity_check → 坏行隔离 → 补齐缺表；永不抛异常）
 │   ├── session_store.py       L1 会话存储（SQLiteSessionStore，经 SessionStore Protocol 注入；CAS 乐观锁）
 │   ├── preference_store.py    L3 偏好向量
 │   └── project_notes.py       L2 Git notes
@@ -1061,16 +1080,17 @@ src/devprompt_ai/
 │   ├── hashing.py
 │   ├── process.py
 │   ├── cost.py                LLM token/费用明细（F-805）
+│   ├── envhint.py             配置缺失的可操作提示（N-8，只输出变量名与用途）
 │   └── secrets.py             密钥脱敏（MUST-19）
 ├── interfaces/                表现层（Web HTTP 薄壳，零业务逻辑）
 │   └── api/
 │       ├── __init__.py        包声明（薄壳层约束说明）
-│       ├── app.py             FastAPI 实例 + CORS 中间件 + 统一异常渲染；含前端 `frontend/dist` 单端口托管（SPA 回退，`/api` 不遮蔽，T7-7）
+│       ├── app.py             FastAPI 实例 + CORS + 统一异常渲染 + 缓存/安全响应头中间件（M-11）
 │       ├── routes.py          路由薄壳（13 路径/16 操作；参数收拢 → 调 service → 渲染）
 │       ├── schemas.py         Pydantic v2 请求/响应契约（XxxRequest/XxxResponse）
-│       └── health.py          环境自检（rg/ctags/git 版本、DB 文件可写、LLM 配置非空）
+│       └── health.py          环境自检（rg/ctags/git、DB 可写、LLM 配置、storage_repair）
 └── observability/
-    └── logging.py             结构化事件日志（标准库，T6-9；固定事件全集见 SHOULD-08）
+    └── logging.py             结构化事件日志（标准库，T6-9；11 个固定事件见 SHOULD-08）
 ```
 
 ---
@@ -1170,7 +1190,8 @@ frontend/
     │   ├── common.ts
     │   ├── optimize.ts
     │   ├── preference.ts
-    │   └── settings.ts           设置契约校验（F-604）
+    │   ├── settings.ts           设置契约校验（F-604）
+    │   └── errorCodes.ts         错误码 → 用户文案表（N-7；须覆盖后端 ERROR_CODES 全部条目）
     ├── styles/                全局样式与 token
     │   ├── tokens.css         CSS Variables 设计 token
     │   ├── global.css
