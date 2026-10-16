@@ -531,6 +531,11 @@ class ForgeService:
                     "base_url": str(active_entry.get("base_url", "")),
                     "api_key": str(active_entry.get("api_key", "")),
                     "model_id": str(active_entry.get("model_id", "")),
+                    # 该条目的参数覆盖（已按 provider 清洗）——让每模型参数真正生效
+                    "llm_params": normalize_overrides(
+                        str(active_entry.get("provider", "")),
+                        active_entry.get("param_overrides") or {},
+                    ),
                 }
                 await asyncio.to_thread(write_model_settings, mirror)
                 for src_key, value in mirror.items():

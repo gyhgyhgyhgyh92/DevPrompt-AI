@@ -112,6 +112,8 @@ def check_frontend_thresholds() -> list[str]:
         for f in sorted(FRONTEND_SRC.rglob(pattern)):
             if f == generated:
                 continue  # 契约镜像产物，非业务代码（F-705）
+            if ".test." in f.name:
+                continue  # 测试文件里的数值是测试数据（如 temperature=0.5），非业务判定
             for match in THRESHOLD_RE.finditer(f.read_text(encoding="utf-8")):
                 violations.append(f"[MUST-08] {f}: 疑似阈值常量 '{match.group(0)}'")
     return violations

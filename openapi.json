@@ -746,8 +746,36 @@
         "title": "LockedSettings",
         "type": "object"
       },
+      "ModelCapabilitiesView": {
+        "description": "模型能力标记（2026-09-17 模型管理迁移；迁自源项目 `ModelCapabilities`）。\n\n仅文本模型相关三项——图像/多模态按裁定 D4 全部排除。",
+        "properties": {
+          "max_context_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Context Length"
+          },
+          "supports_reasoning": {
+            "default": false,
+            "title": "Supports Reasoning",
+            "type": "boolean"
+          },
+          "supports_tools": {
+            "default": true,
+            "title": "Supports Tools",
+            "type": "boolean"
+          }
+        },
+        "title": "ModelCapabilitiesView",
+        "type": "object"
+      },
       "ModelEntryUpdate": {
-        "description": "PUT /settings models 段条目：id=None 为新增（后端生成）；api_key None/空=保留原值。",
+        "description": "PUT /settings models 段条目：id=None 为新增（后端生成）；api_key None/空=保留原值。\n\n`param_overrides` 的三态语义（2026-09-17 迁移，对齐源项目 `manager.ts:968-972`）：\n省略或 `null` = 沿用同 id 旧值；显式传 `{}` = **清空**；显式传 dict = **整体替换**。\n绝不做深合并，否则用户删除的参数会被保留回来。",
         "properties": {
           "api_key": {
             "anyOf": [
@@ -804,6 +832,18 @@
             ],
             "title": "Model Id"
           },
+          "param_overrides": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Param Overrides"
+          },
           "provider": {
             "anyOf": [
               {
@@ -820,7 +860,7 @@
         "type": "object"
       },
       "ModelEntryView": {
-        "description": "注册表条目脱敏视图（F-604 多模型）：api_key 恒脱敏，is_active 标记当前生效项。",
+        "description": "注册表条目脱敏视图（F-604 多模型）：api_key 恒脱敏，is_active 标记当前生效项。\n\n2026-09-17 迁移增`capabilities` / `param_overrides` 两个只读字段，供设置中心\n渲染能力徽标与参数编辑器。",
         "properties": {
           "api_key_masked": {
             "title": "Api Key Masked",
@@ -829,6 +869,9 @@
           "base_url": {
             "title": "Base Url",
             "type": "string"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/ModelCapabilitiesView"
           },
           "id": {
             "title": "Id",
@@ -845,6 +888,11 @@
           "model_id": {
             "title": "Model Id",
             "type": "string"
+          },
+          "param_overrides": {
+            "additionalProperties": true,
+            "title": "Param Overrides",
+            "type": "object"
           },
           "provider": {
             "title": "Provider",
@@ -1021,6 +1069,101 @@
           "project"
         ],
         "title": "OptimizeRequest",
+        "type": "object"
+      },
+      "ParameterDefinitionView": {
+        "description": "单个可调参数的完整定义（迁自源项目 `UnifiedParameterDefinition`）。\n\n由后端在 `GET /settings` 的 `model_specs` 段下发，前端据此渲染参数编辑器。\n`is_native` 标明该参数是否会被 `ModelSettings` 原生下发——为 false 的当前仅登记\n与校验、实际不生效（需接线 `extra_body`）。",
+        "properties": {
+          "allowed_values": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Values",
+            "type": "array"
+          },
+          "default_value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Value"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "is_native": {
+            "default": true,
+            "title": "Is Native",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "max_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Value"
+          },
+          "min_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Value"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step"
+          },
+          "type": {
+            "enum": [
+              "number",
+              "integer",
+              "boolean",
+              "string",
+              "string-array"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "unit": {
+            "default": "",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "label"
+        ],
+        "title": "ParameterDefinitionView",
         "type": "object"
       },
       "PreferenceUpdateRequest": {
@@ -1244,13 +1387,23 @@
         "type": "object"
       },
       "SettingsResponse": {
-        "description": "GET/PUT /settings 数据体（T6-11）。\n\n``models`` 为多模型注册表脱敏视图（F-604，2026-10-13）；字段无默认值（响应必有值）。",
+        "description": "GET/PUT /settings 数据体（T6-11）。\n\n``models`` 为多模型注册表脱敏视图（F-604，2026-10-13）；字段无默认值（响应必有值）。\n\n2026-09-17 迁移增 ``model_specs``：provider key → 参数定义数组。**复用本端点下发\n而非新增路径**，故契约仍 13 路径 / 16 操作。",
         "properties": {
           "locked": {
             "$ref": "#/components/schemas/LockedSettings"
           },
           "model_service": {
             "$ref": "#/components/schemas/ModelServiceSettings"
+          },
+          "model_specs": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/ParameterDefinitionView"
+              },
+              "type": "array"
+            },
+            "title": "Model Specs",
+            "type": "object"
           },
           "models": {
             "items": {

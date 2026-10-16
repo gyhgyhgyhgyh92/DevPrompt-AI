@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from pydantic import Field
 from pydantic.fields import FieldInfo
 from pydantic_settings import (
     BaseSettings,
@@ -18,6 +19,7 @@ from pydantic_settings import (
 
 from devprompt_ai.common.envhint import ENV_PURPOSE, render_env_hint
 from devprompt_ai.domain.errors import ConfigurationError
+from devprompt_ai.domain.model_spec import NATIVE_PARAMETERS, apply_provider_constraints
 
 # settings.json model_service 段键 → AppConfig 字段名（F-604 契约键与配置键分离）
 MODEL_KEY_MAP: dict[str, str] = {
@@ -28,6 +30,7 @@ MODEL_KEY_MAP: dict[str, str] = {
     "timeout": "llm_timeout",
     "temperature": "llm_temperature",
     "max_tokens": "llm_max_tokens",
+    "llm_params": "llm_params",  # 生效模型的参数覆盖（2026-09-17 迁移）
 }
 
 
@@ -63,6 +66,11 @@ class AppConfig(BaseSettings):
     llm_timeout: float = 60.0
     llm_temperature: float | None = None
     llm_max_tokens: int | None = None
+    # 生效模型的参数覆盖（2026-09-17 模型管理迁移，裁定 D3「每模型独立参数」）：
+    # 由 service 在激活条目时从 `param_overrides` 清洗后镜像进 model_service 段的
+    # `llm_params` 键。刻意**不让 AppConfig 直接读注册表**——config 依赖 memory 会
+    # 把「配置」变成「有状态的存储读取者」，且与既有镜像机制重复。
+    llm_params: dict[str, Any] = Field(default_factory=dict)
 
     prefer_adapt_weight: float = 0.6
     prefer_history_weight: float = 0.4
@@ -134,6 +142,38 @@ class AppConfig(BaseSettings):
                     "prefer_history_weight": self.prefer_history_weight,
                 },
             )
+
+    def effective_llm_params(self) -> dict[str, Any]:
+        """本次调用实际生效的采样参数（可直接展开进 `ModelSettings`）。
+
+        合并链（后者覆盖前者）：
+            1. 全局默认 `llm_temperature` / `llm_max_tokens`（设置中心或 .env）；
+            2. 当前生效模型的 `param_overrides`（每模型独立，裁定 D3）。
+
+        最后经 `apply_provider_constraints` 按厂商剔除不支持项——例如 Anthropic
+        不接受 temperature，剔除后才不会发出会报错的请求。
+
+        只返回 `ModelSettings` 原生支持的键（见 `NATIVE_PARAMETERS`）；未设值的键不出现在
+        结果里，交由供应商使用自己的默认值。**本方法不读注册表**——调用方（harness）
+        拿到的 `AppConfig` 已是激活条目镜像后的配置。
+        """
+        merged: dict[str, Any] = {}
+        for key, value in (
+            ("temperature", self.llm_temperature),
+            ("max_tokens", self.llm_max_tokens),
+        ):
+            if value is not None:
+                merged[key] = value
+        # 模型级覆盖优先于全局默认（裁定 D3：每模型独立参数）
+        merged.update(self.llm_params or {})
+        provider = self.llm_provider or ""
+        cleaned = apply_provider_constraints(provider, merged)
+        # 只保留 ModelSettings 原生支持的键。`apply_provider_constraints` 会注入
+        # provider 的 force_params（如 anthropic 的 reasoning_effort='high'），
+        # 但该键不属于 ModelSettings 字段——pydantic 会当 extra 收下，行为不确定
+        # （可能被静默忽略使 force_params 形同虚设，也可能被透传导致供应商报错）。
+        # force_params 的真正下发需要接线 extra_body，不在本轮范围。
+        return {key: value for key, value in cleaned.items() if key in NATIVE_PARAMETERS}
 
     def llm_problems(self) -> list[tuple[str, str]]:
         """返回 LLM 三项中未配置者的 ``(变量名, 用途)`` 清单；齐备则返回空列表。

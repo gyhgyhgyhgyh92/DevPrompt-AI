@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ModelCapabilitiesSchema, ModelSpecsSchema } from './modelSpec'
 
 /** 通用外观设置（F-604）：持久化在 localStorage，键前缀 `devprompt:v1:`。 */
 export const AppearanceSettingsSchema = z.object({
@@ -43,6 +44,9 @@ export const ModelEntryViewSchema = z.object({
   model_id: z.string(),
   api_key_masked: z.string(),
   is_active: z.boolean(),
+  // 2026-09-17 模型管理迁移：能力元数据与每模型参数覆盖（只读展示）
+  capabilities: ModelCapabilitiesSchema.optional(),
+  param_overrides: z.record(z.string(), z.unknown()).optional(),
 })
 
 export type ModelEntryView = z.infer<typeof ModelEntryViewSchema>
@@ -55,12 +59,20 @@ export const ModelEntryUpdateSchema = z.object({
   base_url: z.string().nullish(),
   model_id: z.string().nullish(),
   api_key: z.string().nullish(),
+  /**
+   * 三态语义（对齐后端与源项目 manager.ts:968-972）：
+   * 省略或 null = 沿用同 id 旧值；显式 `{}` = 清空；显式 dict = 整体替换。
+   * 序列化时 nullish 会被剔除，故「清空」必须显式传空对象才能表达。
+   */
+  param_overrides: z.record(z.string(), z.unknown()).nullish(),
 })
 
 /** GET/PUT /settings 数据体（契约 SettingsResponse；locked 项仅只读渲染，MUST-08）。 */
 export const SettingsResponseSchema = z.object({
   locked: LockedSchema,
   models: z.array(ModelEntryViewSchema),
+  /** 2026-09-17 迁移：provider key → 参数定义数组，参数编辑器的数据来源。 */
+  model_specs: ModelSpecsSchema.optional(),
   model_service: ModelServiceSchema,
   process: ProcessSchema,
 })

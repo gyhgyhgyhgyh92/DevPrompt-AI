@@ -63,6 +63,53 @@ def test_settings_update_declares_put_semantics() -> None:
     assert "沿用" in desc, "api_key 空值语义（沿用旧值而非清空）也须声明"
 
 
+class TestModelSpecContract:
+    """2026-09-17 模型管理迁移的契约断言。"""
+
+    def test_capabilities_and_overrides_exposed_on_entry(self) -> None:
+        props = create_app().openapi()["components"]["schemas"]["ModelEntryView"]["properties"]
+        assert "capabilities" in props, "设置中心需要读能力元数据渲染徽标"
+        assert "param_overrides" in props, "设置中心需要读参数覆盖渲染编辑器"
+
+    def test_entry_update_accepts_param_overrides(self) -> None:
+        props = create_app().openapi()["components"]["schemas"]["ModelEntryUpdate"]["properties"]
+        assert "param_overrides" in props, "前端需能回写每模型参数"
+
+    def test_param_overrides_three_states_declared(self) -> None:
+        """三态语义（沿用/清空/整体替换）必须写进契约，否则前端无法实现「清空」。"""
+        desc = create_app().openapi()["components"]["schemas"]["ModelEntryUpdate"]["description"]
+        assert "清空" in desc
+        assert "整体替换" in desc
+
+    def test_settings_response_carries_model_specs(self) -> None:
+        props = create_app().openapi()["components"]["schemas"]["SettingsResponse"]["properties"]
+        assert "model_specs" in props, "参数定义须随 GET /settings 下发，否则前端无法渲染控件"
+
+    def test_parameter_definition_view_shape(self) -> None:
+        props = create_app().openapi()["components"]["schemas"]["ParameterDefinitionView"][
+            "properties"
+        ]
+        for field in ("name", "type", "label", "min_value", "max_value", "is_native"):
+            assert field in props, f"参数定义缺 {field}"
+
+    def test_capabilities_view_is_text_only(self) -> None:
+        """多模态按裁定 D4 排除——契约里不得出现图像相关字段。"""
+        props = create_app().openapi()["components"]["schemas"]["ModelCapabilitiesView"][
+            "properties"
+        ]
+        assert set(props) == {"supports_tools", "supports_reasoning", "max_context_length"}
+
+    def test_path_and_operation_count_unchanged(self) -> None:
+        """本次迁移复用既有 /settings 端点，不得新增路径（13 路径 / 16 操作）。"""
+        doc = create_app().openapi()
+        assert len(doc["paths"]) == 13
+        operations = sum(
+            len([k for k in v if k in {"get", "post", "put", "patch", "delete"}])
+            for v in doc["paths"].values()
+        )
+        assert operations == 16
+
+
 def test_committed_openapi_matches_app() -> None:
     """契约冻结：入库 openapi.json 必须与当前 app.openapi() 一致（漂移即 CI 失败）。"""
     committed = json.loads((REPO_ROOT / "openapi.json").read_text(encoding="utf-8"))

@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react'
 import { getHealth, putSettings } from '../../api/endpoints'
 import type { SettingsResponse, SettingsUpdate } from '../../api/types'
 import { useSettingsStore } from '../../stores/useSettingsStore'
+import type { ParameterDefinition as ParamSpec } from '../../schemas/modelSpec'
+import type { ModelCapabilities } from '../../schemas/modelSpec'
+import { ModelCapabilityBadge } from './ModelCapabilityBadge'
+import { ModelParamEditor } from './ModelParamEditor'
 import { errorMessage } from './errorMessage'
 import './settings.css'
 
@@ -28,6 +32,10 @@ interface ModelEntryDraft {
   apiKey: string
   masked: string
   modelId: string
+  /** 2026-09-17 迁移：能力元数据（只读展示，切换供应商时重新取）。 */
+  capabilities: ModelCapabilities
+  /** 该条目的参数覆盖（每模型独立，裁定 D3）。 */
+  paramOverrides: Record<string, unknown>
 }
 
 /** 全局调用参数草稿（不进注册表，仍写 model_service 段）。 */
@@ -37,7 +45,34 @@ interface GlobalForm {
   maxTokens: string
 }
 
+/**
+ * 取该 provider 的参数定义（后端 model_specs）。
+ *
+ * 前端 PROVIDERS 的取值（DeepSeek / OpenAI 兼容 / 自定义）与后端 provider key
+ * （deepseek / openai_compatible）不完全一致，故按小写去空格比对，找不到再试子串。
+ * 找不到就返回空数组——不猜测参数，宁可不显示。
+ */
+function paramDefsOf(
+  specs: Readonly<Record<string, ReadonlyArray<ParamSpec>>> | undefined,
+  provider: string,
+): ReadonlyArray<ParamSpec> {
+  if (!specs) return []
+  const needle = provider.trim().toLowerCase().replace(/\s+/g, '')
+  if (needle === '') return []
+  const direct = specs[needle]
+  if (direct) return direct
+  const fuzzy = Object.entries(specs).find(([key]) => key.toLowerCase().includes(needle))
+  return fuzzy ? fuzzy[1] : []
+}
+
 let draftSeq = 0
+
+/** 未知能力时的兜底（后端保证下发，`.default()` 只在老数据缺字段时生效）。 */
+const FALLBACK_CAPABILITIES: ModelCapabilities = {
+  supports_tools: true,
+  supports_reasoning: false,
+  max_context_length: null,
+}
 
 /** 由后端视图构造草稿：密钥不回填（回显恒脱敏，MUST-19）。 */
 function draftsFromSettings(settings: SettingsResponse): ModelEntryDraft[] {
@@ -50,6 +85,8 @@ function draftsFromSettings(settings: SettingsResponse): ModelEntryDraft[] {
     apiKey: '',
     masked: m.api_key_masked,
     modelId: m.model_id,
+    capabilities: m.capabilities ?? FALLBACK_CAPABILITIES,
+    paramOverrides: { ...m.param_overrides },
   }))
 }
 
@@ -96,6 +133,8 @@ export function ModelServicePanel() {
     return <p className="settings-note">设置加载中…</p>
   }
 
+  const modelSpecs = settings.model_specs
+
   const patchDraft = (key: string, patch: Partial<ModelEntryDraft>) =>
     setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)))
 
@@ -112,6 +151,8 @@ export function ModelServicePanel() {
         apiKey: '',
         masked: '',
         modelId: '',
+        capabilities: FALLBACK_CAPABILITIES,
+        paramOverrides: {},
       },
     ])
   }
@@ -144,6 +185,8 @@ export function ModelServicePanel() {
       base_url: d.baseUrl.trim(),
       model_id: d.modelId.trim(),
       ...(d.apiKey === '' ? {} : { api_key: d.apiKey }),
+      // 始终下发 param_overrides：空对象表示「清空」，省略才是「沿用」（三态语义）
+      param_overrides: d.paramOverrides,
     }))
     const model_service: NonNullable<SettingsUpdate['model_service']> = {
       timeout: timeout.value,
@@ -207,6 +250,7 @@ export function ModelServicePanel() {
               {draft.id !== null && draft.id === activeId ? (
                 <span className="settings-model-badge">当前</span>
               ) : null}
+              <ModelCapabilityBadge capabilities={draft.capabilities} />
               <span className="settings-model-row__spacer" />
               <button
                 type="button"
@@ -252,6 +296,8 @@ export function ModelServicePanel() {
                     patchDraft(draft.key, {
                       provider: value,
                       ...(preset && preset.baseUrl !== '' ? { baseUrl: preset.baseUrl } : {}),
+                      // 换供应商时清空参数：新厂商不支持的参数留着只会误导
+                      paramOverrides: {},
                     })
                   }}
                 >
@@ -307,6 +353,16 @@ export function ModelServicePanel() {
                 </span>
               </div>
             </div>
+            {paramDefsOf(modelSpecs, draft.provider).length > 0 ? (
+              <div className="model-param-section">
+                <span className="settings-label">该模型的调用参数</span>
+                <ModelParamEditor
+                  definitions={paramDefsOf(modelSpecs, draft.provider)}
+                  value={draft.paramOverrides}
+                  onChange={(next) => patchDraft(draft.key, { paramOverrides: next })}
+                />
+              </div>
+            ) : null}
           </div>
         ))}
       </div>

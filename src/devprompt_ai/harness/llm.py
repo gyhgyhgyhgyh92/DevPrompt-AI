@@ -128,9 +128,7 @@ async def chat_structured(
         name="devprompt-llm",
         instructions=instructions,
         model=cfg.llm_model,
-        model_settings=ModelSettings(
-            temperature=cfg.llm_temperature, max_tokens=cfg.llm_max_tokens
-        ),
+        model_settings=ModelSettings(**cfg.effective_llm_params()),
     )
     try:
         result = await asyncio.wait_for(

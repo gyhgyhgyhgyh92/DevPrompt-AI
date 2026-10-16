@@ -6,7 +6,7 @@ ApiResponse 泛型化：data 体类型进 OpenAPI，供前端类型生成精确�
 
 from __future__ import annotations
 
-from typing import Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -180,8 +180,46 @@ class ModelServiceSettings(BaseModel):
     max_tokens: int | None = None
 
 
+class ModelCapabilitiesView(BaseModel):
+    """模型能力标记（2026-09-17 模型管理迁移；迁自源项目 `ModelCapabilities`）。
+
+    仅文本模型相关三项——图像/多模态按裁定 D4 全部排除。
+    """
+
+    supports_tools: bool = True
+    supports_reasoning: bool = False
+    max_context_length: int | None = None
+
+
+class ParameterDefinitionView(BaseModel):
+    """单个可调参数的完整定义（迁自源项目 `UnifiedParameterDefinition`）。
+
+    由后端在 `GET /settings` 的 `model_specs` 段下发，前端据此渲染参数编辑器。
+    `is_native` 标明该参数是否会被 `ModelSettings` 原生下发——为 false 的当前仅登记
+    与校验、实际不生效（需接线 `extra_body`）。
+    """
+
+    name: str
+    # 参数类型是有限枚举，契约里写成 str 会丢掉约束——前端 Zod 是严格枚举，
+    # 两侧不一致会让 TS 类型无法收窄。故此处用 Literal 与领域层 ParameterType 对齐。
+    type: Literal["number", "integer", "boolean", "string", "string-array"]
+    label: str
+    description: str = ""
+    default_value: Any | None = None
+    min_value: float | None = None
+    max_value: float | None = None
+    step: float | None = None
+    allowed_values: list[str] = Field(default_factory=list)
+    unit: str = ""
+    is_native: bool = True
+
+
 class ModelEntryView(BaseModel):
-    """注册表条目脱敏视图（F-604 多模型）：api_key 恒脱敏，is_active 标记当前生效项。"""
+    """注册表条目脱敏视图（F-604 多模型）：api_key 恒脱敏，is_active 标记当前生效项。
+
+    2026-09-17 迁移增`capabilities` / `param_overrides` 两个只读字段，供设置中心
+    渲染能力徽标与参数编辑器。
+    """
 
     id: str
     label: str
@@ -190,10 +228,17 @@ class ModelEntryView(BaseModel):
     model_id: str
     api_key_masked: str
     is_active: bool
+    capabilities: ModelCapabilitiesView = Field(default_factory=ModelCapabilitiesView)
+    param_overrides: dict[str, Any] = Field(default_factory=dict)
 
 
 class ModelEntryUpdate(BaseModel):
-    """PUT /settings models 段条目：id=None 为新增（后端生成）；api_key None/空=保留原值。"""
+    """PUT /settings models 段条目：id=None 为新增（后端生成）；api_key None/空=保留原值。
+
+    `param_overrides` 的三态语义（2026-09-17 迁移，对齐源项目 `manager.ts:968-972`）：
+    省略或 `null` = 沿用同 id 旧值；显式传 `{}` = **清空**；显式传 dict = **整体替换**。
+    绝不做深合并，否则用户删除的参数会被保留回来。
+    """
 
     id: str | None = None
     label: str | None = None
@@ -201,6 +246,7 @@ class ModelEntryUpdate(BaseModel):
     base_url: str | None = None
     model_id: str | None = None
     api_key: str | None = None
+    param_overrides: dict[str, Any] | None = None
 
 
 class ProcessSettings(BaseModel):
@@ -221,9 +267,13 @@ class SettingsResponse(BaseModel):
     """GET/PUT /settings 数据体（T6-11）。
 
     ``models`` 为多模型注册表脱敏视图（F-604，2026-10-13）；字段无默认值（响应必有值）。
+
+    2026-09-17 迁移增 ``model_specs``：provider key → 参数定义数组。**复用本端点下发
+    而非新增路径**，故契约仍 13 路径 / 16 操作。
     """
 
     models: list[ModelEntryView]
+    model_specs: dict[str, list[ParameterDefinitionView]] = Field(default_factory=dict)
     model_service: ModelServiceSettings
     process: ProcessSettings
     locked: LockedSettings

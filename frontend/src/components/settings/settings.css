@@ -324,3 +324,49 @@
   font-size: var(--text-body-xs);
   border-radius: var(--radius-sm);
 }
+
+/* 2026-09-17 模型管理迁移：能力徽标与每模型参数编辑区 */
+.model-cap {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.model-cap__badge {
+  padding: 1px 6px;
+  font: var(--font-code-regular);
+  font-size: var(--text-caption-sm);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
+  color: var(--color-text-muted);
+}
+
+.model-cap__badge--on {
+  border-color: var(--color-primary-500);
+  color: var(--color-primary-500);
+}
+
+.model-cap__badge--off {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
+.model-cap__badge--info {
+  border-style: dashed;
+}
+
+.model-param-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-block-start: var(--space-3);
+  padding-block-start: var(--space-3);
+  border-block-start: 1px dashed var(--color-border-subtle);
+}
+
+.model-param-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-inline-start: var(--space-3);
+}

@@ -650,8 +650,32 @@ export interface components {
             candidate_limit: number;
         };
         /**
+         * ModelCapabilitiesView
+         * @description 模型能力标记（2026-09-17 模型管理迁移；迁自源项目 `ModelCapabilities`）。
+         *
+         *     仅文本模型相关三项——图像/多模态按裁定 D4 全部排除。
+         */
+        ModelCapabilitiesView: {
+            /** Max Context Length */
+            max_context_length?: number | null;
+            /**
+             * Supports Reasoning
+             * @default false
+             */
+            supports_reasoning: boolean;
+            /**
+             * Supports Tools
+             * @default true
+             */
+            supports_tools: boolean;
+        };
+        /**
          * ModelEntryUpdate
          * @description PUT /settings models 段条目：id=None 为新增（后端生成）；api_key None/空=保留原值。
+         *
+         *     `param_overrides` 的三态语义（2026-09-17 迁移，对齐源项目 `manager.ts:968-972`）：
+         *     省略或 `null` = 沿用同 id 旧值；显式传 `{}` = **清空**；显式传 dict = **整体替换**。
+         *     绝不做深合并，否则用户删除的参数会被保留回来。
          */
         ModelEntryUpdate: {
             /** Api Key */
@@ -664,18 +688,26 @@ export interface components {
             label?: string | null;
             /** Model Id */
             model_id?: string | null;
+            /** Param Overrides */
+            param_overrides?: {
+                [key: string]: unknown;
+            } | null;
             /** Provider */
             provider?: string | null;
         };
         /**
          * ModelEntryView
          * @description 注册表条目脱敏视图（F-604 多模型）：api_key 恒脱敏，is_active 标记当前生效项。
+         *
+         *     2026-09-17 迁移增`capabilities` / `param_overrides` 两个只读字段，供设置中心
+         *     渲染能力徽标与参数编辑器。
          */
         ModelEntryView: {
             /** Api Key Masked */
             api_key_masked: string;
             /** Base Url */
             base_url: string;
+            capabilities?: components["schemas"]["ModelCapabilitiesView"];
             /** Id */
             id: string;
             /** Is Active */
@@ -684,6 +716,10 @@ export interface components {
             label: string;
             /** Model Id */
             model_id: string;
+            /** Param Overrides */
+            param_overrides?: {
+                [key: string]: unknown;
+            };
             /** Provider */
             provider: string;
         };
@@ -751,6 +787,50 @@ export interface components {
             project: string;
             /** Sentence */
             sentence: string;
+        };
+        /**
+         * ParameterDefinitionView
+         * @description 单个可调参数的完整定义（迁自源项目 `UnifiedParameterDefinition`）。
+         *
+         *     由后端在 `GET /settings` 的 `model_specs` 段下发，前端据此渲染参数编辑器。
+         *     `is_native` 标明该参数是否会被 `ModelSettings` 原生下发——为 false 的当前仅登记
+         *     与校验、实际不生效（需接线 `extra_body`）。
+         */
+        ParameterDefinitionView: {
+            /** Allowed Values */
+            allowed_values?: string[];
+            /** Default Value */
+            default_value?: unknown | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Is Native
+             * @default true
+             */
+            is_native: boolean;
+            /** Label */
+            label: string;
+            /** Max Value */
+            max_value?: number | null;
+            /** Min Value */
+            min_value?: number | null;
+            /** Name */
+            name: string;
+            /** Step */
+            step?: number | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "number" | "integer" | "boolean" | "string" | "string-array";
+            /**
+             * Unit
+             * @default
+             */
+            unit: string;
         };
         /**
          * PreferenceUpdateRequest
@@ -854,10 +934,17 @@ export interface components {
          * @description GET/PUT /settings 数据体（T6-11）。
          *
          *     ``models`` 为多模型注册表脱敏视图（F-604，2026-10-13）；字段无默认值（响应必有值）。
+         *
+         *     2026-09-17 迁移增 ``model_specs``：provider key → 参数定义数组。**复用本端点下发
+         *     而非新增路径**，故契约仍 13 路径 / 16 操作。
          */
         SettingsResponse: {
             locked: components["schemas"]["LockedSettings"];
             model_service: components["schemas"]["ModelServiceSettings"];
+            /** Model Specs */
+            model_specs?: {
+                [key: string]: components["schemas"]["ParameterDefinitionView"][];
+            };
             /** Models */
             models: components["schemas"]["ModelEntryView"][];
             process: components["schemas"]["ProcessSettings"];

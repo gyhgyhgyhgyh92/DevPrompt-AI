@@ -1035,6 +1035,8 @@ src/devprompt_ai/
 │   ├── __init__.py
 │   ├── errors.py              领域异常类型（码取自 error_codes）
 │   ├── error_codes.py         集中错误码表（架构文档 §3.3 权威清单）
+│   ├── model_spec.py          文本模型能力元数据与参数定义（纯领域表，8 厂商）
+│   ├── model_migration.py     注册表条目归一化与参数覆盖清洗（读时补默认值）
 │   ├── prompt_guard.py        跨域共用 prompt 边界与安全声明（T-1~T-5）
 │   ├── startup_report.py      启动自愈报告（类型 + 进程级状态）
 │   ├── models.py              领域数据模型
