@@ -1,8 +1,13 @@
-"""多供应商 LLM 封装（F-004）：OpenAI 兼容协议 + Chat Completions + 禁 tracing。
+"""多供应商 LLM 封装（F-004）：按 provider 分流 API 形态 + 禁 tracing。
 
-SDK 三约束（技术栈 §4.5）：set_default_openai_api("chat_completions")；
-set_tracing_disabled(True)；base_url 经 set_default_openai_client 注入。
-结构化输出采用 prompt 注入 schema + 本地解析校验（不依赖供应商 response_format，
+2026-09-17 多供应商扩展：**不再使用进程级全局开关** `set_default_openai_api`。
+该开关是模块级单例，Web 并发下按「当前 provider」反复设置会相互覆盖
+（A 请求设 responses、B 请求设 chat_completions → 随机 4xx）。改为
+:func:`build_model` **按调用构造 Model 实例**，每个 Agent 持有自己的形态，
+互不影响。SDK 侧 `set_default_openai_client` 与 `set_tracing_disabled` 仍保留
+（前者幂等，后者与协议无关）。
+
+结构化输出仍采用 prompt 注入 schema + 本地解析校验（不依赖供应商 response_format，
 DeepSeek 等端点不支持 json_schema response_format——2026-10-09 实测）。
 """
 
@@ -16,9 +21,9 @@ from typing import Final, TypeVar
 
 from agents import (
     Agent,
+    Model,
     ModelSettings,
     Runner,
-    set_default_openai_api,
     set_default_openai_client,
     set_tracing_disabled,
 )
@@ -36,11 +41,13 @@ from devprompt_ai.domain.generate.ports import (
     MultiVariantDraft,
     VariantDraft,
 )
+from devprompt_ai.domain.model_spec import PROVIDER_SPECS, resolve_api_mode, resolve_provider_key
 from devprompt_ai.domain.prompt_guard import (
     JSON_STRICT_RULES,
     VERIFIABLE_ANCHOR_C,
     build_evidence_block,
 )
+from devprompt_ai.harness.adapters import build_adapter
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -86,7 +93,12 @@ _configured_model: str = ""
 
 
 def _ensure_client(cfg: AppConfig) -> AsyncOpenAI:
-    """惰性初始化并全局注册 OpenAI 兼容客户端（同一配置只注册一次）。"""
+    """惰性初始化 OpenAI 兼容客户端（同一 model 只构造一次）。
+
+    **刻意不调 `set_default_openai_api`**：那是进程级单例，Web 并发下按 provider
+    反复设置会相互覆盖（A 请求设 responses、B 请求设 chat_completions → 随机 4xx）。
+    API 形态改为**按调用注入 Model 实例**，见 :func:`build_model`。
+    """
     global _client, _configured_model
     if not cfg.llm_base_url or not cfg.llm_model:
         raise ConfigurationError(
@@ -99,10 +111,36 @@ def _ensure_client(cfg: AppConfig) -> AsyncOpenAI:
     if _client is None or _configured_model != cfg.llm_model:
         _client = AsyncOpenAI(base_url=cfg.llm_base_url, api_key=cfg.llm_api_key or "EMPTY")
         set_default_openai_client(_client)
-        set_default_openai_api("chat_completions")  # 第三方基本不支持 Responses API
         set_tracing_disabled(True)  # 第三方 key 走 tracing 会 401
         _configured_model = cfg.llm_model
     return _client
+
+
+def build_model(cfg: AppConfig) -> Model:
+    """按当前 provider 的 `api_mode` 构造 Model 实例（逐调用，无共享状态）。
+
+    这是「按 provider 分流协议形态」的唯一入口：
+
+    - `chat_completions` → `OpenAIChatCompletionsModel`（绝大多数第三方厂商）
+    - `responses` → `OpenAIResponsesModel`（OpenAI 官方）
+    - `anthropic_messages` / `gemini_generate_content` → 原生 `Model` 子类
+
+    之所以不走 `set_default_openai_api` 全局开关：该开关是模块级单例，Web 并发
+    多请求下按「当前 provider」反复设置会产生竞态。按调用构造实例则无此问题——
+    每个 Agent 持有自己的 Model，互不影响。
+
+    :param cfg: 应用配置（读 `llm_provider` / `llm_model` / `llm_api_key`）
+    """
+    client = _ensure_client(cfg)
+    spec = PROVIDER_SPECS[resolve_provider_key(cfg.llm_provider or "")]
+    api_mode = resolve_api_mode(cfg.llm_provider or "", cfg.api_mode or "")
+    return build_adapter(
+        spec.adapter_kind,
+        cfg.llm_model,
+        client,
+        api_key=cfg.llm_api_key or "",
+        api_mode=api_mode,
+    )
 
 
 async def chat_structured(
@@ -127,8 +165,12 @@ async def chat_structured(
     agent = Agent(
         name="devprompt-llm",
         instructions=instructions,
-        model=cfg.llm_model,
-        model_settings=ModelSettings(**cfg.effective_llm_params()),
+        model=build_model(cfg),
+        model_settings=ModelSettings(
+            **cfg.effective_llm_params(),
+            # reasoning_effort 等 ModelSettings 未建模的参数走 extra_body 真正下发
+            extra_body=cfg.extra_body_params() or None,
+        ),
     )
     try:
         result = await asyncio.wait_for(

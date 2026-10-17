@@ -19,7 +19,12 @@ from pydantic_settings import (
 
 from devprompt_ai.common.envhint import ENV_PURPOSE, render_env_hint
 from devprompt_ai.domain.errors import ConfigurationError
-from devprompt_ai.domain.model_spec import NATIVE_PARAMETERS, apply_provider_constraints
+from devprompt_ai.domain.model_spec import (
+    NATIVE_PARAMETERS,
+    apply_provider_constraints,
+    is_value_empty,
+    max_context_length_of,
+)
 
 # settings.json model_service 段键 → AppConfig 字段名（F-604 契约键与配置键分离）
 MODEL_KEY_MAP: dict[str, str] = {
@@ -31,6 +36,7 @@ MODEL_KEY_MAP: dict[str, str] = {
     "temperature": "llm_temperature",
     "max_tokens": "llm_max_tokens",
     "llm_params": "llm_params",  # 生效模型的参数覆盖（2026-09-17 迁移）
+    "api_mode": "api_mode",  # 生效模型的 API 形态（2026-09-17 多供应商扩展）
 }
 
 
@@ -71,6 +77,11 @@ class AppConfig(BaseSettings):
     # `llm_params` 键。刻意**不让 AppConfig 直接读注册表**——config 依赖 memory 会
     # 把「配置」变成「有状态的存储读取者」，且与既有镜像机制重复。
     llm_params: dict[str, Any] = Field(default_factory=dict)
+    # 生效模型的 API 形态（2026-09-17 多供应商扩展）。空串 = 用 provider 默认；
+    # 由 service 在激活条目时从该条目的 api_mode 镜像而来（与 llm_params 同机制）。
+    # 取值见 domain/model_spec.ApiMode：chat_completions / responses /
+    # anthropic_messages / gemini_generate_content。
+    api_mode: str = ""
 
     prefer_adapt_weight: float = 0.6
     prefer_history_weight: float = 0.4
@@ -172,8 +183,47 @@ class AppConfig(BaseSettings):
         # provider 的 force_params（如 anthropic 的 reasoning_effort='high'），
         # 但该键不属于 ModelSettings 字段——pydantic 会当 extra 收下，行为不确定
         # （可能被静默忽略使 force_params 形同虚设，也可能被透传导致供应商报错）。
-        # force_params 的真正下发需要接线 extra_body，不在本轮范围。
+        # 非原生参数改走 extra_body 显式下发，见 :meth:`extra_body_params`。
         return {key: value for key, value in cleaned.items() if key in NATIVE_PARAMETERS}
+
+    def extra_body_params(self) -> dict[str, Any]:
+        """需经 `extra_body` 下发的参数（`ModelSettings` 无对应字段的那些）。
+
+        当前唯一成员是 `reasoning_effort`——它属于 Chat Completions 的扩展字段
+        （OpenAI/DeepSeek 等均支持），但 openai-agents 的 `ModelSettings` 未建模它。
+        经 `extra_body` 下发可让它真正生效，而不是被静默丢弃。
+
+        **空值不发**：未设置时不进 extra_body，避免覆盖供应商默认。
+        """
+        merged: dict[str, Any] = dict(self.llm_params or {})
+        provider = self.llm_provider or ""
+        cleaned = apply_provider_constraints(provider, merged)
+        return {
+            key: value
+            for key, value in cleaned.items()
+            if key not in NATIVE_PARAMETERS and not is_value_empty(value)
+        }
+
+    def context_window_warning(self, estimated_tokens: int) -> str | None:
+        """上下文窗口告警；**不做任何截断**。
+
+        2026-09-17 决策：只提示、不截断。截断检索证据会直接削弱候选集信息量，
+        而召回率≥80% 是 MUST-25 的硬门禁——用截断换窗口会牺牲更重要的指标。
+        截断若要做，须单独立项论证（已有机制见 `state.truncated` 与
+        `decision/fallback._fit_state`，那是 state 侧的既有行为，与本方法无关）。
+
+        :param estimated_tokens: 本次请求的估算 token 数
+        :return: 超限时给出可操作的中文提示；未超限或窗口未知返回 ``None``
+        """
+        limit = max_context_length_of(self.llm_provider or "", self.llm_model or "")
+        if limit is None or limit <= 0:
+            return None
+        if estimated_tokens <= limit:
+            return None
+        return (
+            f"本次请求估算约 {estimated_tokens} token，超出该模型上下文窗口 {limit} token；"
+            f"请补充组件名或缩小检索范围以减少证据量"
+        )
 
     def llm_problems(self) -> list[tuple[str, str]]:
         """返回 LLM 三项中未配置者的 ``(变量名, 用途)`` 清单；齐备则返回空列表。

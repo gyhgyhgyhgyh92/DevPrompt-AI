@@ -8,6 +8,16 @@
 指令刻意要求附带说明以提高观察窗口。
 
 密钥处理：只经 AppConfig 读取，绝不打印、绝不写入任何输出文件（MUST-19）。
+
+⚠️ **口径说明（2026-09-17 多供应商扩展后刻意保留 chat 形态）**：
+生产路径已改为按 provider 分流（`harness/llm.build_model` 逐调用注入 Model 实例，
+不再用 `set_default_openai_api` 全局开关）。但本脚本**故意固定 `chat_completions`**：
+
+它是 Batch 0「M-1 解析加固降级」的**复活条件探针**——当时记录的数据全部来自
+chat 形态（40 次调用，脆弱形态命中率 0/40）。若跟着生产路径改为 responses，
+新旧数据口径不可比，降级结论就失去依据。真正需要测新形态时，另起脚本，
+不要改这个。
+
 """
 
 from __future__ import annotations

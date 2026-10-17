@@ -25,6 +25,24 @@ from typing import Any, Final, Literal
 #: 参数类型。`string-array` 用于 stop 这类需要 JSON 序列化的多值参数。
 ParameterType = Literal["number", "integer", "boolean", "string", "string-array"]
 
+#: API 形态（2026-09-17 多供应商扩展）。
+#:
+#: - `chat_completions`：OpenAI Chat Completions，**绝大多数第三方厂商只实现这一种**
+#: - `responses`：OpenAI Responses API，仅 OpenAI 官方端点完整支持
+#: - `anthropic_messages` / `gemini_generate_content`：原生形态，走 `harness/adapters/`
+#:
+#: 为什么默认不是 `responses`：本项目早年统一 chat_completions 正是因为「第三方基本不
+#: 支持 Responses API」（技术栈 §4.5），该结论至今成立，故除 openai 外全部默认 chat。
+ApiMode = Literal["chat_completions", "responses", "anthropic_messages", "gemini_generate_content"]
+
+#: 全部 API 形态（供契约与前端下拉）。
+ALL_API_MODES: Final[tuple[ApiMode, ...]] = (
+    "chat_completions",
+    "responses",
+    "anthropic_messages",
+    "gemini_generate_content",
+)
+
 #: 参数是否会被 `ModelSettings` 原生下发（其余需 `extra_body`，本轮不接线）。
 #: 依据：openai-agents `ModelSettings` 的字段列表实测。
 NATIVE_PARAMETERS: Final[frozenset[str]] = frozenset(
@@ -53,11 +71,25 @@ class ParameterDefinition:
     step: float | None = None
     allowed_values: tuple[str, ...] = ()
     unit: str = ""
+    #: 该参数在哪些 API 形态下真正生效。默认全形态——绝大多数参数无形态差异。
+    #: `frequency_penalty` / `presence_penalty` 是已知例外：openai-agents 在 responses
+    #: 模式的 payload 中不含这两个键（实测 openai_responses.py:1039-1056），故仅在
+    #: `chat_completions` 下标为原生。**不全局移除**——DeepSeek 等走 chat 的厂商仍支持。
+    native_modes: frozenset[ApiMode] = frozenset(ALL_API_MODES)
 
     @property
     def is_native(self) -> bool:
-        """是否会被 `ModelSettings` 原生下发（本轮只有原生参数真正生效）。"""
+        """是否会被 `ModelSettings` 原生下发（本轮只有原生参数真正生效）。
+
+        注意：这是**与 api_mode 无关**的静态判定（该参数名是否属于 ModelSettings）。
+        要判断「当前 provider 的 api_mode 下是否生效」，用
+        :func:`is_native_in_mode`——两者结论可能不同（penalty 即如此）。
+        """
         return self.name in NATIVE_PARAMETERS
+
+    def is_native_in_mode(self, api_mode: ApiMode) -> bool:
+        """该参数在指定 API 形态下是否真正生效。"""
+        return self.is_native and api_mode in self.native_modes
 
     def to_dict(self) -> dict[str, Any]:
         """可序列化投影（供契约与前端消费；`domain/` 不含 HTTP 概念，此为纯数据导出）。"""
@@ -73,6 +105,7 @@ class ParameterDefinition:
             "allowed_values": list(self.allowed_values),
             "unit": self.unit,
             "is_native": self.is_native,
+            "native_modes": sorted(self.native_modes),
         }
 
 
@@ -92,12 +125,36 @@ class ModelCapabilities:
         }
 
 
+def max_context_length_of(provider: str, model_id: str = "") -> int | None:
+    """该 provider（及模型）的上下文窗口上限；未知返回 ``None``。
+
+    :param provider: provider key（大小写不敏感）
+    :param model_id: 模型 id——预留用于按模型的细分覆盖，当前按 provider 级取值
+    """
+    spec = PROVIDER_SPECS.get(resolve_provider_key(provider))
+    if spec is None:
+        return None
+    return spec.max_context_length
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderSpec:
     """一个厂商的参数与约束定义（裁定 D1：静态表，非适配器）。
 
     `drop_params` / `force_params` 是 provider 专属知识的唯一载体——源项目把这些写在
     `if (adapterId === 'anthropic')` 分支里，本项目改为数据，从而保持清洗逻辑零分支。
+
+    多供应商扩展字段（2026-09-17）：
+
+    - `api_mode`：默认 API 形态。`chat_completions` 为 OpenAI 兼容形态（绝大多数第三方
+      厂商只实现这一种）；`responses` 仅 OpenAI 官方；`anthropic_messages` /
+      `gemini_generate_content` 为原生形态（见 `harness/adapters/`）。
+    - `supported_api_modes`：该 provider 允许的模式集，控制设置中心的下拉可选值。
+    - `adapter_kind`：走哪个 adapter 构造器（`harness/adapters/registry.py`）。
+    - `base_url`：官方端点。**查证不到的留空字符串**，由 UI 提示用户自行查询文档填写
+      （2026-09-17 逐个 web_search 核实，不得凭印象书写）。
+    - `needs_key`：本地推理引擎（ollama/vllm/lmstudio）不校验 key 非空。
+    - `quirks`：逐家已知怪癖，纯描述性文本，供 UI 展示与后续维护参考。
     """
 
     key: str
@@ -109,11 +166,26 @@ class ProviderSpec:
     supports_tools: bool = True
     supports_reasoning: bool = False
     max_context_length: int | None = None
+    # ---- 多供应商扩展 ----
+    api_mode: ApiMode = "chat_completions"
+    supported_api_modes: frozenset[ApiMode] = frozenset({"chat_completions"})
+    adapter_kind: str = "openai_compat"
+    base_url: str = ""
+    needs_key: bool = True
+    quirks: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "key": self.key,
             "label": self.label,
+            "api_mode": self.api_mode,
+            "supported_api_modes": sorted(self.supported_api_modes),
+            "adapter_kind": self.adapter_kind,
+            "base_url": self.base_url,
+            "needs_key": self.needs_key,
+            "supports_tools": self.supports_tools,
+            "supports_reasoning": self.supports_reasoning,
+            "max_context_length": self.max_context_length,
             "parameters": [p.to_dict() for p in self.parameters],
         }
 
@@ -223,19 +295,21 @@ def _sampling(temperature_max: float) -> tuple[ParameterDefinition, ...]:
             name="frequency_penalty",
             type="number",
             label="频率惩罚",
-            description="越高越抑制重复用词",
+            description="越高越抑制重复用词；仅 Chat Completions 形态生效",
             min_value=-2.0,
             max_value=2.0,
             step=0.1,
+            native_modes=frozenset({"chat_completions"}),
         ),
         ParameterDefinition(
             name="presence_penalty",
             type="number",
             label="存在惩罚",
-            description="越高越鼓励引入新话题",
+            description="越高越鼓励引入新话题；仅 Chat Completions 形态生效",
             min_value=-2.0,
             max_value=2.0,
             step=0.1,
+            native_modes=frozenset({"chat_completions"}),
         ),
     )
 
@@ -256,41 +330,47 @@ _REASONING_PARAM: Final[ParameterDefinition] = ParameterDefinition(
 #: anthropic 删 temperature/top_p/top_k/thinking_budget_tokens 并强制 effort=high；
 #: gemini 删 temperature/topP/topK/candidateCount/thinkingBudget；
 #: grok 把 reasoning_effort=none 改为 high；deepseek 对reasoner 模型开thinking。
+#:
+#: 多供应商扩展（2026-09-17）：新增 `api_mode` / `supported_api_modes` / `adapter_kind` /
+#: `base_url` / `needs_key` / `quirks` 六字段。**全部 base_url 均经 web_search 逐个核实**；
+#: 空串表示查证后仍无可靠公开端点，UI 会提示用户自行查询文档填写。
+#: 除 openai 外全部默认 `chat_completions`——第三方厂商基本只实现这一种（技术栈 §4.5）。
+
+#: 国内 OpenAI 兼容厂商的公共参数集。
+_DOMESTIC_PARAMS: Final[tuple[ParameterDefinition, ...]] = _sampling(2.0)
+
+#: 支持推理的厂商追加 effort 档位。
+_REASONING_MODELS: Final[tuple[ParameterDefinition, ...]] = (*_sampling(2.0), _REASONING_PARAM)
+
 PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
-    "openai_compatible": ProviderSpec(
-        key="openai_compatible",
-        label="OpenAI 兼容（通用）",
-        aliases=frozenset({"openai-compatible", "custom", "兼容"}),
-        parameters=_sampling(2.0),
-        max_context_length=128000,
-    ),
+    # ---- 国外 ----
     "openai": ProviderSpec(
         key="openai",
         label="OpenAI",
         aliases=frozenset({"openai"}),
-        parameters=(*_sampling(2.0), _REASONING_PARAM),
+        parameters=_REASONING_MODELS,
         supports_reasoning=True,
         max_context_length=200000,
-    ),
-    "deepseek": ProviderSpec(
-        key="deepseek",
-        label="DeepSeek",
-        aliases=frozenset({"deepseek"}),
-        parameters=(*_sampling(2.0), _REASONING_PARAM),
-        supports_reasoning=True,
-        max_context_length=64000,
+        # 唯一默认 responses 的 provider：官方端点完整支持
+        api_mode="responses",
+        supported_api_modes=frozenset({"responses", "chat_completions"}),
+        adapter_kind="openai_responses",
+        base_url="https://api.openai.com/v1",
     ),
     "anthropic": ProviderSpec(
         key="anthropic",
         label="Anthropic",
         aliases=frozenset({"anthropic", "claude"}),
-        # Anthropic 原生 API 不接受这些采样参数；本项目走兼容端点时同样剔除更安全。
-        # 注意仍保留 max_tokens 定义——剔除发生在下发前，UI 侧不该把它显示成「不支持」。
         parameters=_sampling(2.0),
         drop_params=frozenset({"temperature", "top_p"}),
         force_params={"reasoning_effort": "high"},
         supports_reasoning=True,
         max_context_length=200000,
+        api_mode="anthropic_messages",
+        supported_api_modes=frozenset({"anthropic_messages", "chat_completions"}),
+        adapter_kind="anthropic_native",
+        base_url="https://api.anthropic.com",
+        quirks="原生 Messages 用 x-api-key 头；强制 max_tokens；temperature/top_p 无效",
     ),
     "gemini": ProviderSpec(
         key="gemini",
@@ -300,28 +380,292 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
         drop_params=frozenset({"temperature", "top_p", "frequency_penalty", "presence_penalty"}),
         supports_reasoning=True,
         max_context_length=1000000,
+        api_mode="gemini_generate_content",
+        supported_api_modes=frozenset({"gemini_generate_content", "chat_completions"}),
+        adapter_kind="gemini_native",
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+        quirks="OpenAI 兼容层有并发与配额限制；长上下文按梯度计费",
     ),
     "grok": ProviderSpec(
         key="grok",
         label="xAI Grok",
         aliases=frozenset({"grok", "xai"}),
-        parameters=(*_sampling(2.0), _REASONING_PARAM),
+        parameters=_REASONING_MODELS,
         supports_reasoning=True,
         max_context_length=131072,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="https://api.x.ai/v1",
+    ),
+    # ---- 国内主力 ----
+    "deepseek": ProviderSpec(
+        key="deepseek",
+        label="DeepSeek",
+        aliases=frozenset({"deepseek"}),
+        parameters=_REASONING_MODELS,
+        supports_reasoning=True,
+        max_context_length=64000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="https://api.deepseek.com",
+        quirks="reasoner 模型需开 thinking；V3 系不支持 reasoning_effort",
+    ),
+    "dashscope": ProviderSpec(
+        key="dashscope",
+        label="阿里通义（百炼）",
+        aliases=frozenset({"dashscope", "qwen", "tongyi", "阿里"}),
+        parameters=_REASONING_MODELS,
+        supports_reasoning=True,
+        max_context_length=131072,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        quirks="需用 compatible-mode 路径；Coding Plan 套餐有专属 base_url",
     ),
     "zhipu": ProviderSpec(
         key="zhipu",
         label="智谱 GLM",
         aliases=frozenset({"zhipu", "glm", "智谱"}),
-        parameters=_sampling(2.0),
+        parameters=_REASONING_MODELS,
+        supports_reasoning=True,
         max_context_length=128000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="https://open.bigmodel.cn/api/paas/v4",
+        quirks="base_url 末尾斜杠不可省略",
     ),
+    "moonshot": ProviderSpec(
+        key="moonshot",
+        label="月之暗面 Kimi",
+        aliases=frozenset({"moonshot", "kimi"}),
+        parameters=_REASONING_MODELS,
+        supports_reasoning=True,
+        max_context_length=131072,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="https://api.moonshot.cn/v1",
+    ),
+    "volcengine": ProviderSpec(
+        key="volcengine",
+        label="火山方舟（豆包）",
+        aliases=frozenset({"volcengine", "doubao", "ark", "豆包"}),
+        parameters=_REASONING_MODELS,
+        supports_reasoning=True,
+        max_context_length=131072,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="https://ark.cn-beijing.volces.com/api/v3",
+        quirks="模型 id 需带推理接入点 ID（ep-xxx），非裸模型名",
+    ),
+    "qianfan": ProviderSpec(
+        key="qianfan",
+        label="百度千帆（文心）",
+        aliases=frozenset({"qianfan", "ernie", "文心", "百度"}),
+        parameters=_REASONING_MODELS,
+        supports_reasoning=True,
+        max_context_length=131072,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="https://qianfan.baidubce.com/v2",
+        quirks="v2 与旧版地址不兼容；部分模型需 IAM 签名而非 Bearer",
+    ),
+    "hunyuan": ProviderSpec(
+        key="hunyuan",
+        label="腾讯混元",
+        aliases=frozenset({"hunyuan", "混元", "腾讯"}),
+        parameters=_REASONING_MODELS,
+        supports_reasoning=True,
+        max_context_length=128000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="https://api.hunyuan.cloud.tencent.com/v1",
+    ),
+    "spark": ProviderSpec(
+        key="spark",
+        label="讯飞星火",
+        aliases=frozenset({"spark", "xfyun", "讯飞"}),
+        parameters=_DOMESTIC_PARAMS,
+        supports_reasoning=False,
+        max_context_length=128000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="https://spark-api-open.xf-yun.com/v2",
+        quirks="不同模型版本 base_url 路径不同（/v2、/x2）",
+    ),
+    "minimax": ProviderSpec(
+        key="minimax",
+        label="MiniMax",
+        aliases=frozenset({"minimax"}),
+        parameters=_DOMESTIC_PARAMS,
+        supports_reasoning=False,
+        max_context_length=1000000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="https://api.minimaxi.com/v1",
+        quirks="中国大陆（minimaxi.com）与海外（minimax.io）Key 与地址不可混用",
+    ),
+    "stepfun": ProviderSpec(
+        key="stepfun",
+        label="阶跃星辰",
+        aliases=frozenset({"stepfun", "阶跃"}),
+        parameters=_DOMESTIC_PARAMS,
+        supports_reasoning=False,
+        max_context_length=128000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="https://api.stepfun.com/v1",
+    ),
+    # ---- 国内长尾 ----
+    "baichuan": ProviderSpec(
+        key="baichuan",
+        label="百川智能",
+        aliases=frozenset({"baichuan", "百川"}),
+        parameters=_DOMESTIC_PARAMS,
+        supports_reasoning=False,
+        max_context_length=128000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="https://api.baichuan-ai.com",
+    ),
+    "yi": ProviderSpec(
+        key="yi",
+        label="零一万物",
+        aliases=frozenset({"yi", "01.ai", "零一"}),
+        parameters=_DOMESTIC_PARAMS,
+        supports_reasoning=False,
+        max_context_length=200000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        # 查证后仍无可靠公开端点（2026-09-17），留空 + UI 提示自行查询
+        base_url="",
+    ),
+    "sensetime": ProviderSpec(
+        key="sensetime",
+        label="商汤（商量）",
+        aliases=frozenset({"sensetime", "商汤", "sensecore"}),
+        parameters=_DOMESTIC_PARAMS,
+        supports_reasoning=False,
+        max_context_length=128000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        # 有兼容模式但 base_url 需登录控制台获取（2026-09-17），留空
+        base_url="",
+    ),
+    "xiaomi-mimo": ProviderSpec(
+        key="xiaomi-mimo",
+        label="小米 MiMo",
+        aliases=frozenset({"xiaomi-mimo", "mimo", "小米"}),
+        parameters=_DOMESTIC_PARAMS,
+        supports_reasoning=False,
+        max_context_length=128000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        # 仅找到临时测试域名，非官方稳定端点（2026-09-17），留空
+        base_url="",
+    ),
+    # ---- 聚合平台 ----
     "siliconflow": ProviderSpec(
         key="siliconflow",
         label="硅基流动",
         aliases=frozenset({"siliconflow", "硅基"}),
+        parameters=_REASONING_MODELS,
+        supports_reasoning=True,
+        max_context_length=128000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="https://api.siliconflow.cn/v1",
+        quirks="一个 Key 调用多家模型，模型 id 形如 厂商/模型名",
+    ),
+    "modelscope": ProviderSpec(
+        key="modelscope",
+        label="魔搭 ModelScope",
+        aliases=frozenset({"modelscope", "魔搭"}),
+        parameters=_DOMESTIC_PARAMS,
+        supports_reasoning=False,
+        max_context_length=128000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="https://api-inference.modelscope.cn/v1",
+        quirks="免费额度限频率；模型 id 形如 厂商/模型名",
+    ),
+    # ---- 自定义 / 泛称 ----
+    "custom": ProviderSpec(
+        key="custom",
+        label="自定义",
+        aliases=frozenset({"custom", "自定义"}),
         parameters=_sampling(2.0),
         max_context_length=128000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions", "responses"}),
+        adapter_kind="openai_compat",
+        base_url="",
+    ),
+    "openai_compatible": ProviderSpec(
+        key="openai_compatible",
+        label="OpenAI 兼容（通用）",
+        aliases=frozenset({"openai-compatible", "兼容"}),
+        parameters=_sampling(2.0),
+        max_context_length=128000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions", "responses"}),
+        adapter_kind="openai_compat",
+        base_url="",
+    ),
+    # ---- 本地推理引擎（不校验 key）----
+    "ollama": ProviderSpec(
+        key="ollama",
+        label="Ollama（本地）",
+        aliases=frozenset({"ollama"}),
+        parameters=_sampling(2.0),
+        max_context_length=128000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="http://localhost:11434/v1",
+        needs_key=False,
+        quirks="api_key 填任意非空占位值；工具调用支持取决于具体模型",
+    ),
+    "vllm": ProviderSpec(
+        key="vllm",
+        label="vLLM（本地）",
+        aliases=frozenset({"vllm"}),
+        parameters=_sampling(2.0),
+        max_context_length=128000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="http://localhost:8000/v1",
+        needs_key=False,
+        quirks="需 --enable-auto-tool-choice 才支持函数调用",
+    ),
+    "lmstudio": ProviderSpec(
+        key="lmstudio",
+        label="LM Studio（本地）",
+        aliases=frozenset({"lmstudio", "lm-studio"}),
+        parameters=_sampling(2.0),
+        max_context_length=128000,
+        api_mode="chat_completions",
+        supported_api_modes=frozenset({"chat_completions"}),
+        adapter_kind="openai_compat",
+        base_url="http://localhost:1234/v1",
+        needs_key=False,
     ),
 }
 
@@ -437,6 +781,39 @@ def model_specs_projection() -> dict[str, list[dict[str, Any]]]:
     return {
         key: [param.to_dict() for param in spec.parameters] for key, spec in PROVIDER_SPECS.items()
     }
+
+
+def resolve_api_mode(provider: str, override: str = "") -> ApiMode:
+    """解析该用哪种 API 形态。
+
+    优先级：**显式条目覆盖 > provider 默认**。未登记的覆盖值回落 provider 默认
+    （保守，不抛错——用户从旧数据读到的历史值可能是已下线的模式）。
+
+    :param provider: 厂商名（用户填的，走别名解析）
+    :param override: 条目上的 `api_mode` 覆盖值，空串表示未设置
+    """
+    spec = PROVIDER_SPECS[resolve_provider_key(provider)]
+    candidate = (override or "").strip()
+    if candidate and candidate in spec.supported_api_modes:
+        for mode in ALL_API_MODES:
+            if mode == candidate:
+                return mode
+    return spec.api_mode
+
+
+def is_mode_supported(provider: str, api_mode: str) -> bool:
+    """该 provider 是否支持指定 API 形态（供设置中心限制下拉可选值）。"""
+    spec = PROVIDER_SPECS[resolve_provider_key(provider)]
+    return api_mode in spec.supported_api_modes
+
+
+def providers_projection() -> list[dict[str, Any]]:
+    """provider 目录投影（供 `GET /settings` 的 `providers` 段）。
+
+    前端据此渲染 provider 下拉与动态表单：`base_url` 为空表示需用户自行填写，
+    `supported_api_modes` 限制 api_mode 下拉的可选值。
+    """
+    return [spec.to_dict() for spec in PROVIDER_SPECS.values()]
 
 
 def validate_overrides(provider: str, overrides: Mapping[str, Any]) -> tuple[list[str], list[str]]:

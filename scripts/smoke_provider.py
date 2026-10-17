@@ -18,7 +18,8 @@ from agents import Agent, Runner, function_tool
 from pydantic import BaseModel
 
 from devprompt_ai.config import AppConfig
-from devprompt_ai.harness.llm import _ensure_client  # noqa: PLC2701 —— 冒烟脚本专用
+from devprompt_ai.domain.model_spec import PROVIDER_SPECS, resolve_api_mode, resolve_provider_key
+from devprompt_ai.harness.llm import _ensure_client, build_model  # noqa: PLC2701 —— 冒烟脚本专用
 from devprompt_ai.memory.settings_store import read_model_registry
 
 PROBE_TIMEOUT = 30.0
@@ -49,19 +50,29 @@ class Target:
     model: str
     api_key: str
     timeout: float
+    provider: str = ""
+    api_mode: str = ""
+    param_overrides: dict[str, Any] = field(default_factory=dict)
     temperature: float | None = None
     max_tokens: int | None = None
     is_active: bool = False
 
     def to_config(self) -> AppConfig:
-        """构造仅本条目生效的配置（init 优先级最高，不影响持久化设置）。"""
+        """构造仅本条目生效的配置（init 优先级最高，不影响持久化设置）。
+
+        与生产路径同构：provider / api_mode / 参数覆盖一并带出，
+        使冒烟测的就是真实调用路径（W4 的模型工厂会按 api_mode 选形态）。
+        """
         return AppConfig(
+            llm_provider=self.provider,
             llm_base_url=self.base_url,
             llm_api_key=self.api_key,
             llm_model=self.model,
             llm_timeout=self.timeout,
             llm_temperature=self.temperature,
             llm_max_tokens=self.max_tokens,
+            api_mode=self.api_mode,
+            llm_params=dict(self.param_overrides),
             _env_file=None,  # type: ignore[call-arg]
         )
 
@@ -81,6 +92,8 @@ def collect_targets() -> list[Target]:
                 model=cfg.llm_model,
                 api_key=cfg.llm_api_key,
                 timeout=cfg.llm_timeout,
+                provider=cfg.llm_provider,
+                api_mode=cfg.api_mode,
                 is_active=True,
             )
         ]
@@ -95,6 +108,9 @@ def collect_targets() -> list[Target]:
                 model=str(entry.get("model_id", "")),
                 api_key=str(entry.get("api_key", "")),
                 timeout=float(entry.get("timeout") or PROBE_TIMEOUT),
+                provider=str(entry.get("provider", "")),
+                api_mode=str(entry.get("api_mode", "") or ""),
+                param_overrides=dict(entry.get("param_overrides") or {}),
                 is_active=entry_id == active_id,
             )
         )
@@ -121,7 +137,7 @@ async def check_tool_call(cfg: AppConfig) -> bool:
         name="smoke-tool",
         instructions="必须使用 add 工具计算 2+3",
         tools=[add],
-        model=cfg.llm_model,
+        model=build_model(cfg),
     )
     result = await asyncio.wait_for(
         Runner.run(agent, "2+3=?", max_turns=3), timeout=cfg.llm_timeout
@@ -134,7 +150,7 @@ async def check_parallel_tools(cfg: AppConfig) -> bool:
         name="smoke-para",
         instructions="同时用 add(1,2) 与 add(3,4)，再各自调用 shout 报告结果",
         tools=[add, shout],
-        model=cfg.llm_model,
+        model=build_model(cfg),
     )
     result = await asyncio.wait_for(Runner.run(agent, "执行", max_turns=6), timeout=cfg.llm_timeout)
     text = str(result.final_output)
@@ -142,7 +158,7 @@ async def check_parallel_tools(cfg: AppConfig) -> bool:
 
 
 async def check_streaming(cfg: AppConfig) -> bool:
-    agent = Agent(name="smoke-stream", instructions="回复 OK", model=cfg.llm_model)
+    agent = Agent(name="smoke-stream", instructions="回复 OK", model=build_model(cfg))
     streamed = Runner.run_streamed(agent, "回复 OK")  # 同步流对象，禁 await
     deltas = 0
     event_types: set[str] = set()
@@ -169,12 +185,21 @@ CHECKS: tuple[tuple[str, Any], ...] = (
 )
 
 
+#: 准入状态（2026-09-17 裁定：有 key 才实测，无 key 如实标 untested，不伪装可用）
+STATUS_SUPPORTED = "支持"
+STATUS_UNSUPPORTED = "不支持"
+STATUS_UNTESTED = "未经本地验证"
+
+
 @dataclass
 class Report:
     """单个供应商的四项结果。"""
 
     label: str
     model: str
+    provider: str = ""
+    api_mode: str = ""
+    has_key: bool = True
     results: dict[str, bool] = field(default_factory=dict)
     details: list[str] = field(default_factory=list)
 
@@ -182,10 +207,25 @@ class Report:
     def supported(self) -> bool:
         return bool(self.results) and all(self.results.values())
 
+    @property
+    def status(self) -> str:
+        """三态准入：无 key → 未经本地验证；有 key 且全过 → 支持；否则不支持。"""
+        if not self.has_key:
+            return STATUS_UNTESTED
+        return STATUS_SUPPORTED if self.supported else STATUS_UNSUPPORTED
+
 
 async def probe_target(target: Target) -> Report:
     """跑完一个供应商的四项；单项异常不中断其余项。"""
-    report = Report(label=target.label, model=target.model)
+    report = Report(
+        label=target.label,
+        model=target.model,
+        provider=target.provider,
+        api_mode=resolve_api_mode(target.provider, target.api_mode),
+        # 本地推理引擎（ollama/vllm/lmstudio）本就无 key，不能据此判 untested
+        has_key=bool(target.api_key)
+        or not PROVIDER_SPECS[resolve_provider_key(target.provider)].needs_key,
+    )
     cfg = _cfg_for(target)
     try:
         _ensure_client(cfg)
@@ -222,13 +262,27 @@ async def main_async() -> int:
         reports.append(report)
         print()
 
-    print("=== 汇总 ===")
+    print("=== 汇总（provider · api_mode · 模型）===")
     for report in reports:
-        state = "支持" if report.supported else "不支持"
-        print(f"  {report.label:<24}{state}")
+        mode = report.api_mode or "?"
+        print(f"  {report.label:<22}{mode:<26}{report.status}")
+    tested = [r for r in reports if r.has_key]
+    untested = [r for r in reports if not r.has_key]
+    if untested:
+        print(f"\n另有 {len(untested)} 个条目无 API Key，未执行实测。")
+        print("已如实标「未经本地验证」，不伪装可用；补齐 Key 后重跑本脚本即可纳入准入表。")
+
+    # 错误率护栏：有 key 的条目里若过半失败，多半是网络或配置问题而非供应商能力问题，
+    # 此时全量报「不支持」会误导——应保留原始退出码但明确提示先排查环境。
+    if tested:
+        failed = [r for r in tested if not r.supported]
+        if len(failed) * 2 > len(tested):
+            print(f"\n⚠ 有 Key 的 {len(tested)} 个条目中 {len(failed)} 个失败（过半）。")
+            print("  这通常是网络/代理/端点配置问题而非供应商能力问题，")
+            print("  建议先核对 base_url 与连通性再下结论。")
     if any(r.supported for r in reports):
         return 0
-    return 1
+    return 1 if tested else 2
 
 
 if __name__ == "__main__":

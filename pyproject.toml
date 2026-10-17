@@ -20,6 +20,13 @@ dev = [
     "pytest-cov>=7.1,<8",
     "httpx>=0.28",
 ]
+# 原生协议适配（2026-09-17 多供应商扩展）：仅在使用 Anthropic / Gemini 原生
+# api_mode 时才需要。MUST-04 论证：这两个 SDK 的请求结构、鉴权方式、流式事件形状
+# 与 OpenAI 不兼容，无法用项目内已有封装覆盖；唯一 1–2 级替代是手写 HTTP 客户端，
+# 等于重复实现其鉴权重试/流式解析/错误映射，成本与风险均高于直接依赖。
+# 版本经 PyPI 核实（MUST-24b）：anthropic 1.15.0、google-genai 2.31.0，均要求 Python>=3.10。
+anthropic = ["anthropic>=1.15,<2"]
+gemini = ["google-genai>=2.31,<3"]
 
 # console script：默认动作即启动本地服务（`devprompt-ai --help` 查看全部参数）
 [project.scripts]

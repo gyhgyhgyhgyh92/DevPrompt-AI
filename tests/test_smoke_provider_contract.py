@@ -161,3 +161,62 @@ class TestNoCliSurface:
             "parallel_tools",
             "streaming",
         ]
+
+
+class TestEntryLevelConfig:
+    """Target 必须把 entry 级 provider/api_mode/参数覆盖带进配置——
+    否则冒烟测的不是生产路径（W4 的模型工厂按 api_mode 选形态）。"""
+
+    def test_config_carries_provider_and_mode(self) -> None:
+        target = sp.Target(
+            label="x",
+            base_url="https://a.example.com/v1",
+            model="m",
+            api_key="k",
+            timeout=5.0,
+            provider="openai",
+            api_mode="responses",
+        )
+        cfg = target.to_config()
+        assert cfg.llm_provider == "openai"
+        assert cfg.api_mode == "responses"
+
+    def test_config_carries_param_overrides(self) -> None:
+        target = sp.Target(
+            label="x",
+            base_url="https://a.example.com/v1",
+            model="m",
+            api_key="k",
+            timeout=5.0,
+            param_overrides={"temperature": 0.2},
+        )
+        assert target.to_config().llm_params == {"temperature": 0.2}
+
+
+class TestUntestedStatus:
+    """三态准入：无 key → untested（不伪装可用）；全过 → 支持；否则不支持。"""
+
+    def test_missing_key_is_untested(self) -> None:
+        report = sp.Report(label="x", model="m", provider="deepseek", has_key=False)
+        assert report.status == sp.STATUS_UNTESTED
+
+    def test_all_pass_is_supported(self) -> None:
+        report = sp.Report(label="x", model="m", has_key=True, results={"a": True, "b": True})
+        assert report.status == sp.STATUS_SUPPORTED
+
+    def test_any_fail_is_unsupported(self) -> None:
+        report = sp.Report(label="x", model="m", has_key=True, results={"a": True, "b": False})
+        assert report.status == sp.STATUS_UNSUPPORTED
+
+    def test_local_provider_without_key_is_tested(self) -> None:
+        """本地引擎（ollama/vllm/lmstudio）本就无 key，不能据此判 untested。"""
+        from devprompt_ai.domain.model_spec import PROVIDER_SPECS
+
+        assert PROVIDER_SPECS["ollama"].needs_key is False
+
+    def test_api_mode_resolved_from_provider(self) -> None:
+        """provider 未指定 api_mode 时按表解析（deepseek→chat，openai→responses）。"""
+        from devprompt_ai.domain.model_spec import resolve_api_mode
+
+        assert resolve_api_mode("deepseek", "") == "chat_completions"
+        assert resolve_api_mode("openai", "") == "responses"

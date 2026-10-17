@@ -55,7 +55,9 @@ class TestProviderResolution:
 
     def test_reasoning_flag_differs_by_provider(self) -> None:
         assert resolve_capabilities("deepseek").supports_reasoning is True
-        assert resolve_capabilities("zhipu").supports_reasoning is False
+        # zhipu 的 GLM 系列含推理模型，故标 True；spark 无推理模型，标 False
+        assert resolve_capabilities("zhipu").supports_reasoning is True
+        assert resolve_capabilities("spark").supports_reasoning is False
 
 
 class TestParameterDefinitions:

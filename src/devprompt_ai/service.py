@@ -22,7 +22,11 @@ from devprompt_ai.domain.errors import ConfigurationError, StateError
 from devprompt_ai.domain.generate.ports import GeneratePort, GenerationContext, VariantDraft
 from devprompt_ai.domain.generate.variants import expand_levels, resolve_level
 from devprompt_ai.domain.model_migration import normalize_overrides
-from devprompt_ai.domain.model_spec import model_specs_projection, validate_overrides
+from devprompt_ai.domain.model_spec import (
+    model_specs_projection,
+    resolve_api_mode,
+    validate_overrides,
+)
 from devprompt_ai.domain.models import (
     Candidate,
     FactResult,
@@ -535,6 +539,11 @@ class ForgeService:
                     "llm_params": normalize_overrides(
                         str(active_entry.get("provider", "")),
                         active_entry.get("param_overrides") or {},
+                    ),
+                    # 该条目的 API 形态——让协议分流真正生效
+                    "api_mode": resolve_api_mode(
+                        str(active_entry.get("provider", "")),
+                        str(active_entry.get("api_mode", "") or ""),
                     ),
                 }
                 await asyncio.to_thread(write_model_settings, mirror)
