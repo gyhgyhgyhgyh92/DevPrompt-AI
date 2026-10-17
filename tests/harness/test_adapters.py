@@ -503,3 +503,266 @@ class TestContextWindowWarning:
         before = len(payload)
         cfg.context_window_warning(10_000_000)
         assert len(payload) == before
+
+
+# ---------------------------------------------------------------------------
+# 流式路径（F-802 第 4 项；smoke_provider.check_streaming 走的就是这里）
+# ---------------------------------------------------------------------------
+
+
+class TestAnthropicStreaming:
+    def setup_method(self) -> None:
+        self.model = AnthropicNativeModel("claude-x", AsyncOpenAI(api_key="EMPTY"), api_key="k")
+
+    async def test_emits_text_delta_events(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Anthropic 的 content_block_delta 序列须转成 agents 的文本增量事件。"""
+
+        class _Delta:
+            text = "你"
+
+        class _Event:
+            delta = _Delta()
+
+        class _Stream:
+            def __aiter__(self) -> Any:
+                async def gen() -> Any:
+                    yield _Event()
+                    yield _Event()
+
+                return gen()
+
+        class _Messages:
+            def stream(self, **_kw: Any) -> Any:
+                return _Ctx()
+
+        class _Ctx:
+            async def __aenter__(self) -> _Stream:
+                return _Stream()
+
+            async def __aexit__(self, *_a: object) -> None:
+                return None
+
+        class _Native:
+            def __init__(self) -> None:
+                self.messages = _Messages()
+
+        monkeypatch.setattr(self.model, "_native", _Native())
+
+        events = [
+            e
+            async for e in self.model.stream_response(
+                "sys",
+                "hi",
+                None,
+                [],
+                None,
+                [],
+                None,
+                previous_response_id=None,
+                conversation_id=None,
+                prompt=None,
+            )
+        ]
+        assert len(events) == 2
+        assert events[0].data.type == "response.output_text.delta"
+        assert events[0].data.delta == "你"
+
+    async def test_skips_non_text_events(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """非文本增量（tool_use 等）不产出事件，避免污染流。"""
+
+        class _Event:
+            delta = object()  # 无 text 属性
+
+        class _Stream:
+            def __aiter__(self) -> Any:
+                async def gen() -> Any:
+                    yield _Event()
+
+                return gen()
+
+        class _Messages:
+            def stream(self, **_kw: Any) -> Any:
+                return _Ctx()
+
+        class _Ctx:
+            async def __aenter__(self) -> _Stream:
+                return _Stream()
+
+            async def __aexit__(self, *_a: object) -> None:
+                return None
+
+        class _Native:
+            def __init__(self) -> None:
+                self.messages = _Messages()
+
+        monkeypatch.setattr(self.model, "_native", _Native())
+
+        events = [
+            e
+            async for e in self.model.stream_response(
+                "sys",
+                "hi",
+                None,
+                [],
+                None,
+                [],
+                None,
+                previous_response_id=None,
+                conversation_id=None,
+                prompt=None,
+            )
+        ]
+        assert events == []
+
+
+class TestGeminiStreaming:
+    def setup_method(self) -> None:
+        self.model = GeminiNativeModel("gemini-x", AsyncOpenAI(api_key="EMPTY"), api_key="k")
+
+    async def test_emits_text_delta_events(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class _Part:
+            text = "好"
+
+        class _Content:
+            parts = [_Part()]
+
+        class _Chunk:
+            candidates = [type("C", (), {"content": _Content()})()]
+
+        async def _gen() -> Any:
+            yield _Chunk()
+
+        class _Models:
+            async def generate_content_stream(self, **_kw: Any) -> Any:
+                return _gen()
+
+        class _Native:
+            def __init__(self) -> None:
+                self.aio = type("Aio", (), {"models": _Models()})()
+
+        monkeypatch.setattr(self.model, "_native", _Native())
+
+        events = [
+            e
+            async for e in self.model.stream_response(
+                "sys",
+                "hi",
+                None,
+                [],
+                None,
+                [],
+                None,
+                previous_response_id=None,
+                conversation_id=None,
+                prompt=None,
+            )
+        ]
+        assert len(events) == 1
+        assert events[0].data.delta == "好"
+
+    async def test_skips_empty_chunks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """无 candidates 的 chunk（安全过滤等场景）须跳过而非崩。"""
+
+        class _Chunk:
+            candidates: list[Any] = []
+
+        async def _gen() -> Any:
+            yield _Chunk()
+
+        class _Models:
+            async def generate_content_stream(self, **_kw: Any) -> Any:
+                return _gen()
+
+        class _Native:
+            def __init__(self) -> None:
+                self.aio = type("Aio", (), {"models": _Models()})()
+
+        monkeypatch.setattr(self.model, "_native", _Native())
+
+        events = [
+            e
+            async for e in self.model.stream_response(
+                "sys",
+                "hi",
+                None,
+                [],
+                None,
+                [],
+                None,
+                previous_response_id=None,
+                conversation_id=None,
+                prompt=None,
+            )
+        ]
+        assert events == []
+
+
+class TestMultiTurnInputMapping:
+    """多轮时 Runner 会喂 **item 列表**（而非 str）——该分支必须覆盖。
+
+    只测 str 分支的话，单轮能用、多轮静默丢历史。
+    """
+
+    def test_anthropic_item_list_to_messages(self) -> None:
+        model = AnthropicNativeModel("claude-x", AsyncOpenAI(api_key="EMPTY"), api_key="k")
+
+        class _Raw:
+            def __init__(self, role: str, text: str) -> None:
+                self.role = role
+                self.content = text
+
+        class _Item:
+            def __init__(self, role: str, text: str) -> None:
+                self.raw_item = _Raw(role, text)
+
+        system, messages = model._to_messages(
+            "sys", [_Item("user", "第一轮"), _Item("assistant", "答")]
+        )
+        assert system == "sys"
+        assert messages == [
+            {"role": "user", "content": "第一轮"},
+            {"role": "assistant", "content": "答"},
+        ]
+
+    def test_anthropic_content_blocks_flattened(self) -> None:
+        """content 为 block 列表时须拼接文本，不能丢。"""
+        model = AnthropicNativeModel("claude-x", AsyncOpenAI(api_key="EMPTY"), api_key="k")
+
+        class _Block:
+            def __init__(self, text: str) -> None:
+                self.text = text
+
+        class _Raw:
+            role = "user"
+            content = [_Block("前半"), _Block("后半")]
+
+        class _Item:
+            raw_item = _Raw()
+
+        _, messages = model._to_messages(None, [_Item()])
+        assert messages[0]["content"] == "前半后半"
+
+    def test_anthropic_empty_input_falls_back(self) -> None:
+        model = AnthropicNativeModel("claude-x", AsyncOpenAI(api_key="EMPTY"), api_key="k")
+        _, messages = model._to_messages(None, [])
+        assert messages == [{"role": "user", "content": ""}]
+
+    def test_gemini_item_list_to_contents(self) -> None:
+        model = GeminiNativeModel("gemini-x", AsyncOpenAI(api_key="EMPTY"), api_key="k")
+
+        class _Raw:
+            def __init__(self, role: str, content: str) -> None:
+                self.role = role
+                self.content = content
+
+        class _Item:
+            def __init__(self, role: str, text: str) -> None:
+                self.raw_item = _Raw(role, text)
+
+        contents = model._to_contents([_Item("user", "第一轮"), _Item("assistant", "答")])
+        assert [c["role"] for c in contents] == ["user", "model"]
+        assert contents[0]["parts"][0]["text"] == "第一轮"
+
+    def test_gemini_empty_input_falls_back(self) -> None:
+        model = GeminiNativeModel("gemini-x", AsyncOpenAI(api_key="EMPTY"), api_key="k")
+        assert model._to_contents([]) == [{"role": "user", "parts": [{"text": ""}]}]
