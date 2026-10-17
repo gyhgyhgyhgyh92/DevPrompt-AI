@@ -362,7 +362,8 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "stepfun": ProviderSpec(
         key="stepfun",
-        max_context_length=None,
+        max_context_length=262144,
+        context_window_tiers=(32768, 262144),
         label="阶跃星辰",
         aliases=frozenset({"stepfun", "阶跃"}),
         supports_reasoning=False,

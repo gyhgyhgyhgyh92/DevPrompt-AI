@@ -521,9 +521,15 @@
 | `anthropic` / `zhipu` | 200000 | 100K·200K / 128K·200K | 高（官方文档） |
 | `hunyuan` | 192000 | 128K·192K | 中（CodeBuddy） |
 | `baichuan` | 196608 | 96K·192K | **低**（第三方；阿里云已建议改用 Qwen3/DeepSeek） |
+| `stepfun` | 262144 | 32K·256K | 中（LobeChat 模型库 + 第三方工具站交叉印证；官方无文档） |
 | `deepseek` / `qianfan` | 128000 / 131072 | 64K·128K | 高（官方公告 / 千帆文档） |
 
-**保持 `None` 的 10 家**：`stepfun` / `yi` / `xiaomi-mimo` / `sensetime` /
+**保持 `None` 的 9 家**（各累计 5 次搜索仍无权威数字）：
+- `yi` / `sensetime` / `xiaomi-mimo` / `modelscope` —— 百科与第三方页面只讲架构与发布史，无窗口数字；前三家的 `base_url` 本身也是空的（厂商可能已停更或未公开）
+- `custom` / `openai_compatible` —— 用户自填或泛称端点，**性质上无固定厂商标称值**
+- `ollama` / `vllm` / `lmstudio` —— 本地推理引擎，窗口随用户加载的模型而变
+
+→ 合计 **16/25 家已登记**，9 家为「性质上无固定值」或「多次搜索无果」，**零占位默认值**。
 `modelscope`（4 次搜索无权威数字或厂商已停更）、`ollama` / `vllm` / `lmstudio`
 （本地引擎，窗口随用户加载的模型）、`custom`（用户自填）。
 

@@ -182,6 +182,7 @@ class TestContextWindowTierInvariants:
             "grok",
             "hunyuan",
             "siliconflow",
+            "stepfun",
         }
         for key, spec in PROVIDER_SPECS.items():
             if key in verified:
@@ -213,6 +214,16 @@ class TestContextWindowTierInvariants:
         """未核实厂商必须是 None（未登记），不能是占位值。"""
         from devprompt_ai.domain.model_spec import PROVIDER_SPECS
 
-        for key in ("stepfun", "yi", "sensetime", "xiaomi-mimo", "ollama", "vllm", "lmstudio"):
+        for key in (
+            "yi",
+            "sensetime",
+            "xiaomi-mimo",
+            "modelscope",
+            "custom",
+            "openai_compatible",
+            "ollama",
+            "vllm",
+            "lmstudio",
+        ):
             assert PROVIDER_SPECS[key].max_context_length is None, key
             assert PROVIDER_SPECS[key].context_window_tiers == (), key
