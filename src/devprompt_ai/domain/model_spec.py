@@ -397,8 +397,7 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
-        # 查证后仍无可靠公开端点（2026-09-17），留空 + UI 提示自行查询
-        base_url="",
+        base_url="https://api.lingyiwanwu.com/v1",
     ),
     "sensetime": ProviderSpec(
         key="sensetime",
@@ -410,7 +409,7 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
         # 有兼容模式但 base_url 需登录控制台获取（2026-09-17），留空
-        base_url="",
+        base_url="https://token.sensenova.cn/v1",
     ),
     "xiaomi-mimo": ProviderSpec(
         key="xiaomi-mimo",
@@ -422,7 +421,7 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
         # 仅找到临时测试域名，非官方稳定端点（2026-09-17），留空
-        base_url="",
+        base_url="https://api.xiaomimimo.com/v1",
     ),
     # ---- 聚合平台 ----
     "siliconflow": ProviderSpec(

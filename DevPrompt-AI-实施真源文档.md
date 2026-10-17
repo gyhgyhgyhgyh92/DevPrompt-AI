@@ -525,7 +525,8 @@
 | `deepseek` / `qianfan` | 128000 / 131072 | 64K·128K | 高（官方公告 / 千帆文档） |
 
 **保持 `None` 的 9 家**（各累计 5 次搜索仍无权威数字）：
-- `yi` / `sensetime` / `xiaomi-mimo` / `modelscope` —— 百科与第三方页面只讲架构与发布史，无窗口数字；前三家的 `base_url` 本身也是空的（厂商可能已停更或未公开）
+- `modelscope` —— 百科与第三方页面只讲架构与发布史，无窗口数字
+- `yi` / `sensetime` / `xiaomi-mimo` —— **窗口**仍无权威数字（base_url 已于本日核实，见下）
 - `custom` / `openai_compatible` —— 用户自填或泛称端点，**性质上无固定厂商标称值**
 - `ollama` / `vllm` / `lmstudio` —— 本地推理引擎，窗口随用户加载的模型而变
 
@@ -548,3 +549,16 @@
 | # | 事项 | 状态 | 理由 | 落地条件 |
 |---|---|---|---|---|
 | **D-4** | 多模态（图片输入/生成） | 🔄 延后（用户 2026-10-16 明确「为后续扩展」） | 当前需求为纯文本代码检索；prompt-optimizer 的图片链路（统一 base64 + 只传元数据 + 阶段伪进度）已记录于本计划 §6 | 出现「截图/设计稿作为需求输入」的真实需求时重启评估。**关键约束**：base64 绝不能进文本 prompt（2 MB 图 ≈ 70 万 token），须走独立多模态通道；prompt 内只放`{index,label,mimeType}` 元数据并用「图1/图2」位置编号指代 |
+
+### v2.7 补核三家厂商 base_url（2026-09-17）
+
+| provider | base_url | 来源与要点 |
+|---|---|---|
+| `yi` 零一万物 | `https://api.lingyiwanwu.com/v1` | 三来源一致（Dify 接入文档 + 2 篇调用示例）；**结尾无斜杠** |
+| `sensetime` 商汤 | `https://token.sensenova.cn/v1` | 官方 `platform.sensenova.cn/docs`；⚠️ **旧地址 `api.sensenova.cn/v1` 已迁移**，填旧值会404 |
+| `xiaomi-mimo` 小米 | `https://api.xiaomimimo.com/v1` | 官方 `mimo.mi.com` 文档；另有批量推理端点 `https://batch-api-cn.xiaomimimo.com` |
+
+`custom` 与 `openai_compatible` **刻意保持空串**：前者由用户自填、后者是泛称端点，
+填一个默认值会误导用户以为只能填那个。
+
+至此 25 家中 22 家已登记真实 base_url（3 家本地引擎用 `http://localhost:*` 默认值）。

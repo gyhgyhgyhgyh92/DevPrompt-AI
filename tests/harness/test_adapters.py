@@ -99,10 +99,23 @@ class TestApiModeResolution:
         for key in ("ollama", "vllm", "lmstudio"):
             assert PROVIDER_SPECS[key].needs_key is False
 
-    def test_unverified_providers_have_blank_base_url(self) -> None:
-        """查证不到端点的 provider 必须留空（UI 据此提示用户自行查询）。"""
-        for key in ("yi", "sensetime", "xiaomi-mimo"):
-            assert PROVIDER_SPECS[key].base_url == ""
+    def test_verified_providers_have_real_base_url(self) -> None:
+        """已查证到端点的 provider 必须填真实值（2026-09-17 联网核实）。
+
+        商汤的旧地址 api.sensenova.cn 已迁移到 token.sensenova.cn——填旧值会让
+        用户拿到 404，故必须用官方现行地址。
+        """
+        assert PROVIDER_SPECS["yi"].base_url == "https://api.lingyiwanwu.com/v1"
+        assert PROVIDER_SPECS["sensetime"].base_url == "https://token.sensenova.cn/v1"
+        assert PROVIDER_SPECS["xiaomi-mimo"].base_url == "https://api.xiaomimimo.com/v1"
+
+    def test_user_defined_providers_stay_blank(self) -> None:
+        """`custom` 与 `openai_compatible` 必须留空——前者用户自填、后者是泛称端点。
+
+        给泛称端点填一个默认值会误导用户以为只能填那个。
+        """
+        for key in ("custom", "openai_compatible"):
+            assert PROVIDER_SPECS[key].base_url == "", key
 
 
 # ---------------------------------------------------------------------------
@@ -795,13 +808,13 @@ class TestProviderDirectory:
         for key in ("ollama", "vllm", "lmstudio"):
             assert by_id[key]["needs_key"] is False
 
-    def test_unverified_entries_have_blank_base_url(self) -> None:
-        """查证不到的端点如实留空，由 UI 提示用户自填（不编造）。"""
+    def test_projection_carries_verified_base_urls(self) -> None:
+        """目录投影必须带出已核实的端点（前端下拉据此预填 Base URL）。"""
         from devprompt_ai.domain.model_spec import providers_projection
 
         by_id = {e["id"]: e for e in providers_projection()}
-        for key in ("yi", "sensetime", "xiaomi-mimo"):
-            assert by_id[key]["base_url"] == ""
+        assert by_id["yi"]["base_url"] == "https://api.lingyiwanwu.com/v1"
+        assert by_id["custom"]["base_url"] == "", "用户自填项须留空"
 
     def test_native_providers_default_to_native_modes(self) -> None:
         from devprompt_ai.domain.model_spec import providers_projection
