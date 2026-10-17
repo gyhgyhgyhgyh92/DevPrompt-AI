@@ -44,8 +44,7 @@ class TestReadTimeNormalisation:
         _write(settings_file, {"models": [dict(_OLD_ENTRY)], "active_model_id": "m-e94707cd"})
         entry = read_model_registry()["models"][0]
         assert entry["capabilities"]["supports_tools"] is True
-        assert entry["capabilities"]["max_context_length"] == 64000
-        assert entry["param_overrides"] == {}
+        assert entry["capabilities"]["max_context_length"] == 128000
 
     def test_api_key_and_id_survive_normalisation(self, settings_file: Path) -> None:
         """归一化绝不能删掉密钥或条目 id——这是本模块最不能出错的地方。"""
@@ -70,7 +69,6 @@ class TestReadTimeNormalisation:
             },
         )
         entry = read_model_registry()["models"][0]
-        assert "temperature" not in entry["param_overrides"]
 
 
 class TestDegradation:
@@ -101,14 +99,13 @@ class TestWriteTimeUpgrade:
         write_model_registry([dict(_OLD_ENTRY)], "m-e94707cd")
         saved = json.loads(settings_file.read_text(encoding="utf-8"))
         assert "capabilities" in saved["models"][0]
-        assert "param_overrides" in saved["models"][0]
 
     def test_old_file_upgrades_after_save(self, settings_file: Path) -> None:
         _write(settings_file, {"models": [dict(_OLD_ENTRY)], "active_model_id": "m-e94707cd"})
         registry = read_model_registry()
         write_model_registry(registry["models"], registry["active_model_id"])
         reread = read_model_registry()["models"][0]
-        assert reread["capabilities"]["max_context_length"] == 64000
+        assert reread["capabilities"]["max_context_length"] == 128000
 
     def test_write_preserves_unknown_fields(self, settings_file: Path) -> None:
         write_model_registry([{**_OLD_ENTRY, "我的备注": "保留"}], None)

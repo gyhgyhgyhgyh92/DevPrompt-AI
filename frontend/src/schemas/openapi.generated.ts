@@ -673,9 +673,7 @@ export interface components {
          * ModelEntryUpdate
          * @description PUT /settings models 段条目：id=None 为新增（后端生成）；api_key None/空=保留原值。
          *
-         *     `param_overrides` 的三态语义（2026-09-17 迁移，对齐源项目 `manager.ts:968-972`）：
-         *     省略或 `null` = 沿用同 id 旧值；显式传 `{}` = **清空**；显式传 dict = **整体替换**。
-         *     绝不做深合并，否则用户删除的参数会被保留回来。
+         *     2026-09-17 多供应商扩展。`None`/省略 = 沿用同 id 旧值；显式传值即覆盖。
          */
         ModelEntryUpdate: {
             /** Api Key */
@@ -692,10 +690,6 @@ export interface components {
             max_context_length?: number | null;
             /** Model Id */
             model_id?: string | null;
-            /** Param Overrides */
-            param_overrides?: {
-                [key: string]: unknown;
-            } | null;
             /** Provider */
             provider?: string | null;
             /** Reasoning Effort */
@@ -705,8 +699,8 @@ export interface components {
          * ModelEntryView
          * @description 注册表条目脱敏视图（F-604 多模型）：api_key 恒脱敏，is_active 标记当前生效项。
          *
-         *     2026-09-17 迁移增`capabilities` / `param_overrides` 两个只读字段，供设置中心
-         *     渲染能力徽标与参数编辑器。
+         *     2026-09-17 迁移增 `capabilities` 只读字段（供设置中心渲染能力徽标）；
+         *     同日移除 `param_overrides`（参数编辑区已下线）与 `model_specs` 契约段。
          */
         ModelEntryView: {
             /** Api Key Masked */
@@ -726,10 +720,6 @@ export interface components {
             max_context_length?: number | null;
             /** Model Id */
             model_id: string;
-            /** Param Overrides */
-            param_overrides?: {
-                [key: string]: unknown;
-            };
             /** Provider */
             provider: string;
             /** Reasoning Effort */
@@ -801,50 +791,6 @@ export interface components {
             sentence: string;
         };
         /**
-         * ParameterDefinitionView
-         * @description 单个可调参数的完整定义（迁自源项目 `UnifiedParameterDefinition`）。
-         *
-         *     由后端在 `GET /settings` 的 `model_specs` 段下发，前端据此渲染参数编辑器。
-         *     `is_native` 标明该参数是否会被 `ModelSettings` 原生下发——为 false 的当前仅登记
-         *     与校验、实际不生效（需接线 `extra_body`）。
-         */
-        ParameterDefinitionView: {
-            /** Allowed Values */
-            allowed_values?: string[];
-            /** Default Value */
-            default_value?: unknown | null;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /**
-             * Is Native
-             * @default true
-             */
-            is_native: boolean;
-            /** Label */
-            label: string;
-            /** Max Value */
-            max_value?: number | null;
-            /** Min Value */
-            min_value?: number | null;
-            /** Name */
-            name: string;
-            /** Step */
-            step?: number | null;
-            /**
-             * Type
-             * @enum {string}
-             */
-            type: "number" | "integer" | "boolean" | "string" | "string-array";
-            /**
-             * Unit
-             * @default
-             */
-            unit: string;
-        };
-        /**
          * PreferenceUpdateRequest
          * @description PUT /preference 部分更新：None = 保持不变；超界值由后端 clip01 截断而非拒绝。
          */
@@ -911,6 +857,13 @@ export interface components {
          *
          *     前端据此渲染 provider 下拉与动态表单：`base_url` 为空表示**官方端点未登记**
          *     （逐个查证不到时如实留空），UI 须提示用户自行查询文档填写，不得编造。
+         *
+         *     ``max_context_length`` 是**厂商标称输入窗口**，查证不到时为 ``None``（未登记）——
+         *     填占位默认值会让 UI 拿一个不存在的上限做告警判定，比不显示更糟。
+         *
+         *     ``context_window_tiers`` 是用户可单选的**档位集合**（绝对 token，升序）：
+         *     - 空数组 = 该厂商只有标称默认值、不可选（UI 只显示默认档）；
+         *     - 每个档位都必须是厂商真实支持的规格，且不得大于 ``max_context_length``。
          */
         ProviderDirectoryEntry: {
             /**
@@ -918,6 +871,8 @@ export interface components {
              * @default
              */
             base_url: string;
+            /** Context Window Tiers */
+            context_window_tiers?: number[];
             /**
              * Default Api Mode
              * @default chat_completions
@@ -989,16 +944,13 @@ export interface components {
          *
          *     ``models`` 为多模型注册表脱敏视图（F-604，2026-10-13）；字段无默认值（响应必有值）。
          *
-         *     2026-09-17 迁移增 ``model_specs``：provider key → 参数定义数组。**复用本端点下发
-         *     而非新增路径**，故契约仍 13 路径 / 16 操作。
+         *     2026-09-17 迁移增 ``providers`` 目录（provider 下拉与窗口档位的数据源）。
+         *     **复用本端点下发而非新增路径**，故契约仍 13 路径 / 16 操作。
+         *     同日移除 ``model_specs``（参数编辑区已下线）。
          */
         SettingsResponse: {
             locked: components["schemas"]["LockedSettings"];
             model_service: components["schemas"]["ModelServiceSettings"];
-            /** Model Specs */
-            model_specs?: {
-                [key: string]: components["schemas"]["ParameterDefinitionView"][];
-            };
             /** Models */
             models: components["schemas"]["ModelEntryView"][];
             process: components["schemas"]["ProcessSettings"];

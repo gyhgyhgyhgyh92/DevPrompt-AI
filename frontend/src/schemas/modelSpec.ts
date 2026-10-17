@@ -10,35 +10,6 @@ import { z } from 'zod'
  * 多模态按裁定 D4 全部排除，此处只有文本模型相关字段。
  */
 
-/** 单个参数的类型（对齐后端 `ParameterType`）。 */
-export const ParameterTypeSchema = z.enum([
-  'number',
-  'integer',
-  'boolean',
-  'string',
-  'string-array',
-])
-
-export type ParameterType = z.infer<typeof ParameterTypeSchema>
-
-/** 参数定义（契约 ParameterDefinitionView）。 */
-export const ParameterDefinitionSchema = z.object({
-  name: z.string(),
-  type: ParameterTypeSchema,
-  label: z.string(),
-  description: z.string().default(''),
-  default_value: z.unknown().nullish(),
-  min_value: z.number().nullish(),
-  max_value: z.number().nullish(),
-  step: z.number().nullish(),
-  allowed_values: z.array(z.string()).optional(),
-  unit: z.string().default(''),
-  /** 是否会被 ModelSettings 原生下发；false 表示当前仅登记与校验，实际不生效。 */
-  is_native: z.boolean().default(true),
-})
-
-export type ParameterDefinition = z.infer<typeof ParameterDefinitionSchema>
-
 /** 模型能力标记（契约 ModelCapabilitiesView）。 */
 export const ModelCapabilitiesSchema = z.object({
   supports_tools: z.boolean().default(true),
@@ -47,8 +18,3 @@ export const ModelCapabilitiesSchema = z.object({
 })
 
 export type ModelCapabilities = z.infer<typeof ModelCapabilitiesSchema>
-
-/** provider key → 参数定义数组（契约 SettingsResponse.model_specs）。 */
-export const ModelSpecsSchema = z.record(z.string(), z.array(ParameterDefinitionSchema))
-
-export type ModelSpecs = z.infer<typeof ModelSpecsSchema>

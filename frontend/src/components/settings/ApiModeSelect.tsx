@@ -90,37 +90,63 @@ export function ApiModeSelect({
   )
 }
 
-export interface ContextWindowHintProps {
-  /** 条目级覆盖值（为空表示沿用 provider 默认）。 */
-  entryWindow: number | null | undefined
-  /** provider 默认窗口。 */
-  providerWindow: number | null | undefined
+export interface ContextWindowSelectProps {
+  /** 当前选中的档位（null/undefined = 沿用厂商默认）。 */
+  value: number | null | undefined
+  /** 厂商标称窗口；null/undefined = **未登记**（此时整块不渲染）。 */
+  vendorWindow: number | null | undefined
+  /** 厂商给出的可选档位集合（绝对 token，升序）；空 = 只能沿用默认。 */
+  tiers: ReadonlyArray<number>
+  onChange: (value: number | null) => void
+  disabled?: boolean
 }
 
-const WINDOW_TIERS = [
-  { tokens: 32000, label: '32K' },
-  { tokens: 128000, label: '128K' },
-  { tokens: 200000, label: '200K' },
-  { tokens: 1000000, label: '1M' },
-]
-
 /**
- * 上下文窗口**只读展示**（2026-09-17 W8）。
+ * 上下文窗口**档位单选**（2026-09-17 B3）。
  *
- * 刻意**不做自动截断**：截断检索证据会削弱候选集信息量，而召回率 ≥80% 是 MUST-25
- * 硬门禁——用截断换窗口是牺牲更重要的指标。超出时仅提示，由用户自行决定是否
- * 补充组件名以减少证据量。
+ * 三条设计约束（缺一不可）：
+ * 1. **只能从厂商给出的档位里选**，不提供自由输入——自由填数会让用户填出
+ *    「我设了 1M 但实际只有 200K」的假安全感；
+ * 2. **未登记则不渲染**：厂商窗口查证不到时显示空档位，比显示一个占位数字诚实；
+ * 3. **只改告警预算，不做截断**：截断检索证据会削弱召回率，而召回率 ≥80% 是
+ *    MUST-25 硬门禁——用截断换窗口是牺牲更重要的指标。
  */
-export function ContextWindowHint({ entryWindow, providerWindow }: ContextWindowHintProps) {
-  const effective = entryWindow ?? providerWindow
-  const shown = formatWindow(effective)
-  if (shown === null) return null
+export function ContextWindowSelect({
+  value,
+  vendorWindow,
+  tiers,
+  onChange,
+  disabled,
+}: ContextWindowSelectProps) {
+  if (vendorWindow == null) return null
+  const options = tiers.length > 0 ? tiers : [vendorWindow]
+  const current = value ?? vendorWindow
   return (
-    <span className="settings-hint">
-      上下文窗口 {shown}
-      {entryWindow == null && providerWindow != null ? '（厂商默认）' : '（本条目覆盖）'}
-      {' · '}
-      {WINDOW_TIERS.map((tier) => tier.label).join(' / ')} 参考档位
-    </span>
+    <div className="settings-field">
+      <label className="settings-label" htmlFor="model-context-window">
+        上下文窗口
+      </label>
+      <select
+        id="model-context-window"
+        className="settings-select"
+        value={String(current)}
+        disabled={disabled || options.length <= 1}
+        onChange={(event) => {
+          const picked = Number(event.currentTarget.value)
+          // 选中厂商标称值即回落到「跟随厂商」，避免冗余状态
+          onChange(picked === vendorWindow ? null : picked)
+        }}
+      >
+        {options.map((tier) => (
+          <option key={tier} value={String(tier)}>
+            {formatWindow(tier) ?? String(tier)}
+            {tier === vendorWindow ? '（厂商标称）' : ''}
+          </option>
+        ))}
+      </select>
+      <span className="settings-hint">
+        仅用于超限提示，不截断证据；超出时建议补充组件名以减少检索量
+      </span>
+    </div>
   )
 }

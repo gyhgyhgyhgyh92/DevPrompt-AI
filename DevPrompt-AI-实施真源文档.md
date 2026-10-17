@@ -451,7 +451,7 @@
 | 1 | `domain/model_spec.py`：参数定义表 / 能力元数据 / provider 约束清洗 / 参数校验 | ✅ 8 厂商 + 22 条黑名单 |
 | 2 | `domain/model_migration.py`：条目归一化与覆盖值清洗 | ✅ **明确不实现源项目 legacy 转换器**（无对应数据） |
 | 3 | `memory/settings_store.py`：读时归一化 + 写时升级 | ✅ 顺带修掉`active_id` 悬空引用缺陷 |
-| 4 | `service.py`：视图扩字段、整体替换语义、参数校验接入、`model_specs` 投影 | ✅ |
+| 4 | `service.py`：视图扩字段、整体替换语义、`model_specs` 投影 | ✅（`model_specs` 已于 v2.6 随参数编辑区下线） |
 | 5 | `config.effective_llm_params()` 接入 `ModelSettings` 构造 | ✅ **签名零变更**，20+ 调用点不受影响 |
 | 6 | 契约扩展 + 双产物同步 | ✅ 仍 13 路径 / 16 操作 |
 | 7 | 前端 `modelSpec.ts` Zod schema | ✅ |
@@ -494,6 +494,48 @@
 | `MessageOutputItem(agent=None)` | `TypeError: cannot create weak reference to 'NoneType'` |
 | output item 缺 `status`/`annotations`/`logprobs` | pydantic 校验失败 |
 | Gemini `functionCall.args` 是 dict | 未 `json.dumps` 会让 Runner 按 JSON 字符串解析而抛错 |
+
+### v2.6 上下文窗口档位化 + 参数覆盖全链路清理（2026-09-17）
+
+| 步 | 内容 | 结果 |
+|---|---|---|
+| 0 | **核实厂商标称窗口**（`web_search`） | ✅ 15/25 家核实；10 家无权威数字标 `None` |
+| B1 | `ProviderSpec` 增 `context_window_tiers`；删 11 个 `param_overrides` 专用符号；清理 `model_migration` / `service` 下游 | ✅ |
+| B2 | 契约三连（`export` → `gen:contract` → `check:contract`） | ✅ 43→42 schema，13 路径 / 16 操作不变 |
+| B3 | 前端删 `ModelParamEditor` 与参数编辑区；`ContextWindowHint` → `ContextWindowSelect` 档位单选 | ✅ 前端 55→71 测试 |
+| B4 | 五份文档同步 + 十项门禁 + 提交 | ✅ |
+
+**⚠️ 本批次修正了 v2.5 引入的一个严重问题**：W1 表格里 25 处 `max_context_length`
+**全是占位默认值**（`128000`/`131072`），而 docstring 声称「已逐个核实」；
+`ContextWindowHint` 正在把这些假数据展示给用户并拿它做告警判定。已修正为
+15 家真实值 + 10 家 `None`，**零占位值**。
+
+**核实结果（可信度分级）**：
+
+| provider | 窗口 | 档位 | 可信度 |
+|---|---|---|---|
+| `gemini` / `siliconflow` / `minimax` | 1000000 | 200K·1M / 128K·1M | 高（官方）/ 中（平台） |
+| `openai` | 272000 | 128K·272K | 高（官方；注意非 256K，是含 thinking 的口径） |
+| `dashscope` / `volcengine` / `spark` | 262144 | 128K·256K | 中 / 高（火山、讯飞官方） |
+| `grok` / `moonshot` | 256000 | 128K·256K | 中 / 高（官方公告） |
+| `anthropic` / `zhipu` | 200000 | 100K·200K / 128K·200K | 高（官方文档） |
+| `hunyuan` | 192000 | 128K·192K | 中（CodeBuddy） |
+| `baichuan` | 196608 | 96K·192K | **低**（第三方；阿里云已建议改用 Qwen3/DeepSeek） |
+| `deepseek` / `qianfan` | 128000 / 131072 | 64K·128K | 高（官方公告 / 千帆文档） |
+
+**保持 `None` 的 10 家**：`stepfun` / `yi` / `xiaomi-mimo` / `sensetime` /
+`modelscope`（4 次搜索无权威数字或厂商已停更）、`ollama` / `vllm` / `lmstudio`
+（本地引擎，窗口随用户加载的模型）、`custom`（用户自填）。
+
+**设计要点**：
+
+1. **档位不得大于标称窗口** —— 自由填数会让用户填出「我设了 1M 但实际 200K」的假安全感；
+   已加不变量测试与运行时校验。
+2. **超限判定用比例**（`估算 / 有效窗口 > 0.9`）而非绝对值 —— 换模型不用改阈值。
+   比例阈值借鉴 CodeBuddy 的 `tokenUsageThresholds.request.emergency = 0.9`。
+3. **仍不做截断** —— 截断检索证据会削弱召回率，而召回率 ≥80% 是 MUST-25 硬门禁。
+   CodeBuddy 的做法是「自动压缩历史对话」，本项目不做（无压缩机制，且压缩等于变相截断）。
+4. **未登记则不展示** —— 前端整块不渲染，而非显示占位数字。
 
 ### v2.3 新增延后事项
 

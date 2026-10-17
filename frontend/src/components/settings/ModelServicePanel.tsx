@@ -2,11 +2,9 @@ import { useEffect, useState } from 'react'
 import { getHealth, putSettings } from '../../api/endpoints'
 import type { SettingsResponse, SettingsUpdate } from '../../api/types'
 import { useSettingsStore } from '../../stores/useSettingsStore'
-import type { ParameterDefinition as ParamSpec } from '../../schemas/modelSpec'
 import type { ModelCapabilities } from '../../schemas/modelSpec'
-import { ApiModeSelect, ContextWindowHint } from './ApiModeSelect'
+import { ApiModeSelect, ContextWindowSelect } from './ApiModeSelect'
 import { ModelCapabilityBadge } from './ModelCapabilityBadge'
-import { ModelParamEditor } from './ModelParamEditor'
 import { findProvider, ProviderSelect } from './ProviderSelect'
 import { errorMessage } from './errorMessage'
 import './settings.css'
@@ -33,13 +31,11 @@ interface ModelEntryDraft {
   modelId: string
   /** 2026-09-17 迁移：能力元数据（只读展示，切换供应商时重新取）。 */
   capabilities: ModelCapabilities
-  /** 该条目的参数覆盖（每模型独立，裁定 D3）。 */
-  paramOverrides: Record<string, unknown>
   /** 2026-09-17 W8：API 形态（空 = 按 provider 默认推断）。 */
   apiMode: string
   /** 思考强度（空 = 不下发）。 */
   reasoningEffort: string
-  /** 上下文窗口覆盖（null = 沿用 provider 默认）。 */
+  /** 上下文窗口档位（null = 沿用厂商标称）。 */
   maxContextLength: number | null
 }
 
@@ -48,26 +44,6 @@ interface GlobalForm {
   timeout: string
   temperature: string
   maxTokens: string
-}
-
-/**
- * 取该 provider 的参数定义（后端 model_specs）。
- *
- * 前端 PROVIDERS 的取值（DeepSeek / OpenAI 兼容 / 自定义）与后端 provider key
- * （deepseek / openai_compatible）不完全一致，故按小写去空格比对，找不到再试子串。
- * 找不到就返回空数组——不猜测参数，宁可不显示。
- */
-function paramDefsOf(
-  specs: Readonly<Record<string, ReadonlyArray<ParamSpec>>> | undefined,
-  provider: string,
-): ReadonlyArray<ParamSpec> {
-  if (!specs) return []
-  const needle = provider.trim().toLowerCase().replace(/\s+/g, '')
-  if (needle === '') return []
-  const direct = specs[needle]
-  if (direct) return direct
-  const fuzzy = Object.entries(specs).find(([key]) => key.toLowerCase().includes(needle))
-  return fuzzy ? fuzzy[1] : []
 }
 
 let draftSeq = 0
@@ -91,7 +67,6 @@ function draftsFromSettings(settings: SettingsResponse): ModelEntryDraft[] {
     masked: m.api_key_masked,
     modelId: m.model_id,
     capabilities: m.capabilities ?? FALLBACK_CAPABILITIES,
-    paramOverrides: { ...m.param_overrides },
     apiMode: m.api_mode ?? '',
     reasoningEffort: m.reasoning_effort ?? '',
     maxContextLength: m.max_context_length ?? null,
@@ -141,7 +116,6 @@ export function ModelServicePanel() {
     return <p className="settings-note">设置加载中…</p>
   }
 
-  const modelSpecs = settings.model_specs
   const providerDirectory = settings.providers ?? []
 
   const patchDraft = (key: string, patch: Partial<ModelEntryDraft>) =>
@@ -161,7 +135,6 @@ export function ModelServicePanel() {
         masked: '',
         modelId: '',
         capabilities: FALLBACK_CAPABILITIES,
-        paramOverrides: {},
         apiMode: '',
         reasoningEffort: '',
         maxContextLength: null,
@@ -197,8 +170,6 @@ export function ModelServicePanel() {
       base_url: d.baseUrl.trim(),
       model_id: d.modelId.trim(),
       ...(d.apiKey === '' ? {} : { api_key: d.apiKey }),
-      // 始终下发 param_overrides：空对象表示「清空」，省略才是「沿用」（三态语义）
-      param_overrides: d.paramOverrides,
       // 三个新字段：空值即「沿用/不设置」，后端会按 provider 默认兜底
       api_mode: d.apiMode,
       reasoning_effort: d.reasoningEffort,
@@ -315,7 +286,6 @@ export function ModelServicePanel() {
                         provider: value,
                         ...(picked && picked.base_url !== '' ? { baseUrl: picked.base_url } : {}),
                         // 换供应商时清空参数与形态：新厂商不支持的留着只会 mislead
-                        paramOverrides: {},
                         apiMode: '',
                         reasoningEffort: '',
                       })
@@ -382,21 +352,13 @@ export function ModelServicePanel() {
                   onModeChange={(apiMode) => patchDraft(draft.key, { apiMode })}
                   onEffortChange={(reasoningEffort) => patchDraft(draft.key, { reasoningEffort })}
                 />
-                <ContextWindowHint
-                  entryWindow={draft.maxContextLength}
-                  providerWindow={pickedProvider?.max_context_length}
+                <ContextWindowSelect
+                  value={draft.maxContextLength}
+                  vendorWindow={pickedProvider?.max_context_length}
+                  tiers={pickedProvider?.context_window_tiers ?? []}
+                  onChange={(value) => patchDraft(draft.key, { maxContextLength: value })}
                 />
               </div>
-              {paramDefsOf(modelSpecs, draft.provider).length > 0 ? (
-                <div className="model-param-section">
-                  <span className="settings-label">该模型的调用参数</span>
-                  <ModelParamEditor
-                    definitions={paramDefsOf(modelSpecs, draft.provider)}
-                    value={draft.paramOverrides}
-                    onChange={(next) => patchDraft(draft.key, { paramOverrides: next })}
-                  />
-                </div>
-              ) : null}
             </div>
           )
         })}

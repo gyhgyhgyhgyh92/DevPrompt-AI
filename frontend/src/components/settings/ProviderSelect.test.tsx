@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ProviderDirectoryEntry } from '../../schemas/settings'
-import { ApiModeSelect, ContextWindowHint, REASONING_EFFORTS } from './ApiModeSelect'
+import { ApiModeSelect, ContextWindowSelect, REASONING_EFFORTS } from './ApiModeSelect'
 import { findProvider, formatWindow, ProviderSelect } from './ProviderSelect'
 
 /**
@@ -166,26 +166,51 @@ describe('ApiModeSelect', () => {
   })
 })
 
-describe('ContextWindowHint', () => {
-  it('条目覆盖值优先', () => {
-    render(<ContextWindowHint entryWindow={32000} providerWindow={128000} />)
-    expect(screen.getByText(/32K/)).toBeTruthy()
-    expect(screen.getByText(/本条目覆盖/)).toBeTruthy()
+describe('ContextWindowSelect 档位单选', () => {
+  const base = { vendorWindow: 200000, tiers: [128000, 200000], onChange: vi.fn() }
+
+  it('只提供厂商给出的档位，不给自由输入', () => {
+    render(<ContextWindowSelect {...base} value={null} />)
+    const labels = screen.getAllByRole('option').map((o) => o.textContent)
+    expect(labels.some((t) => t?.includes('128K'))).toBe(true)
+    expect(labels.some((t) => t?.includes('200K'))).toBe(true)
+    expect(screen.queryByRole('textbox')).toBeNull()
   })
 
-  it('无覆盖时展示厂商默认', () => {
-    render(<ContextWindowHint entryWindow={null} providerWindow={128000} />)
-    expect(screen.getByText(/128K/)).toBeTruthy()
-    expect(screen.getByText(/厂商默认/)).toBeTruthy()
+  it('厂商标称档位带标注', () => {
+    render(<ContextWindowSelect {...base} value={null} />)
+    expect(screen.getByText(/厂商标称/)).toBeTruthy()
   })
 
-  it('两侧都未知时不渲染', () => {
-    const { container } = render(<ContextWindowHint entryWindow={null} providerWindow={null} />)
+  it('选中档位触发 onChange', () => {
+    const onChange = vi.fn()
+    render(<ContextWindowSelect {...base} onChange={onChange} value={null} />)
+    fireEvent.change(screen.getByLabelText('上下文窗口'), { target: { value: '128000' } })
+    expect(onChange).toHaveBeenCalledWith(128000)
+  })
+
+  it('选中厂商标称值即回落为 null（不冗余保存）', () => {
+    const onChange = vi.fn()
+    render(<ContextWindowSelect {...base} onChange={onChange} value={128000} />)
+    fireEvent.change(screen.getByLabelText('上下文窗口'), { target: { value: '200000' } })
+    expect(onChange).toHaveBeenCalledWith(null)
+  })
+
+  it('厂商窗口未登记时整块不渲染（不显示占位数字）', () => {
+    const { container } = render(
+      <ContextWindowSelect {...base} vendorWindow={null} tiers={[]} value={null} />,
+    )
     expect(container.textContent).toBe('')
   })
 
+  it('无可选档位时禁用下拉（只能用厂商标称）', () => {
+    render(<ContextWindowSelect {...base} tiers={[]} value={null} />)
+    expect((screen.getByLabelText('上下文窗口') as HTMLSelectElement).disabled).toBe(true)
+  })
+
   it('文案不含截断承诺（只告警不截断）', () => {
-    render(<ContextWindowHint entryWindow={null} providerWindow={128000} />)
-    expect(screen.queryByText(/截断/)).toBeNull()
+    render(<ContextWindowSelect {...base} value={null} />)
+    expect(screen.queryByText(/自动截断/)).toBeNull()
+    expect(screen.getByText(/不截断证据/)).toBeTruthy()
   })
 })

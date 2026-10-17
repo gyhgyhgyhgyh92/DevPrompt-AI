@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
@@ -52,61 +51,6 @@ NATIVE_PARAMETERS: Final[frozenset[str]] = frozenset(
 # ---------------------------------------------------------------------------
 # 数据结构
 # ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class ParameterDefinition:
-    """单个可调参数的完整定义（对齐源项目 `UnifiedParameterDefinition`）。
-
-    字段命名从camelCase 转为 snake_case 以符合 MUST-17；语义一一对应。
-    """
-
-    name: str
-    type: ParameterType
-    label: str
-    description: str = ""
-    default_value: Any | None = None
-    min_value: float | None = None
-    max_value: float | None = None
-    step: float | None = None
-    allowed_values: tuple[str, ...] = ()
-    unit: str = ""
-    #: 该参数在哪些 API 形态下真正生效。默认全形态——绝大多数参数无形态差异。
-    #: `frequency_penalty` / `presence_penalty` 是已知例外：openai-agents 在 responses
-    #: 模式的 payload 中不含这两个键（实测 openai_responses.py:1039-1056），故仅在
-    #: `chat_completions` 下标为原生。**不全局移除**——DeepSeek 等走 chat 的厂商仍支持。
-    native_modes: frozenset[ApiMode] = frozenset(ALL_API_MODES)
-
-    @property
-    def is_native(self) -> bool:
-        """是否会被 `ModelSettings` 原生下发（本轮只有原生参数真正生效）。
-
-        注意：这是**与 api_mode 无关**的静态判定（该参数名是否属于 ModelSettings）。
-        要判断「当前 provider 的 api_mode 下是否生效」，用
-        :func:`is_native_in_mode`——两者结论可能不同（penalty 即如此）。
-        """
-        return self.name in NATIVE_PARAMETERS
-
-    def is_native_in_mode(self, api_mode: ApiMode) -> bool:
-        """该参数在指定 API 形态下是否真正生效。"""
-        return self.is_native and api_mode in self.native_modes
-
-    def to_dict(self) -> dict[str, Any]:
-        """可序列化投影（供契约与前端消费；`domain/` 不含 HTTP 概念，此为纯数据导出）。"""
-        return {
-            "name": self.name,
-            "type": self.type,
-            "label": self.label,
-            "description": self.description,
-            "default_value": self.default_value,
-            "min_value": self.min_value,
-            "max_value": self.max_value,
-            "step": self.step,
-            "allowed_values": list(self.allowed_values),
-            "unit": self.unit,
-            "is_native": self.is_native,
-            "native_modes": sorted(self.native_modes),
-        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,12 +104,16 @@ class ProviderSpec:
     key: str
     label: str
     aliases: frozenset[str] = frozenset()
-    parameters: tuple[ParameterDefinition, ...] = ()
     drop_params: frozenset[str] = frozenset()
     force_params: Mapping[str, Any] = field(default_factory=dict)
     supports_tools: bool = True
     supports_reasoning: bool = False
+    #: 厂商标称输入窗口；``None`` = 未登记（查证不到，**勿填占位默认值**——
+    #: 假值会让 UI 拿一个不存在的上限做告警判定，比不显示更糟）
     max_context_length: int | None = None
+    #: 用户可单选的档位集合（绝对 token，升序）。空元组 = 只能用标称默认值。
+    #: 只能取厂商真实支持的规格，且不得大于 ``max_context_length``。
+    context_window_tiers: tuple[int, ...] = ()
     # ---- 多供应商扩展 ----
     api_mode: ApiMode = "chat_completions"
     supported_api_modes: frozenset[ApiMode] = frozenset({"chat_completions"})
@@ -186,57 +134,8 @@ class ProviderSpec:
             "supports_tools": self.supports_tools,
             "supports_reasoning": self.supports_reasoning,
             "max_context_length": self.max_context_length,
-            "parameters": [p.to_dict() for p in self.parameters],
+            "context_window_tiers": list(self.context_window_tiers),
         }
-
-
-# ---------------------------------------------------------------------------
-# 安全：危险键名黑名单（迁自源项目 parameter-schema.ts:10-33，共22 条）
-# ---------------------------------------------------------------------------
-
-#: 命中任一子串即拒绝。Python 侧虽无原型链，但键名会经 JSON 落到下游，
-#: 仍须防注入（如 `__proto__` 污染前端对象、`authorization` 越权下发）。
-DANGEROUS_PARAM_KEY_PATTERNS: Final[tuple[str, ...]] = (
-    "__proto__",
-    "constructor",
-    "prototype",
-    "eval",
-    "exec",
-    "script",
-    "process",
-    "child_process",
-    "function",
-    "code",
-    "apikey",
-    "api_key",
-    "secret",
-    "password",
-    "credential",
-    "authorization",
-    "bearer",
-    "token",
-    "baseurl",
-    "base_url",
-    "endpoint",
-    "url",
-)
-
-#: 合法键名字符集（源项目 `^[A-Za-z0-9._\-:/]+$`）。
-_SAFE_KEY_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9._\-:/]+$")
-
-
-def is_safe_custom_key(key: str) -> bool:
-    """键名是否安全：非空 + 字符集白名单 + 不含任何危险子串（大小写不敏感）。
-
-    迁自源项目 `isSafeCustomKey`（parameter-schema.ts:121-135）。
-    """
-    if not isinstance(key, str):
-        return False
-    candidate = key.strip()
-    if not candidate or not _SAFE_KEY_PATTERN.match(candidate):
-        return False
-    lowered = candidate.lower()
-    return not any(pattern in lowered for pattern in DANGEROUS_PARAM_KEY_PATTERNS)
 
 
 def is_value_empty(value: Any) -> bool:
@@ -253,104 +152,18 @@ def is_value_empty(value: Any) -> bool:
     return False
 
 
-# ---------------------------------------------------------------------------
-# 参数定义（各厂商取值范围不同的同名参数按 provider 区分）
-# ---------------------------------------------------------------------------
-
-
-#: 采样类参数的公共定义。temperature 在 OpenAI 系是 0~2、部分国产厂商是 0~1——
-#: 源项目正是因此把范围下沉到 provider 分组，本项目沿用该做法。
-def _sampling(temperature_max: float) -> tuple[ParameterDefinition, ...]:
-    return (
-        ParameterDefinition(
-            name="temperature",
-            type="number",
-            label="随机性",
-            description="越高输出越发散；事实抽取类任务建议偏低",
-            min_value=0.0,
-            max_value=temperature_max,
-            step=0.1,
-            default_value=0.3,
-        ),
-        ParameterDefinition(
-            name="max_tokens",
-            type="integer",
-            label="最大输出 token",
-            description="C 档三套方案输出较长，建议不低于 2048",
-            min_value=1,
-            max_value=131072,
-            step=1,
-            unit="token",
-        ),
-        ParameterDefinition(
-            name="top_p",
-            type="number",
-            label="核采样",
-            description="与随机性二选一调整即可，同时改会互相干扰",
-            min_value=0.0,
-            max_value=1.0,
-            step=0.05,
-        ),
-        ParameterDefinition(
-            name="frequency_penalty",
-            type="number",
-            label="频率惩罚",
-            description="越高越抑制重复用词；仅 Chat Completions 形态生效",
-            min_value=-2.0,
-            max_value=2.0,
-            step=0.1,
-            native_modes=frozenset({"chat_completions"}),
-        ),
-        ParameterDefinition(
-            name="presence_penalty",
-            type="number",
-            label="存在惩罚",
-            description="越高越鼓励引入新话题；仅 Chat Completions 形态生效",
-            min_value=-2.0,
-            max_value=2.0,
-            step=0.1,
-            native_modes=frozenset({"chat_completions"}),
-        ),
-    )
-
-
-#: 推理类厂商额外支持 effort 档位（本轮登记但不下发：需 `extra_body` 接线）。
-_REASONING_PARAM: Final[ParameterDefinition] = ParameterDefinition(
-    name="reasoning_effort",
-    type="string",
-    label="推理强度",
-    description="仅推理模型有效；非推理模型下发会报错",
-    allowed_values=("low", "medium", "high"),
-    default_value="high",
-)
-
-#: provider 定义表。**这是 provider 专属知识的唯一载体**——新增厂商只改本表，不改代码。
-#:
-#: `drop_params` / `force_params` 逐条对应源项目 `manager.ts:272-298` 的 if 分支：
-#: anthropic 删 temperature/top_p/top_k/thinking_budget_tokens 并强制 effort=high；
-#: gemini 删 temperature/topP/topK/candidateCount/thinkingBudget；
-#: grok 把 reasoning_effort=none 改为 high；deepseek 对reasoner 模型开thinking。
-#:
-#: 多供应商扩展（2026-09-17）：新增 `api_mode` / `supported_api_modes` / `adapter_kind` /
-#: `base_url` / `needs_key` / `quirks` 六字段。**全部 base_url 均经 web_search 逐个核实**；
-#: 空串表示查证后仍无可靠公开端点，UI 会提示用户自行查询文档填写。
-#: 除 openai 外全部默认 `chat_completions`——第三方厂商基本只实现这一种（技术栈 §4.5）。
-
-#: 国内 OpenAI 兼容厂商的公共参数集。
-_DOMESTIC_PARAMS: Final[tuple[ParameterDefinition, ...]] = _sampling(2.0)
-
-#: 支持推理的厂商追加 effort 档位。
-_REASONING_MODELS: Final[tuple[ParameterDefinition, ...]] = (*_sampling(2.0), _REASONING_PARAM)
-
 PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     # ---- 国外 ----
     "openai": ProviderSpec(
         key="openai",
+        max_context_length=272000,
+        context_window_tiers=(
+            128000,
+            272000,
+        ),
         label="OpenAI",
         aliases=frozenset({"openai"}),
-        parameters=_REASONING_MODELS,
         supports_reasoning=True,
-        max_context_length=200000,
         # 唯一默认 responses 的 provider：官方端点完整支持
         api_mode="responses",
         supported_api_modes=frozenset({"responses", "chat_completions"}),
@@ -361,11 +174,14 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
         key="anthropic",
         label="Anthropic",
         aliases=frozenset({"anthropic", "claude"}),
-        parameters=_sampling(2.0),
+        max_context_length=200000,
+        context_window_tiers=(
+            100000,
+            200000,
+        ),
         drop_params=frozenset({"temperature", "top_p"}),
         force_params={"reasoning_effort": "high"},
         supports_reasoning=True,
-        max_context_length=200000,
         api_mode="anthropic_messages",
         supported_api_modes=frozenset({"anthropic_messages", "chat_completions"}),
         adapter_kind="anthropic_native",
@@ -376,10 +192,13 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
         key="gemini",
         label="Google Gemini",
         aliases=frozenset({"gemini", "google"}),
-        parameters=_sampling(2.0),
+        max_context_length=1000000,
+        context_window_tiers=(
+            200000,
+            1000000,
+        ),
         drop_params=frozenset({"temperature", "top_p", "frequency_penalty", "presence_penalty"}),
         supports_reasoning=True,
-        max_context_length=1000000,
         api_mode="gemini_generate_content",
         supported_api_modes=frozenset({"gemini_generate_content", "chat_completions"}),
         adapter_kind="gemini_native",
@@ -388,11 +207,14 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "grok": ProviderSpec(
         key="grok",
+        max_context_length=256000,
+        context_window_tiers=(
+            131072,
+            256000,
+        ),
         label="xAI Grok",
         aliases=frozenset({"grok", "xai"}),
-        parameters=_REASONING_MODELS,
         supports_reasoning=True,
-        max_context_length=131072,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -401,11 +223,14 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     # ---- 国内主力 ----
     "deepseek": ProviderSpec(
         key="deepseek",
+        max_context_length=128000,
+        context_window_tiers=(
+            64000,
+            128000,
+        ),
         label="DeepSeek",
         aliases=frozenset({"deepseek"}),
-        parameters=_REASONING_MODELS,
         supports_reasoning=True,
-        max_context_length=64000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -414,11 +239,14 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "dashscope": ProviderSpec(
         key="dashscope",
+        max_context_length=262144,
+        context_window_tiers=(
+            131072,
+            262144,
+        ),
         label="阿里通义（百炼）",
         aliases=frozenset({"dashscope", "qwen", "tongyi", "阿里"}),
-        parameters=_REASONING_MODELS,
         supports_reasoning=True,
-        max_context_length=131072,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -427,11 +255,14 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "zhipu": ProviderSpec(
         key="zhipu",
+        max_context_length=200000,
+        context_window_tiers=(
+            128000,
+            200000,
+        ),
         label="智谱 GLM",
         aliases=frozenset({"zhipu", "glm", "智谱"}),
-        parameters=_REASONING_MODELS,
         supports_reasoning=True,
-        max_context_length=128000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -440,11 +271,14 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "moonshot": ProviderSpec(
         key="moonshot",
+        max_context_length=256000,
+        context_window_tiers=(
+            128000,
+            256000,
+        ),
         label="月之暗面 Kimi",
         aliases=frozenset({"moonshot", "kimi"}),
-        parameters=_REASONING_MODELS,
         supports_reasoning=True,
-        max_context_length=131072,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -452,11 +286,14 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "volcengine": ProviderSpec(
         key="volcengine",
+        max_context_length=262144,
+        context_window_tiers=(
+            131072,
+            262144,
+        ),
         label="火山方舟（豆包）",
         aliases=frozenset({"volcengine", "doubao", "ark", "豆包"}),
-        parameters=_REASONING_MODELS,
         supports_reasoning=True,
-        max_context_length=131072,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -465,11 +302,14 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "qianfan": ProviderSpec(
         key="qianfan",
+        max_context_length=131072,
+        context_window_tiers=(
+            65536,
+            131072,
+        ),
         label="百度千帆（文心）",
         aliases=frozenset({"qianfan", "ernie", "文心", "百度"}),
-        parameters=_REASONING_MODELS,
         supports_reasoning=True,
-        max_context_length=131072,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -478,11 +318,14 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "hunyuan": ProviderSpec(
         key="hunyuan",
+        max_context_length=192000,
+        context_window_tiers=(
+            128000,
+            192000,
+        ),
         label="腾讯混元",
         aliases=frozenset({"hunyuan", "混元", "腾讯"}),
-        parameters=_REASONING_MODELS,
         supports_reasoning=True,
-        max_context_length=128000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -490,11 +333,14 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "spark": ProviderSpec(
         key="spark",
+        max_context_length=262144,
+        context_window_tiers=(
+            131072,
+            262144,
+        ),
         label="讯飞星火",
         aliases=frozenset({"spark", "xfyun", "讯飞"}),
-        parameters=_DOMESTIC_PARAMS,
         supports_reasoning=False,
-        max_context_length=128000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -503,11 +349,11 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "minimax": ProviderSpec(
         key="minimax",
+        max_context_length=1000000,
+        context_window_tiers=(131072, 1000000),
         label="MiniMax",
         aliases=frozenset({"minimax"}),
-        parameters=_DOMESTIC_PARAMS,
         supports_reasoning=False,
-        max_context_length=1000000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -516,11 +362,10 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "stepfun": ProviderSpec(
         key="stepfun",
+        max_context_length=None,
         label="阶跃星辰",
         aliases=frozenset({"stepfun", "阶跃"}),
-        parameters=_DOMESTIC_PARAMS,
         supports_reasoning=False,
-        max_context_length=128000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -529,11 +374,14 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     # ---- 国内长尾 ----
     "baichuan": ProviderSpec(
         key="baichuan",
+        max_context_length=196608,
+        context_window_tiers=(
+            98304,
+            196608,
+        ),
         label="百川智能",
         aliases=frozenset({"baichuan", "百川"}),
-        parameters=_DOMESTIC_PARAMS,
         supports_reasoning=False,
-        max_context_length=128000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -541,11 +389,10 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "yi": ProviderSpec(
         key="yi",
+        max_context_length=None,
         label="零一万物",
         aliases=frozenset({"yi", "01.ai", "零一"}),
-        parameters=_DOMESTIC_PARAMS,
         supports_reasoning=False,
-        max_context_length=200000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -554,11 +401,10 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "sensetime": ProviderSpec(
         key="sensetime",
+        max_context_length=None,
         label="商汤（商量）",
         aliases=frozenset({"sensetime", "商汤", "sensecore"}),
-        parameters=_DOMESTIC_PARAMS,
         supports_reasoning=False,
-        max_context_length=128000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -567,11 +413,10 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "xiaomi-mimo": ProviderSpec(
         key="xiaomi-mimo",
+        max_context_length=None,
         label="小米 MiMo",
         aliases=frozenset({"xiaomi-mimo", "mimo", "小米"}),
-        parameters=_DOMESTIC_PARAMS,
         supports_reasoning=False,
-        max_context_length=128000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -581,11 +426,14 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     # ---- 聚合平台 ----
     "siliconflow": ProviderSpec(
         key="siliconflow",
+        max_context_length=1000000,
+        context_window_tiers=(
+            131072,
+            1000000,
+        ),
         label="硅基流动",
         aliases=frozenset({"siliconflow", "硅基"}),
-        parameters=_REASONING_MODELS,
         supports_reasoning=True,
-        max_context_length=128000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -594,11 +442,10 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "modelscope": ProviderSpec(
         key="modelscope",
+        max_context_length=None,
         label="魔搭 ModelScope",
         aliases=frozenset({"modelscope", "魔搭"}),
-        parameters=_DOMESTIC_PARAMS,
         supports_reasoning=False,
-        max_context_length=128000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -608,10 +455,9 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     # ---- 自定义 / 泛称 ----
     "custom": ProviderSpec(
         key="custom",
+        max_context_length=None,
         label="自定义",
         aliases=frozenset({"custom", "自定义"}),
-        parameters=_sampling(2.0),
-        max_context_length=128000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions", "responses"}),
         adapter_kind="openai_compat",
@@ -619,10 +465,9 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "openai_compatible": ProviderSpec(
         key="openai_compatible",
+        max_context_length=None,
         label="OpenAI 兼容（通用）",
         aliases=frozenset({"openai-compatible", "兼容"}),
-        parameters=_sampling(2.0),
-        max_context_length=128000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions", "responses"}),
         adapter_kind="openai_compat",
@@ -631,10 +476,9 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     # ---- 本地推理引擎（不校验 key）----
     "ollama": ProviderSpec(
         key="ollama",
+        max_context_length=None,
         label="Ollama（本地）",
         aliases=frozenset({"ollama"}),
-        parameters=_sampling(2.0),
-        max_context_length=128000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -644,10 +488,9 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "vllm": ProviderSpec(
         key="vllm",
+        max_context_length=None,
         label="vLLM（本地）",
         aliases=frozenset({"vllm"}),
-        parameters=_sampling(2.0),
-        max_context_length=128000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -657,10 +500,9 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "lmstudio": ProviderSpec(
         key="lmstudio",
+        max_context_length=None,
         label="LM Studio（本地）",
         aliases=frozenset({"lmstudio", "lm-studio"}),
-        parameters=_sampling(2.0),
-        max_context_length=128000,
         api_mode="chat_completions",
         supported_api_modes=frozenset({"chat_completions"}),
         adapter_kind="openai_compat",
@@ -699,11 +541,6 @@ def resolve_capabilities(provider: str, model_id: str = "") -> ModelCapabilities
     )
 
 
-def provider_parameters(provider: str) -> tuple[ParameterDefinition, ...]:
-    """返回该厂商的参数定义（前端据此渲染编辑器）。"""
-    return PROVIDER_SPECS[resolve_provider_key(provider)].parameters
-
-
 def apply_provider_constraints(provider: str, overrides: Mapping[str, Any]) -> dict[str, Any]:
     """按 provider 约束清洗参数：剔除 `drop_params`、套用 `force_params`。
 
@@ -721,66 +558,6 @@ def apply_provider_constraints(provider: str, overrides: Mapping[str, Any]) -> d
     for key, value in spec.force_params.items():
         cleaned[key] = value
     return cleaned
-
-
-def _check_one(param: ParameterDefinition, value: Any) -> list[str]:
-    """校验单个值，返回问题描述列表（空 = 通过）。"""
-    expected = param.type
-    if expected == "number":
-        if isinstance(value, bool) or not isinstance(value, int | float):
-            return [f"{param.label}：应为数值"]
-        if param.min_value is not None and value < param.min_value:
-            return [f"{param.label}：不能小于 {param.min_value}"]
-        if param.max_value is not None and value > param.max_value:
-            return [f"{param.label}：不能大于 {param.max_value}"]
-    elif expected == "integer":
-        if isinstance(value, bool) or not isinstance(value, int):
-            return [f"{param.label}：应为整数"]
-        if param.min_value is not None and value < param.min_value:
-            return [f"{param.label}：不能小于 {param.min_value}"]
-        if param.max_value is not None and value > param.max_value:
-            return [f"{param.label}：不能大于 {param.max_value}"]
-    elif expected == "boolean":
-        if not isinstance(value, bool):
-            return [f"{param.label}：应为开关值"]
-    elif expected == "string":
-        if not isinstance(value, str):
-            return [f"{param.label}：应为文本"]
-        if param.allowed_values and value not in param.allowed_values:
-            allowed = " / ".join(param.allowed_values)
-            return [f"{param.label}：只能是 {allowed}"]
-    elif expected == "string-array":
-        if isinstance(value, str) or not isinstance(value, list):
-            return [f"{param.label}：应为文本列表"]
-        if not all(isinstance(item, str) for item in value):
-            return [f"{param.label}：列表项须全为文本"]
-    return []
-
-
-def filter_safe_overrides(provider: str, overrides: Mapping[str, Any]) -> dict[str, Any]:
-    """过滤出「可安全下发」的参数：已登记参数 + 键名安全的未登记参数。
-
-    **已登记参数必须绕过黑名单**——黑名单含 `token` 子串，会误伤 `max_tokens`
-    这类完全合法的登记参数名。该规则集中在此函数，`validate_overrides` 与
-    `normalize_overrides` 共用，避免同一缺陷在两处各犯一次。
-    """
-    defined = {p.name for p in PROVIDER_SPECS[resolve_provider_key(provider)].parameters}
-    return {
-        str(key): value
-        for key, value in overrides.items()
-        if str(key) in defined or is_safe_custom_key(str(key))
-    }
-
-
-def model_specs_projection() -> dict[str, list[dict[str, Any]]]:
-    """全部 provider 的参数定义投影（provider key → 定义数组）。
-
-    供 `GET /settings` 的 `model_specs` 段下发，前端据此渲染参数编辑器——
-    **后端不下发「业务判定」，只下发定义**，控件与校验结论均由此处数据驱动。
-    """
-    return {
-        key: [param.to_dict() for param in spec.parameters] for key, spec in PROVIDER_SPECS.items()
-    }
 
 
 def resolve_api_mode(provider: str, override: str = "") -> ApiMode:
@@ -810,12 +587,14 @@ def is_mode_supported(provider: str, api_mode: str) -> bool:
 def providers_projection() -> list[dict[str, Any]]:
     """provider 目录投影（供 `GET /settings` 的 `providers` 段）。
 
-    前端据此渲染 provider 下拉与动态表单：`base_url` 为空表示**官方端点未登记**
-    （逐个查证不到时如实留空，由 UI 提示用户自行查询文档填写——不得编造端点）；
-    `supported_api_modes` 限制 api_mode 下拉的可选值。
+    前端据此渲染 provider 下拉、动态表单与**上下文窗口档位下拉**：
+    - `base_url` 为空 = **官方端点未登记**（查证不到时如实留空，由 UI 提示自填）；
+    - `max_context_length` 为 `None` = **窗口未登记**（同上，勿填占位默认值）；
+    - `supported_api_modes` 限制 api_mode 下拉的可选值；
+    - `context_window_tiers` 是 max_context_length 的可选档位（空 = 只能用默认）。
 
     字段与契约 `ProviderDirectoryEntry` 一一对应（**刻意不复用 `spec.to_dict()`**：
-    后者含 `parameters` / `adapter_kind` 等内部字段，且用 `key` 而非契约的 `id`）。
+    后者含 `adapter_kind` 等内部字段，且用 `key` 而非契约的 `id`）。
     """
     return [
         {
@@ -826,47 +605,9 @@ def providers_projection() -> list[dict[str, Any]]:
             "default_api_mode": spec.api_mode,
             "supported_api_modes": sorted(spec.supported_api_modes),
             "max_context_length": spec.max_context_length,
+            "context_window_tiers": list(spec.context_window_tiers),
             "supports_reasoning": spec.supports_reasoning,
             "quirks": spec.quirks,
         }
         for key, spec in PROVIDER_SPECS.items()
     ]
-
-
-def validate_overrides(provider: str, overrides: Mapping[str, Any]) -> tuple[list[str], list[str]]:
-    """校验参数覆盖值，返回 ``(错误列表, 警告列表)``。
-
-    - **错误**：危险键名、类型不符、超出范围、枚举不匹配 —— 调用方应整单拒绝；
-    - **警告**：未在该厂商定义表中登记的参数 —— 允许透传（各厂商参数差异大，硬拦会误伤），
-      但要告知用户「可能不会生效」。
-
-    语义对齐源项目 `validateOverrides`（parameter-utils.ts:226-437），其中
-    `allowUnknown=true` 对应本实现把未登记参数降级为警告而非错误。
-    """
-    spec = PROVIDER_SPECS[resolve_provider_key(provider)]
-    defined = {param.name: param for param in spec.parameters}
-    errors: list[str] = []
-    warnings: list[str] = []
-
-    for key, value in overrides.items():
-        if key in spec.drop_params:
-            # 即便参数在定义表里（如 anthropic 的 temperature），下发前也会被剔除——
-            # 必须告知用户「设了不生效」，否则他会以为参数已按预期调整。
-            warnings.append(f"{key}：{spec.label} 不支持该参数，保存后不会生效")
-            continue
-        param = defined.get(key)
-        if param is not None:
-            # 已登记参数：键名来自我方静态表，无需过黑名单。
-            # 这一分支是必需的——黑名单含 `token` 子串会误伤 `max_tokens`，
-            # 而它是完全合法的登记参数名（源项目把该检查放在自定义键路径上，等价于此处）。
-            if is_value_empty(value):
-                continue
-            errors.extend(_check_one(param, value))
-            continue
-        # 未登记参数：走安全校验，可能降级为警告透传
-        if not is_safe_custom_key(key):
-            errors.append(f"参数名 {key!r} 含不允许的字符或敏感词，已拒绝")
-            continue
-        warnings.append(f"参数 {key} 不在 {spec.label} 的定义表中，可能不会生效")
-
-    return errors, warnings

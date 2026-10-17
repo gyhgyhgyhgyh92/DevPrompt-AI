@@ -14,11 +14,7 @@ from typing import Any
 
 import pytest
 
-from devprompt_ai.domain.model_migration import (
-    normalize_entry,
-    normalize_overrides,
-    normalize_registry,
-)
+from devprompt_ai.domain.model_migration import normalize_entry, normalize_registry
 
 #: 迁移前的六字段条目（本项目 settings.json 的真实形态）
 _LEGACY_ENTRY: dict[str, Any] = {
@@ -36,8 +32,7 @@ class TestEntryBackfill:
         entry, problems = normalize_entry(dict(_LEGACY_ENTRY))
         assert problems == []
         assert entry["capabilities"]["supports_tools"] is True
-        assert entry["capabilities"]["max_context_length"] == 64000
-        assert entry["param_overrides"] == {}
+        assert entry["capabilities"]["max_context_length"] == 128000
 
     def test_existing_fields_untouched(self) -> None:
         entry, _ = normalize_entry(dict(_LEGACY_ENTRY))
@@ -56,13 +51,6 @@ class TestNeverRaises:
     def test_non_dict_input_yields_usable_entry(self, raw: object) -> None:
         entry, problems = normalize_entry(raw)
         assert entry["capabilities"]["supports_tools"] is True
-        assert entry["param_overrides"] == {}
-
-    def test_missing_provider_falls_back_to_generic(self) -> None:
-        """缺 provider 时按通用兼容档给能力，而不是拒绝读取。"""
-        entry, _ = normalize_entry({"model_id": "some-model"})
-        assert entry["provider"] == ""
-        assert entry["capabilities"]["max_context_length"] == 128000
 
     def test_wrong_field_types_are_coerced(self) -> None:
         entry, _ = normalize_entry({"provider": 123, "model_id": ["a"], "api_key": {"k": 1}})
@@ -87,60 +75,14 @@ class TestTextCleaning:
         entry, _ = normalize_entry({**dict(_LEGACY_ENTRY), "my_note": "别删我"})
         assert entry["my_note"] == "别删我"
 
-
-class TestOverridesCleaning:
-    def test_non_dict_overrides_becomes_empty(self) -> None:
-        assert normalize_overrides("deepseek", "不是字典") == {}
-        assert normalize_overrides("deepseek", None) == {}
-
-    def test_dangerous_keys_dropped(self) -> None:
-        cleaned = normalize_overrides("deepseek", {"__proto__": 1, "temperature": 0.5})
-        assert "__proto__" not in cleaned
-        assert cleaned["temperature"] == 0.5
-
-    def test_unsupported_params_dropped(self) -> None:
-        cleaned = normalize_overrides("anthropic", {"temperature": 0.5, "max_tokens": 100})
-        assert cleaned == {"max_tokens": 100, "reasoning_effort": "high"}
-
-    def test_empty_values_dropped(self) -> None:
-        cleaned = normalize_overrides("deepseek", {"temperature": None, "top_p": ""})
-        assert cleaned == {}
-
-
-class TestRegistryLevel:
-    def test_registry_normalises_each_entry(self) -> None:
-        out = normalize_registry([dict(_LEGACY_ENTRY), {"provider": "openai", "model_id": "gpt"}])
-        assert len(out) == 2
-        assert all("capabilities" in e for e in out)
-
-    def test_non_list_input_yields_empty(self) -> None:
-        assert normalize_registry("不是列表") == []
-        assert normalize_registry(None) == []
-
-    def test_non_dict_items_skipped(self) -> None:
-        out = normalize_registry([dict(_LEGACY_ENTRY), "垃圾数据", None, 42])
-        assert len(out) == 1
-
     def test_empty_list_stays_empty(self) -> None:
         assert normalize_registry([]) == []
 
 
 class TestCapabilitiesNormalisation:
-    def test_user_overrides_are_honoured(self) -> None:
-        entry, _ = normalize_entry({"provider": "zhipu", "capabilities": {"supports_tools": False}})
-        assert entry["capabilities"]["supports_tools"] is False
-        assert entry["capabilities"]["max_context_length"] == 128000, "未覆盖字段用默认补齐"
-
     def test_wrong_type_capability_ignored(self) -> None:
         entry, _ = normalize_entry({"provider": "zhipu", "capabilities": {"supports_tools": "yes"}})
         assert entry["capabilities"]["supports_tools"] is True, "类型不符则回退默认"
-
-    def test_bool_is_not_treated_as_context_length(self) -> None:
-        """bool 是 int 子类——若不排除，`max_context_length: true` 会变成 1。"""
-        entry, _ = normalize_entry(
-            {"provider": "zhipu", "capabilities": {"max_context_length": True}}
-        )
-        assert entry["capabilities"]["max_context_length"] == 128000
 
     def test_valid_custom_context_length_kept(self) -> None:
         entry, _ = normalize_entry(

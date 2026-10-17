@@ -21,12 +21,9 @@ from devprompt_ai.domain.decision.port import DecisionPort, VariantScore
 from devprompt_ai.domain.errors import ConfigurationError, StateError
 from devprompt_ai.domain.generate.ports import GeneratePort, GenerationContext, VariantDraft
 from devprompt_ai.domain.generate.variants import expand_levels, resolve_level
-from devprompt_ai.domain.model_migration import normalize_overrides
 from devprompt_ai.domain.model_spec import (
-    model_specs_projection,
     providers_projection,
     resolve_api_mode,
-    validate_overrides,
 )
 from devprompt_ai.domain.models import (
     Candidate,
@@ -363,7 +360,7 @@ class ForgeService:
     def _registry_view(self) -> list[dict[str, Any]]:
         """注册表脱敏视图（F-604 多模型）：api_key 恒脱敏；is_active 由激活位比对得出。
 
-        2026-09-17 模型管理迁移：增 `capabilities` / `param_overrides` 两个只读字段，
+        2026-09-17 模型管理迁移：增 `capabilities` 只读字段，
         供设置中心渲染能力徽标与参数编辑器。两者已在读侧归一化，此处只做脱敏与透出。
         """
         registry = read_model_registry()
@@ -382,7 +379,6 @@ class ForgeService:
                     "api_key_masked": mask_secret(str(entry.get("api_key", ""))),
                     "is_active": entry_id == active_id,
                     "capabilities": dict(capabilities) if isinstance(capabilities, dict) else {},
-                    "param_overrides": dict(entry.get("param_overrides") or {}),
                     "api_mode": str(entry.get("api_mode", "") or ""),
                     "reasoning_effort": str(entry.get("reasoning_effort", "") or ""),
                     "max_context_length": entry.get("max_context_length"),
@@ -396,8 +392,6 @@ class ForgeService:
     ) -> list[dict[str, Any]]:
         """整表替换解析：id 缺省则生成（m- + uuid）；api_key 空则沿用同 id 旧值；label 空则派生。
 
-        2026-09-17 模型管理迁移：`param_overrides` 采用**整体替换**语义（对齐源项目
-        `manager.ts:968-972`）——传入 `None` 表示沿用同 id 旧值，显式传 `{}` 表示清空。
         绝不做深合并，否则用户删除的参数会被「礼貌地」保留回来。
         """
         by_id = {str(e.get("id")): e for e in existing if e.get("id")}
@@ -412,12 +406,6 @@ class ForgeService:
             model_id = str(raw.get("model_id") or "").strip()
             label = str(raw.get("label") or "").strip() or f"{provider} · {model_id}"
 
-            overrides_in = raw.get("param_overrides")
-            # 两个分支都必须走 normalize_overrides：沿用旧值时也要按**新 provider**
-            # 重新清洗——provider 从 deepseek 改成 anthropic 后，temperature 已不被支持，
-            # 直接沿用会留下一组永远不生效的参数。
-            source_overrides = old.get("param_overrides") if overrides_in is None else overrides_in
-            param_overrides = normalize_overrides(provider, source_overrides or {})
             # api_mode：整体替换（None=沿用），并按 provider 的 supported_api_modes 收敛
             mode_in = raw.get("api_mode")
             mode_source = old.get("api_mode", "") if mode_in is None else mode_in
@@ -438,7 +426,6 @@ class ForgeService:
                     "base_url": str(raw.get("base_url") or "").strip(),
                     "api_key": str(api_key or ""),
                     "model_id": model_id,
-                    "param_overrides": param_overrides,
                     "api_mode": api_mode,
                     "reasoning_effort": effort,
                     "max_context_length": window,
@@ -455,7 +442,6 @@ class ForgeService:
         cfg = self._cfg
         return {
             "models": self._registry_view(),
-            "model_specs": model_specs_projection(),
             "providers": providers_projection(),
             "model_service": {
                 "provider": cfg.llm_provider,
@@ -492,11 +478,6 @@ class ForgeService:
             api_key = entry.get("api_key", "")
             if api_key is not None and not isinstance(api_key, str):
                 problems.append(f"{label}：api_key 必须是字符串")
-            # 参数覆盖校验（2026-09-17 迁移）：错误整单拒绝，未登记参数仅告警
-            errors, _ = validate_overrides(
-                str(entry.get("provider", "")), entry.get("param_overrides") or {}
-            )
-            problems.extend(f"{label}：{message}" for message in errors)
         return problems
 
     async def update_settings(
@@ -554,10 +535,7 @@ class ForgeService:
                     "api_key": str(active_entry.get("api_key", "")),
                     "model_id": str(active_entry.get("model_id", "")),
                     # 该条目的参数覆盖（已按 provider 清洗）——让每模型参数真正生效
-                    "llm_params": normalize_overrides(
-                        str(active_entry.get("provider", "")),
-                        active_entry.get("param_overrides") or {},
-                    ),
+                    "llm_params": {},
                     # 该条目的 API 形态——让协议分流真正生效
                     "api_mode": str(active_entry.get("api_mode", "") or ""),
                     # 条目级上下文窗口覆盖（0 = 沿用 provider 默认；仅告警不截断）

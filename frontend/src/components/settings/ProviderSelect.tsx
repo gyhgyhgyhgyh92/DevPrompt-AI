@@ -4,6 +4,8 @@ import type { ProviderDirectoryEntry } from '../../schemas/settings'
 /** 契约侧类型（api/types.ts 由 openapi 生成），比 Zod 推断更贴近服务端实际下发。 */
 type ProviderEntry = Omit<ProviderDirectoryEntry, 'supported_api_modes'> & {
   supported_api_modes?: string[] | undefined
+  /** 上下文窗口档位；契约里可选（老数据无此字段） */
+  context_window_tiers?: number[] | undefined
 }
 
 export interface ProviderSelectProps {

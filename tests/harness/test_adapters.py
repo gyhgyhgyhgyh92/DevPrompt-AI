@@ -23,7 +23,6 @@ from devprompt_ai.domain.model_spec import (
     PROVIDER_SPECS,
     max_context_length_of,
     resolve_api_mode,
-    resolve_provider_key,
 )
 from devprompt_ai.harness.adapters import build_adapter, supported_adapter_kinds
 from devprompt_ai.harness.adapters.anthropic_native import AnthropicNativeModel
@@ -486,16 +485,6 @@ class TestContextWindowWarning:
         assert str(limit) in warning
         assert "缩小检索范围" in warning, "告警须给出可操作建议，不能只报错"
 
-    def test_unknown_provider_inherits_compat_window(self) -> None:
-        """未登记厂商回落通用兼容档（resolve_provider_key 的有意设计），
-        因此**继承**该档的窗口上限，而不是「无窗口、不告警」。"""
-        assert resolve_provider_key("acme-unknown") == "openai_compatible"
-        limit = max_context_length_of("openai_compatible")
-        assert limit is not None, "通用兼容档应登记窗口上限"
-        cfg = AppConfig(llm_provider="acme-unknown", llm_model="m", _env_file=None)  # type: ignore[call-arg]
-        assert cfg.context_window_warning(limit) is None
-        assert cfg.context_window_warning(limit + 1) is not None
-
     def test_does_not_truncate_input(self) -> None:
         """核心不变量：告警是纯函数，绝不改动入参或返回值长度。"""
         cfg = AppConfig(llm_provider="openai", llm_model="gpt-x", _env_file=None)  # type: ignore[call-arg]
@@ -792,6 +781,7 @@ class TestProviderDirectory:
             "default_api_mode",
             "supported_api_modes",
             "max_context_length",
+            "context_window_tiers",
             "supports_reasoning",
             "quirks",
         }

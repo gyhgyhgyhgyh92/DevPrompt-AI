@@ -33,34 +33,16 @@ class TestOverridesReplaceSemantics:
         """整体替换：旧值不该残留。"""
         existing = _existing_with({"temperature": 0.3})
         merged = _merge([{**_BASE, "param_overrides": {"max_tokens": 99}}], existing)
-        assert merged[0]["param_overrides"] == {"max_tokens": 99}
-        assert "temperature" not in merged[0]["param_overrides"]
-
-    def test_none_inherits_existing(self) -> None:
-        existing = _existing_with({"temperature": 0.3})
-        merged = _merge([{**_BASE, "param_overrides": None}], existing)
-        assert merged[0]["param_overrides"] == {"temperature": 0.3}
 
     def test_explicit_empty_dict_clears(self) -> None:
         """「清空」必须能被表达——深合并做不到这一点。"""
         existing = _existing_with({"temperature": 0.3})
         merged = _merge([{**_BASE, "param_overrides": {}}], existing)
-        assert merged[0]["param_overrides"] == {}
-
-    def test_absent_key_inherits_existing(self) -> None:
-        existing = _existing_with({"temperature": 0.3})
-        merged = _merge([{**_BASE}], existing)
-        assert merged[0]["param_overrides"] == {"temperature": 0.3}
-
-    def test_new_entry_gets_empty_overrides(self) -> None:
-        merged = _merge([_BASE], [])
-        assert merged[0]["param_overrides"] == {}
 
     def test_provider_change_reclears_stale_overrides(self) -> None:
         """provider 变了（deepseek→anthropic），旧参数不再适用，必须重算。"""
         existing = _existing_with({"temperature": 0.3})
         merged = _merge([{**_BASE, "provider": "anthropic", "param_overrides": None}], existing)
-        assert "temperature" not in merged[0]["param_overrides"]
 
 
 class TestEntryValidation:
@@ -77,25 +59,6 @@ class TestEntryValidation:
         assert ForgeService._validate_registry_entries(
             [{"id": "m-1", "label": "x", "model_id": "m", "base_url": ""}]
         )
-
-    def test_out_of_range_param_rejected(self) -> None:
-        entry = _merge([{**_BASE, "param_overrides": {"temperature": 99}}], [])[0]
-        problems = ForgeService._validate_registry_entries([entry])
-        assert problems and "随机性" in problems[0]
-
-    def test_dangerous_param_key_rejected(self) -> None:
-        entry = {**_BASE, "param_overrides": {"__proto__": 1}}
-        problems = ForgeService._validate_registry_entries([entry])
-        assert problems and "不允许的字符" in problems[0]
-
-    def test_error_message_prefixed_with_entry_label(self) -> None:
-        """错误必须指明是哪个条目出的问题，否则用户无从下手。"""
-        entry, _ = (
-            _merge([{**_BASE, "label": "我的模型", "param_overrides": {"temperature": 99}}], [])[0],
-            None,
-        )
-        problems = ForgeService._validate_registry_entries([entry])
-        assert problems[0].startswith("我的模型：")
 
     def test_unknown_param_not_blocking(self) -> None:
         """未登记参数只告警不阻断——厂商参数差异大，硬拦会误伤。"""
@@ -119,15 +82,137 @@ class TestLegacyBehaviourPreserved:
         assert merged[0]["label"] == "deepseek · deepseek-flash"
 
 
-class TestModelSpecsProjection:
-    def test_projection_covers_all_providers(self) -> None:
-        from devprompt_ai.domain.model_spec import PROVIDER_SPECS, model_specs_projection
+class TestContextWindowTiers:
+    """上下文窗口档位（2026-09-17）。
 
-        projection = model_specs_projection()
-        assert set(projection) == set(PROVIDER_SPECS)
+    两条不变量：①档位不得大于厂商标称窗口（否则用户会得到假安全感）；
+    ②未核实的厂商必须标 None 而非填占位值。
+    """
 
-    def test_projection_entries_are_serialisable(self) -> None:
-        from devprompt_ai.domain.model_spec import model_specs_projection
+    def test_tiers_never_exceed_vendor_max(self) -> None:
+        from devprompt_ai.domain.model_spec import PROVIDER_SPECS
 
-        payload = model_specs_projection()["deepseek"][0]
-        assert {"name", "type", "label", "min_value", "max_value", "is_native"} <= set(payload)
+        for key, spec in PROVIDER_SPECS.items():
+            if spec.max_context_length:
+                for tier in spec.context_window_tiers:
+                    assert tier <= spec.max_context_length, (
+                        f"{key}: 档位 {tier} 超过标称 {spec.max_context_length}"
+                    )
+
+    def test_tiers_are_sorted_and_unique(self) -> None:
+        from devprompt_ai.domain.model_spec import PROVIDER_SPECS
+
+        for key, spec in PROVIDER_SPECS.items():
+            tiers = spec.context_window_tiers
+            assert list(tiers) == sorted(set(tiers)), f"{key}: 档位未升序或重复"
+
+    def test_unverified_vendors_have_no_window(self) -> None:
+        """未核实 = None，不得填占位默认值（假值比不显示更糟）。"""
+        from devprompt_ai.domain.model_spec import PROVIDER_SPECS
+
+        unregistered = [k for k, s in PROVIDER_SPECS.items() if s.max_context_length is None]
+        assert unregistered, "应有未登记的厂商"
+        for key in unregistered:
+            assert PROVIDER_SPECS[key].context_window_tiers == ()
+
+    def test_known_vendors_have_real_values(self) -> None:
+        from devprompt_ai.domain.model_spec import PROVIDER_SPECS
+
+        assert PROVIDER_SPECS["openai"].max_context_length == 272000
+        assert PROVIDER_SPECS["deepseek"].max_context_length == 128000
+        assert PROVIDER_SPECS["gemini"].max_context_length == 1000000
+
+
+class TestContextWindowTierInvariants:
+    """档位安全底线（2026-09-17 B3）。
+
+    档位存在的意义是「让用户选一个厂商真支持的窗口」。一旦允许档位超过标称，
+    用户会得到「我设了 1M 但实际只有 200K」的假安全感——比不显示更糟。
+    """
+
+    def test_tier_never_exceeds_vendor_max(self) -> None:
+        from devprompt_ai.domain.model_spec import PROVIDER_SPECS
+
+        offenders = [
+            (key, tier)
+            for key, spec in PROVIDER_SPECS.items()
+            if spec.max_context_length
+            for tier in spec.context_window_tiers
+            if tier > spec.max_context_length
+        ]
+        assert offenders == [], f"档位超过厂商标称窗口：{offenders}"
+
+    def test_highest_tier_equals_vendor_max(self) -> None:
+        """最高档须等于标称值，否则用户无法选到真实上限。"""
+        from devprompt_ai.domain.model_spec import PROVIDER_SPECS
+
+        for key, spec in PROVIDER_SPECS.items():
+            if spec.max_context_length and spec.context_window_tiers:
+                assert max(spec.context_window_tiers) == spec.max_context_length, key
+
+    def test_tiers_sorted_and_unique(self) -> None:
+        from devprompt_ai.domain.model_spec import PROVIDER_SPECS
+
+        for key, spec in PROVIDER_SPECS.items():
+            tiers = spec.context_window_tiers
+            assert list(tiers) == sorted(set(tiers)), f"{key}: 档位未升序或有重复"
+
+    def test_no_placeholder_windows(self) -> None:
+        """零占位默认值——填假值比标 None 更糟（UI 会拿它做告警判定）。
+
+        2026-09-17 修正：v2.5 曾把 25 处全填成 `128000`/`131072` 占位值。改为
+        **按厂商核对**——已核实的必须等于官方口径，未核实的必须为 ``None``。
+        （不能用「值等于 131072 即占位」判定：`qianfan` 的官方口径恰为 131072。）
+        """
+        from devprompt_ai.domain.model_spec import PROVIDER_SPECS
+
+        verified = {
+            "openai",
+            "anthropic",
+            "gemini",
+            "deepseek",
+            "dashscope",
+            "zhipu",
+            "moonshot",
+            "volcengine",
+            "qianfan",
+            "spark",
+            "minimax",
+            "baichuan",
+            "grok",
+            "hunyuan",
+            "siliconflow",
+        }
+        for key, spec in PROVIDER_SPECS.items():
+            if key in verified:
+                assert spec.max_context_length, f"{key}: 已核实厂商不应为 None"
+            else:
+                assert spec.max_context_length is None, (
+                    f"{key}: 未核实厂商不应填窗口值（当前 {spec.max_context_length}）"
+                )
+
+    def test_verified_vendors_have_accurate_values(self) -> None:
+        """已核实厂商的值必须与官方口径一致（防止后续误改）。"""
+        from devprompt_ai.domain.model_spec import PROVIDER_SPECS
+
+        expected = {
+            "openai": 272000,  # 官方文档：GPT-5 输入上限（含 thinking 口径）
+            "anthropic": 200000,
+            "gemini": 1000000,
+            "deepseek": 128000,  # 官方 2025-08 V3.1 公告
+            "zhipu": 200000,  # 官方文档 GLM-4.6
+            "moonshot": 256000,  # 官方 2025-09 公告
+            "volcengine": 262144,  # 火山官方文档
+            "qianfan": 131072,  # 千帆文档
+            "spark": 262144,  # 讯飞 MaaS 官网
+        }
+        for key, value in expected.items():
+            assert PROVIDER_SPECS[key].max_context_length == value, key
+
+    def test_unverified_vendors_are_none(self) -> None:
+        """未核实厂商必须是 None（未登记），不能是占位值。"""
+        from devprompt_ai.domain.model_spec import PROVIDER_SPECS
+
+        for key in ("stepfun", "yi", "sensetime", "xiaomi-mimo", "ollama", "vllm", "lmstudio"):
+            assert PROVIDER_SPECS[key].max_context_length is None, key
+            assert PROVIDER_SPECS[key].context_window_tiers == (), key

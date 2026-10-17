@@ -6,7 +6,7 @@ ApiResponse 泛型化：data 体类型进 OpenAPI，供前端类型生成精确�
 
 from __future__ import annotations
 
-from typing import Any, Generic, Literal, TypeVar
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -191,34 +191,11 @@ class ModelCapabilitiesView(BaseModel):
     max_context_length: int | None = None
 
 
-class ParameterDefinitionView(BaseModel):
-    """单个可调参数的完整定义（迁自源项目 `UnifiedParameterDefinition`）。
-
-    由后端在 `GET /settings` 的 `model_specs` 段下发，前端据此渲染参数编辑器。
-    `is_native` 标明该参数是否会被 `ModelSettings` 原生下发——为 false 的当前仅登记
-    与校验、实际不生效（需接线 `extra_body`）。
-    """
-
-    name: str
-    # 参数类型是有限枚举，契约里写成 str 会丢掉约束——前端 Zod 是严格枚举，
-    # 两侧不一致会让 TS 类型无法收窄。故此处用 Literal 与领域层 ParameterType 对齐。
-    type: Literal["number", "integer", "boolean", "string", "string-array"]
-    label: str
-    description: str = ""
-    default_value: Any | None = None
-    min_value: float | None = None
-    max_value: float | None = None
-    step: float | None = None
-    allowed_values: list[str] = Field(default_factory=list)
-    unit: str = ""
-    is_native: bool = True
-
-
 class ModelEntryView(BaseModel):
     """注册表条目脱敏视图（F-604 多模型）：api_key 恒脱敏，is_active 标记当前生效项。
 
-    2026-09-17 迁移增`capabilities` / `param_overrides` 两个只读字段，供设置中心
-    渲染能力徽标与参数编辑器。
+    2026-09-17 迁移增 `capabilities` 只读字段（供设置中心渲染能力徽标）；
+    同日移除 `param_overrides`（参数编辑区已下线）与 `model_specs` 契约段。
     """
 
     id: str
@@ -229,9 +206,10 @@ class ModelEntryView(BaseModel):
     api_key_masked: str
     is_active: bool
     capabilities: ModelCapabilitiesView = Field(default_factory=ModelCapabilitiesView)
-    param_overrides: dict[str, Any] = Field(default_factory=dict)
     # 2026-09-17 多供应商扩展：`api_mode` 为空表示按 provider 默认推断；
     # `reasoning_effort` / `max_context_length` 是**每条目可覆盖**的（缺省沿用 provider 默认）。
+    # `max_context_length` 只能取 `providers[].context_window_tiers` 里的档位值——
+    # 自由填数会让用户得到「我填了 1M 但实际只有 200K」的假安全感。
     api_mode: str | None = None
     reasoning_effort: str | None = None
     max_context_length: int | None = None
@@ -240,9 +218,7 @@ class ModelEntryView(BaseModel):
 class ModelEntryUpdate(BaseModel):
     """PUT /settings models 段条目：id=None 为新增（后端生成）；api_key None/空=保留原值。
 
-    `param_overrides` 的三态语义（2026-09-17 迁移，对齐源项目 `manager.ts:968-972`）：
-    省略或 `null` = 沿用同 id 旧值；显式传 `{}` = **清空**；显式传 dict = **整体替换**。
-    绝不做深合并，否则用户删除的参数会被保留回来。
+    2026-09-17 多供应商扩展。`None`/省略 = 沿用同 id 旧值；显式传值即覆盖。
     """
 
     id: str | None = None
@@ -251,8 +227,6 @@ class ModelEntryUpdate(BaseModel):
     base_url: str | None = None
     model_id: str | None = None
     api_key: str | None = None
-    param_overrides: dict[str, Any] | None = None
-    # 2026-09-17 多供应商扩展。`None`/省略 = 沿用同 id 旧值；显式传值即覆盖。
     api_mode: str | None = None
     reasoning_effort: str | None = None
     max_context_length: int | None = Field(default=None, gt=0)
@@ -277,6 +251,13 @@ class ProviderDirectoryEntry(BaseModel):
 
     前端据此渲染 provider 下拉与动态表单：`base_url` 为空表示**官方端点未登记**
     （逐个查证不到时如实留空），UI 须提示用户自行查询文档填写，不得编造。
+
+    ``max_context_length`` 是**厂商标称输入窗口**，查证不到时为 ``None``（未登记）——
+    填占位默认值会让 UI 拿一个不存在的上限做告警判定，比不显示更糟。
+
+    ``context_window_tiers`` 是用户可单选的**档位集合**（绝对 token，升序）：
+    - 空数组 = 该厂商只有标称默认值、不可选（UI 只显示默认档）；
+    - 每个档位都必须是厂商真实支持的规格，且不得大于 ``max_context_length``。
     """
 
     id: str
@@ -286,6 +267,7 @@ class ProviderDirectoryEntry(BaseModel):
     default_api_mode: str = "chat_completions"
     supported_api_modes: list[str] = Field(default_factory=lambda: ["chat_completions"])
     max_context_length: int | None = None
+    context_window_tiers: list[int] = Field(default_factory=list)
     supports_reasoning: bool = False
     quirks: str = ""
 
@@ -295,12 +277,12 @@ class SettingsResponse(BaseModel):
 
     ``models`` 为多模型注册表脱敏视图（F-604，2026-10-13）；字段无默认值（响应必有值）。
 
-    2026-09-17 迁移增 ``model_specs``：provider key → 参数定义数组。**复用本端点下发
-    而非新增路径**，故契约仍 13 路径 / 16 操作。
+    2026-09-17 迁移增 ``providers`` 目录（provider 下拉与窗口档位的数据源）。
+    **复用本端点下发而非新增路径**，故契约仍 13 路径 / 16 操作。
+    同日移除 ``model_specs``（参数编辑区已下线）。
     """
 
     models: list[ModelEntryView]
-    model_specs: dict[str, list[ParameterDefinitionView]] = Field(default_factory=dict)
     providers: list[ProviderDirectoryEntry] = Field(default_factory=list)
     model_service: ModelServiceSettings
     process: ProcessSettings

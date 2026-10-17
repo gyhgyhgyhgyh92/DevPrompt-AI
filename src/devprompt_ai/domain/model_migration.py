@@ -14,7 +14,7 @@
 
 ## 归一化策略（对应计划的「读时补默认值」）
 
-- 缺失的 `capabilities` / `param_overrides` 用领域默认值补齐，**不报错**；
+- 缺失的 `capabilities` 用领域默认值补齐，**不报错**；
 - 类型不符的字段降级为默认值并记入错误列表（供设置中心展示原因），条目**不丢弃**——
   本地单用户工具下静默丢配置比报错更难排查；
 - 未登记字段保留原样（避免误删用户手工加的字段），但写回时不参与领域逻辑。
@@ -25,26 +25,12 @@ from __future__ import annotations
 from typing import Any
 
 from devprompt_ai.domain.model_spec import (
-    apply_provider_constraints,
-    filter_safe_overrides,
     resolve_capabilities,
 )
 
 #: 单条文本字段的合理长度上限（防手工编辑 settings.json 时写入超长内容）。
 _MAX_URL_LENGTH = 2048
 _MAX_LABEL_LENGTH = 128
-
-
-def normalize_overrides(provider: str, raw: Any) -> dict[str, Any]:
-    """把任意来源的参数覆盖值归一化为「键名安全 + 已剔除不支持项」的干净结构。
-
-    非字典输入（用户手工编辑导致）返回空 dict——宁可参数为空，也不能让脏数据流到下发层。
-    键名安全性由 :func:`is_safe_custom_key` 把关；这里额外丢弃已登记但 provider
-    不支持的参数（由 :func:`apply_provider_constraints` 承担）。
-    """
-    if not isinstance(raw, dict):
-        return {}
-    return apply_provider_constraints(provider, filter_safe_overrides(provider, raw))
 
 
 def _normalize_capabilities(raw: Any, provider: str, model_id: str) -> dict[str, Any]:
@@ -85,8 +71,7 @@ def normalize_entry(raw: Any) -> tuple[dict[str, Any], list[str]]:
     归一化动作：
     - 文本字段取字符串、去首尾空白、限长（超长记问题但不丢条目）；
     - ``capabilities`` 缺失或结构不符 → 按 provider 默认值补齐；
-    - ``param_overrides`` 缺失或非字典 → 空 dict；存在则清洗键名与不支持项；
-    - 未登记字段原样保留（避免误删用户手工加的内容）。
+        - 未登记字段原样保留（避免误删用户手工加的内容）。
     """
     source: dict[str, Any] = dict(raw) if isinstance(raw, dict) else {}
     problems: list[str] = []
@@ -111,7 +96,6 @@ def normalize_entry(raw: Any) -> tuple[dict[str, Any], list[str]]:
     entry["reasoning_effort"] = effort if isinstance(effort, str) else ""
     window = source.get("max_context_length")
     entry["max_context_length"] = window if isinstance(window, int) and window > 0 else None
-    entry["param_overrides"] = normalize_overrides(provider, source.get("param_overrides"))
     return entry, problems
 
 

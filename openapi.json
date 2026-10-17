@@ -775,7 +775,7 @@
         "type": "object"
       },
       "ModelEntryUpdate": {
-        "description": "PUT /settings models 段条目：id=None 为新增（后端生成）；api_key None/空=保留原值。\n\n`param_overrides` 的三态语义（2026-09-17 迁移，对齐源项目 `manager.ts:968-972`）：\n省略或 `null` = 沿用同 id 旧值；显式传 `{}` = **清空**；显式传 dict = **整体替换**。\n绝不做深合并，否则用户删除的参数会被保留回来。",
+        "description": "PUT /settings models 段条目：id=None 为新增（后端生成）；api_key None/空=保留原值。\n\n2026-09-17 多供应商扩展。`None`/省略 = 沿用同 id 旧值；显式传值即覆盖。",
         "properties": {
           "api_key": {
             "anyOf": [
@@ -855,18 +855,6 @@
             ],
             "title": "Model Id"
           },
-          "param_overrides": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Param Overrides"
-          },
           "provider": {
             "anyOf": [
               {
@@ -894,7 +882,7 @@
         "type": "object"
       },
       "ModelEntryView": {
-        "description": "注册表条目脱敏视图（F-604 多模型）：api_key 恒脱敏，is_active 标记当前生效项。\n\n2026-09-17 迁移增`capabilities` / `param_overrides` 两个只读字段，供设置中心\n渲染能力徽标与参数编辑器。",
+        "description": "注册表条目脱敏视图（F-604 多模型）：api_key 恒脱敏，is_active 标记当前生效项。\n\n2026-09-17 迁移增 `capabilities` 只读字段（供设置中心渲染能力徽标）；\n同日移除 `param_overrides`（参数编辑区已下线）与 `model_specs` 契约段。",
         "properties": {
           "api_key_masked": {
             "title": "Api Key Masked",
@@ -944,11 +932,6 @@
           "model_id": {
             "title": "Model Id",
             "type": "string"
-          },
-          "param_overrides": {
-            "additionalProperties": true,
-            "title": "Param Overrides",
-            "type": "object"
           },
           "provider": {
             "title": "Provider",
@@ -1138,101 +1121,6 @@
         "title": "OptimizeRequest",
         "type": "object"
       },
-      "ParameterDefinitionView": {
-        "description": "单个可调参数的完整定义（迁自源项目 `UnifiedParameterDefinition`）。\n\n由后端在 `GET /settings` 的 `model_specs` 段下发，前端据此渲染参数编辑器。\n`is_native` 标明该参数是否会被 `ModelSettings` 原生下发——为 false 的当前仅登记\n与校验、实际不生效（需接线 `extra_body`）。",
-        "properties": {
-          "allowed_values": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Allowed Values",
-            "type": "array"
-          },
-          "default_value": {
-            "anyOf": [
-              {},
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Default Value"
-          },
-          "description": {
-            "default": "",
-            "title": "Description",
-            "type": "string"
-          },
-          "is_native": {
-            "default": true,
-            "title": "Is Native",
-            "type": "boolean"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "max_value": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Value"
-          },
-          "min_value": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Min Value"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "step": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Step"
-          },
-          "type": {
-            "enum": [
-              "number",
-              "integer",
-              "boolean",
-              "string",
-              "string-array"
-            ],
-            "title": "Type",
-            "type": "string"
-          },
-          "unit": {
-            "default": "",
-            "title": "Unit",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "type",
-          "label"
-        ],
-        "title": "ParameterDefinitionView",
-        "type": "object"
-      },
       "PreferenceUpdateRequest": {
         "description": "PUT /preference 部分更新：None = 保持不变；超界值由后端 clip01 截断而非拒绝。",
         "properties": {
@@ -1378,12 +1266,19 @@
         "type": "object"
       },
       "ProviderDirectoryEntry": {
-        "description": "provider 目录条目（2026-09-17 多供应商扩展）。\n\n前端据此渲染 provider 下拉与动态表单：`base_url` 为空表示**官方端点未登记**\n（逐个查证不到时如实留空），UI 须提示用户自行查询文档填写，不得编造。",
+        "description": "provider 目录条目（2026-09-17 多供应商扩展）。\n\n前端据此渲染 provider 下拉与动态表单：`base_url` 为空表示**官方端点未登记**\n（逐个查证不到时如实留空），UI 须提示用户自行查询文档填写，不得编造。\n\n``max_context_length`` 是**厂商标称输入窗口**，查证不到时为 ``None``（未登记）——\n填占位默认值会让 UI 拿一个不存在的上限做告警判定，比不显示更糟。\n\n``context_window_tiers`` 是用户可单选的**档位集合**（绝对 token，升序）：\n- 空数组 = 该厂商只有标称默认值、不可选（UI 只显示默认档）；\n- 每个档位都必须是厂商真实支持的规格，且不得大于 ``max_context_length``。",
         "properties": {
           "base_url": {
             "default": "",
             "title": "Base Url",
             "type": "string"
+          },
+          "context_window_tiers": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Context Window Tiers",
+            "type": "array"
           },
           "default_api_mode": {
             "default": "chat_completions",
@@ -1516,23 +1411,13 @@
         "type": "object"
       },
       "SettingsResponse": {
-        "description": "GET/PUT /settings 数据体（T6-11）。\n\n``models`` 为多模型注册表脱敏视图（F-604，2026-10-13）；字段无默认值（响应必有值）。\n\n2026-09-17 迁移增 ``model_specs``：provider key → 参数定义数组。**复用本端点下发\n而非新增路径**，故契约仍 13 路径 / 16 操作。",
+        "description": "GET/PUT /settings 数据体（T6-11）。\n\n``models`` 为多模型注册表脱敏视图（F-604，2026-10-13）；字段无默认值（响应必有值）。\n\n2026-09-17 迁移增 ``providers`` 目录（provider 下拉与窗口档位的数据源）。\n**复用本端点下发而非新增路径**，故契约仍 13 路径 / 16 操作。\n同日移除 ``model_specs``（参数编辑区已下线）。",
         "properties": {
           "locked": {
             "$ref": "#/components/schemas/LockedSettings"
           },
           "model_service": {
             "$ref": "#/components/schemas/ModelServiceSettings"
-          },
-          "model_specs": {
-            "additionalProperties": {
-              "items": {
-                "$ref": "#/components/schemas/ParameterDefinitionView"
-              },
-              "type": "array"
-            },
-            "title": "Model Specs",
-            "type": "object"
           },
           "models": {
             "items": {
