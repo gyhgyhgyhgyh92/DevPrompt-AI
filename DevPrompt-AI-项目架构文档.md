@@ -1066,7 +1066,15 @@ src/devprompt_ai/
 │   ├── fallback.py            LLM 决策实现（原 JevDecider 已于 2026-10-15 移除）
 │   └── prompts.py             决策问题模板
 ├── harness/
-│   ├── llm.py                 多供应商客户端（openai-agents Runner/Agent 直接在此封装）
+│   ├── adapters/            【2026-09-17】协议适配层（按 provider 分流 API 形态）
+│   │   ├── __init__.py      build_adapter() + supported_adapter_kinds()
+│   │   ├── base.py          Model 子类基类（api_mode 固定 + close 幂等）
+│   │   ├── openai_compat.py     Chat Completions 形态（绝大多数第三方）
+│   │   ├── openai_responses.py  Responses 形态（OpenAI 官方）
+│   │   ├── anthropic_native.py  Anthropic Messages 原生（依赖 anthropic，可选 extra）
+│   │   ├── gemini_native.py     Gemini GenerateContent 原生（依赖 google-genai，可选 extra）
+│   │   └── registry.py      adapter_kind → 构造器
+│   ├── llm.py               build_model(entry) 工厂：按调用构造 Model，**不用全局开关**                 多供应商客户端（openai-agents Runner/Agent 直接在此封装）
 │   ├── guardrails.py          输出校验
 │   ├── process.py             检索 I/O Protocol 实现（CommandRunner/FileReader）+ 符号表编排（F-101）
 │   ├── browse.py              目录浏览 I/O（F-601 页内文件夹选择器数据源，GET /project/browse）

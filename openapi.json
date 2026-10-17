@@ -788,6 +788,17 @@
             ],
             "title": "Api Key"
           },
+          "api_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Mode"
+          },
           "base_url": {
             "anyOf": [
               {
@@ -820,6 +831,18 @@
               }
             ],
             "title": "Label"
+          },
+          "max_context_length": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Context Length"
           },
           "model_id": {
             "anyOf": [
@@ -854,6 +877,17 @@
               }
             ],
             "title": "Provider"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
           }
         },
         "title": "ModelEntryUpdate",
@@ -865,6 +899,17 @@
           "api_key_masked": {
             "title": "Api Key Masked",
             "type": "string"
+          },
+          "api_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Mode"
           },
           "base_url": {
             "title": "Base Url",
@@ -885,6 +930,17 @@
             "title": "Label",
             "type": "string"
           },
+          "max_context_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Context Length"
+          },
           "model_id": {
             "title": "Model Id",
             "type": "string"
@@ -897,6 +953,17 @@
           "provider": {
             "title": "Provider",
             "type": "string"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
           }
         },
         "required": [
@@ -1310,6 +1377,68 @@
         "title": "ProcessUpdate",
         "type": "object"
       },
+      "ProviderDirectoryEntry": {
+        "description": "provider 目录条目（2026-09-17 多供应商扩展）。\n\n前端据此渲染 provider 下拉与动态表单：`base_url` 为空表示**官方端点未登记**\n（逐个查证不到时如实留空），UI 须提示用户自行查询文档填写，不得编造。",
+        "properties": {
+          "base_url": {
+            "default": "",
+            "title": "Base Url",
+            "type": "string"
+          },
+          "default_api_mode": {
+            "default": "chat_completions",
+            "title": "Default Api Mode",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "max_context_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Context Length"
+          },
+          "needs_key": {
+            "default": true,
+            "title": "Needs Key",
+            "type": "boolean"
+          },
+          "quirks": {
+            "default": "",
+            "title": "Quirks",
+            "type": "string"
+          },
+          "supported_api_modes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Api Modes",
+            "type": "array"
+          },
+          "supports_reasoning": {
+            "default": false,
+            "title": "Supports Reasoning",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "ProviderDirectoryEntry",
+        "type": "object"
+      },
       "RankingViewPayload": {
         "description": "service.RankingView 的契约镜像（F-403/F-404 加权推荐视图）。",
         "properties": {
@@ -1414,6 +1543,13 @@
           },
           "process": {
             "$ref": "#/components/schemas/ProcessSettings"
+          },
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderDirectoryEntry"
+            },
+            "title": "Providers",
+            "type": "array"
           }
         },
         "required": [

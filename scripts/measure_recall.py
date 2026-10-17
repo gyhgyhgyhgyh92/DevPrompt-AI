@@ -106,7 +106,7 @@ def _report_md(repos: list[RepoResult], out: Path, corpus: str) -> Path:
     total_cases = sum(len(r.results) for r in repos)
     total_hits = sum(r.hits for r in repos)
     lines = [
-        "# F-801 第一段 · 候选集召回率实测报告",
+        "# F-801 第一段 * 候选集召回率实测报告",
         "",
         f"- 日期：{date.today().isoformat()}　仓库数：{len(repos)}　样本数：{total_cases}",
         (
@@ -117,7 +117,7 @@ def _report_md(repos: list[RepoResult], out: Path, corpus: str) -> Path:
     ]
     if corpus == "mock":
         lines += [
-            "## ⚠️ 语料声明（mock 占位）",
+            "## [!] 语料声明（mock 占位）",
             "",
             (
                 "> **本报告基于 eval/recall 的 mock 占位语料（5 合成仓库），"
@@ -131,7 +131,7 @@ def _report_md(repos: list[RepoResult], out: Path, corpus: str) -> Path:
         "|---|---|---|---|---|",
     ]
     for r in repos:
-        flag = "⚠️ 是" if r.small_repo else "否"
+        flag = "[!] 是" if r.small_repo else "否"
         hits = f"{r.hits}/{len(r.results)}"
         lines.append(f"| {r.repo_id} | {r.symbol_total} | {flag} | {hits} | {r.recall:.1%} |")
     small_repos = [r for r in repos if r.small_repo]
@@ -155,10 +155,10 @@ def _report_md(repos: list[RepoResult], out: Path, corpus: str) -> Path:
             )
     passed = total_hits / total_cases >= 0.8
     verdict = (
-        "✅ 达标，可进入阶段四"
+        "[OK] 达标，可进入阶段四"
         if passed
         else (
-            "⛔ 未达标：检索层必须重做（放宽匹配 / 加入相似度排序 / 分层召回），"
+            "[X] 未达标：检索层必须重做（放宽匹配 / 加入相似度排序 / 分层召回），"
             "不得进入阶段四（MUST-25）"
         )
     )

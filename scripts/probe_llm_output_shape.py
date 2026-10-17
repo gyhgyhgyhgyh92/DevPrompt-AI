@@ -1,4 +1,4 @@
-"""Step 0.3：真实 LLM 输出形态统计——测量 Batch 0 探针识别的脆弱形态的实际发生率。
+"""Step 0.3：真实 LLM 输出形态统计--测量 Batch 0 探针识别的脆弱形态的实际发生率。
 
 为什么要真实统计：离线探针只能证明「当前实现在这类输入下会失败」，不能证明
 「LLM 真的会这样输出」。本脚本绕过 `chat_structured`（它会把解析失败的重试结果
@@ -9,11 +9,11 @@
 
 密钥处理：只经 AppConfig 读取，绝不打印、绝不写入任何输出文件（MUST-19）。
 
-⚠️ **口径说明（2026-09-17 多供应商扩展后刻意保留 chat 形态）**：
+[!] **口径说明（2026-09-17 多供应商扩展后刻意保留 chat 形态）**：
 生产路径已改为按 provider 分流（`harness/llm.build_model` 逐调用注入 Model 实例，
 不再用 `set_default_openai_api` 全局开关）。但本脚本**故意固定 `chat_completions`**：
 
-它是 Batch 0「M-1 解析加固降级」的**复活条件探针**——当时记录的数据全部来自
+它是 Batch 0「M-1 解析加固降级」的**复活条件探针**--当时记录的数据全部来自
 chat 形态（40 次调用，脆弱形态命中率 0/40）。若跟着生产路径改为 responses，
 新旧数据口径不可比，降级结论就失去依据。真正需要测新形态时，另起脚本，
 不要改这个。
@@ -178,9 +178,9 @@ async def main() -> int:
     print(f"\n命中 real 级脆弱形态：{vulnerable}/{SAMPLE_COUNT}")
     print(f"其中实际解析失败：{parse_fail}/{SAMPLE_COUNT}")
     if vulnerable == 0:
-        print("→ 真实模型未表现出该倾向，M-1 收益存疑，建议降级")
+        print("-> 真实模型未表现出该倾向，M-1 收益存疑，建议降级")
     else:
-        print("→ 真实模型确实会这样输出，M-1 有实际收益")
+        print("-> 真实模型确实会这样输出，M-1 有实际收益")
     return 0
 
 
@@ -189,7 +189,7 @@ def dotenv_overrides() -> dict[str, str]:
 
     为什么需要：AppConfig 加载链为 init > 进程环境 > 本地设置(settings.json) > .env。
     而 settings.json 里当前生效的是 UI 测试留下的占位端点（api.example.com），
-    会覆盖 .env 的真实配置。统计须用真实端点，故经 init 参数只读覆盖——
+    会覆盖 .env 的真实配置。统计须用真实端点，故经 init 参数只读覆盖--
     **不写回settings.json，不改动任何持久化配置**（MUST-19）。
     """
     path = Path(__file__).resolve().parents[1] / ".env"

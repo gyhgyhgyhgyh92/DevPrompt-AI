@@ -7,8 +7,8 @@
 
 复用 measure_recall.py 的仓库加载与标注解析模式
 （manifest.json + <cases-root>/<repo_id>/cases.jsonl）。
-测量链路：build_candidates（≤25，MUST-09）→ decider.rank_components(sentence, candidates)
-→ 判定 output.order[0] 对应候选是否命中标注 expected
+测量链路：build_candidates（≤25，MUST-09）-> decider.rank_components(sentence, candidates)
+-> 判定 output.order[0] 对应候选是否命中标注 expected
 （匹配规则同 measure_recall：符号名与路径双等）。
 
 报告：eval/recall/report-ranking-<日期>-<mode>.json（mode = dry | real），

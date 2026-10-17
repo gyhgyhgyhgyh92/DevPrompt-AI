@@ -318,7 +318,8 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | 约束 | 说明 |
 |---|---|
 | 只依赖 `Runner` | `AgentLoop` 在官方文档中仅为架构概念，**不是可导入的公开类** |
-| 必须 `set_default_openai_api("chat_completions")` | 第三方供应商基本不支持 Responses API |
+| **禁用** `set_default_openai_api` 全局开关 | 进程级单例；Web 并发下按 provider 反复设置会相互覆盖 → 随机 4xx。改为 `harness.llm.build_model()` **按调用构造 Model 实例**（2026-09-17） |
+| API 形态按 provider 分流 | `chat_completions`（绝大多数第三方）/ `responses`（OpenAI 官方）/ `anthropic_messages` / `gemini_generate_content`，见 `domain/model_spec.ProviderSpec.api_mode` |
 | 必须 `set_tracing_disabled(True)` | 第三方 API key 上传 OpenAI tracing 会返回 401 |
 
 ## 4.6 检索工具

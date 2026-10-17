@@ -37,6 +37,8 @@ MODEL_KEY_MAP: dict[str, str] = {
     "max_tokens": "llm_max_tokens",
     "llm_params": "llm_params",  # 生效模型的参数覆盖（2026-09-17 迁移）
     "api_mode": "api_mode",  # 生效模型的 API 形态（2026-09-17 多供应商扩展）
+    # 条目级上下文窗口覆盖；0 = 沿用 provider 默认。仅用于告警，不做截断（MUST-25）
+    "max_context_length": "max_context_length",
 }
 
 
@@ -82,6 +84,9 @@ class AppConfig(BaseSettings):
     # 取值见 domain/model_spec.ApiMode：chat_completions / responses /
     # anthropic_messages / gemini_generate_content。
     api_mode: str = ""
+    # 生效条目的上下文窗口覆盖（0 = 沿用 provider 默认）。仅用于**告警**，
+    # 不做截断——截断检索证据会削弱召回率，直接触碰 MUST-25 硬门禁。
+    max_context_length: int = 0
 
     prefer_adapt_weight: float = 0.6
     prefer_history_weight: float = 0.4
@@ -215,7 +220,9 @@ class AppConfig(BaseSettings):
         :param estimated_tokens: 本次请求的估算 token 数
         :return: 超限时给出可操作的中文提示；未超限或窗口未知返回 ``None``
         """
-        limit = max_context_length_of(self.llm_provider or "", self.llm_model or "")
+        limit = self.max_context_length or max_context_length_of(
+            self.llm_provider or "", self.llm_model or ""
+        )
         if limit is None or limit <= 0:
             return None
         if estimated_tokens <= limit:

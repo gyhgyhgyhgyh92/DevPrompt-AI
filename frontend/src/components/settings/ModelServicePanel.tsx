@@ -4,20 +4,19 @@ import type { SettingsResponse, SettingsUpdate } from '../../api/types'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import type { ParameterDefinition as ParamSpec } from '../../schemas/modelSpec'
 import type { ModelCapabilities } from '../../schemas/modelSpec'
+import { ApiModeSelect, ContextWindowHint } from './ApiModeSelect'
 import { ModelCapabilityBadge } from './ModelCapabilityBadge'
 import { ModelParamEditor } from './ModelParamEditor'
+import { findProvider, ProviderSelect } from './ProviderSelect'
 import { errorMessage } from './errorMessage'
 import './settings.css'
 
 /**
- * 供应商选项（F-604）：value 即契约 ModelEntryUpdate.provider 取值，
- * baseUrl 仅作切换时的预填；「自定义」不预填，保留用户已有 Base URL。
+ * 供应商清单**不再硬编码**（2026-09-17 W8）：改由后端 `SettingsResponse.providers`
+ * 目录驱动。理由：厂商清单会随发版过期，前端写死一份必然与后端漂移
+ * （此前 PROVIDERS 只有 3 项，而后端表里有 24 个）。
+ * 目录中 `base_url` 为空 = 该厂商官方端点未登记，由 Base URL 输入框旁提示自填。
  */
-const PROVIDERS: ReadonlyArray<{ value: string; label: string; baseUrl: string }> = [
-  { value: 'DeepSeek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com' },
-  { value: 'OpenAI 兼容', label: 'OpenAI 兼容', baseUrl: 'https://api.openai.com/v1' },
-  { value: '自定义', label: '自定义', baseUrl: '' },
-]
 
 /** GET /health 的 LLM 配置检查位名称（后端检查项标识，非前端判定）。 */
 const LLM_CHECK_NAME = 'llm_config'
@@ -36,6 +35,12 @@ interface ModelEntryDraft {
   capabilities: ModelCapabilities
   /** 该条目的参数覆盖（每模型独立，裁定 D3）。 */
   paramOverrides: Record<string, unknown>
+  /** 2026-09-17 W8：API 形态（空 = 按 provider 默认推断）。 */
+  apiMode: string
+  /** 思考强度（空 = 不下发）。 */
+  reasoningEffort: string
+  /** 上下文窗口覆盖（null = 沿用 provider 默认）。 */
+  maxContextLength: number | null
 }
 
 /** 全局调用参数草稿（不进注册表，仍写 model_service 段）。 */
@@ -87,6 +92,9 @@ function draftsFromSettings(settings: SettingsResponse): ModelEntryDraft[] {
     modelId: m.model_id,
     capabilities: m.capabilities ?? FALLBACK_CAPABILITIES,
     paramOverrides: { ...m.param_overrides },
+    apiMode: m.api_mode ?? '',
+    reasoningEffort: m.reasoning_effort ?? '',
+    maxContextLength: m.max_context_length ?? null,
   }))
 }
 
@@ -134,6 +142,7 @@ export function ModelServicePanel() {
   }
 
   const modelSpecs = settings.model_specs
+  const providerDirectory = settings.providers ?? []
 
   const patchDraft = (key: string, patch: Partial<ModelEntryDraft>) =>
     setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)))
@@ -146,13 +155,16 @@ export function ModelServicePanel() {
         key: `new-${draftSeq}`,
         id: null,
         label: '',
-        provider: PROVIDERS[0]?.value ?? '',
-        baseUrl: PROVIDERS[0]?.baseUrl ?? '',
+        provider: '',
+        baseUrl: '',
         apiKey: '',
         masked: '',
         modelId: '',
         capabilities: FALLBACK_CAPABILITIES,
         paramOverrides: {},
+        apiMode: '',
+        reasoningEffort: '',
+        maxContextLength: null,
       },
     ])
   }
@@ -187,6 +199,10 @@ export function ModelServicePanel() {
       ...(d.apiKey === '' ? {} : { api_key: d.apiKey }),
       // 始终下发 param_overrides：空对象表示「清空」，省略才是「沿用」（三态语义）
       param_overrides: d.paramOverrides,
+      // 三个新字段：空值即「沿用/不设置」，后端会按 provider 默认兜底
+      api_mode: d.apiMode,
+      reasoning_effort: d.reasoningEffort,
+      max_context_length: d.maxContextLength,
     }))
     const model_service: NonNullable<SettingsUpdate['model_service']> = {
       timeout: timeout.value,
@@ -241,130 +257,149 @@ export function ModelServicePanel() {
         {drafts.length === 0 ? (
           <p className="settings-note">尚未配置任何模型，点击「新增模型」开始。</p>
         ) : null}
-        {drafts.map((draft) => (
-          <div key={draft.key} className="settings-model-row">
-            <div className="settings-model-row__head">
-              <span className="settings-model-row__title">
-                {draft.label.trim() !== '' ? draft.label : draft.modelId || '新模型'}
-              </span>
-              {draft.id !== null && draft.id === activeId ? (
-                <span className="settings-model-badge">当前</span>
-              ) : null}
-              <ModelCapabilityBadge capabilities={draft.capabilities} />
-              <span className="settings-model-row__spacer" />
-              <button
-                type="button"
-                className="settings-btn settings-btn--small"
-                disabled={draft.id === null || draft.id === activeId}
-                title={draft.id === null ? '保存后可设为当前' : undefined}
-                onClick={() => draft.id !== null && setActiveId(draft.id)}
-              >
-                设为当前
-              </button>
-              <button
-                type="button"
-                className="settings-btn settings-btn--small settings-btn--danger"
-                onClick={() => removeDraft(draft.key)}
-              >
-                删除
-              </button>
-            </div>
-            <div className="settings-grid">
-              <div className="settings-field">
-                <label className="settings-label" htmlFor={`${draft.key}-label`}>
-                  显示名称
-                </label>
-                <input
-                  id={`${draft.key}-label`}
-                  className="settings-input"
-                  value={draft.label}
-                  placeholder="留空则自动生成（供应商 · 模型 ID）"
-                  onChange={(event) => patchDraft(draft.key, { label: event.currentTarget.value })}
-                />
-              </div>
-              <div className="settings-field">
-                <label className="settings-label" htmlFor={`${draft.key}-provider`}>
-                  供应商
-                </label>
-                <select
-                  id={`${draft.key}-provider`}
-                  className="settings-select"
-                  value={draft.provider}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value
-                    const preset = PROVIDERS.find((p) => p.value === value)
-                    patchDraft(draft.key, {
-                      provider: value,
-                      ...(preset && preset.baseUrl !== '' ? { baseUrl: preset.baseUrl } : {}),
-                      // 换供应商时清空参数：新厂商不支持的参数留着只会误导
-                      paramOverrides: {},
-                    })
-                  }}
-                >
-                  {PROVIDERS.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="settings-field">
-                <label className="settings-label" htmlFor={`${draft.key}-base-url`}>
-                  Base URL
-                </label>
-                <input
-                  id={`${draft.key}-base-url`}
-                  className="settings-input"
-                  value={draft.baseUrl}
-                  onChange={(event) =>
-                    patchDraft(draft.key, { baseUrl: event.currentTarget.value })
-                  }
-                />
-              </div>
-              <div className="settings-field">
-                <label className="settings-label" htmlFor={`${draft.key}-model-id`}>
-                  模型 ID
-                </label>
-                <input
-                  id={`${draft.key}-model-id`}
-                  className="settings-input"
-                  value={draft.modelId}
-                  onChange={(event) =>
-                    patchDraft(draft.key, { modelId: event.currentTarget.value })
-                  }
-                />
-              </div>
-              <div className="settings-field">
-                <label className="settings-label" htmlFor={`${draft.key}-api-key`}>
-                  API Key
-                </label>
-                <input
-                  id={`${draft.key}-api-key`}
-                  className="settings-input"
-                  type="password"
-                  autoComplete="off"
-                  placeholder={draft.masked !== '' ? draft.masked : '未配置'}
-                  value={draft.apiKey}
-                  onChange={(event) => patchDraft(draft.key, { apiKey: event.currentTarget.value })}
-                />
-                <span className="settings-hint">
-                  当前密钥：{draft.masked !== '' ? draft.masked : '未配置'}
-                  （回显恒脱敏；留空则保持不变）
+        {drafts.map((draft) => {
+          const pickedProvider = findProvider(providerDirectory, draft.provider)
+          return (
+            <div key={draft.key} className="settings-model-row">
+              <div className="settings-model-row__head">
+                <span className="settings-model-row__title">
+                  {draft.label.trim() !== '' ? draft.label : draft.modelId || '新模型'}
                 </span>
+                {draft.id !== null && draft.id === activeId ? (
+                  <span className="settings-model-badge">当前</span>
+                ) : null}
+                <ModelCapabilityBadge capabilities={draft.capabilities} />
+                <span className="settings-model-row__spacer" />
+                <button
+                  type="button"
+                  className="settings-btn settings-btn--small"
+                  disabled={draft.id === null || draft.id === activeId}
+                  title={draft.id === null ? '保存后可设为当前' : undefined}
+                  onClick={() => draft.id !== null && setActiveId(draft.id)}
+                >
+                  设为当前
+                </button>
+                <button
+                  type="button"
+                  className="settings-btn settings-btn--small settings-btn--danger"
+                  onClick={() => removeDraft(draft.key)}
+                >
+                  删除
+                </button>
               </div>
-            </div>
-            {paramDefsOf(modelSpecs, draft.provider).length > 0 ? (
+              <div className="settings-grid">
+                <div className="settings-field">
+                  <label className="settings-label" htmlFor={`${draft.key}-label`}>
+                    显示名称
+                  </label>
+                  <input
+                    id={`${draft.key}-label`}
+                    className="settings-input"
+                    value={draft.label}
+                    placeholder="留空则自动生成（供应商 · 模型 ID）"
+                    onChange={(event) =>
+                      patchDraft(draft.key, { label: event.currentTarget.value })
+                    }
+                  />
+                </div>
+                <div className="settings-field">
+                  <label className="settings-label" htmlFor={`${draft.key}-provider`}>
+                    供应商
+                  </label>
+                  <ProviderSelect
+                    providers={providerDirectory}
+                    value={draft.provider}
+                    onChange={(value) => {
+                      const picked = findProvider(providerDirectory, value)
+                      patchDraft(draft.key, {
+                        provider: value,
+                        ...(picked && picked.base_url !== '' ? { baseUrl: picked.base_url } : {}),
+                        // 换供应商时清空参数与形态：新厂商不支持的留着只会 mislead
+                        paramOverrides: {},
+                        apiMode: '',
+                        reasoningEffort: '',
+                      })
+                    }}
+                  />
+                </div>
+                <div className="settings-field">
+                  <label className="settings-label" htmlFor={`${draft.key}-base-url`}>
+                    Base URL
+                  </label>
+                  <input
+                    id={`${draft.key}-base-url`}
+                    className="settings-input"
+                    value={draft.baseUrl}
+                    onChange={(event) =>
+                      patchDraft(draft.key, { baseUrl: event.currentTarget.value })
+                    }
+                  />
+                  {pickedProvider?.base_url === '' ? (
+                    <span className="settings-hint">官方端点未登记，请自行查询该厂商文档填写</span>
+                  ) : null}
+                </div>
+                <div className="settings-field">
+                  <label className="settings-label" htmlFor={`${draft.key}-model-id`}>
+                    模型 ID
+                  </label>
+                  <input
+                    id={`${draft.key}-model-id`}
+                    className="settings-input"
+                    value={draft.modelId}
+                    onChange={(event) =>
+                      patchDraft(draft.key, { modelId: event.currentTarget.value })
+                    }
+                  />
+                </div>
+                <div className="settings-field">
+                  <label className="settings-label" htmlFor={`${draft.key}-api-key`}>
+                    API Key
+                  </label>
+                  <input
+                    id={`${draft.key}-api-key`}
+                    className="settings-input"
+                    type="password"
+                    autoComplete="off"
+                    placeholder={draft.masked !== '' ? draft.masked : '未配置'}
+                    value={draft.apiKey}
+                    onChange={(event) =>
+                      patchDraft(draft.key, { apiKey: event.currentTarget.value })
+                    }
+                  />
+                  <span className="settings-hint">
+                    当前密钥：{draft.masked !== '' ? draft.masked : '未配置'}
+                    （回显恒脱敏；留空则保持不变）
+                  </span>
+                </div>
+              </div>
               <div className="model-param-section">
-                <span className="settings-label">该模型的调用参数</span>
-                <ModelParamEditor
-                  definitions={paramDefsOf(modelSpecs, draft.provider)}
-                  value={draft.paramOverrides}
-                  onChange={(next) => patchDraft(draft.key, { paramOverrides: next })}
+                <ApiModeSelect
+                  supported={pickedProvider?.supported_api_modes ?? []}
+                  value={draft.apiMode}
+                  defaultMode={pickedProvider?.default_api_mode ?? 'chat_completions'}
+                  supportsReasoning={pickedProvider?.supports_reasoning ?? false}
+                  reasoningEffort={draft.reasoningEffort}
+                  onModeChange={(apiMode) => patchDraft(draft.key, { apiMode })}
+                  onEffortChange={(reasoningEffort) => patchDraft(draft.key, { reasoningEffort })}
+                />
+                <ContextWindowHint
+                  entryWindow={draft.maxContextLength}
+                  providerWindow={pickedProvider?.max_context_length}
                 />
               </div>
-            ) : null}
-          </div>
-        ))}
+              {paramDefsOf(modelSpecs, draft.provider).length > 0 ? (
+                <div className="model-param-section">
+                  <span className="settings-label">该模型的调用参数</span>
+                  <ModelParamEditor
+                    definitions={paramDefsOf(modelSpecs, draft.provider)}
+                    value={draft.paramOverrides}
+                    onChange={(next) => patchDraft(draft.key, { paramOverrides: next })}
+                  />
+                </div>
+              ) : null}
+            </div>
+          )
+        })}
       </div>
       <div className="settings-actions">
         <button type="button" className="settings-btn" disabled={isBusy} onClick={addDraft}>

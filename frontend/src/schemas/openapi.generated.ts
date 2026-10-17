@@ -680,12 +680,16 @@ export interface components {
         ModelEntryUpdate: {
             /** Api Key */
             api_key?: string | null;
+            /** Api Mode */
+            api_mode?: string | null;
             /** Base Url */
             base_url?: string | null;
             /** Id */
             id?: string | null;
             /** Label */
             label?: string | null;
+            /** Max Context Length */
+            max_context_length?: number | null;
             /** Model Id */
             model_id?: string | null;
             /** Param Overrides */
@@ -694,6 +698,8 @@ export interface components {
             } | null;
             /** Provider */
             provider?: string | null;
+            /** Reasoning Effort */
+            reasoning_effort?: string | null;
         };
         /**
          * ModelEntryView
@@ -705,6 +711,8 @@ export interface components {
         ModelEntryView: {
             /** Api Key Masked */
             api_key_masked: string;
+            /** Api Mode */
+            api_mode?: string | null;
             /** Base Url */
             base_url: string;
             capabilities?: components["schemas"]["ModelCapabilitiesView"];
@@ -714,6 +722,8 @@ export interface components {
             is_active: boolean;
             /** Label */
             label: string;
+            /** Max Context Length */
+            max_context_length?: number | null;
             /** Model Id */
             model_id: string;
             /** Param Overrides */
@@ -722,6 +732,8 @@ export interface components {
             };
             /** Provider */
             provider: string;
+            /** Reasoning Effort */
+            reasoning_effort?: string | null;
         };
         /**
          * ModelServiceSettings
@@ -894,6 +906,48 @@ export interface components {
             telemetry?: boolean | null;
         };
         /**
+         * ProviderDirectoryEntry
+         * @description provider 目录条目（2026-09-17 多供应商扩展）。
+         *
+         *     前端据此渲染 provider 下拉与动态表单：`base_url` 为空表示**官方端点未登记**
+         *     （逐个查证不到时如实留空），UI 须提示用户自行查询文档填写，不得编造。
+         */
+        ProviderDirectoryEntry: {
+            /**
+             * Base Url
+             * @default
+             */
+            base_url: string;
+            /**
+             * Default Api Mode
+             * @default chat_completions
+             */
+            default_api_mode: string;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Max Context Length */
+            max_context_length?: number | null;
+            /**
+             * Needs Key
+             * @default true
+             */
+            needs_key: boolean;
+            /**
+             * Quirks
+             * @default
+             */
+            quirks: string;
+            /** Supported Api Modes */
+            supported_api_modes?: string[];
+            /**
+             * Supports Reasoning
+             * @default false
+             */
+            supports_reasoning: boolean;
+        };
+        /**
          * RankingViewPayload
          * @description service.RankingView 的契约镜像（F-403/F-404 加权推荐视图）。
          */
@@ -948,6 +1002,8 @@ export interface components {
             /** Models */
             models: components["schemas"]["ModelEntryView"][];
             process: components["schemas"]["ProcessSettings"];
+            /** Providers */
+            providers?: components["schemas"]["ProviderDirectoryEntry"][];
         };
         /**
          * SettingsUpdate

@@ -102,6 +102,15 @@ def normalize_entry(raw: Any) -> tuple[dict[str, Any], list[str]]:
     entry["provider"] = provider
     entry["model_id"] = model_id
     entry["capabilities"] = _normalize_capabilities(source.get("capabilities"), provider, model_id)
+    # 2026-09-17 多供应商扩展的三个每条目字段：缺失即空，**不报错**（旧条目兼容）。
+    # api_mode 空 = 按 provider 默认推断；reasoning_effort 空 = 不下发；
+    # max_context_length 空 = 沿用 provider 默认窗口。
+    api_mode = source.get("api_mode", "")
+    entry["api_mode"] = api_mode if isinstance(api_mode, str) else ""
+    effort = source.get("reasoning_effort", "")
+    entry["reasoning_effort"] = effort if isinstance(effort, str) else ""
+    window = source.get("max_context_length")
+    entry["max_context_length"] = window if isinstance(window, int) and window > 0 else None
     entry["param_overrides"] = normalize_overrides(provider, source.get("param_overrides"))
     return entry, problems
 

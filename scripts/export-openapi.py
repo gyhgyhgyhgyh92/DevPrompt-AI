@@ -2,7 +2,7 @@
 
 frontend `gen:contract` 消费 `../openapi.json`（阶段二冻结的跨阶段接口）；
 导出物入库，`tests/api/test_openapi.py` 断言导出物与 app.openapi() 一致（契约冻结），
-漂移时 CI 阻断——后端改字段必须重新运行本脚本。
+漂移时 CI 阻断--后端改字段必须重新运行本脚本。
 """
 
 from __future__ import annotations

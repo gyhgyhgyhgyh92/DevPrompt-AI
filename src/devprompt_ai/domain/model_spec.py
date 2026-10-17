@@ -810,10 +810,27 @@ def is_mode_supported(provider: str, api_mode: str) -> bool:
 def providers_projection() -> list[dict[str, Any]]:
     """provider 目录投影（供 `GET /settings` 的 `providers` 段）。
 
-    前端据此渲染 provider 下拉与动态表单：`base_url` 为空表示需用户自行填写，
+    前端据此渲染 provider 下拉与动态表单：`base_url` 为空表示**官方端点未登记**
+    （逐个查证不到时如实留空，由 UI 提示用户自行查询文档填写——不得编造端点）；
     `supported_api_modes` 限制 api_mode 下拉的可选值。
+
+    字段与契约 `ProviderDirectoryEntry` 一一对应（**刻意不复用 `spec.to_dict()`**：
+    后者含 `parameters` / `adapter_kind` 等内部字段，且用 `key` 而非契约的 `id`）。
     """
-    return [spec.to_dict() for spec in PROVIDER_SPECS.values()]
+    return [
+        {
+            "id": key,
+            "label": spec.label,
+            "base_url": spec.base_url,
+            "needs_key": spec.needs_key,
+            "default_api_mode": spec.api_mode,
+            "supported_api_modes": sorted(spec.supported_api_modes),
+            "max_context_length": spec.max_context_length,
+            "supports_reasoning": spec.supports_reasoning,
+            "quirks": spec.quirks,
+        }
+        for key, spec in PROVIDER_SPECS.items()
+    ]
 
 
 def validate_overrides(provider: str, overrides: Mapping[str, Any]) -> tuple[list[str], list[str]]:

@@ -1,10 +1,10 @@
 """F-802 供应商能力冒烟：结构化输出/函数调用/并行工具调用/流式。
 
 遍历 settings.json 的模型注册表（F-604 多模型），逐个跑四项冒烟并输出汇总表；
-注册表为空时回退到当前生效配置（.env）。**无 --provider 参数**——用户2026-10-16
+注册表为空时回退到当前生效配置（.env）。**无 --provider 参数**--用户2026-10-16
 裁定「不需要 CLI」，只保留 `python scripts/smoke_provider.py` 一种调用方式。
 
-判定：某供应商四项全 PASS → 支持；任一 FAIL → 标记不支持（SHOULD-02）。
+判定：某供应商四项全 PASS -> 支持；任一 FAIL -> 标记不支持（SHOULD-02）。
 退出码：0 = 至少一个供应商全部通过；1 = 有供应商全部失败；2 = 无可用配置。
 """
 
@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.model_spec import PROVIDER_SPECS, resolve_api_mode, resolve_provider_key
-from devprompt_ai.harness.llm import _ensure_client, build_model  # noqa: PLC2701 —— 冒烟脚本专用
+from devprompt_ai.harness.llm import _ensure_client, build_model  # noqa: PLC2701 -- 冒烟脚本专用
 from devprompt_ai.memory.settings_store import read_model_registry
 
 PROBE_TIMEOUT = 30.0
@@ -209,7 +209,7 @@ class Report:
 
     @property
     def status(self) -> str:
-        """三态准入：无 key → 未经本地验证；有 key 且全过 → 支持；否则不支持。"""
+        """三态准入：无 key -> 未经本地验证；有 key 且全过 -> 支持；否则不支持。"""
         if not self.has_key:
             return STATUS_UNTESTED
         return STATUS_SUPPORTED if self.supported else STATUS_UNSUPPORTED
@@ -262,7 +262,7 @@ async def main_async() -> int:
         reports.append(report)
         print()
 
-    print("=== 汇总（provider · api_mode · 模型）===")
+    print("=== 汇总（provider * api_mode * 模型）===")
     for report in reports:
         mode = report.api_mode or "?"
         print(f"  {report.label:<22}{mode:<26}{report.status}")
@@ -273,11 +273,11 @@ async def main_async() -> int:
         print("已如实标「未经本地验证」，不伪装可用；补齐 Key 后重跑本脚本即可纳入准入表。")
 
     # 错误率护栏：有 key 的条目里若过半失败，多半是网络或配置问题而非供应商能力问题，
-    # 此时全量报「不支持」会误导——应保留原始退出码但明确提示先排查环境。
+    # 此时全量报「不支持」会误导--应保留原始退出码但明确提示先排查环境。
     if tested:
         failed = [r for r in tested if not r.supported]
         if len(failed) * 2 > len(tested):
-            print(f"\n⚠ 有 Key 的 {len(tested)} 个条目中 {len(failed)} 个失败（过半）。")
+            print(f"\n[!] 有 Key 的 {len(tested)} 个条目中 {len(failed)} 个失败（过半）。")
             print("  这通常是网络/代理/端点配置问题而非供应商能力问题，")
             print("  建议先核对 base_url 与连通性再下结论。")
     if any(r.supported for r in reports):

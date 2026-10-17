@@ -58,7 +58,7 @@ SAMPLES: tuple[Sample, ...] = (
     Sample(2, "json 围栏包裹", f"```json\n{_PAYLOAD}\n```", "control"),
     Sample(3, "JSON 后有解释文字且含花括号", _PAYLOAD + '\n\n说明：取值如 {"level":"A"}。', "real"),
     Sample(4, "JSON 后有解释文字但不含花括号", _PAYLOAD + "\n\n以上为结果。", "control"),
-    # 顶���数组：项目全部 output_type 均为对象模型，且 prompt 强制「顶层必须是 object」，
+    # 顶数组：项目全部 output_type 均为对象模型，且 prompt 强制「顶层必须是 object」，
     # 故该失败违反当前约束、不会在真实路径发生。保留样本仅为说明 greedy 假设的边界。
     Sample(5, "顶层数组（违反 prompt 约束）", _ARRAY_PAYLOAD, "fake"),
     Sample(
@@ -99,10 +99,10 @@ def main() -> int:
         print(f"存在真实脆弱点 {len(real_failed)} 个：")
         for name in real_failed:
             print(f"  - {name}")
-        print("→ Batch 3 应全量实施 M-1（括号配平状态机）")
+        print("-> Batch 3 应全量实施 M-1（括号配平状态机）")
         return 0
     print("无真实脆弱点：所有 real 级样本均解析成功")
-    print("→ M-1 应降级为「仅加注释说明已知限制」，不实施 50 行状态机")
+    print("-> M-1 应降级为「仅加注释说明已知限制」，不实施 50 行状态机")
     return 1
 
 

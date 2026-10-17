@@ -230,6 +230,11 @@ class ModelEntryView(BaseModel):
     is_active: bool
     capabilities: ModelCapabilitiesView = Field(default_factory=ModelCapabilitiesView)
     param_overrides: dict[str, Any] = Field(default_factory=dict)
+    # 2026-09-17 多供应商扩展：`api_mode` 为空表示按 provider 默认推断；
+    # `reasoning_effort` / `max_context_length` 是**每条目可覆盖**的（缺省沿用 provider 默认）。
+    api_mode: str | None = None
+    reasoning_effort: str | None = None
+    max_context_length: int | None = None
 
 
 class ModelEntryUpdate(BaseModel):
@@ -247,6 +252,10 @@ class ModelEntryUpdate(BaseModel):
     model_id: str | None = None
     api_key: str | None = None
     param_overrides: dict[str, Any] | None = None
+    # 2026-09-17 多供应商扩展。`None`/省略 = 沿用同 id 旧值；显式传值即覆盖。
+    api_mode: str | None = None
+    reasoning_effort: str | None = None
+    max_context_length: int | None = Field(default=None, gt=0)
 
 
 class ProcessSettings(BaseModel):
@@ -263,6 +272,24 @@ class LockedSettings(BaseModel):
     candidate_limit: int
 
 
+class ProviderDirectoryEntry(BaseModel):
+    """provider 目录条目（2026-09-17 多供应商扩展）。
+
+    前端据此渲染 provider 下拉与动态表单：`base_url` 为空表示**官方端点未登记**
+    （逐个查证不到时如实留空），UI 须提示用户自行查询文档填写，不得编造。
+    """
+
+    id: str
+    label: str
+    base_url: str = ""
+    needs_key: bool = True
+    default_api_mode: str = "chat_completions"
+    supported_api_modes: list[str] = Field(default_factory=lambda: ["chat_completions"])
+    max_context_length: int | None = None
+    supports_reasoning: bool = False
+    quirks: str = ""
+
+
 class SettingsResponse(BaseModel):
     """GET/PUT /settings 数据体（T6-11）。
 
@@ -274,6 +301,7 @@ class SettingsResponse(BaseModel):
 
     models: list[ModelEntryView]
     model_specs: dict[str, list[ParameterDefinitionView]] = Field(default_factory=dict)
+    providers: list[ProviderDirectoryEntry] = Field(default_factory=list)
     model_service: ModelServiceSettings
     process: ProcessSettings
     locked: LockedSettings

@@ -841,6 +841,23 @@ frontend/src/
 
 ---
 
+## F-9xx 多供应商模型服务（2026-09-17 批次）
+
+> 按 provider 分流 API 形态，让官方端点吃到 Responses/原生能力，同时不破坏 DeepSeek
+> 等 chat-only 厂商的现有配置。**纯新增能力，存量条目归一化为 chat_completions，行为不变。**
+> 执行记录见 `doc-阶段/2026-09-17-多供应商模型服务-实施记录.md`。
+
+| 编号 | 名称 | 行为 | 验收 |
+|---|---|---|---|
+| **F-915** | provider 目录 | `ProviderSpec` 承载 `api_mode` / `supported_api_modes` / `adapter_kind` / `base_url` / `needs_key` / `quirks`，覆盖 24 个厂商；经 `GET /settings` 的 `providers` 段下发 | 目录条目与契约字段一一对应；本地三家 `needs_key=False`；查证不到的 `base_url` 留空 |
+| **F-916** | 协议适配层 | `harness/adapters/` 实现 `agents.Model` 的 2 个抽象方法（`get_response` / `stream_response`），复用 Runner 的工具循环与流式映射，**不自建编排层** | 4 种形态均可构造；`adapters` 覆盖率 ≥90% |
+| **F-917** | 按调用注入模型 | `build_model(entry)` 逐调用构造 Model 实例；**禁用** `set_default_openai_api`（进程级单例，并发下相互覆盖 → 随机 4xx） | 并发交替构造 40 次无污染；测试钉死「无全局开关调用」 |
+| **F-918** | 参数下发补全 | `reasoning_effort` 等 `ModelSettings` 未建模的参数改走 `extra_body` 真正下发（此前被静默丢弃）；上下文窗口**只告警不截断**（截断证据会削弱召回率，触碰 MUST-25） | `extra_body_params()` 只含非原生键且空值不下发；告警纯函数不改入参 |
+| **F-919** | 设置中心多供应商 UI | provider 下拉**由后端目录驱动**（原先硬编码 3 项，后端有 24 个）；每条目可选 API 形态、思考强度六值；端点未登记时提示自填 | 下拉选项= 目录项；端点未登记有「（端点未登记）」标识与提示 |
+| **F-920** | 准入探测三态 | `smoke_provider.py` 输出 `provider · api_mode · 模型` 三列；无 Key 条目如实标「未经本地验证」不伪装可用；有 Key 条目过半失败时提示先排查网络/端点而非供应商能力 | 三态输出正确；错误率护栏触发 |
+
+---
+
 ## W1 · 检索层与可行性验证
 
 | 顺序 | 功能项 | 依赖 |

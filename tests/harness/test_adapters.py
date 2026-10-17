@@ -766,3 +766,109 @@ class TestMultiTurnInputMapping:
     def test_gemini_empty_input_falls_back(self) -> None:
         model = GeminiNativeModel("gemini-x", AsyncOpenAI(api_key="EMPTY"), api_key="k")
         assert model._to_contents([]) == [{"role": "user", "parts": [{"text": ""}]}]
+
+
+# ---------------------------------------------------------------------------
+# W7/W8：契约 additive 扩展 + provider 目录
+# ---------------------------------------------------------------------------
+
+
+class TestProviderDirectory:
+    """provider 目录是前端下拉的唯一数据源（前端不再硬编码厂商清单）。"""
+
+    def test_covers_all_registered_providers(self) -> None:
+        from devprompt_ai.domain.model_spec import providers_projection
+
+        assert len(providers_projection()) == len(PROVIDER_SPECS)
+
+    def test_entry_fields_match_contract(self) -> None:
+        from devprompt_ai.domain.model_spec import providers_projection
+
+        expected = {
+            "id",
+            "label",
+            "base_url",
+            "needs_key",
+            "default_api_mode",
+            "supported_api_modes",
+            "max_context_length",
+            "supports_reasoning",
+            "quirks",
+        }
+        for entry in providers_projection():
+            assert set(entry) == expected, f"目录字段与契约不符：{set(entry) ^ expected}"
+
+    def test_local_providers_need_no_key(self) -> None:
+        from devprompt_ai.domain.model_spec import providers_projection
+
+        by_id = {e["id"]: e for e in providers_projection()}
+        for key in ("ollama", "vllm", "lmstudio"):
+            assert by_id[key]["needs_key"] is False
+
+    def test_unverified_entries_have_blank_base_url(self) -> None:
+        """查证不到的端点如实留空，由 UI 提示用户自填（不编造）。"""
+        from devprompt_ai.domain.model_spec import providers_projection
+
+        by_id = {e["id"]: e for e in providers_projection()}
+        for key in ("yi", "sensetime", "xiaomi-mimo"):
+            assert by_id[key]["base_url"] == ""
+
+    def test_native_providers_default_to_native_modes(self) -> None:
+        from devprompt_ai.domain.model_spec import providers_projection
+
+        by_id = {e["id"]: e for e in providers_projection()}
+        assert by_id["anthropic"]["default_api_mode"] == "anthropic_messages"
+        assert by_id["gemini"]["default_api_mode"] == "gemini_generate_content"
+        assert by_id["openai"]["default_api_mode"] == "responses"
+
+
+class TestEntryFieldNormalization:
+    """三个新字段在读时归一化：缺失补默认，不报错（旧条目兼容）。"""
+
+    def test_missing_fields_get_defaults(self) -> None:
+        from devprompt_ai.domain.model_migration import normalize_entry
+
+        entry, _errors = normalize_entry(
+            {"id": "m-1", "label": "x", "provider": "deepseek", "base_url": "u", "model_id": "m"}
+        )
+        assert entry["api_mode"] == ""
+        assert entry["reasoning_effort"] == ""
+        assert entry["max_context_length"] is None
+
+    def test_wrong_types_become_defaults(self) -> None:
+        from devprompt_ai.domain.model_migration import normalize_entry
+
+        entry, _errors = normalize_entry(
+            {
+                "id": "m-1",
+                "label": "x",
+                "provider": "deepseek",
+                "base_url": "u",
+                "model_id": "m",
+                "api_mode": 123,
+                "reasoning_effort": [],
+                "max_context_length": -5,
+            }
+        )
+        assert entry["api_mode"] == ""
+        assert entry["reasoning_effort"] == ""
+        assert entry["max_context_length"] is None
+
+    def test_valid_values_preserved(self) -> None:
+        from devprompt_ai.domain.model_migration import normalize_entry
+
+        entry, _errors = normalize_entry(
+            {
+                "id": "m-1",
+                "label": "x",
+                "provider": "deepseek",
+                "base_url": "u",
+                "model_id": "m",
+                "api_mode": "responses",
+                "reasoning_effort": "high",
+                "max_context_length": 64000,
+            }
+        )
+        assert entry["api_mode"] == "responses"
+        assert entry["reasoning_effort"] == "high"
+        assert entry["max_context_length"] == 64000

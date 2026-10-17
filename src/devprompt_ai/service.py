@@ -24,6 +24,7 @@ from devprompt_ai.domain.generate.variants import expand_levels, resolve_level
 from devprompt_ai.domain.model_migration import normalize_overrides
 from devprompt_ai.domain.model_spec import (
     model_specs_projection,
+    providers_projection,
     resolve_api_mode,
     validate_overrides,
 )
@@ -382,6 +383,9 @@ class ForgeService:
                     "is_active": entry_id == active_id,
                     "capabilities": dict(capabilities) if isinstance(capabilities, dict) else {},
                     "param_overrides": dict(entry.get("param_overrides") or {}),
+                    "api_mode": str(entry.get("api_mode", "") or ""),
+                    "reasoning_effort": str(entry.get("reasoning_effort", "") or ""),
+                    "max_context_length": entry.get("max_context_length"),
                 }
             )
         return views
@@ -414,6 +418,17 @@ class ForgeService:
             # 直接沿用会留下一组永远不生效的参数。
             source_overrides = old.get("param_overrides") if overrides_in is None else overrides_in
             param_overrides = normalize_overrides(provider, source_overrides or {})
+            # api_mode：整体替换（None=沿用），并按 provider 的 supported_api_modes 收敛
+            mode_in = raw.get("api_mode")
+            mode_source = old.get("api_mode", "") if mode_in is None else mode_in
+            api_mode = resolve_api_mode(provider, str(mode_source or ""))
+            # 以下两者：空值 = 沿用旧值 / 不下发
+            effort_in = raw.get("reasoning_effort")
+            effort_source = old.get("reasoning_effort", "") if effort_in is None else effort_in
+            effort = effort_source if isinstance(effort_source, str) else ""
+            window_in = raw.get("max_context_length")
+            window_source = old.get("max_context_length") if window_in is None else window_in
+            window = window_source if isinstance(window_source, int) and window_source > 0 else None
 
             merged.append(
                 {
@@ -424,6 +439,9 @@ class ForgeService:
                     "api_key": str(api_key or ""),
                     "model_id": model_id,
                     "param_overrides": param_overrides,
+                    "api_mode": api_mode,
+                    "reasoning_effort": effort,
+                    "max_context_length": window,
                 }
             )
         return merged
@@ -438,6 +456,7 @@ class ForgeService:
         return {
             "models": self._registry_view(),
             "model_specs": model_specs_projection(),
+            "providers": providers_projection(),
             "model_service": {
                 "provider": cfg.llm_provider,
                 "base_url": cfg.llm_base_url,
@@ -527,7 +546,6 @@ class ForgeService:
                     reasons=skipped,
                     request_id=request_id,
                 )
-            await asyncio.to_thread(write_model_registry, merged, active_id or None)
             active_entry = next((e for e in merged if str(e.get("id")) == active_id), None)
             if active_entry is not None:
                 mirror = {
@@ -541,11 +559,20 @@ class ForgeService:
                         active_entry.get("param_overrides") or {},
                     ),
                     # 该条目的 API 形态——让协议分流真正生效
-                    "api_mode": resolve_api_mode(
-                        str(active_entry.get("provider", "")),
-                        str(active_entry.get("api_mode", "") or ""),
-                    ),
+                    "api_mode": str(active_entry.get("api_mode", "") or ""),
+                    # 条目级上下文窗口覆盖（0 = 沿用 provider 默认；仅告警不截断）
+                    "max_context_length": int(active_entry.get("max_context_length") or 0),
                 }
+                # reasoning_effort 并入 llm_params——这样 extra_body_params() 能读到它，
+                # 无需 AppConfig 再加一个专用字段（KISS）。
+                entry_effort = str(active_entry.get("reasoning_effort", "") or "")
+                if entry_effort:
+                    current = mirror.get("llm_params")
+                    merged_params: dict[str, Any] = (
+                        dict(current) if isinstance(current, dict) else {}
+                    )
+                    merged_params["reasoning_effort"] = entry_effort
+                    mirror["llm_params"] = merged_params
                 await asyncio.to_thread(write_model_settings, mirror)
                 for src_key, value in mirror.items():
                     setattr(self._cfg, MODEL_KEY_MAP[src_key], value)

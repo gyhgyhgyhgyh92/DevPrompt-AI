@@ -461,6 +461,40 @@
 
 **净结果**：零新依赖；契约仅扩字段不改结构；MUST-08 全程守住（前端无第二份参数真相）。
 
+### v2.5 多供应商模型服务批次（2026-09-17）
+
+| 步 | 内容 | 结果 |
+|---|---|---|
+| W1 | `ProviderSpec` 扩展 + 24 个 provider 数据 | ✅ `api_mode`/`adapter_kind`/`base_url`/`needs_key`/`quirks`；`resolve_api_mode` 等查询函数 |
+| W2 | `harness/adapters/`（base + openai_compat + openai_responses + registry） | ✅ 注册表与 `PROVIDER_SPECS` 一致性由测试钉死 |
+| W3 | `anthropic_native.py` + `gemini_native.py` | ✅ 实现 `Model` 的 2 个抽象方法；测试抓到 3 个真实缺陷（见下） |
+| W4 | `llm.py` 改 `build_model(entry)` 工厂 | ✅ **删除进程级全局开关**；40 次并发交替无污染 |
+| W5 | `extra_body` 下发 + 窗口告警 | ✅ `reasoning_effort` 真正生效；**只告警不截断** |
+| W6 | `smoke_provider.py` entry 级改造 | ✅ 三态准入 + 错误率护栏；探针脚本加口径注记 |
+| W7 | 契约 additive 扩展 + 三连 | ✅ 仍 13 路径 / 16 操作（42→43 schema） |
+| W8 | 前端设置中心 | ✅ provider 下拉改由后端目录驱动；api_mode / 思考强度 / 窗口提示 |
+| W9 | 测试补齐 | ✅ 后端 693（+8）/ 前端 settings 75（+20） |
+| W10 | 文档同步 | ✅ 五份 |
+| W11 | 尽力探测 | ⚠️ 当前注册表两条均为占位端点，全FAIL——如实标「不支持」+ 过半失败护栏提示先核对 base_url |
+| W12 | 门禁与提交 | ✅ 十项全绿 |
+
+**三项执行中被否决/修正的计划内容**：
+
+| 项 | 原计划 | 实际 | 原因 |
+|---|---|---|---|
+| `max_context_length` | 「分档下拉」可设 | **只读展示** | 计划 §2.5 已定「只告警不截断」，下拉可设会与「不让用户改窗口语义」矛盾 |
+| 契约字段可选性 | `str = ""` | `str \| None = None` | 用 `""` 会让生成的前端类型必填，迫使所有测试 fixture 补字段；`None` 语义本就正确（空=按默认推断） |
+| 新增条目的默认 provider | 默认选列表第一项 | **默认留空** | 目录驱动后无「第一项」概念，且默认选厂商等于替用户做决定 |
+
+**W6~W12 期间测试抓到的真实缺陷**：
+
+| 缺陷 | 后果 |
+|---|---|
+| `write_model_registry` 被调用两次 | 幂等不出错，但白写一次 IO（W7 顺带修） |
+| `MessageOutputItem(agent=None)` | `TypeError: cannot create weak reference to 'NoneType'` |
+| output item 缺 `status`/`annotations`/`logprobs` | pydantic 校验失败 |
+| Gemini `functionCall.args` 是 dict | 未 `json.dumps` 会让 Runner 按 JSON 字符串解析而抛错 |
+
 ### v2.3 新增延后事项
 
 | # | 事项 | 状态 | 理由 | 落地条件 |

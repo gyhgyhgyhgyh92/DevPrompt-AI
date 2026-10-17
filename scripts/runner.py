@@ -8,8 +8,8 @@ Windows 上 `subprocess` **不能直接执行 `.cmd`/`.bat`**（pnpm / npm / npx
 文件），必须经 `cmd.exe`。而 `.exe`（uv / python / node / ruff / mypy）可以直接执行。
 
 因此本模块按**文件后缀**而非平台分支来决定是否包一层 shell：
-- `resolve_tool()` 解析出真实路径 → `.exe` 直接执行（Windows 与 Unix 同一形态）；
-- `.cmd` / `.bat` → Windows 下用 `ComSpec /d /s /c` 包装，Unix 下直接执行。
+- `resolve_tool()` 解析出真实路径 -> `.exe` 直接执行（Windows 与 Unix 同一形态）；
+- `.cmd` / `.bat` -> Windows 下用 `ComSpec /d /s /c` 包装，Unix 下直接执行。
 
 `/d` 禁用 AutoRun 注册表项（`.cmd` 里的 autorun 会污染非交互执行）；`/s` 修正带空格
 路径的引号剥离；`shell=False` 显式声明，避免多一层 shell 解释

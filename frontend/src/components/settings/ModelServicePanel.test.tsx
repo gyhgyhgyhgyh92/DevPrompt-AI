@@ -19,7 +19,7 @@ const settingsFixture: SettingsResponse = {
     {
       id: 'm-1',
       label: 'DeepSeek · deepseek-flash',
-      provider: 'DeepSeek',
+      provider: 'deepseek',
       base_url: 'https://api.example.com',
       model_id: 'deepseek-flash',
       api_key_masked: 'sk-••••3f7a',
@@ -28,11 +28,46 @@ const settingsFixture: SettingsResponse = {
     {
       id: 'm-2',
       label: 'OpenAI 兼容 · gpt-x',
-      provider: 'OpenAI 兼容',
+      provider: 'openai_compatible',
       base_url: 'https://api.openai.com/v1',
       model_id: 'gpt-x',
       api_key_masked: 'sk-••••9a2b',
       is_active: false,
+    },
+  ],
+  // 2026-09-17 W8：provider 目录驱动下拉（原先硬编码 3 项，后端有 24 项）
+  providers: [
+    {
+      id: 'deepseek',
+      label: 'DeepSeek',
+      base_url: 'https://api.deepseek.com',
+      needs_key: true,
+      default_api_mode: 'chat_completions',
+      supported_api_modes: ['chat_completions'],
+      max_context_length: 64000,
+      supports_reasoning: false,
+      quirks: '',
+    },
+    {
+      id: 'openai_compatible',
+      label: 'OpenAI 兼容',
+      base_url: 'https://api.openai.com/v1',
+      needs_key: true,
+      default_api_mode: 'chat_completions',
+      supported_api_modes: ['chat_completions', 'responses'],
+      max_context_length: 128000,
+      supports_reasoning: true,
+      quirks: '',
+    },
+    {
+      id: 'yi',
+      label: '零一万物',
+      base_url: '',
+      needs_key: true,
+      default_api_mode: 'chat_completions',
+      supported_api_modes: ['chat_completions'],
+      supports_reasoning: false,
+      quirks: '端点未登记',
     },
   ],
   model_service: {
@@ -196,7 +231,7 @@ describe('ModelServicePanel 模型列表管理（F-604 多模型）', () => {
     render(<ModelServicePanel />)
 
     fireEvent.change(screen.getAllByLabelText('供应商')[0] as HTMLSelectElement, {
-      target: { value: 'DeepSeek' },
+      target: { value: 'deepseek' },
     })
     expect((screen.getAllByLabelText('Base URL')[0] as HTMLInputElement).value).toBe(
       'https://api.deepseek.com',
@@ -205,7 +240,7 @@ describe('ModelServicePanel 模型列表管理（F-604 多模型）', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(1))
     const body = vi.mocked(putSettings).mock.calls[0]?.[0]
-    expect(body?.models?.[0]?.provider).toBe('DeepSeek')
+    expect(body?.models?.[0]?.provider).toBe('deepseek')
     expect(body?.models?.[0]?.base_url).toBe('https://api.deepseek.com')
   })
 
