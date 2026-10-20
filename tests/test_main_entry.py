@@ -145,3 +145,30 @@ def test_main_does_not_import_infrastructure_at_module_level() -> None:
         if line.startswith(("import ", "from ")) and "devprompt_ai" in line
     ]
     assert module_level == []
+
+
+class TestReloadWarning:
+    """--reload 在 Windows 上与子进程能力冲突（2026-10-19 实测）。"""
+
+    def test_warning_names_the_broken_capabilities(self) -> None:
+        """必须点名真正坏掉的东西：rg/ctags/git 探测与原生文件夹选择器都靠子进程。"""
+        from devprompt_ai.main import RELOAD_WARNING
+
+        assert "Selector" in RELOAD_WARNING
+        assert "NotImplementedError" in RELOAD_WARNING
+        assert "原生文件夹选择器" in RELOAD_WARNING
+        assert "--reload" in RELOAD_WARNING
+
+    def test_reload_flag_prints_warning(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """带 --reload 启动时必须显式提示，不能静默进 Selector 循环。"""
+        main_module = pytest.importorskip("devprompt_ai.main")
+        # uvicorn 是 main() 内部 import 的，故打在真实模块上
+        monkeypatch.setattr("uvicorn.run", lambda *a, **k: None)
+
+        main_module.main(["--reload", "--port", "8123"])
+
+        assert "Selector" in capsys.readouterr().out

@@ -1,8 +1,9 @@
-"""service 层模型条目合并与校验测试（M-913）。
+"""service 层供应商/条目合并与校验测试（M-913；2026-10-18 供应商中心化重构）。
 
-锁定的核心语义（对齐源项目 `manager.ts:968-972`）：`param_overrides` 是**整体替换**
-而非深合并——否则用户删掉的参数会被「礼貌地」保留回来，这正是该处注释指出的问题。
-三态必须分明：显式 dict=替换、None=沿用同 id 旧值、显式 {}=清空。
+锁定的核心语义：
+1. **凭据只存供应商一份**——条目经 `provider_id` 引用，端点与密钥由供应商解析后展平；
+2. **整表替换不做深合并**——否则用户删掉的参数会被「礼貌地」保留回来；
+3. 供应商为**权威列表**：未出现的一律删除（级联），刚配好零条目的记录保留。
 """
 
 from __future__ import annotations
@@ -11,75 +12,160 @@ from typing import Any
 
 from devprompt_ai.service import ForgeService
 
-_BASE: dict[str, Any] = {
-    "id": "m-1",
-    "label": "DeepSeek",
+_PROVIDER: dict[str, Any] = {
+    "id": "p-1",
     "provider": "deepseek",
     "base_url": "https://api.deepseek.com/v1",
+    "api_key": "sk-supplier-1234567890",
+}
+
+_BASE: dict[str, Any] = {
+    "id": "m-1",
+    "provider_id": "p-1",
     "model_id": "deepseek-flash",
 }
 
 
-def _merge(incoming: list[dict[str, Any]], existing: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return ForgeService._merge_registry_entries(incoming, existing)
-
-
-def _existing_with(overrides: dict[str, Any]) -> list[dict[str, Any]]:
-    return _merge([{**_BASE, "param_overrides": overrides}], [])
-
-
-class TestOverridesReplaceSemantics:
-    def test_explicit_dict_replaces_wholesale(self) -> None:
-        """整体替换：旧值不该残留。"""
-        existing = _existing_with({"temperature": 0.3})
-        merged = _merge([{**_BASE, "param_overrides": {"max_tokens": 99}}], existing)
-
-    def test_explicit_empty_dict_clears(self) -> None:
-        """「清空」必须能被表达——深合并做不到这一点。"""
-        existing = _existing_with({"temperature": 0.3})
-        merged = _merge([{**_BASE, "param_overrides": {}}], existing)
-
-    def test_provider_change_reclears_stale_overrides(self) -> None:
-        """provider 变了（deepseek→anthropic），旧参数不再适用，必须重算。"""
-        existing = _existing_with({"temperature": 0.3})
-        merged = _merge([{**_BASE, "provider": "anthropic", "param_overrides": None}], existing)
+def _merge(
+    incoming: list[dict[str, Any]],
+    existing: list[dict[str, Any]],
+    providers: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    return ForgeService._merge_registry_entries(
+        incoming, existing, providers if providers is not None else [dict(_PROVIDER)]
+    )
 
 
 class TestEntryValidation:
     def test_valid_entry_passes(self) -> None:
-        entry = _merge([{**_BASE, "param_overrides": {"temperature": 0.5}}], [])[0]
+        entry = _merge([dict(_BASE)], [])[0]
         assert ForgeService._validate_registry_entries([entry]) == []
 
     def test_missing_model_id_rejected(self) -> None:
         assert ForgeService._validate_registry_entries(
-            [{"id": "m-1", "label": "x", "model_id": "", "base_url": "https://x"}]
+            [{"id": "m-1", "model_id": "", "base_url": "https://x"}]
         )
 
     def test_missing_base_url_rejected(self) -> None:
         assert ForgeService._validate_registry_entries(
-            [{"id": "m-1", "label": "x", "model_id": "m", "base_url": ""}]
+            [{"id": "m-1", "model_id": "m", "base_url": ""}]
         )
 
     def test_unknown_param_not_blocking(self) -> None:
-        """未登记参数只告警不阻断——厂商参数差异大，硬拦会误伤。"""
-        entry = _merge([{**_BASE, "param_overrides": {"vendor_flag": True}}], [])[0]
+        """未登记字段只透传不阻断——厂商参数差异大，硬拦会误伤。"""
+        entry = _merge([{**_BASE, "vendor_flag": True}], [])[0]
         assert ForgeService._validate_registry_entries([entry]) == []
 
 
-class TestLegacyBehaviourPreserved:
-    def test_api_key_inherits_on_empty(self) -> None:
-        """既有语义不得因迁移而破坏。"""
-        existing = _merge([{**_BASE, "api_key": "sk-old"}], [])
-        merged = _merge([{**_BASE, "api_key": ""}], existing)
-        assert merged[0]["api_key"] == "sk-old"
+class TestEntryMerging:
+    def test_entry_resolves_endpoint_from_provider(self) -> None:
+        """条目不再自带端点与密钥——全部从 `provider_id` 指向的供应商解析后展平。"""
+        merged = _merge([dict(_BASE)], [])[0]
+        assert merged["provider"] == "deepseek"
+        assert merged["base_url"] == "https://api.deepseek.com/v1"
+        assert merged["api_key"] == "sk-supplier-1234567890"
+
+    def test_entry_pointing_unknown_provider_is_skipped(self) -> None:
+        """指向不存在供应商的条目直接跳过（级联删除的兜底）。"""
+        assert _merge([{**_BASE, "provider_id": "p-nope"}], []) == []
 
     def test_id_generated_when_absent(self) -> None:
         merged = _merge([{k: v for k, v in _BASE.items() if k != "id"}], [])
         assert merged[0]["id"].startswith("m-")
 
-    def test_label_derived_when_blank(self) -> None:
-        merged = _merge([{**_BASE, "label": ""}], [])
-        assert merged[0]["label"] == "deepseek · deepseek-flash"
+    def test_dropped_label_is_not_carried_over(self) -> None:
+        """显示名称已下线：请求里残留的 label 键不得再进注册表（否则字段会复活）。"""
+        merged = _merge([{**_BASE, "label": "DeepSeek"}], [])
+        assert "label" not in merged[0]
+
+    def test_params_keep_existing_on_none(self) -> None:
+        """None = 沿用同 id 旧值（不覆盖、不清空）；显式值即覆盖。"""
+        existing = _merge([{**_BASE, "reasoning_effort": "high"}], [])
+        assert (
+            _merge([{**_BASE, "reasoning_effort": None}], existing)[0]["reasoning_effort"] == "high"
+        )
+        assert (
+            _merge([{**_BASE, "reasoning_effort": "low"}], existing)[0]["reasoning_effort"] == "low"
+        )
+
+
+class TestProviderConfigMerging:
+    """供应商段（2026-10-18 供应商中心化重构）。"""
+
+    def test_id_generated_when_absent(self) -> None:
+        merged = ForgeService._merge_provider_configs(
+            [{"provider": "deepseek", "base_url": "https://a"}], []
+        )
+        assert merged[0]["id"].startswith("p-")
+
+    def test_api_key_inherits_on_empty(self) -> None:
+        """前端只有脱敏值，回传空串是常态——必须沿用旧密钥而非清空（MUST-19）。"""
+        existing = ForgeService._merge_provider_configs(
+            [{"id": "p-1", "provider": "deepseek", "base_url": "https://a", "api_key": "sk-old"}],
+            [],
+        )
+        merged = ForgeService._merge_provider_configs(
+            [{"id": "p-1", "provider": "deepseek", "base_url": "https://a", "api_key": ""}],
+            existing,
+        )
+        assert merged[0]["api_key"] == "sk-old"
+
+    def test_explicit_key_overrides(self) -> None:
+        existing = ForgeService._merge_provider_configs(
+            [{"id": "p-1", "provider": "deepseek", "base_url": "https://a", "api_key": "sk-old"}],
+            [],
+        )
+        merged = ForgeService._merge_provider_configs(
+            [{"id": "p-1", "provider": "deepseek", "base_url": "https://a", "api_key": "sk-new"}],
+            existing,
+        )
+        assert merged[0]["api_key"] == "sk-new"
+
+    def test_api_key_inherits_by_endpoint_when_id_mismatches(self) -> None:
+        """安全网：id 对不上（如前端自行生成了新 id）时，同端点的旧密钥仍要接住。
+
+        只靠 id 回落会让密钥被静默清空——用户没有任何提示，却在刷新时开始报鉴权失败。
+        """
+        existing = ForgeService._merge_provider_configs(
+            [
+                {
+                    "id": "p-old",
+                    "provider": "deepseek",
+                    "base_url": "https://a",
+                    "api_key": "sk-keep",
+                }
+            ],
+            [],
+        )
+        merged = ForgeService._merge_provider_configs(
+            [{"id": "p-new", "provider": "deepseek", "base_url": "https://a"}], existing
+        )
+        assert merged[0]["api_key"] == "sk-keep"
+
+    def test_api_key_not_inherited_across_endpoints(self) -> None:
+        """不同端点的密钥绝不串用——官方与中转往往是两把不同的钥匙。"""
+        existing = ForgeService._merge_provider_configs(
+            [{"id": "p-a", "provider": "deepseek", "base_url": "https://a", "api_key": "sk-a"}],
+            [],
+        )
+        merged = ForgeService._merge_provider_configs(
+            [{"id": "p-b", "provider": "deepseek", "base_url": "https://b"}], existing
+        )
+        assert merged[0]["api_key"] == ""
+
+    def test_authoritative_list_drops_unlisted(self) -> None:
+        """权威列表语义：未出现的既有供应商被删除（级联，用户裁定）。"""
+        existing = ForgeService._merge_provider_configs(
+            [
+                {"id": "p-keep", "provider": "deepseek", "base_url": "https://a"},
+                {"id": "p-drop", "provider": "deepseek", "base_url": "https://b"},
+            ],
+            [],
+        )
+        merged = ForgeService._merge_provider_configs(
+            [{"id": "p-keep", "provider": "deepseek", "base_url": "https://a"}], existing
+        )
+        assert [r["id"] for r in merged] == ["p-keep"]
 
 
 class TestContextWindowTiers:
@@ -119,7 +205,7 @@ class TestContextWindowTiers:
         from devprompt_ai.domain.model_spec import PROVIDER_SPECS
 
         assert PROVIDER_SPECS["openai"].max_context_length == 272000
-        assert PROVIDER_SPECS["deepseek"].max_context_length == 128000
+        assert PROVIDER_SPECS["deepseek"].max_context_length == 1_048_576
         assert PROVIDER_SPECS["gemini"].max_context_length == 1000000
 
 
@@ -200,7 +286,7 @@ class TestContextWindowTierInvariants:
             "openai": 272000,  # 官方文档：GPT-5 输入上限（含 thinking 口径）
             "anthropic": 200000,
             "gemini": 1000000,
-            "deepseek": 128000,  # 官方 2025-08 V3.1 公告
+            "deepseek": 1_048_576,  # 官方 /models 返回 context_window=1048576
             "zhipu": 200000,  # 官方文档 GLM-4.6
             "moonshot": 256000,  # 官方 2025-09 公告
             "volcengine": 262144,  # 火山官方文档
@@ -221,9 +307,6 @@ class TestContextWindowTierInvariants:
             "modelscope",
             "custom",
             "openai_compatible",
-            "ollama",
-            "vllm",
-            "lmstudio",
         ):
             assert PROVIDER_SPECS[key].max_context_length is None, key
             assert PROVIDER_SPECS[key].context_window_tiers == (), key

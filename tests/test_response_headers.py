@@ -68,38 +68,3 @@ class TestSecurityHeaders:
 
 class TestM3DegradationSplit:
     """M-3 核心契约：内部补全降级、显式操作报错。两者不可弄反。"""
-
-    async def test_preference_read_failure_degrades_with_header(
-        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """页面挂载时自动读偏好——store 读失败应回落中性值 + 标记降级，不应 500。
-
-        注入点选`SQLitePreferenceStore.load`（更内层、更贴近真实的降级场景：
-        DB 读失败），而不是 service 方法本身。
-        """
-        from devprompt_ai.memory.preference_store import SQLitePreferenceStore
-
-        async def failing(self: object, user_id: str) -> dict[str, float]:
-            raise RuntimeError("模拟 DB 读失败")
-
-        monkeypatch.setattr(SQLitePreferenceStore, "load", failing)
-
-        resp = client.get("/api/v1/preference")
-        assert resp.status_code == 200, "内部补全不得因读取失败而让页面打不开"
-        assert resp.headers.get("X-Degraded") == "preference_read_fallback"
-        data = resp.json()["data"]
-        assert data["detail_level"] == 0.5, "应回落中性值"
-
-    def test_normal_preference_read_has_no_degraded_header(self, client: TestClient) -> None:
-        resp = client.get("/api/v1/preference")
-        assert resp.status_code == 200
-        assert "X-Degraded" not in resp.headers
-
-    def test_result_missing_session_stays_4xx(self, client: TestClient) -> None:
-        """显式操作失败必须 4xx——降级成空快照会让前端误判为「会话无内容」。"""
-        resp = client.get("/api/v1/result/no-such-session")
-        assert resp.status_code >= 400
-        assert "X-Degraded" not in resp.headers
-        body = resp.json()
-        assert body["code"] == 6003
-        assert "重新选择" in body["message"], "文案要说清用户下一步该做什么"

@@ -41,13 +41,13 @@ from devprompt_ai.domain.generate.ports import (
     MultiVariantDraft,
     VariantDraft,
 )
-from devprompt_ai.domain.model_spec import PROVIDER_SPECS, resolve_api_mode, resolve_provider_key
+from devprompt_ai.domain.model_spec import resolve_api_mode
 from devprompt_ai.domain.prompt_guard import (
     JSON_STRICT_RULES,
     VERIFIABLE_ANCHOR_C,
     build_evidence_block,
 )
-from devprompt_ai.harness.adapters import build_adapter
+from devprompt_ai.harness.adapters import adapter_kind_for, build_adapter
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -89,7 +89,8 @@ def _record_usage(usage: object | None) -> None:
 
 
 _client: AsyncOpenAI | None = None
-_configured_model: str = ""
+#: 已构造 client 的缓存键（model, base_url, api_key）；三者任一变化必重建。
+_client_key: tuple[str, str, str] | None = None
 
 
 def _ensure_client(cfg: AppConfig) -> AsyncOpenAI:
@@ -99,7 +100,7 @@ def _ensure_client(cfg: AppConfig) -> AsyncOpenAI:
     反复设置会相互覆盖（A 请求设 responses、B 请求设 chat_completions → 随机 4xx）。
     API 形态改为**按调用注入 Model 实例**，见 :func:`build_model`。
     """
-    global _client, _configured_model
+    global _client, _client_key
     if not cfg.llm_base_url or not cfg.llm_model:
         raise ConfigurationError(
             "LLM 未配置：需要 LLM_BASE_URL / LLM_MODEL 环境变量",
@@ -108,11 +109,14 @@ def _ensure_client(cfg: AppConfig) -> AsyncOpenAI:
                 "llm_model_set": bool(cfg.llm_model),
             },
         )
-    if _client is None or _configured_model != cfg.llm_model:
+    # 缓存键必须含**端点与密钥**：只按 model 键会让「同一 model id 换了端点/密钥」
+    # 复用旧 client（旧代码就有这个缺陷）——api_mode 生效后用户按条目切换端点会直接踩到该处。
+    key = (cfg.llm_model, cfg.llm_base_url, cfg.llm_api_key)
+    if _client is None or _client_key != key:
         _client = AsyncOpenAI(base_url=cfg.llm_base_url, api_key=cfg.llm_api_key or "EMPTY")
         set_default_openai_client(_client)
         set_tracing_disabled(True)  # 第三方 key 走 tracing 会 401
-        _configured_model = cfg.llm_model
+        _client_key = key
     return _client
 
 
@@ -132,13 +136,13 @@ def build_model(cfg: AppConfig) -> Model:
     :param cfg: 应用配置（读 `llm_provider` / `llm_model` / `llm_api_key`）
     """
     client = _ensure_client(cfg)
-    spec = PROVIDER_SPECS[resolve_provider_key(cfg.llm_provider or "")]
     api_mode = resolve_api_mode(cfg.llm_provider or "", cfg.api_mode or "")
     return build_adapter(
-        spec.adapter_kind,
+        adapter_kind_for(api_mode),
         cfg.llm_model,
         client,
         api_key=cfg.llm_api_key or "",
+        base_url=cfg.llm_base_url,
         api_mode=api_mode,
     )
 
@@ -249,6 +253,11 @@ def _build_multi_system(levels: list[Level]) -> str:
         "一致性约束：所有方案共享同一份事实基础，同一事实在各套中的描述必须一致"
         "（禁止信息漂移）；各套正文长度与详细度必须呈明显梯度（A 最短、C 最长）。\n"
         "除请求档位外不得多套、少套或改用其他档位。只输出 JSON。"
+        "\n\n【body 的语义（2026-10-20 起强制）】body 必须是可直接复制给 Agent 执行的提示词正文："
+        "包含角色与目标、上下文（文件/符号/行号，只能用已提供的）、必须遵守的约束、期望的输出格式。"
+        "禁止出现「建议」「为什么这样改」「本方案改动如下」「以下是我的优化」等元叙述；"
+        "不要复述取证过程；不要写实施方案之外的客套话。"
+        "改动了哪几处只写在 changes 数组里，不得混进 body。"
     )
 
 
@@ -264,6 +273,9 @@ def _build_multi_user(ctx: GenerationContext, levels: list[Level]) -> str:
             "取证摘要": ctx.facts_summary or "（无，禁止编造路径与行号）",
             "已澄清信息": ctx.clarifications,
             "保守模式": ctx.conservative,
+            # 多轮（2026-10-20）：历史结论与记忆由 build_context 装配，缺省为空不出现
+            "历史轮次": ctx.history_block or "（首轮，无历史）",
+            "项目记忆": ctx.memory_block or "（无）",
         }
     )
     return (

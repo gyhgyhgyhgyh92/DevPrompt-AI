@@ -208,12 +208,6 @@ class TestUntestedStatus:
         report = sp.Report(label="x", model="m", has_key=True, results={"a": True, "b": False})
         assert report.status == sp.STATUS_UNSUPPORTED
 
-    def test_local_provider_without_key_is_tested(self) -> None:
-        """本地引擎（ollama/vllm/lmstudio）本就无 key，不能据此判 untested。"""
-        from devprompt_ai.domain.model_spec import PROVIDER_SPECS
-
-        assert PROVIDER_SPECS["ollama"].needs_key is False
-
     def test_api_mode_resolved_from_provider(self) -> None:
         """provider 未指定 api_mode 时按表解析（deepseek→chat，openai→responses）。"""
         from devprompt_ai.domain.model_spec import resolve_api_mode

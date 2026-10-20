@@ -70,7 +70,6 @@ class TestMissingTables:
 
         report = run_startup_safety_check(str(db))
         assert report.action == ACTION_REPAIRED
-        assert "preference_vectors" in report.repaired
         # forge_quarantine 由 _ensure_quarantine 在补建循环之前建好，不算「修复既有库」
         assert "forge_quarantine" not in report.repaired
 
@@ -79,7 +78,13 @@ class TestMissingTables:
         sqlite3.connect(str(db)).close()
         run_startup_safety_check(str(db))
         names = {r[0] for r in _rows(db, "SELECT name FROM sqlite_master WHERE type='table'")}
-        assert {"forge_sessions", "preference_vectors", "app_settings", "forge_quarantine"} <= names
+        assert {
+            "forge_sessions",
+            "forge_turns",
+            "project_notes",
+            "app_settings",
+            "forge_quarantine",
+        } <= names
 
     def test_quarantine_table_always_created(self, tmp_path: Path) -> None:
         db = tmp_path / "q.db"

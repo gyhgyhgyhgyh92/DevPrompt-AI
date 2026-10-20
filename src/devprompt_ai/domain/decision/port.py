@@ -33,9 +33,35 @@ class FactJudgment(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
+class AskOption(BaseModel):
+    """反问选项（对齐 CodeBuddy SDK `AskUserQuestion` 的 options[]）。"""
+
+    label: str
+    description: str = ""
+
+
+class AskQuestion(BaseModel):
+    """决策层主动提出的一问：key 绑定具体未知项，问法与选项由模型给出。
+
+    对齐官方形态（question / header / options / multiSelect），同时保留 ``key``
+    以满足 MUST-26「每问绑定具体未知项」——答案仍按 key 回填 clarifications。
+    """
+
+    key: str
+    question: str
+    header: str = ""
+    options: list[AskOption] = Field(default_factory=list)
+    multi_select: bool = False
+
+
 class FactProbeOutput(BaseModel):
     judgments: list[FactJudgment]
     overall_confidence: float = Field(ge=0.0, le=1.0)
+    #: 模型决定「问不问、问几个」；空表示当前信息已够，直接生成（不机械追问）。
+    questions: list[AskQuestion] = Field(default_factory=list)
+    #: 决策层自判的任务类型：design = 原句模糊需深挖 5 类；execution = 范围已知走闸门。
+    #: 缺省 execution 保证旧 mock / 旧输出零改动。
+    task_kind: Literal["design", "execution"] = "execution"
 
 
 class VariantScore(BaseModel):
