@@ -88,6 +88,93 @@ class SessionSummary:
     project_root: str = ""
 
 
+@dataclass(slots=True)
+class TurnRecord:
+    """多轮中的一个 turn（append-only）：状态机作用域下沉到它，session 只是容器。
+
+    ``output`` 为方案全文（懒加载），``summary`` 为机器摘要（装配上下文只读它）。
+    """
+
+    turn_id: str
+    session_id: str
+    turn_index: int
+    state: str
+    input: str
+    facts: list[dict[str, Any]] = field(default_factory=list)
+    clarifications: dict[str, str] = field(default_factory=dict)
+    output: list[dict[str, Any]] = field(default_factory=list)
+    summary: dict[str, Any] = field(default_factory=dict)
+    usage: dict[str, Any] = field(default_factory=dict)
+    created_at: str = ""
+
+
+@dataclass(slots=True)
+class ProjectNote:
+    """L2 项目记忆条目（结构化，2026-10-20）：检索式注入的唯一真源。
+
+    key 归一化为 `符号名小写@路径末两段`；重命名通过 `superseded_by` 覆盖而非删除。
+    """
+
+    project_root: str
+    kind: str
+    key: str
+    value: str
+    evidence: str = ""
+    confidence: float = 0.5
+    hit_count: int = 0
+    last_hit_at: str = ""
+    superseded_by: str = ""
+    source: str = "auto"
+
+    def render(self) -> str:
+        """注入 prompt 的一行文本（不含绝对路径）。"""
+        return f"[{self.kind}] {self.value}"
+
+
+class ProjectNoteStore(Protocol):
+    """L2 项目记忆读写能力（top-K 检索 + 命中回写）。"""
+
+    async def upsert(self, note: ProjectNote) -> None: ...
+
+    async def record_from_session(self, project_root: str, data: dict[str, Any]) -> None:
+        """从本轮会话数据写入 target / decision / rejected_option（自动级）。"""
+        ...
+
+    async def search(
+        self, project_root: str, *, target_key: str = "", limit: int = 5
+    ) -> list[ProjectNote]:
+        """按 confidence × 衰减 × key 匹配度排序取前 N，并回写命中计数。"""
+        ...
+
+
+class TurnStore(Protocol):
+    """turn 存储能力（MUST-11：`(session_id, turn_index)` 唯一索引即乐观锁）。"""
+
+    async def append(self, turn: TurnRecord) -> None:
+        """追加一轮；同索引已存在时由实现抛冲突（映射 6001）。"""
+        ...
+
+    async def finish(
+        self,
+        turn_id: str,
+        *,
+        state: str,
+        facts: list[dict[str, Any]],
+        clarifications: dict[str, str],
+        output: list[dict[str, Any]],
+        summary: dict[str, Any],
+        usage: dict[str, Any],
+    ) -> None:
+        """回填占位 turn 的产出（一轮只写一行，不回写历史）。"""
+        ...
+
+    async def list_for_session(self, session_id: str) -> list[TurnRecord]:
+        """按 turn_index 升序返回该会话全部轮次（摘要 + 正文一起读，正文调用方可忽略）。"""
+        ...
+
+    async def load(self, turn_id: str) -> TurnRecord | None: ...
+
+
 class SessionStore(Protocol):
     """L1 会话存储能力（MUST-11 乐观锁）。实现：memory/session_store.py。"""
 

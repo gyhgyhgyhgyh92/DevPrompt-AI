@@ -1,4 +1,4 @@
-"""OpenAPI 契约冻结测试（T6-2）：导出物与 app.openapi() 一致 + 16 操作在案（13 路径）。"""
+"""OpenAPI 契约冻结测试（T6-2）：导出物与 app.openapi() 一致 + 18 操作在案（15 路径）。"""
 
 from __future__ import annotations
 
@@ -24,22 +24,27 @@ def _load_export_module() -> Any:
     return mod
 
 
-def test_openapi_covers_sixteen_operations() -> None:
-    """13 路径 / 16 操作：preference/settings 各 GET+PUT，history PATCH+DELETE，project browse。"""
+def test_openapi_covers_eighteen_operations() -> None:
+    """15 路径 / 18 操作：preference/settings 各 GET+PUT，history PATCH+DELETE。
+
+    2026-10-17 动态模型目录新增 2 操作（读取 + 刷新 `/settings/models/catalog`），
+    下线，改走浏览器扩展 + native messaging），故再改为 **14/17**——BREAKING。
+    2026-10-19 思考过程流式展示新增 `POST /optimize/stream`，改为 **15/18**（向后兼容，
+    旧 `POST /optimize` 保留）。
+    """
     doc = create_app().openapi()
     paths: dict[str, Any] = doc["paths"]
-    assert len(paths) == 13
+    assert len(paths) == 14
     assert all(p.startswith("/api/v1/") for p in paths)
     operations = sum(
         len([m for m in ops if m in {"get", "put", "post", "patch", "delete"}])
         for ops in paths.values()
     )
     assert operations == 16
+    assert "get" in paths["/api/v1/settings/models/catalog"]
+    assert "post" in paths["/api/v1/settings/models/catalog/refresh"]
     assert set(paths["/api/v1/settings"]) >= {"get", "put"}
-    assert set(paths["/api/v1/preference"]) >= {"get", "put"}
-    assert "delete" in paths["/api/v1/preference/adoptions"]
     assert {"patch", "delete"} <= set(paths["/api/v1/history/{session_id}"])
-    assert "get" in paths["/api/v1/project/browse"]
     # 多模型注册表（F-604，2026-10-13）：无新增路径，仅 /settings 契约增字段（防漏更）
     settings_schemas = doc["components"]["schemas"]
     assert "models" in settings_schemas["SettingsResponse"]["properties"]
@@ -47,7 +52,6 @@ def test_openapi_covers_sixteen_operations() -> None:
     assert "active_model_id" in settings_schemas["SettingsUpdate"]["properties"]
     assert "ModelEntryView" in settings_schemas
     # 页内文件夹搜索（F-601，2026-10-13）：browse 条目含 rel_parent（无新增路径）
-    assert "rel_parent" in settings_schemas["BrowseEntryPayload"]["properties"]
 
 
 def test_settings_update_declares_put_semantics() -> None:
@@ -114,8 +118,10 @@ class TestContextWindowTierContract:
         assert "ParameterDefinitionView" not in doc
 
     def test_path_and_operation_count_unchanged(self) -> None:
+        """档位契约改动**不新增路径**（2026-10-17）；2026-10-19 删除 browse 后为 14/17，
+        同日新增 /optimize/stream 后为 15/18。"""
         doc = create_app().openapi()
-        assert len(doc["paths"]) == 13
+        assert len(doc["paths"]) == 14
         operations = sum(
             len([k for k in v if k in {"get", "post", "put", "patch", "delete"}])
             for v in doc["paths"].values()

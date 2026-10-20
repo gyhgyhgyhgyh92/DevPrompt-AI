@@ -26,23 +26,24 @@ from devprompt_ai.domain.startup_report import (
     record_report,
 )
 from devprompt_ai.memory.schema import (
-    PREFERENCE_DDL,
+    PROJECT_NOTES_DDL,
     QUARANTINE_DDL,
     SESSIONS_DDL,
     SETTINGS_DDL,
+    TURNS_DDL,
 )
 from devprompt_ai.observability.logging import emit
 
 #: 需齐备的业务表 → DDL（顺序即补建顺序）
 _REQUIRED_TABLES: tuple[tuple[str, str], ...] = (
     ("forge_sessions", SESSIONS_DDL),
-    ("preference_vectors", PREFERENCE_DDL),
-    ("adoption_history", PREFERENCE_DDL),
     ("app_settings", SETTINGS_DDL),
     ("forge_quarantine", QUARANTINE_DDL),
+    ("forge_turns", TURNS_DDL),
+    ("project_notes", PROJECT_NOTES_DDL),
 )
 
-_QUARANTINE_TABLES = ("forge_sessions", "preference_vectors", "adoption_history", "app_settings")
+_QUARANTINE_TABLES = ("forge_sessions", "app_settings")
 
 
 def _ensure_quarantine(conn: sqlite3.Connection) -> None:

@@ -4,23 +4,6 @@
  */
 
 export interface paths {
-    "/api/v1/feedback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Post Feedback */
-        post: operations["post_feedback_api_v1_feedback_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/followup/{flow_id}": {
         parameters: {
             query?: never;
@@ -102,6 +85,26 @@ export interface paths {
         patch: operations["patch_history_api_v1_history__session_id__patch"];
         trace?: never;
     };
+    "/api/v1/history/{session_id}/turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Session Turns
+         * @description 会话的轮次摘要（升序）；不含原句与方案正文。
+         */
+        get: operations["get_session_turns_api_v1_history__session_id__turns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/optimize": {
         parameters: {
             query?: never;
@@ -122,35 +125,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/preference": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Preference
-         * @description GET /preference：内部补全（M-3）。读失败已由 service 降级为中性向量，
-         *     此处只把 `degraded` 标志透出为响应头——**响应契约不变**（M3 原则：不降级显式操作）。
-         *
-         *     用 FastAPI 的 `Response` 参数注入设置响应头：端点返回 pydantic 模型时无法直接
-         *     改 `response.headers`（那不是 HTTP 响应对象）。
-         */
-        get: operations["get_preference_api_v1_preference_get"];
-        /**
-         * Put Preference
-         * @description T6-11 转正：部分更新 + clip01（超界截断而非拒绝），返回更新后向量。
-         */
-        put: operations["put_preference_api_v1_preference_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/preference/adoptions": {
+    "/api/v1/optimize/stream": {
         parameters: {
             query?: never;
             header?: never;
@@ -159,12 +134,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
         /**
-         * Delete Preference Adoptions
-         * @description 清空服务端采纳历史（D-6F-4 关闭）：前端双重确认后调用，返回清空条数。
+         * Post Optimize Stream
+         * @description 流式版 /optimize（SSE）：thought 帧推送文字段落、action 帧推送工具动作卡片，终帧为 snapshot 或 error。有副作用端点：禁止客户端自动重试（MUST-15）。
          */
-        delete: operations["delete_preference_adoptions_api_v1_preference_adoptions_delete"];
+        post: operations["post_optimize_stream_api_v1_optimize_stream_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -182,26 +157,6 @@ export interface paths {
          * @description SSE 进度流：1s 轮询快照；DONE/ABORTED/ASKING/护栏推送后关闭；客户端断开即停。
          */
         get: operations["get_progress_api_v1_progress__flow_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/project/browse": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Project Browse
-         * @description 目录浏览（F-601）：path 空=驱动器列表；q 非空=当前目录子树递归搜索（仅目录）。
-         */
-        get: operations["get_project_browse_api_v1_project_browse_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -265,56 +220,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/models/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Model Catalog
+         * @description 读某供应商的模型目录（落库快照，不联网）。
+         *
+         *     2026-10-18 供应商中心化重构：键从 ``entry_id`` 改为 ``provider_id``——目录挂在
+         *     端点而非条目上，刚配好还没勾选模型的供应商也读得到自己的目录。
+         */
+        get: operations["get_model_catalog_api_v1_settings_models_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/models/catalog/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Model Catalog
+         * @description 刷新模型列表：现场调该端点的 `/models` → 落库 → 返回合并结果。
+         *
+         *     薄壳：参数收拢 → 调 service → 渲染（MUST-10）。api_key 由 provider_id 在
+         *     settings.json（0600）里取，明文密钥不进请求体。
+         */
+        post: operations["refresh_model_catalog_api_v1_settings_models_catalog_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/turns/{turn_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Turn
+         * @description 单轮全文（历史轮次展开时懒加载）。
+         */
+        get: operations["get_turn_api_v1_turns__turn_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /**
-         * AdoptionsClearResponse
-         * @description DELETE /preference/adoptions 数据体（D-6F-4）：清空条数。
-         */
-        AdoptionsClearResponse: {
-            /** Cleared */
-            cleared: number;
-        };
-        /** ApiResponse[AdoptionsClearResponse] */
-        ApiResponse_AdoptionsClearResponse_: {
-            /**
-             * Code
-             * @default 0
-             */
-            code: number;
-            data?: components["schemas"]["AdoptionsClearResponse"] | null;
-            /**
-             * Message
-             * @default ok
-             */
-            message: string;
-            /**
-             * Request Id
-             * @default
-             */
-            request_id: string;
-        };
-        /** ApiResponse[BrowseResponse] */
-        ApiResponse_BrowseResponse_: {
-            /**
-             * Code
-             * @default 0
-             */
-            code: number;
-            data?: components["schemas"]["BrowseResponse"] | null;
-            /**
-             * Message
-             * @default ok
-             */
-            message: string;
-            /**
-             * Request Id
-             * @default
-             */
-            request_id: string;
-        };
         /** ApiResponse[FlowSnapshotResponse] */
         ApiResponse_FlowSnapshotResponse_: {
             /**
@@ -353,15 +328,14 @@ export interface components {
              */
             request_id: string;
         };
-        /** ApiResponse[NoneType] */
-        ApiResponse_NoneType_: {
+        /** ApiResponse[ModelCatalogResponse] */
+        ApiResponse_ModelCatalogResponse_: {
             /**
              * Code
              * @default 0
              */
             code: number;
-            /** Data */
-            data?: null;
+            data?: components["schemas"]["ModelCatalogResponse"] | null;
             /**
              * Message
              * @default ok
@@ -373,14 +347,15 @@ export interface components {
              */
             request_id: string;
         };
-        /** ApiResponse[PreferenceVectorPayload] */
-        ApiResponse_PreferenceVectorPayload_: {
+        /** ApiResponse[NoneType] */
+        ApiResponse_NoneType_: {
             /**
              * Code
              * @default 0
              */
             code: number;
-            data?: components["schemas"]["PreferenceVectorPayload"] | null;
+            /** Data */
+            data?: null;
             /**
              * Message
              * @default ok
@@ -430,6 +405,25 @@ export interface components {
              */
             request_id: string;
         };
+        /** ApiResponse[TurnDetailPayload] */
+        ApiResponse_TurnDetailPayload_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["TurnDetailPayload"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
         /** ApiResponse[list[HistoryItemPayload]] */
         ApiResponse_list_HistoryItemPayload__: {
             /**
@@ -450,36 +444,38 @@ export interface components {
              */
             request_id: string;
         };
-        /**
-         * BrowseEntryPayload
-         * @description 目录浏览条目：展示名 + 完整路径 + 修改时间；搜索结果附相对父路径（F-601）。
-         */
-        BrowseEntryPayload: {
-            /** Modified At */
-            modified_at: string | null;
-            /** Name */
-            name: string;
-            /** Path */
-            path: string;
-            /** Rel Parent */
-            rel_parent: string | null;
+        /** ApiResponse[list[TurnSummaryPayload]] */
+        ApiResponse_list_TurnSummaryPayload__: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            /** Data */
+            data?: components["schemas"]["TurnSummaryPayload"][] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
         };
         /**
-         * BrowseResponse
-         * @description GET /project/browse 数据体：path="" 为驱动器列表模式（F-601）。
-         *
-         *     字段无默认值（响应必有值）：带默认值会被 OpenAPI 标记非必填，生成的前端类型
-         *     将含 undefined，削弱收窄（T6-2 契约管线（生成类型）无 `?` 前提）。
+         * AskOptionPayload
+         * @description 反问选项（对齐 CodeBuddy SDK AskUserQuestion 的 options[]）。
          */
-        BrowseResponse: {
-            /** Entries */
-            entries: components["schemas"]["BrowseEntryPayload"][];
-            /** Parent */
-            parent: string | null;
-            /** Path */
-            path: string;
-            /** Truncated */
-            truncated: boolean;
+        AskOptionPayload: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Label */
+            label: string;
         };
         /**
          * CostDetailPayload
@@ -510,20 +506,6 @@ export interface components {
             key: string;
             /** Passed */
             passed: boolean;
-        };
-        /**
-         * FeedbackRequest
-         * @description POST /feedback 请求体：variant 采纳 / +edited_text 编辑采纳 / 两者皆无=跳过。
-         */
-        FeedbackRequest: {
-            /** Action */
-            action: string;
-            /** Edited Text */
-            edited_text?: string | null;
-            /** Session Id */
-            session_id: string;
-            /** Variant */
-            variant?: ("A" | "B" | "C") | null;
         };
         /**
          * FlowSnapshotResponse
@@ -670,28 +652,120 @@ export interface components {
             supports_tools: boolean;
         };
         /**
+         * ModelCatalogItem
+         * @description 模型目录条目（契约 ModelCatalogItem）：下拉里的一个选项。
+         *
+         *     - `source` = `remote` 表示窗口来自端点实时返回；`static` 表示来自静态表兜底。
+         *     - `reasoning_efforts` = 该端点给出的推理强度档位（**按模型粒度**，各模型相互独立，
+         *       不可共用一份通用清单）；空数组 = 厂商未提供，前端不展示该项而不是编造选项。
+         *     - `is_stale` = 该模型已配置但不在当前列表中（厂商下架 / 中转站隐藏），
+         *       存量配置不失效，仅在下拉里标注。
+         */
+        ModelCatalogItem: {
+            /** Context Window Tiers */
+            context_window_tiers?: number[];
+            /**
+             * Is Stale
+             * @default false
+             */
+            is_stale: boolean;
+            /** Label */
+            label: string;
+            /** Max Context Length */
+            max_context_length?: number | null;
+            /** Model Id */
+            model_id: string;
+            /** Reasoning Efforts */
+            reasoning_efforts?: string[];
+            /**
+             * Source
+             * @default remote
+             * @enum {string}
+             */
+            source: "remote" | "static";
+        };
+        /**
+         * ModelCatalogRefreshRequest
+         * @description 刷新模型列表请求体。
+         *
+         *     2026-10-18 **BREAKING**：`entry_id` → `provider_id`。刚配好、还没勾选任何模型的
+         *     供应商也必须能刷新（否则多选列表永远是空的），而它此时没有任何条目可依。
+         *
+         *     **不含 api_key**——密钥只从 settings.json（0600）按 `provider_id` 取，
+         *     明文密钥绝不进请求体与日志（MUST-19）。
+         */
+        ModelCatalogRefreshRequest: {
+            /** Provider Id */
+            provider_id: string;
+        };
+        /**
+         * ModelCatalogResponse
+         * @description 模型目录读取 / 刷新响应。
+         *
+         *     ``warning`` 非空表示本次刷新失败、``models`` 是**上次落库的结果**
+         *     （或静态表兜底）——刷新失败不清空已配模型。
+         */
+        ModelCatalogResponse: {
+            /** Base Url */
+            base_url: string;
+            /** Fetched At */
+            fetched_at?: string | null;
+            /** Models */
+            models?: components["schemas"]["ModelCatalogItem"][];
+            /** Provider */
+            provider: string;
+            /** Warning */
+            warning?: string | null;
+        };
+        /**
+         * ModelDirectoryEntry
+         * @description 模型目录条目（2026-10-17 窗口/能力下沉到模型级）。
+         *
+         *     同厂商不同模型的窗口可能不同，厂商级单值表达不了，故模型单独成条。
+         *
+         *     - `max_context_length` 为 `None` = 该模型窗口**未登记**，前端不展示、告警不触发
+         *       （查证不到时如实留空，禁填占位默认值）。
+         *     - `context_window_tiers` 是该模型可单选的档位集合（升序）；空 = 只能用标称值。
+         *     - `reasoning_efforts` 是该模型官方给出的思考强度档位（**按模型粒度，各模型不可
+         *       共用一份清单**）；空 = 厂商未提供，前端不展示该段而不是编造选项。
+         *     - `default_effort` 是官方标注的默认强度；空 = 取第一档。
+         */
+        ModelDirectoryEntry: {
+            /** Context Window Tiers */
+            context_window_tiers?: number[];
+            /**
+             * Default Effort
+             * @default
+             */
+            default_effort: string;
+            /** Label */
+            label: string;
+            /** Max Context Length */
+            max_context_length?: number | null;
+            /** Model Id */
+            model_id: string;
+            /** Reasoning Efforts */
+            reasoning_efforts?: string[];
+        };
+        /**
          * ModelEntryUpdate
-         * @description PUT /settings models 段条目：id=None 为新增（后端生成）；api_key None/空=保留原值。
+         * @description PUT /settings models 段条目：id=None 为新增（后端生成）；按 `provider_id` 引用供应商。
          *
          *     2026-09-17 多供应商扩展。`None`/省略 = 沿用同 id 旧值；显式传值即覆盖。
+         *     2026-10-18 **BREAKING**：移除 `label`（显示名称）、`base_url`、`api_key` 与
+         *     `inherit_api_key_from`——端点与密钥已上移到 `providers` 段，一个端点只配一次。
          */
         ModelEntryUpdate: {
-            /** Api Key */
-            api_key?: string | null;
             /** Api Mode */
             api_mode?: string | null;
-            /** Base Url */
-            base_url?: string | null;
             /** Id */
             id?: string | null;
-            /** Label */
-            label?: string | null;
             /** Max Context Length */
             max_context_length?: number | null;
             /** Model Id */
             model_id?: string | null;
-            /** Provider */
-            provider?: string | null;
+            /** Provider Id */
+            provider_id?: string | null;
             /** Reasoning Effort */
             reasoning_effort?: string | null;
         };
@@ -701,27 +775,26 @@ export interface components {
          *
          *     2026-09-17 迁移增 `capabilities` 只读字段（供设置中心渲染能力徽标）；
          *     同日移除 `param_overrides`（参数编辑区已下线）与 `model_specs` 契约段。
+         *     2026-10-18 移除 `label`（显示名称）——界面一律直接展示 `model_id`；
+         *     同日**供应商中心化重构（BREAKING）**：`base_url` / `api_key_masked` 移到
+         *     `ProviderConfigView`（一个端点一份密钥），条目改为经 `provider_id` 引用供应商。
          */
         ModelEntryView: {
-            /** Api Key Masked */
-            api_key_masked: string;
             /** Api Mode */
             api_mode?: string | null;
-            /** Base Url */
-            base_url: string;
             capabilities?: components["schemas"]["ModelCapabilitiesView"];
             /** Id */
             id: string;
             /** Is Active */
             is_active: boolean;
-            /** Label */
-            label: string;
             /** Max Context Length */
             max_context_length?: number | null;
             /** Model Id */
             model_id: string;
             /** Provider */
             provider: string;
+            /** Provider Id */
+            provider_id: string;
             /** Reasoning Effort */
             reasoning_effort?: string | null;
         };
@@ -783,40 +856,19 @@ export interface components {
         /**
          * OptimizeRequest
          * @description POST /optimize 请求体（该端点有副作用，客户端禁重试，MUST-15）。
+         *
+         *     ``session_id`` 非空表示在同一会话开启新一轮（多轮，2026-10-20）；为空则新建会话。
          */
         OptimizeRequest: {
-            /** Project */
+            /**
+             * Project
+             * @default
+             */
             project: string;
             /** Sentence */
             sentence: string;
-        };
-        /**
-         * PreferenceUpdateRequest
-         * @description PUT /preference 部分更新：None = 保持不变；超界值由后端 clip01 截断而非拒绝。
-         */
-        PreferenceUpdateRequest: {
-            /** Detail Level */
-            detail_level?: number | null;
-            /** Include Diff */
-            include_diff?: number | null;
-            /** Max Files Norm */
-            max_files_norm?: number | null;
-            /** Specify Tests */
-            specify_tests?: number | null;
-        };
-        /**
-         * PreferenceVectorPayload
-         * @description L3 偏好向量四维（GET/PUT /preference）。
-         */
-        PreferenceVectorPayload: {
-            /** Detail Level */
-            detail_level: number;
-            /** Include Diff */
-            include_diff: number;
-            /** Max Files Norm */
-            max_files_norm: number;
-            /** Specify Tests */
-            specify_tests: number;
+            /** Session Id */
+            session_id?: string | null;
         };
         /**
          * ProcessSettings
@@ -852,6 +904,41 @@ export interface components {
             telemetry?: boolean | null;
         };
         /**
+         * ProviderConfigUpdate
+         * @description PUT /settings providers 段条目：`id` 缺省为新增（后端生成 ``p-`` + uuid8）。
+         *
+         *     **权威列表语义**：本次未出现的既有供应商记录一律删除，其下模型条目随 `models`
+         *     整表替换一并消失（用户裁定的级联删除）。`api_key` 空值/None = 沿用同 id 旧值，
+         *     与 `ModelEntryUpdate` 的密钥语义一致——前端只有脱敏值，不会回传明文（MUST-19）。
+         */
+        ProviderConfigUpdate: {
+            /** Api Key */
+            api_key?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Id */
+            id?: string | null;
+            /** Provider */
+            provider?: string | null;
+        };
+        /**
+         * ProviderConfigView
+         * @description 供应商配置脱敏视图（2026-10-18 供应商中心化重构新增）。
+         *
+         *     端点与密钥**只存一份**：`base_url` + `api_key` 配一次，该供应商下所有模型条目共用。
+         *     `api_key` 恒脱敏回显，绝不回传明文（MUST-19）。
+         */
+        ProviderConfigView: {
+            /** Api Key Masked */
+            api_key_masked: string;
+            /** Base Url */
+            base_url: string;
+            /** Id */
+            id: string;
+            /** Provider */
+            provider: string;
+        };
+        /**
          * ProviderDirectoryEntry
          * @description provider 目录条目（2026-09-17 多供应商扩展）。
          *
@@ -864,6 +951,9 @@ export interface components {
          *     ``context_window_tiers`` 是用户可单选的**档位集合**（绝对 token，升序）：
          *     - 空数组 = 该厂商只有标称默认值、不可选（UI 只显示默认档）；
          *     - 每个档位都必须是厂商真实支持的规格，且不得大于 ``max_context_length``。
+         *
+         *     ``models`` 是该厂商**已核实**的模型目录（2026-10-17）；空数组表示未登记，
+         *     此时前端回落用厂商级的窗口与档位。
          */
         ProviderDirectoryEntry: {
             /**
@@ -884,6 +974,8 @@ export interface components {
             label: string;
             /** Max Context Length */
             max_context_length?: number | null;
+            /** Models */
+            models?: components["schemas"]["ModelDirectoryEntry"][];
             /**
              * Needs Key
              * @default true
@@ -915,8 +1007,6 @@ export interface components {
             gap: number;
             /** Marked */
             marked: boolean;
-            /** Pref */
-            pref: number;
             /** Reason */
             reason: string;
             /** Total */
@@ -947,6 +1037,9 @@ export interface components {
          *     2026-09-17 迁移增 ``providers`` 目录（provider 下拉与窗口档位的数据源）。
          *     **复用本端点下发而非新增路径**，故契约仍 13 路径 / 16 操作。
          *     同日移除 ``model_specs``（参数编辑区已下线）。
+         *     2026-10-18 供应商中心化重构新增 ``provider_configs`` 段（**用户自己配置的供应商**：
+         *     端点 + 密钥，一个端点一份）。注意与上面的 ``providers`` **目录段**是两回事：
+         *     前者是静态厂商目录（只读、下拉数据源），后者是用户凭据配置（可写）。
          */
         SettingsResponse: {
             locked: components["schemas"]["LockedSettings"];
@@ -954,6 +1047,8 @@ export interface components {
             /** Models */
             models: components["schemas"]["ModelEntryView"][];
             process: components["schemas"]["ProcessSettings"];
+            /** Provider Configs */
+            provider_configs?: components["schemas"]["ProviderConfigView"][];
             /** Providers */
             providers?: components["schemas"]["ProviderDirectoryEntry"][];
         };
@@ -963,10 +1058,15 @@ export interface components {
          *
          *     **语义是「顶层 PATCH 式 + 段内 PUT 式」的混合体**（2026-10-16 显式声明）：
          *
-         *     1. ``models`` —— **整表替换**。数组内以 ``id`` 匹配既有条目：缺 ``id`` 视为新增
+         *     1. ``provider_configs`` —— **权威列表**（2026-10-18 供应商中心化重构新增）。
+         *        数组内以 ``id`` 匹配既有供应商：缺 ``id`` 视为新增（后端生成 ``p-`` + uuid8）；
+         *        **未出现的既有供应商视为删除**，其下模型条目随 ``models`` 整表替换一并消失
+         *        （级联删除，用户裁定）。``ProviderConfigUpdate.api_key`` 空值或 ``None``
+         *        表示**沿用同 id 的旧值**（前端只有脱敏值，不会回传明文，MUST-19）。
+         *        传 ``None`` 表示不动供应商段。
+         *     2. ``models`` —— **整表替换**。数组内以 ``id`` 匹配既有条目：缺 ``id`` 视为新增
          *        （后端生成）；**列表中未出现的既有条目视为删除**。传 ``None`` 表示不动注册表。
-         *     2. ``ModelEntryUpdate.api_key`` —— 空值或 ``None`` 表示**沿用同id 的旧值**
-         *        （不覆盖、不清空）；只有显式给出的新值才落盘。
+         *        条目经 ``provider_id`` 引用供应商（2026-10-18 起端点与密钥不再挂在条目上）。
          *     3. 其他顶层键 —— ``None`` 表示保持不变（逐键更新，非整体替换）。
          *
          *     ``active_model_id`` 切换当前生效条目（切换后该条目整体镜像进 model_service，
@@ -979,6 +1079,8 @@ export interface components {
             /** Models */
             models?: components["schemas"]["ModelEntryUpdate"][] | null;
             process?: components["schemas"]["ProcessUpdate"] | null;
+            /** Provider Configs */
+            provider_configs?: components["schemas"]["ProviderConfigUpdate"][] | null;
         };
         /**
          * SymbolPayload
@@ -996,16 +1098,98 @@ export interface components {
             path: string;
         };
         /**
+         * TurnDetailPayload
+         * @description 单轮详情（GET /turns/{turn_id}）：正文懒加载，仅在用户展开时拉取。
+         */
+        TurnDetailPayload: {
+            /**
+             * Conclusion
+             * @default
+             */
+            conclusion: string;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /** Facts */
+            facts?: components["schemas"]["FactPayload"][];
+            /**
+             * Input
+             * @default
+             */
+            input: string;
+            /** Open Items */
+            open_items?: string[];
+            /** State */
+            state: string;
+            /**
+             * Target
+             * @default
+             */
+            target: string;
+            /** Turn Id */
+            turn_id: string;
+            /** Turn Index */
+            turn_index: number;
+            /** Variants */
+            variants?: components["schemas"]["VariantPayload"][];
+        };
+        /**
+         * TurnSummaryPayload
+         * @description 多轮轮次摘要（GET /history/{session_id}/turns）：不含原句与方案正文。
+         */
+        TurnSummaryPayload: {
+            /**
+             * Conclusion
+             * @default
+             */
+            conclusion: string;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /** Open Items */
+            open_items?: string[];
+            /** State */
+            state: string;
+            /**
+             * Target
+             * @default
+             */
+            target: string;
+            /** Turn Id */
+            turn_id: string;
+            /** Turn Index */
+            turn_index: number;
+        };
+        /**
          * UnknownItemPayload
          * @description domain UnknownItem 的契约镜像（仅渲染字段）。
+         *
+         *     2026-10-20：新增 header / options / multi_select，使反问形态对齐官方
+         *     AskUserQuestion；``key`` 仍为答案键（clarifications 去重依赖它）。
          */
         UnknownItemPayload: {
             /** Ask */
             ask: string;
             /** Best Guess */
             best_guess: string;
+            /**
+             * Header
+             * @default
+             */
+            header: string;
             /** Key */
             key: string;
+            /**
+             * Multi Select
+             * @default false
+             */
+            multi_select: boolean;
+            /** Options */
+            options?: components["schemas"]["AskOptionPayload"][];
             /** Reason */
             reason: string;
         };
@@ -1045,39 +1229,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    post_feedback_api_v1_feedback_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FeedbackRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_NoneType_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     post_followup_api_v1_followup__flow_id__post: {
         parameters: {
             query?: never;
@@ -1219,6 +1370,37 @@ export interface operations {
             };
         };
     };
+    get_session_turns_api_v1_history__session_id__turns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_TurnSummaryPayload__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_optimize_api_v1_optimize_post: {
         parameters: {
             query?: never;
@@ -1252,27 +1434,7 @@ export interface operations {
             };
         };
     };
-    get_preference_api_v1_preference_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_PreferenceVectorPayload_"];
-                };
-            };
-        };
-    };
-    put_preference_api_v1_preference_put: {
+    post_optimize_stream_api_v1_optimize_stream_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1281,7 +1443,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PreferenceUpdateRequest"];
+                "application/json": components["schemas"]["OptimizeRequest"];
             };
         };
         responses: {
@@ -1291,7 +1453,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_PreferenceVectorPayload_"];
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -1301,26 +1463,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_preference_adoptions_api_v1_preference_adoptions_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_AdoptionsClearResponse_"];
                 };
             };
         };
@@ -1343,38 +1485,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_project_browse_api_v1_project_browse_get: {
-        parameters: {
-            query?: {
-                path?: string;
-                q?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_BrowseResponse_"];
                 };
             };
             /** @description Validation Error */
@@ -1490,6 +1600,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_SettingsResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_model_catalog_api_v1_settings_models_catalog_get: {
+        parameters: {
+            query: {
+                provider_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ModelCatalogResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_model_catalog_api_v1_settings_models_catalog_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelCatalogRefreshRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ModelCatalogResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_turn_api_v1_turns__turn_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_TurnDetailPayload_"];
                 };
             };
             /** @description Validation Error */

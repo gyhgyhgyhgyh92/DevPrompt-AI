@@ -22,3 +22,22 @@ def expand_levels(level: Literal["A", "B", "C"]) -> list[Literal["A", "B", "C"]]
     """
     order: tuple[Literal["A", "B", "C"], ...] = ("A", "B", "C")
     return list(order[: order.index(level) + 1])
+
+
+def plan_levels(
+    level: Literal["A", "B", "C"],
+    *,
+    max_versions: int = 3,
+    preferred: Literal["A", "B", "C"] | None = None,
+) -> list[Literal["A", "B", "C"]]:
+    """多轮（2026-10-20）：本轮生成哪几套。
+
+    - `max_versions >= 3`：沿用 MUST-28 前缀（A→1、B→2、C→3 套）
+    - `max_versions == 1`：收敛为单套，优先上一轮选定的方向，但**不得越级**
+      （上一轮选 C、本轮取证不完整时只能回到本轮允许的最高档）
+    """
+    if max_versions >= 3:
+        return expand_levels(level)
+    if preferred is not None:
+        return [min(preferred, level)]
+    return [level]

@@ -50,6 +50,7 @@ ERROR_CODES: Final[dict[int, str]] = {
     5013: "供应商余额或配额不足",
     5014: "LLM 鉴权失败（api_key 无效）",
     5015: "上游服务异常（网络错误或 5xx）",
+    5021: "模型目录拉取失败（端点不支持 / 鉴权失败 / 限流 / 超时）",
     # 6 状态机与流程
     6001: "非法状态转移",
     6002: "反问软护栏触发，等待用户裁决",
@@ -70,6 +71,8 @@ ALL_ERROR_CODES: Final[tuple[int, ...]] = tuple(sorted(ERROR_CODES))
 LLM_FAILURE_CODES: Final[dict[int, str]] = {
     code: meaning for code, meaning in ERROR_CODES.items() if 5010 < code < 5020
 }
+#: 5011–5019 是 **LLM 调用**失败（用户 2026-10-16 裁定 5 个码）；5021 起属其它外部依赖
+#: （如模型目录拉取），刻意放在区间外，免得被这个范围推导误并入 LLM 失败集合。
 
 
 def registered(code: int) -> int:

@@ -53,7 +53,10 @@ async def locate_symbol(
         ],
         f"def:{symbol.name}",
     )
-    raw = await runner.run(def_args, allowed_exit_codes=_RG_ALLOWED)
+    # cwd 必须是项目根：进程 cwd 是本工具自身仓库，`--glob 相对路径` 否则永不命中
+    raw = await runner.run(
+        def_args, allowed_exit_codes=_RG_ALLOWED, cwd=None if root in (".", "") else root
+    )
     definition_line = _first_match_line(raw)
 
     # 2) 选择器与设计 token：读文件文本正则提取

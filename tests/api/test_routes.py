@@ -9,9 +9,8 @@ from typing import Any
 import httpx
 import pytest
 
-from devprompt_ai.domain.errors import StateError
-from devprompt_ai.domain.models import SessionSummary
-from devprompt_ai.harness.browse import BrowseEntry, BrowseListing
+from devprompt_ai.domain.errors import DevPromptError, StateError
+from devprompt_ai.domain.models import SessionSummary, TurnRecord
 from devprompt_ai.interfaces.api import health, routes
 from devprompt_ai.interfaces.api.app import create_app
 from devprompt_ai.service import FlowSnapshot, RankingView, SnapshotStatus
@@ -38,16 +37,24 @@ class FakeForgeService:
         self.rename_calls: list[tuple[str, str]] = []
         self.pin_calls: list[tuple[str, bool]] = []
         self.delete_calls: list[str] = []
+        self.turns: list[TurnRecord] = []
+        self.optimize_calls: list[dict[str, Any]] = []
         self.settings_view: dict[str, Any] = {
             "models": [
                 {
                     "id": "m-1",
-                    "label": "DeepSeek · mock-model",
+                    "provider_id": "p-1",
+                    "provider": "DeepSeek",
+                    "model_id": "mock-model",
+                    "is_active": True,
+                }
+            ],
+            "provider_configs": [
+                {
+                    "id": "p-1",
                     "provider": "DeepSeek",
                     "base_url": "https://mock.local",
-                    "model_id": "mock-model",
                     "api_key_masked": "sk-••••3f7a",
-                    "is_active": True,
                 }
             ],
             "model_service": {
@@ -71,18 +78,18 @@ class FakeForgeService:
             "total_files": 2,
             "kind_counts": {"function": 2, "class": 1},
         }
-        self.browse_listing: BrowseListing = BrowseListing(
-            path="D:/ws/repo",
-            parent="D:/ws",
-            entries=(
-                BrowseEntry(name="src", path="D:/ws/repo/src", modified_at=None, rel_parent=None),
-            ),
-        )
-        self.browse_calls: list[tuple[str, str]] = []
 
     async def optimize(
-        self, user_id: str, project_root: str, sentence: str, *, request_id: str
+        self,
+        user_id: str,
+        project_root: str,
+        sentence: str,
+        *,
+        request_id: str,
+        progress: Any = None,
+        session_id: str | None = None,
     ) -> FlowSnapshot:
+        self.optimize_calls.append({"session_id": session_id, "sentence": sentence})
         return self._next()
 
     async def ask_followup(
@@ -133,6 +140,15 @@ class FakeForgeService:
             )
         ]
 
+    async def list_turns(self, user_id: str, session_id: str) -> list[TurnRecord]:
+        return list(self.turns)
+
+    async def load_turn(self, user_id: str, turn_id: str) -> TurnRecord:
+        for turn in self.turns:
+            if turn.turn_id == turn_id:
+                return turn
+        raise StateError("轮次不存在", code=6003)
+
     async def rename_session(self, user_id: str, session_id: str, title: str) -> None:
         self.rename_calls.append((session_id, title))
 
@@ -178,10 +194,6 @@ class FakeForgeService:
 
     async def scan_project(self, project_root: str) -> dict[str, Any]:
         return dict(self.scan)
-
-    async def browse_directory(self, path: str, query: str = "") -> BrowseListing:
-        self.browse_calls.append((path, query))
-        return self.browse_listing
 
     def _next(self, session_id: str = "s1") -> FlowSnapshot:
         if self.fail_with is not None:
@@ -291,40 +303,6 @@ async def test_result_reads_snapshot(
     assert resp.json()["data"]["session_id"] == "s1"
 
 
-async def test_feedback_and_preference_passthrough(
-    client: httpx.AsyncClient, fake_service: FakeForgeService
-) -> None:
-    resp = await client.post("/api/v1/feedback", json={"session_id": "s1", "action": "accept"})
-    assert resp.status_code == 200
-    pref = await client.get("/api/v1/preference")
-    assert pref.status_code == 200
-    assert pref.json()["data"]["detail_level"] == 0.5
-
-
-async def test_feedback_variant_edited_text_passthrough(
-    client: httpx.AsyncClient, fake_service: FakeForgeService
-) -> None:
-    resp = await client.post(
-        "/api/v1/feedback",
-        json={
-            "session_id": "s1",
-            "action": "accept",
-            "variant": "C",
-            "edited_text": "编辑后的方案正文",
-        },
-    )
-    assert resp.status_code == 200
-    assert fake_service.feedback_calls == [
-        {
-            "session_id": "s1",
-            "action": "accept",
-            "variant": "C",
-            "edited_text": "编辑后的方案正文",
-            "request_id": fake_service.feedback_calls[0]["request_id"],
-        }
-    ]
-
-
 async def test_snapshot_renders_variants_and_ranking(
     client: httpx.AsyncClient, fake_service: FakeForgeService
 ) -> None:
@@ -341,7 +319,6 @@ async def test_snapshot_renders_variants_and_ranking(
             marked=True,
             reason="分差较小",
             fit=0.75,
-            pref=0.88,
             total=0.802,
         ),
     )
@@ -353,21 +330,6 @@ async def test_snapshot_renders_variants_and_ranking(
     assert data["ranking"]["variant"] == "B"
     assert data["ranking"]["marked"] is True
     assert "variant" not in data  # 旧单数字段已删除（BREAKING）
-
-
-async def test_put_preference_partial_update_passthrough(
-    client: httpx.AsyncClient, fake_service: FakeForgeService
-) -> None:
-    """T6-11 转正：PUT /preference 部分更新（None 字段过滤），契约体四维回读。"""
-    resp = await client.put(
-        "/api/v1/preference",
-        json={"detail_level": 1.5, "specify_tests": -0.2, "include_diff": None},
-    )
-    assert resp.status_code == 200
-    data = resp.json()["data"]
-    assert set(data) == {"detail_level", "include_diff", "specify_tests", "max_files_norm"}
-    # 路由层原值透传；clip01 截断归 service（见 tests/test_service.py）
-    assert fake_service.preference_updates == [{"detail_level": 1.5, "specify_tests": -0.2}]
 
 
 async def test_get_history_returns_summaries(
@@ -436,10 +398,12 @@ async def test_settings_get_put_roundtrip(
     assert data["model_service"]["api_key_masked"] == "sk-••••3f7a"
     assert "api_key" not in data["model_service"]
     assert data["locked"]["candidate_limit"] == 25
-    # 多模型注册表视图（F-604，2026-10-13）：条目 api_key 恒脱敏，is_active 标注当前生效项
+    # 多模型注册表视图（F-604，2026-10-13）：2026-10-18 起密钥在供应商段，条目只引用
     assert data["models"][0]["id"] == "m-1"
-    assert data["models"][0]["api_key_masked"] == "sk-••••3f7a"
+    assert data["models"][0]["provider_id"] == "p-1"
     assert data["models"][0]["is_active"] is True
+    assert data["provider_configs"][0]["api_key_masked"] == "sk-••••3f7a"
+    assert "api_key_masked" not in data["models"][0]
 
     put_resp = await client.put(
         "/api/v1/settings",
@@ -460,33 +424,19 @@ async def test_settings_get_put_roundtrip(
 async def test_settings_put_models_and_activation_passthrough(
     client: httpx.AsyncClient, fake_service: FakeForgeService
 ) -> None:
-    """PUT /settings 多模型段透传（F-604）：models 与 active_model_id 原样交 service。"""
+    """PUT /settings 供应商段 + 条目段透传：原样交 service（2026-10-18 供应商中心化）。"""
     resp = await client.put(
         "/api/v1/settings",
         json={
-            "models": [
-                {
-                    "id": "m-1",
-                    "label": "A",
-                    "provider": "DeepSeek",
-                    "base_url": "https://a",
-                    "model_id": "deepseek-flash",
-                }
-            ],
+            "provider_configs": [{"id": "p-1", "provider": "DeepSeek", "base_url": "https://a"}],
+            "models": [{"id": "m-1", "provider_id": "p-1", "model_id": "deepseek-flash"}],
             "active_model_id": "m-1",
         },
     )
     assert resp.status_code == 200
     assert fake_service.settings_updates[-1] == {
-        "models": [
-            {
-                "id": "m-1",
-                "label": "A",
-                "provider": "DeepSeek",
-                "base_url": "https://a",
-                "model_id": "deepseek-flash",
-            }
-        ],
+        "provider_configs": [{"id": "p-1", "provider": "DeepSeek", "base_url": "https://a"}],
+        "models": [{"id": "m-1", "provider_id": "p-1", "model_id": "deepseek-flash"}],
         "active_model_id": "m-1",
     }
 
@@ -500,48 +450,83 @@ async def test_project_scan(client: httpx.AsyncClient, fake_service: FakeForgeSe
     assert data["kind_counts"]["function"] == 2
 
 
-async def test_project_browse_returns_listing(
+async def test_session_turns_are_summaries_only(
     client: httpx.AsyncClient, fake_service: FakeForgeService
 ) -> None:
-    """GET /project/browse：返回 path/parent/entries/truncated；X-Request-ID 头与信封一致。"""
-    resp = await client.get("/api/v1/project/browse", params={"path": "D:/ws/repo"})
+    """轮次列表只给摘要：不含原句与方案正文（正文懒加载走 /turns/{id}）。"""
+    fake_service.turns = [
+        TurnRecord(
+            turn_id="t1",
+            session_id="s1",
+            turn_index=0,
+            state="DONE",
+            input="把按钮改成红色",
+            output=[{"title": "x", "body": "正文", "level": "A", "changes": []}],
+            summary={"target": "Button", "conclusion": "复用令牌", "open": ["对比度"]},
+        )
+    ]
+
+    resp = await client.get("/api/v1/history/s1/turns")
+
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert [turn["turn_id"] for turn in data] == ["t1"]
+    assert data[0]["target"] == "Button"
+    assert data[0]["open_items"] == ["对比度"]
+    assert "input" not in data[0]
+    assert "variants" not in data[0]
+
+
+async def test_turn_detail_carries_body(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    fake_service.turns = [
+        TurnRecord(
+            turn_id="t1",
+            session_id="s1",
+            turn_index=0,
+            state="DONE",
+            input="把按钮改成红色",
+            output=[{"title": "保守版", "body": "改按钮", "level": "A", "changes": ["改色"]}],
+            facts=[{"key": "token_defined", "passed": False, "evidence": "未找到"}],
+        )
+    ]
+
+    resp = await client.get("/api/v1/turns/t1")
+
+    body = resp.json()["data"]
+    assert body["input"] == "把按钮改成红色"
+    assert body["variants"][0]["body"] == "改按钮"
+    assert body["facts"][0]["key"] == "token_defined"
+
+
+async def test_missing_turn_returns_6003(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    resp = await client.get("/api/v1/turns/nope")
+
+    assert resp.status_code == 200
+    assert resp.json()["code"] == 6003
+
+
+async def test_project_scan_failure_returns_envelope(
+    client: httpx.AsyncClient,
+    fake_service: FakeForgeService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """扫描失败必须回信封错误码，不能裸 500（否则前端只能猜「路径不存在」）。"""
+
+    async def _boom(_project: str) -> dict[str, Any]:
+        raise DevPromptError("项目路径不存在或不是目录", code=2001)
+
+    monkeypatch.setattr(fake_service, "scan_project", _boom)
+    resp = await client.get("/api/v1/project/scan", params={"project": "D:/nope"})
+
     assert resp.status_code == 200
     body = resp.json()
-    assert body["code"] == 0
-    assert body["data"] == {
-        "path": "D:/ws/repo",
-        "parent": "D:/ws",
-        "entries": [
-            {"name": "src", "path": "D:/ws/repo/src", "modified_at": None, "rel_parent": None}
-        ],
-        "truncated": False,
-    }
-    assert resp.headers["x-request-id"] == body["request_id"]
-
-
-async def test_project_browse_query_passthrough(
-    client: httpx.AsyncClient, fake_service: FakeForgeService
-) -> None:
-    """q 参数透传（F-601 递归搜索）：service 收到 (path, query){无 q 时为空串}。"""
-    await client.get("/api/v1/project/browse", params={"path": "D:/ws", "q": "wo"})
-    assert fake_service.browse_calls[-1] == ("D:/ws", "wo")
-    await client.get("/api/v1/project/browse", params={"path": "D:/ws"})
-    assert fake_service.browse_calls[-1] == ("D:/ws", "")
-
-
-async def test_project_browse_empty_path_returns_drives(
-    client: httpx.AsyncClient, fake_service: FakeForgeService
-) -> None:
-    """无 path 参数：驱动器列表模式（path 空串 + parent null）。"""
-    fake_service.browse_listing = BrowseListing(path="", parent=None)
-    resp = await client.get("/api/v1/project/browse")
-    assert resp.status_code == 200
-    assert resp.json()["data"] == {
-        "path": "",
-        "parent": None,
-        "entries": [],
-        "truncated": False,
-    }
+    assert body["code"] == 2001
+    assert body["data"] is None
+    assert body["request_id"]
 
 
 async def test_error_response_uniform_shape(
@@ -606,12 +591,3 @@ async def test_x_request_id_echoed_from_request(
     assert resp.headers["x-request-id"] == "trace-123"
     assert resp.json()["request_id"] == "trace-123"
 
-
-async def test_delete_preference_adoptions(
-    client: httpx.AsyncClient, fake_service: FakeForgeService
-) -> None:
-    """D-6F-4：DELETE /preference/adoptions 清空服务端采纳历史，返回清空条数。"""
-    resp = await client.delete("/api/v1/preference/adoptions")
-    assert resp.status_code == 200
-    assert resp.json()["data"] == {"cleared": 3}
-    assert fake_service.adoption_clear_calls == ["local"]

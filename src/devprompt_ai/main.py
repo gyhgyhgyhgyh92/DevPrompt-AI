@@ -65,6 +65,17 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+RELOAD_WARNING = (
+    "[警告] Windows 下 --reload 会把 asyncio 事件循环切成 Selector（"
+    "uvicorn 为监控文件变化而生子进程），"
+    "子进程不可用：\n"
+    "  · rg / ctags / git 版本探测会抛 NotImplementedError（体检三项黄的原因）\n"
+    "  · 原生文件夹选择器（native host 调 pwsh）同样弹不出来\n"
+    "  · 符号表扫描（ripgrep）不可用\n"
+    "请去掉 --reload 启动（前端有 Vite HMR，不受影响）。"
+)
+
+
 def _display_url(host: str, port: int) -> str:
     """构造可点击的展示 URL：`0.0.0.0` / `::` 是监听通配地址，不是可导航主机名。"""
     navigable = "localhost" if host in ("0.0.0.0", "::", "") else host
@@ -82,6 +93,8 @@ def main(argv: list[str] | None = None) -> int:
 
     url = _display_url(args.host, args.port)
     print(f"DevPrompt AI 启动中 → {url}（Ctrl+C 停止）")
+    if args.reload:
+        print(RELOAD_WARNING)
     if args.open_browser:
         webbrowser.open(url)
     uvicorn.run(

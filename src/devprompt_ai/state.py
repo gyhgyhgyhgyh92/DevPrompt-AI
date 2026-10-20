@@ -72,3 +72,33 @@ async def load_or_create(
     session = FlowSession(session_id=new_session_id(), user_id=user_id, state=FlowState.INIT.value)
     await store.create(session)
     return session
+
+
+async def start_turn(store: SessionStore, user_id: str, session_id: str | None) -> FlowSession:
+    """开始新一轮（2026-10-20 多轮）：无 id 新建会话；有 id 则复用容器并重置到 INIT。
+
+    **为什么不经 transition**：状态机作用域属于 turn（MUST-07 语义调整，非新增态）。
+    DONE / ABORTED 是**上一轮 turn** 的终态，session 只是容器——容器重开一轮不需要
+    状态转移边，否则就得给 DONE 加出边，连带 SSE 关闭条件、`resume` 的已结束判定、
+    权限白名单、前端 done 视图四处假设同时失效。
+    """
+    if session_id is None:
+        return await load_or_create(store, user_id)
+    session = await store.load(session_id)
+    if session is None or session.user_id != user_id:
+        raise StateError("流程 ID 不存在", code=6003, context={"session_id": session_id})
+    current = FlowState(session.state)
+    if current not in {FlowState.DONE, FlowState.ABORTED}:
+        raise StateError(
+            "当前轮次尚未结束，不能开启新一轮",
+            code=6001,
+            context={"session_id": session_id, "state": current.value},
+        )
+    session.state = FlowState.INIT.value
+    if not await store.save(session):
+        raise StateError(
+            "会话版本冲突，拒绝写入（乐观锁）",
+            code=6001,
+            context={"session_id": session_id},
+        )
+    return session

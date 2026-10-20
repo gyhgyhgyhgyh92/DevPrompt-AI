@@ -25,6 +25,10 @@ class GenerationContext(BaseModel):
     facts_summary: str = ""
     clarifications: dict[str, str] = Field(default_factory=dict)
     conservative: bool = False
+    #: 多轮历史块（build_context 装配，已按预算裁剪且不含原句/绝对路径）
+    history_block: str = ""
+    #: L2 记忆 + 偏好投影（build_context 装配）
+    memory_block: str = ""
 
 
 class VariantDraft(BaseModel):
@@ -50,7 +54,9 @@ class MultiVariantDraft(BaseModel):
         levels = [v.level for v in self.variants]
         if len(set(levels)) != len(levels):
             raise ValueError(f"variants 存在重复档位：{levels}")
-        if frozenset(levels) not in VALID_LEVEL_SETS:
+        # 多轮（2026-10-20）：单套允许任意档位（沿用上一轮选定的方向，不越级由
+        # plan_levels 的 min(preferred, level) 保证）；多套仍必须是 MUST-28 前缀集。
+        if len(levels) > 1 and frozenset(levels) not in VALID_LEVEL_SETS:
             raise ValueError(
                 f"档位集合 {sorted(set(levels))} 不是合法可输出档位前缀集"
                 "（MUST-28：仅允许 {{A}}/{{A,B}}/{{A,B,C}}）"

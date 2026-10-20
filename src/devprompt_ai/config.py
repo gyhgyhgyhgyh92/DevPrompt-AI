@@ -17,11 +17,12 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-from devprompt_ai.common.envhint import ENV_PURPOSE, render_env_hint
-from devprompt_ai.domain.errors import ConfigurationError
+from devprompt_ai.common.envhint import ENV_PURPOSE
 from devprompt_ai.domain.model_spec import (
+    CONTEXT_ALERT_RATIO,
     NATIVE_PARAMETERS,
     apply_provider_constraints,
+    context_window_alert,
     is_value_empty,
     max_context_length_of,
 )
@@ -88,8 +89,6 @@ class AppConfig(BaseSettings):
     # 不做截断——截断检索证据会削弱召回率，直接触碰 MUST-25 硬门禁。
     max_context_length: int = 0
 
-    prefer_adapt_weight: float = 0.6
-    prefer_history_weight: float = 0.4
     prefer_hard_threshold: float = 0.5
     prefer_soft_threshold: float = 0.12
     prefer_min_confidence: float = 0.6
@@ -142,22 +141,6 @@ class AppConfig(BaseSettings):
         恢复 F-003 的「默认配置可通过」契约）。LLM 配置缺失由 `GET /health` 的
         `llm_config` 项报告——见 `interfaces/api/health.py`。
         """
-        total = self.prefer_adapt_weight + self.prefer_history_weight
-        if abs(total - 1.0) > 1e-9:
-            raise ConfigurationError(
-                render_env_hint(
-                    [
-                        (
-                            "权重配置 PREFER_ADAPT_WEIGHT + PREFER_HISTORY_WEIGHT",
-                            f"两者之和必须为 1.0，实际 {total}",
-                        )
-                    ]
-                ),
-                context={
-                    "prefer_adapt_weight": self.prefer_adapt_weight,
-                    "prefer_history_weight": self.prefer_history_weight,
-                },
-            )
 
     def effective_llm_params(self) -> dict[str, Any]:
         """本次调用实际生效的采样参数（可直接展开进 `ModelSettings`）。
@@ -218,17 +201,18 @@ class AppConfig(BaseSettings):
         `decision/fallback._fit_state`，那是 state 侧的既有行为，与本方法无关）。
 
         :param estimated_tokens: 本次请求的估算 token 数
-        :return: 超限时给出可操作的中文提示；未超限或窗口未知返回 ``None``
+        :return: 超过比例阈值时给出可操作的中文提示；未超限或窗口未知返回 ``None``
         """
         limit = self.max_context_length or max_context_length_of(
             self.llm_provider or "", self.llm_model or ""
         )
-        if limit is None or limit <= 0:
+        if limit is None or not context_window_alert(estimated_tokens, limit):
             return None
-        if estimated_tokens <= limit:
-            return None
+        percent = round(estimated_tokens / limit * 100)
         return (
-            f"本次请求估算约 {estimated_tokens} token，超出该模型上下文窗口 {limit} token；"
+            f"本次请求估算约 {estimated_tokens} token，"
+            f"达该模型上下文窗口 {limit} token 的 {percent}%"
+            f"（超过 {int(CONTEXT_ALERT_RATIO * 100)}% 阈值）；"
             f"请补充组件名或缩小检索范围以减少证据量"
         )
 

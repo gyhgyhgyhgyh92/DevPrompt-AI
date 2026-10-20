@@ -59,27 +59,6 @@ class TestLlmProblems:
         AppConfig(_env_file=None).validate()  # type: ignore[call-arg]  # 不抛即过
 
 
-class TestValidateHint:
-    def test_weight_error_gives_actionable_message(self) -> None:
-        cfg = AppConfig(prefer_adapt_weight=0.7, prefer_history_weight=0.4, _env_file=None)  # type: ignore[call-arg]
-        with pytest.raises(ConfigurationError) as exc:
-            cfg.validate()
-        text = str(exc.value)
-        assert "1.0" in text
-        assert ".env" in text, "权重错误也应告知修复入口"
-
-    def test_weight_error_never_leaks_other_values(self) -> None:
-        cfg = AppConfig(
-            prefer_adapt_weight=0.7,
-            prefer_history_weight=0.4,
-            llm_api_key="sk-secret-value-that-must-not-leak",
-            _env_file=None,  # type: ignore[call-arg]
-        )
-        with pytest.raises(ConfigurationError) as exc:
-            cfg.validate()
-        assert "sk-secret-value-that-must-not-leak" not in str(exc.value)
-
-
 class TestErrorCodeTable:
     def test_all_codes_sorted_and_unique(self) -> None:
         assert list(ALL_ERROR_CODES) == sorted(set(ALL_ERROR_CODES))

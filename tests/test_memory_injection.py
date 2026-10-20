@@ -2,7 +2,7 @@
 
 判定口径（D-6G-3）：记忆关闭导致的**行为退化**（如重复提问、生成上下文缺失该层）
 属预期行为非缺陷；仅当流程**失败**（未到 DONE / 未捕获异常）才判 FAIL。
-注入模式沿用 tests/test_service.py 的 FakeStore / FakePreferenceStore / FakeDecider /
+注入模式沿用 tests/test_service.py 的 FakeStore / FakeDecider /
 FakeGenerator（无真实 I/O）。
 """
 
@@ -14,13 +14,11 @@ from devprompt_ai.domain.generate.ports import (
     MultiVariantDraft,
     VariantDraft,
 )
-from devprompt_ai.domain.ranking.preference import INITIAL_PREFERENCE
 from devprompt_ai.memory.project_notes import read_notes
 from devprompt_ai.service import ForgeService
 from test_service import (
     FakeDecider,
     FakeGenerator,
-    FakePreferenceStore,
     FakeReader,
     FakeRunner,
     FakeStore,
@@ -46,22 +44,19 @@ class RecordingGenerator(FakeGenerator):
 
 def _service_with_generator(
     gen: GeneratePort, existing: set[str]
-) -> tuple[ForgeService, FakePreferenceStore]:
+) -> ForgeService:
     from devprompt_ai.harness.process import SymbolTableProvider
-
-    prefs = FakePreferenceStore()
     svc = ForgeService(
         cfg=AppConfig(_env_file=None),  # type: ignore[call-arg]
         decider=FakeDecider([0.9] * 7),
         sessions=FakeStore(),
-        preferences=prefs,
         runner=FakeRunner(),
         reader=FakeReader(existing),
         generator=gen,
         symbols_provider=SymbolTableProvider(FakeRunner(), ttl_seconds=0.0),
         symbols_override=_symbols(),
     )
-    return svc, prefs
+    return svc
 
 
 async def test_l1_session_memory_off_fresh_session_completes() -> None:
@@ -103,13 +98,14 @@ async def test_l2_project_notes_off_flow_completes() -> None:
     assert await read_notes("C:/repo", FakeRunner()) == []
 
     gen = RecordingGenerator()
-    svc, _ = _service_with_generator(gen, existing={"src/ui/button.tsx", "src/ui/button.test.tsx"})
+    svc = _service_with_generator(gen, existing={"src/ui/button.tsx", "src/ui/button.test.tsx"})
     snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
     assert snap.status == "done"
     assert snap.state == "DONE"
     assert snap.variants
 
-    # 生成上下文缺失 L2 层：无项目记忆字段、无 note 正文混入（压缩骨架语义，MUST-09 精神）
+    # 压缩骨架语义（MUST-09 精神）：只有摘要与记忆块，不含 L2 note 正文。
+    # 2026-10-20 多轮：新增 history_block / memory_block 两个装配结果字段。
     assert gen.contexts  # 生成确已发生
     for ctx in gen.contexts:
         dumped = ctx.model_dump()
@@ -120,44 +116,17 @@ async def test_l2_project_notes_off_flow_completes() -> None:
             "facts_summary",
             "clarifications",
             "conservative",
+            "history_block",
+            "memory_block",
         }
         assert dumped["clarifications"] == {}
-
-
-async def test_l3_preference_neutral_flow_completes() -> None:
-    """L3 偏好关闭：中性向量（全初始值）下流程完成，推荐仍由后端判定不异常。"""
-    prefs = FakePreferenceStore()  # 无任何记录 → load 返回 INITIAL_PREFERENCE 中性向量
-    svc, _ = _service(
-        existing={"src/ui/button.tsx", "src/ui/button.test.tsx"},
-        prefs=prefs,
-    )
-    snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
-    assert snap.status == "done" and snap.state == "DONE"
-    assert [v.level for v in snap.variants] == ["A", "B", "C"]
-
-    # 推荐仍由后端判定：ranking 正常产出（MUST-27/28 唯一判定位置），无异常
-    assert snap.ranking is not None
-    assert snap.ranking.variant in {"A", "B", "C"}
-    assert snap.ranking.marked in (True, False)
-    if not snap.ranking.marked:
-        assert snap.ranking.reason  # 不标也必须给具体原因（MUST-27 诚实策略）
-
-    # 中性偏好未被流程污染（无反馈不动 L3）
-    assert (await svc.get_preference("local"))[0] == INITIAL_PREFERENCE
-
-    # 「按规则不标」分支：仅 A 档（逃生保守路径）→ 跳过打分，ranking=None（MUST-28）
-    svc2, _ = _service(existing={"src/ui/button.tsx"}, prefs=FakePreferenceStore())
-    snap2 = await svc2.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r3")
-    assert snap2.status == "ask"
-    done = await svc2.escape("local", snap2.session_id, request_id="r4")
-    assert done.status == "done" and done.state == "DONE"
-    assert done.ranking is None
+        assert "note" not in dumped["memory_block"]
 
 
 async def test_multi_variant_draft_level_sets_stable_under_neutral_memory() -> None:
     """补充：三层全关（无 L1/L2、中性 L3）叠加时生成契约仍成立（MUST-28 前缀集）。"""
     gen = RecordingGenerator()
-    svc, _ = _service_with_generator(gen, existing={"src/ui/button.tsx", "src/ui/button.test.tsx"})
+    svc = _service_with_generator(gen, existing={"src/ui/button.tsx", "src/ui/button.test.tsx"})
     snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
     assert snap.status == "done"
     multi = MultiVariantDraft(variants=snap.variants)

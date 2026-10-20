@@ -69,3 +69,18 @@ class ConfigurationError(DevPromptError):
 
     def __init__(self, message: str, context: dict[str, Any] | None = None) -> None:
         super().__init__(message, code=registered(9002), context=context)
+
+
+class CatalogFetchError(DevPromptError):
+    """模型目录拉取失败（5021）：端点不支持 / 鉴权失败 / 限流 / 超时。
+
+    与其它外部依赖错误分开成类，是为了让 service 能**捕获它并回落旧列表**——
+    拉不到模型清单不是致命错误（用户已配的条目仍可用），不该冒泡成 500。
+
+    码刻意取 5021 而非 501x：5011–5015 是用户裁定的「LLM 调用失败」集合。
+    """
+
+    def __init__(
+        self, message: str, code: int = registered(5021), context: dict[str, Any] | None = None
+    ) -> None:
+        super().__init__(message, code=code, context=context)

@@ -12,29 +12,47 @@ CREATE TABLE IF NOT EXISTS forge_sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON forge_sessions (user_id);
 """
 
-# F-503 L3 双表：偏好向量（user_id 分区间，四维 REAL）+ 采纳历史（审查中等 10 补历史表）。
-PREFERENCE_DDL = """
-CREATE TABLE IF NOT EXISTS preference_vectors (
-  user_id        TEXT PRIMARY KEY,
-  detail_level   REAL NOT NULL DEFAULT 0.5,
-  include_diff   REAL NOT NULL DEFAULT 0.5,
-  specify_tests  REAL NOT NULL DEFAULT 0.5,
-  max_files_norm REAL NOT NULL DEFAULT 0.5,
-  updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+# 多轮 turn（2026-10-20）：append-only，一次 optimize 一行，状态机作用域下沉到 turn。
+# (session_id, turn_index) 唯一索引 = 乐观锁：重复提交在 DB 层被拒（MUST-15，不靠前端防抖）。
+# output_json 存方案全文，summary_json 存机器摘要——装配上下文只读摘要，正文按需懒加载，
+# 避免「全量 payload 覆盖」随轮数线性写放大。
+TURNS_DDL = """
+CREATE TABLE IF NOT EXISTS forge_turns (
+  turn_id             TEXT PRIMARY KEY,
+  session_id          TEXT NOT NULL,
+  turn_index          INTEGER NOT NULL,
+  state               TEXT NOT NULL,
+  input               TEXT NOT NULL,
+  facts_json          TEXT NOT NULL DEFAULT '[]',
+  clarifications_json TEXT NOT NULL DEFAULT '{}',
+  output_json         TEXT NOT NULL DEFAULT '[]',
+  summary_json        TEXT NOT NULL DEFAULT '{}',
+  usage_json          TEXT NOT NULL DEFAULT '{}',
+  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
-CREATE TABLE IF NOT EXISTS adoption_history (
-  id                INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id           TEXT NOT NULL,
-  session_id        TEXT NOT NULL,
-  variant           TEXT NOT NULL,
-  edited            INTEGER NOT NULL DEFAULT 0,
-  edited_text_ratio REAL NOT NULL DEFAULT 0,
-  features_json     TEXT NOT NULL,
-  created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE INDEX IF NOT EXISTS idx_adoption_history_user ON adoption_history (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_turns_session_index ON forge_turns (session_id, turn_index);
 """
 
+# L2 项目记忆（2026-10-20）：结构化真源，替代 git notes 的自由文本 blob。
+# 检索式注入：score = confidence × 90 天半衰期 × key 匹配度；命中回写 hit_count/last_hit_at
+# （判断记忆是否真的被用到的唯一客观信号）。superseded_by 指向覆盖它的新 key，不物理删除。
+PROJECT_NOTES_DDL = """
+CREATE TABLE IF NOT EXISTS project_notes (
+  project_root  TEXT NOT NULL,
+  kind          TEXT NOT NULL,
+  key           TEXT NOT NULL,
+  value         TEXT NOT NULL,
+  evidence      TEXT NOT NULL DEFAULT '',
+  confidence    REAL NOT NULL DEFAULT 0.5,
+  hit_count     INTEGER NOT NULL DEFAULT 0,
+  last_hit_at   TEXT,
+  superseded_by TEXT,
+  source        TEXT NOT NULL DEFAULT 'auto',
+  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  PRIMARY KEY (project_root, kind, key)
+);
+CREATE INDEX IF NOT EXISTS idx_notes_project ON project_notes (project_root);
+"""
 # F-604 设置持久化（T6-11）：流程参数键值表。模型服务密钥在 settings.json 文件（0600），
 # 不入库（MUST-19 修订后语义：密钥不入库、不进日志）。
 SETTINGS_DDL = """
@@ -55,5 +73,19 @@ CREATE TABLE IF NOT EXISTS forge_quarantine (
   row_json   TEXT NOT NULL,
   reason     TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+"""
+
+# 模型目录缓存（2026-10-17 动态模型目录）：按 (provider_key, base_url) 缓存最近一次
+# 拉取结果。**不含任何密钥列**——api_key 只在内存中用于本次请求（MUST-19）。
+# payload_json 存合并后的条目列表（含 source 标注），拉取失败时读它兜底，保证
+# 「刷新失败不清空已配模型」。
+MODEL_CATALOG_DDL = """
+CREATE TABLE IF NOT EXISTS model_catalog (
+  provider_key TEXT NOT NULL,
+  base_url     TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  fetched_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  PRIMARY KEY (provider_key, base_url)
 );
 """

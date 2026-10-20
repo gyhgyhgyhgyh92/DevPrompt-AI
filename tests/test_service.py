@@ -1,26 +1,34 @@
 """ForgeService 全流程测试（Fake 注入，无真实 I/O）。"""
 
-import difflib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import pytest
 
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.decision.port import (
+    AskQuestion,
     FactJudgment,
     FactProbeOutput,
     RankComponentsOutput,
     ScorePromptsOutput,
     VariantScore,
 )
-from devprompt_ai.domain.errors import StateError
+from devprompt_ai.domain.errors import DevPromptError, StateError
 from devprompt_ai.domain.generate.ports import MultiVariantDraft, VariantDraft
-from devprompt_ai.domain.models import Candidate, FactResult, FlowSession, SessionSummary, Symbol
-from devprompt_ai.domain.ranking.ports import AdoptionRecord
-from devprompt_ai.domain.ranking.preference import INITIAL_PREFERENCE
+from devprompt_ai.domain.models import (
+    Candidate,
+    FactResult,
+    FlowSession,
+    SessionSummary,
+    Symbol,
+    TurnRecord,
+    TurnStore,
+)
+from devprompt_ai.domain.progress import ActionInfo, ProgressEvent
 from devprompt_ai.domain.ranking.recommend import REASON_SMALL_GAP
+from devprompt_ai.memory.turn_store import SQLiteTurnStore
 from devprompt_ai.service import _RANK_CACHE, FlowSnapshot, ForgeService
 
 
@@ -87,12 +95,18 @@ class FakeDecider:
         if self.probe_error is not None:
             raise self.probe_error
         keys = [f.key for f in facts]
+        judgments = [
+            FactJudgment(key=k, passed=c >= 0.75, confidence=c)
+            for k, c in zip(keys, self.confs, strict=False)
+        ]
+        # 反问时机由决策层给出（2026-10-20）：只对真实缺口提问，等价旧「失败即问」
+        gaps = [
+            j.key for j, f in zip(judgments, facts, strict=False) if not (f.passed and j.passed)
+        ]
         return FactProbeOutput(
-            judgments=[
-                FactJudgment(key=k, passed=c >= 0.75, confidence=c)
-                for k, c in zip(keys, self.confs, strict=False)
-            ],
+            judgments=judgments,
             overall_confidence=sum(self.confs) / len(self.confs) if self.confs else 0.0,
+            questions=[AskQuestion(key=k, question=f"请确认 {k}") for k in gaps],
         )
 
     async def rank_components(
@@ -161,36 +175,17 @@ class FakeReader:
         return path in self.existing
 
 
-class FakePreferenceStore:
-    """内存偏好存储（PreferenceStore 最小实现，无 I/O）；fail=True 模拟存储故障。"""
+class RecordingSink:
+    """记录 progress 事件（流式端点的队列 sink 替身）。"""
 
-    def __init__(self, fail: bool = False) -> None:
-        self.vectors: dict[str, dict[str, float]] = {}
-        self.records: list[AdoptionRecord] = []
-        self.fail = fail
+    def __init__(self) -> None:
+        self.events: list[ProgressEvent] = []
 
-    async def load(self, user_id: str) -> dict[str, float]:
-        if self.fail:
-            raise RuntimeError("preference store unavailable")
-        v = self.vectors.get(user_id)
-        return dict(v) if v is not None else dict(INITIAL_PREFERENCE)
+    async def emit(self, event: ProgressEvent) -> None:
+        self.events.append(event)
 
-    async def save(self, user_id: str, vector: dict[str, float]) -> None:
-        if self.fail:
-            raise RuntimeError("preference store unavailable")
-        self.vectors[user_id] = dict(vector)
-
-    async def record_adoption(self, rec: AdoptionRecord) -> None:
-        if self.fail:
-            raise RuntimeError("preference store unavailable")
-        self.records.append(rec)
-
-    async def clear_adoptions(self, user_id: str) -> int:
-        if self.fail:
-            raise RuntimeError("preference store unavailable")
-        before = len(self.records)
-        self.records = [r for r in self.records if r.user_id != user_id]
-        return before - len(self.records)
+    def actions(self) -> list[ActionInfo]:
+        return [e.action for e in self.events if e.action is not None]
 
 
 def _symbols() -> list[Symbol]:
@@ -210,8 +205,8 @@ def _service(
     existing: set[str] | None = None,
     symbols: list[Symbol] | None = None,
     guard: int | None = None,
-    prefs: FakePreferenceStore | None = None,
     decider: FakeDecider | None = None,
+    turns: TurnStore | None = None,
 ) -> tuple[ForgeService, FakeStore]:
     from devprompt_ai.harness.process import SymbolTableProvider
 
@@ -225,12 +220,12 @@ def _service(
         cfg=cfg,
         decider=decider or FakeDecider(confs or [0.9] * 7),
         sessions=st,
-        preferences=FakePreferenceStore() if prefs is None else prefs,
         runner=FakeRunner(),
         reader=FakeReader(existing if existing is not None else {"src/ui/button.tsx"}),
         generator=FakeGenerator(),
         symbols_provider=SymbolTableProvider(FakeRunner(), ttl_seconds=0.0),
         symbols_override=symbols if symbols is not None else _symbols(),
+        turns=turns,
     )
     return svc, st
 
@@ -271,6 +266,194 @@ async def test_optimize_clean_flow_skips_asking() -> None:
     assert snap.ranking is not None
 
 
+async def test_scan_project_rejects_missing_path(tmp_path: Any) -> None:
+    """路径不存在必须带码 2001（而不是裸 500），前端才能给准确文案。"""
+    svc, _ = _service()
+    with pytest.raises(DevPromptError) as caught:
+        await svc.scan_project(str(tmp_path / "not-here"))
+    assert caught.value.code == 2001
+
+
+async def test_scan_project_counts_empty_dir(tmp_path: Any) -> None:
+    svc, _ = _service()
+    result = await svc.scan_project(str(tmp_path))
+    assert result["total_symbols"] == 0
+    assert result["total_files"] == 0
+
+
+async def test_done_appends_one_turn(tmp_path: Any) -> None:
+    """DONE 后双写一条 turn（切片 1：读路径仍走 session.payload）。"""
+    turns = SQLiteTurnStore(str(tmp_path / "turns.db"))
+    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, turns=turns)
+
+    snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+
+    assert snap.status == "done"
+    stored = await turns.list_for_session(snap.session_id)
+    assert [turn.turn_index for turn in stored] == [0]
+    assert stored[0].state == "DONE"
+    assert stored[0].output  # 方案全文已落库
+    assert stored[0].facts  # 取证件随轮次保存
+
+
+async def test_second_turn_reuses_same_session(tmp_path: Any) -> None:
+    """多轮：同一 session 内第二轮不新建会话，turn_index 递增。"""
+    turns = SQLiteTurnStore(str(tmp_path / "turns.db"))
+    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, turns=turns)
+
+    sentence1 = "把提交按钮改成 primary-500"
+    sentence2 = "把提交按钮改成 primary-600 并加禁用态"
+    first = await svc.optimize("local", ".", sentence1, request_id="r1")
+    second = await svc.optimize(
+        "local", ".", sentence2, request_id="r2", session_id=first.session_id
+    )
+
+    assert first.status == "done"
+    assert second.session_id == first.session_id
+    stored = await turns.list_for_session(first.session_id)
+    assert [turn.turn_index for turn in stored] == [0, 1]
+    assert stored[1].input == sentence2
+
+
+async def test_duplicate_turn_index_rejected(tmp_path: Any) -> None:
+    """唯一索引即乐观锁：同一 (session, index) 被占时重复提交返回 6001。"""
+    turns = SQLiteTurnStore(str(tmp_path / "turns.db"))
+    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, turns=turns)
+
+    first = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+    # 人为占用下一轮的序号，模拟并发请求已抢到锁
+    await turns.append(
+        TurnRecord(
+            turn_id="dup",
+            session_id=first.session_id,
+            turn_index=1,
+            state="INIT",
+            input="另一个并发请求",
+        )
+    )
+
+    with pytest.raises(StateError) as caught:
+        await svc.optimize(
+            "local", ".", "把提交按钮改成 primary-600", request_id="r2", session_id=first.session_id
+        )
+    assert caught.value.code == 6001
+
+
+async def test_second_turn_offers_single_variant(tmp_path: Any) -> None:
+    """首轮三套（方向未定），第二轮收敛为单套且不算分差（MUST-28）。"""
+    turns = SQLiteTurnStore(str(tmp_path / "turns.db"))
+    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, turns=turns)
+
+    first = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+    second = await svc.optimize(
+        "local", ".", "把提交按钮改成 primary-600", request_id="r2", session_id=first.session_id
+    )
+
+    assert len(first.variants) == 3
+    assert len(second.variants) == 1
+    assert second.ranking is None
+
+
+async def test_direction_conflict_reopens_three_variants(tmp_path: Any) -> None:
+    """用户表达方向性分歧时，第二轮重新展开三套。"""
+    turns = SQLiteTurnStore(str(tmp_path / "turns.db"))
+    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, turns=turns)
+
+    first = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+    second = await svc.optimize(
+        "local",
+        ".",
+        "推翻刚才的方案，换个方向重做提交按钮",
+        request_id="r2",
+        session_id=first.session_id,
+    )
+
+    assert len(second.variants) == 3
+
+
+async def test_cannot_start_turn_while_previous_running(tmp_path: Any) -> None:
+    """上一轮还在反问（ASKING）时不允许开新一轮。"""
+    turns = SQLiteTurnStore(str(tmp_path / "turns.db"))
+    svc, _ = _service(turns=turns)
+
+    first = await svc.optimize("local", ".", "第一轮", request_id="r1")
+    assert first.status == "ask"
+
+    with pytest.raises(StateError) as caught:
+        await svc.optimize("local", ".", "第二轮", request_id="r2", session_id=first.session_id)
+    assert caught.value.code == 6001
+
+
+async def test_unknown_session_on_optimize_raises_6003(tmp_path: Any) -> None:
+    svc, _ = _service(turns=SQLiteTurnStore(str(tmp_path / "turns.db")))
+    with pytest.raises(StateError) as caught:
+        await svc.optimize("local", ".", "x", request_id="r1", session_id="missing")
+    assert caught.value.code == 6003
+
+
+async def test_ask_turn_is_recorded_in_asking_state(tmp_path: Any) -> None:
+    """反问分支也落一轮（state=ASKING），历史页才能显示「第 N 轮 · 进行中」。"""
+    turns = SQLiteTurnStore(str(tmp_path / "turns.db"))
+    svc, _ = _service(turns=turns)
+
+    snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+
+    assert snap.status == "ask"
+    stored = await turns.list_for_session(snap.session_id)
+    assert [turn.state for turn in stored] == ["ASKING"]
+
+
+async def test_turn_write_failure_does_not_break_flow(tmp_path: Any) -> None:
+    """双写是旁路：存储故障不得让已完成的流程失败。"""
+
+    class ExplodingTurns(SQLiteTurnStore):
+        async def append(self, turn: Any) -> None:
+            raise RuntimeError("disk full")
+
+    svc, _ = _service(
+        existing={"src/ui/button.tsx", "src/ui/button.test.tsx"},
+        turns=ExplodingTurns(str(tmp_path / "turns.db")),
+    )
+
+    snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+
+    assert snap.status == "done"
+
+
+async def test_progress_events_carry_phase() -> None:
+    """思考事件必须带阶段标签，前端才能把过程挂到对应步骤下（2026-10-20）。"""
+    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"})
+    sink = RecordingSink()
+
+    await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1", progress=sink)
+
+    phases = [event.phase for event in sink.events if event.text]
+    assert "RETRIEVING" in phases
+    assert "GENERATING" in phases
+    assert all(
+        phase in {"INIT", "RETRIEVING", "PROBING", "ASKING", "CONFIRMING", "GENERATING", "RANKING"}
+        for phase in phases
+    )
+
+
+async def test_progress_reports_real_tool_actions() -> None:
+    """流式请求要把真实的 rg / 读文件上报成卡片，且详情不含项目绝对路径（MUST-19）。"""
+    svc, _ = _service()
+    sink = RecordingSink()
+
+    await svc.optimize(
+        "local", "D:/proj", "把提交按钮改成 primary-500", request_id="r1", progress=sink
+    )
+
+    actions = sink.actions()
+    assert actions, "流式请求必须上报动作卡片"
+    assert all("D:/proj" not in action.detail for action in actions)
+    assert all("route-key" not in action.detail for action in actions)
+    titles = {action.title for action in actions}
+    assert "读取文件" in titles
+    assert titles & {"检索符号", "定位符号定义"}
+
+
 async def test_escape_rounds_to_conservative() -> None:
     svc, _ = _service(confs=[0.9, 0.9, 0.1, 0.9, 0.9, 0.9, 0.9])
     snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
@@ -309,75 +492,6 @@ async def test_manual_required_path() -> None:
 # ---- F-603/F-503 feedback 接入 L3（开放决策 #1 定稿合成语义）----
 
 
-async def test_feedback_adoption_updates_l3_vector() -> None:
-    prefs = FakePreferenceStore()
-    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, prefs=prefs)
-    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
-    assert snap.status == "done"
-    await svc.feedback("local", snap.session_id, "accept", variant="C", request_id="r2")
-    pref = (await svc.get_preference("local"))[0]
-    # EMA 10% 步进：0.5 + 0.1×(0.9−0.5) = 0.54；max_files_norm: 0.5 + 0.1×(1.0−0.5) = 0.55
-    assert pref["detail_level"] == pytest.approx(0.54, abs=1e-9)
-    assert pref["max_files_norm"] == pytest.approx(0.55, abs=1e-9)
-    assert len(prefs.records) == 1  # 采纳历史入库（F-503 adoption_history）
-    assert prefs.records[0].variant == "C" and prefs.records[0].edited is False
-
-
-async def test_feedback_edited_adoption_weaker_than_direct() -> None:
-    # 会话 variant body="b"（FakeGenerator）；编辑稿 "b!!!" → 相似度 0.4 → 占比 0.6 → 强度 0.4
-    direct_svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"})
-    direct = await direct_svc.optimize("local", ".", "改提交按钮", request_id="r1")
-    await direct_svc.feedback("local", direct.session_id, "accept", variant="C", request_id="r2")
-    pref_direct = (await direct_svc.get_preference("local"))[0]
-
-    edited_svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"})
-    edited = await edited_svc.optimize("local", ".", "改提交按钮", request_id="r1")
-    await edited_svc.feedback(
-        "local", edited.session_id, "accept", variant="C", edited_text="b!!!", request_id="r2"
-    )
-    pref_edited = (await edited_svc.get_preference("local"))[0]
-
-    assert 0.5 < pref_edited["detail_level"] < pref_direct["detail_level"]  # 同向但弱于直接采纳
-    sim = difflib.SequenceMatcher(None, "b", "b!!!").ratio()  # 相似度 0.4 → 占比 0.6 → 强度 0.4
-    assert pref_edited["detail_level"] == pytest.approx(
-        0.5 + 0.1 * (1 - (1 - sim)) * (0.9 - 0.5),
-        abs=1e-9,  # 强度 = 1 − 占比 = sim
-    )
-
-
-async def test_feedback_skip_regresses_toward_neutral() -> None:
-    prefs = FakePreferenceStore()
-    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, prefs=prefs)
-    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
-    await svc.feedback("local", snap.session_id, "accept", variant="C", request_id="r2")
-    await svc.feedback("local", snap.session_id, "skip", request_id="r3")  # 两者皆无 = 跳过
-    pref = (await svc.get_preference("local"))[0]
-    # 0.54 + (0.5−0.54)×0.3 = 0.528（开放决策 #1：趋向中性，独立规则不经 EMA）
-    assert pref["detail_level"] == pytest.approx(0.528, abs=1e-9)
-    assert len(prefs.records) == 1  # 跳过无采纳，不追加历史
-
-
-async def test_feedback_unknown_variant_raises() -> None:
-    svc, _ = _service()
-    bad: str = "X"  # 故意传入非法档位：服务层运行时防线（HTTP 层契约校验前的最后闸门）
-    with pytest.raises(ValueError, match="未知方案档位"):
-        await svc.feedback(
-            "local",
-            "s1",
-            "accept",
-            variant=bad,  # type: ignore[arg-type]  # 故意违约：服务层运行时防线
-            request_id="r1",
-        )
-
-
-async def test_feedback_store_failure_swallowed() -> None:
-    prefs = FakePreferenceStore(fail=True)
-    svc, _ = _service(prefs=prefs)
-    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
-    await svc.feedback("local", snap.session_id, "accept", variant="C", request_id="r2")  # 不上抛
-    await svc.feedback("local", snap.session_id, "skip", request_id="r3")  # 不上抛
-
-
 async def test_missing_session_raises_6003() -> None:
     svc, _ = _service()
     with pytest.raises(StateError) as ei:
@@ -392,20 +506,6 @@ async def test_wrong_state_raises_6001() -> None:
     with pytest.raises(StateError) as ei:
         await svc.ask_followup("local", snap.session_id, {}, request_id="r2")
     assert ei.value.code == 6001
-
-
-async def test_get_preference_initial_vector() -> None:
-    svc, _ = _service()
-    pref = (await svc.get_preference("local"))[0]
-    assert pref == {
-        "detail_level": 0.5,
-        "include_diff": 0.5,
-        "specify_tests": 0.5,
-        "max_files_norm": 0.5,
-    }
-
-
-# ---- 5F：RANKING 编排 / 降级 / 缓存（阶段五）----
 
 
 class RecordingStore(FakeStore):
@@ -466,25 +566,6 @@ async def test_rank_components_cache_hits_on_same_input() -> None:
     assert decider.rank_calls == 1
 
 
-async def test_feedback_edited_full_chain_updates_vector() -> None:
-    # 全链：clean 流程三套 → feedback(accept, variant, edited_text) → L3 向量按强度移动
-    prefs = FakePreferenceStore()
-    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, prefs=prefs)
-    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
-    assert [v.level for v in snap.variants] == ["A", "B", "C"]
-    await svc.feedback(
-        "local", snap.session_id, "accept", variant="C", edited_text="b!!!", request_id="r2"
-    )
-    pref = (await svc.get_preference("local"))[0]
-    sim = difflib.SequenceMatcher(None, "b", "b!!!").ratio()  # 0.4 → 占比 0.6 → 强度 0.4
-    assert pref["detail_level"] == pytest.approx(0.5 + 0.1 * sim * (0.9 - 0.5), abs=1e-9)
-    assert len(prefs.records) == 1
-    assert prefs.records[0].variant == "C" and prefs.records[0].edited is True
-
-
-# ---------- T6-11 转正与 F-604 设置（6A） ----------
-
-
 async def test_snapshot_carries_target_and_facts() -> None:
     """上下文面板数据源（设计 §1.2）：快照只读透出目标定位与取证事实（additive 契约）。"""
     svc, _ = _service()
@@ -495,17 +576,6 @@ async def test_snapshot_carries_target_and_facts() -> None:
     assert snap.target.line == 12
     assert snap.facts  # 取证事实非空
     assert all(f.key and f.evidence for f in snap.facts)
-
-
-async def test_set_preference_clips_out_of_range() -> None:
-    """PUT /preference 转正：部分更新 + clip01（超界截断而非拒绝），未知维度快速失败。"""
-    svc, _ = _service()
-    updated = await svc.set_preference("local", {"detail_level": 1.5, "specify_tests": -0.2})
-    assert updated["detail_level"] == 1.0  # 超上界截断
-    assert updated["specify_tests"] == 0.0  # 超下界截断
-    assert updated["include_diff"] == 0.5  # 未提及维度保持
-    with pytest.raises(ValueError, match="未知偏好维度"):
-        await svc.set_preference("local", {"nope": 0.5})
 
 
 async def test_list_history_returns_summaries() -> None:
@@ -618,22 +688,6 @@ async def test_failed_ask_followup_aborts_session() -> None:
     assert store.items[snap.session_id].state == "ABORTED"
 
 
-async def test_clear_adoption_history_only_own_records() -> None:
-    """D-6F-4：服务端清空采纳历史——仅本用户分区，返回清空条数，向量不动。"""
-    prefs = FakePreferenceStore()
-    svc, _ = _service(prefs=prefs)
-    await svc.feedback("local", "s1", "accept", variant="B", request_id="r1")
-    await svc.feedback("local", "s2", "accept", variant="C", request_id="r2")
-    await svc.feedback("other", "s3", "accept", variant="A", request_id="r3")
-    before = (await svc.get_preference("local"))[0]
-
-    cleared = await svc.clear_adoption_history("local")
-    assert cleared == 2
-    assert [r.user_id for r in prefs.records] == ["other"]  # 他人分区不受影响
-    assert (await svc.get_preference("local"))[0] == before  # 偏好向量不动
-    assert await svc.clear_adoption_history("local") == 0  # 幂等：再次清空 0 条
-
-
 async def test_update_settings_carries_provider(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -659,35 +713,40 @@ async def test_update_settings_carries_provider(
 async def test_settings_models_registry_roundtrip_and_activation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """整表写入 + 激活整条生效：视图脱敏/is_active 正确；激活后运行配置与落盘镜像该条目。"""
+    """整表写入 + 激活整条生效：视图脱敏/is_active 正确；激活后运行配置与落盘镜像该条目。
+
+    2026-10-18 供应商中心化：端点与密钥改由 `provider_configs` 提供，条目只引用。
+    """
     monkeypatch.setenv("DEVPROMPT_SETTINGS_FILE", str(tmp_path / "settings.json"))
     monkeypatch.setenv("DEVPROMPT_SETTINGS_DB", str(tmp_path / "settings.db"))
     svc, _ = _service()
 
     view = await svc.update_settings(
         {
-            "models": [
+            "provider_configs": [
                 {
-                    "label": "A",
+                    "id": "p-a",
                     "provider": "DeepSeek",
                     "base_url": "https://a.example",
                     "api_key": "sk-aaaa-1234567890",
-                    "model_id": "deepseek-flash",
                 },
                 {
-                    "label": "B",
+                    "id": "p-b",
                     "provider": "OpenAI 兼容",
                     "base_url": "https://b.example",
                     "api_key": "sk-bbbb-1234567890",
-                    "model_id": "gpt-x",
                 },
+            ],
+            "models": [
+                {"provider_id": "p-a", "model_id": "deepseek-flash"},
+                {"provider_id": "p-b", "model_id": "gpt-x"},
             ],
             "active_model_id": "",
         }
     )
     assert len(view["models"]) == 2
     assert all(m["is_active"] is False for m in view["models"])  # 未指定激活位
-    assert view["models"][0]["api_key_masked"] == "sk-••••7890"
+    assert view["provider_configs"][0]["api_key_masked"] == "sk-••••7890"
     assert "sk-aaaa-1234567890" not in str(view)  # 回显恒脱敏（MUST-19）
 
     first_id = view["models"][0]["id"]
@@ -706,46 +765,84 @@ async def test_settings_models_registry_roundtrip_and_activation(
     assert read_model_settings()["model_id"] == "gpt-x"  # 镜像已落盘
 
 
-async def test_settings_models_api_key_retention_and_label_default(
+async def test_settings_provider_delete_cascades_entries(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """同 id 条目 api_key 留空=沿用旧密钥；label 留空按 provider · model_id 派生。"""
+    """删除供应商 → 其下条目一并消失（用户裁定的级联语义）。"""
+    from devprompt_ai.memory.settings_store import read_model_registry
+
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_FILE", str(tmp_path / "settings.json"))
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_DB", str(tmp_path / "settings.db"))
+    svc, _ = _service()
+
+    await svc.update_settings(
+        {
+            "provider_configs": [
+                {"id": "p-a", "provider": "DeepSeek", "base_url": "https://a", "api_key": "sk-a"},
+                {"id": "p-b", "provider": "DeepSeek", "base_url": "https://b", "api_key": "sk-b"},
+            ],
+            "models": [
+                {"provider_id": "p-a", "model_id": "deepseek-flash"},
+                {"provider_id": "p-b", "model_id": "deepseek-v4-pro"},
+            ],
+        }
+    )
+    assert len(read_model_registry()["models"]) == 2
+
+    # 权威列表里去掉 p-b → 供应商与其条目都被删除
+    view = await svc.update_settings(
+        {
+            "provider_configs": [
+                {"id": "p-a", "provider": "DeepSeek", "base_url": "https://a", "api_key": ""}
+            ],
+            "models": [{"provider_id": "p-a", "model_id": "deepseek-flash"}],
+        }
+    )
+    assert [r["id"] for r in view["provider_configs"]] == ["p-a"]
+    assert [m["model_id"] for m in view["models"]] == ["deepseek-flash"]
+
+
+async def test_settings_models_api_key_retention(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """同 id 供应商 api_key 留空=沿用旧密钥（2026-10-18 起密钥只存供应商段）。"""
     monkeypatch.setenv("DEVPROMPT_SETTINGS_FILE", str(tmp_path / "settings.json"))
     monkeypatch.setenv("DEVPROMPT_SETTINGS_DB", str(tmp_path / "settings.db"))
     svc, _ = _service()
 
     view = await svc.update_settings(
         {
-            "models": [
+            "provider_configs": [
                 {
+                    "id": "p-1",
                     "provider": "DeepSeek",
                     "base_url": "https://a.example",
                     "api_key": "sk-keep-1234567890",
-                    "model_id": "deepseek-chat",
                 }
-            ]
+            ],
+            "models": [{"provider_id": "p-1", "model_id": "deepseek-chat"}],
         }
     )
     entry = view["models"][0]
-    assert entry["label"] == "DeepSeek · deepseek-chat"  # label 派生
-    assert entry["api_key_masked"] == "sk-••••7890"
+    assert entry["model_id"] == "deepseek-chat"
+    assert view["provider_configs"][0]["api_key_masked"] == "sk-••••7890"
 
     # 第二次整表替换：同 id 且 api_key 为空 → 密钥保留
     view2 = await svc.update_settings(
         {
-            "models": [
+            "provider_configs": [
                 {
-                    "id": entry["id"],
-                    "label": "改名",
+                    "id": "p-1",
                     "provider": "DeepSeek",
                     "base_url": "https://a2.example",
-                    "model_id": "deepseek-chat",
+                    "api_key": "",
                 }
-            ]
+            ],
+            "models": [{"id": entry["id"], "provider_id": "p-1", "model_id": "deepseek-chat"}],
         }
     )
-    assert view2["models"][0]["label"] == "改名"
-    assert view2["models"][0]["api_key_masked"] == "sk-••••7890"
+    assert view2["provider_configs"][0]["base_url"] == "https://a2.example"
+    assert view2["provider_configs"][0]["api_key_masked"] == "sk-••••7890"
 
 
 async def test_settings_empty_registry_leaves_model_service_untouched(
@@ -860,65 +957,3 @@ async def test_rename_session_cas_conflict_twice_raises_6003() -> None:
     with pytest.raises(StateError) as ei:
         await svc.rename_session("local", snap.session_id, "t")
     assert ei.value.code == 6003
-
-
-# ---------- 目录浏览（GET /project/browse） ----------
-
-
-async def test_browse_directory_empty_returns_drives(monkeypatch: pytest.MonkeyPatch) -> None:
-    """空 path：驱动器列表透传（path 空串 + parent None，由 harness 探测）。"""
-    import devprompt_ai.service as service_module
-    from devprompt_ai.harness.browse import BrowseEntry, BrowseListing
-
-    async def _fake_drives() -> BrowseListing:
-        return BrowseListing(path="", parent=None, entries=(BrowseEntry(name="C:\\", path="C:\\"),))
-
-    monkeypatch.setattr(service_module, "list_drives", _fake_drives)
-    svc, _ = _service()
-    listing = await svc.browse_directory("")
-    assert listing.path == ""
-    assert listing.parent is None
-    assert [e.path for e in listing.entries] == ["C:\\"]
-
-
-async def test_browse_directory_lists_subdirs(tmp_path: Path) -> None:
-    """真实目录：仅列子目录（文件不出现），路径为规范化绝对路径，携带上级与修改时间。"""
-    (tmp_path / "alpha").mkdir()
-    (tmp_path / "beta").mkdir()
-    (tmp_path / "note.txt").write_text("x", encoding="utf-8")
-    svc, _ = _service()
-    listing = await svc.browse_directory(str(tmp_path))
-    assert listing.path == str(tmp_path)
-    assert [e.name for e in listing.entries] == ["alpha", "beta"]
-    assert listing.parent is not None
-
-
-async def test_browse_directory_query_passthrough(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """query 透传（F-601 递归搜索）：非空 query 交由 harness 搜索路径，返回其响应。"""
-    import devprompt_ai.service as service_module
-    from devprompt_ai.harness.browse import BrowseListing
-
-    captured: list[tuple[str, str]] = []
-
-    async def _fake_list(path: str, query: str = "") -> BrowseListing:
-        captured.append((path, query))
-        return BrowseListing(path=path, parent=None)
-
-    monkeypatch.setattr(service_module, "list_subdirectories", _fake_list)
-    svc, _ = _service()
-    await svc.browse_directory(str(tmp_path), "wo")
-    assert captured == [(str(tmp_path), "wo")]
-
-
-async def test_browse_directory_missing_raises_2001(tmp_path: Path) -> None:
-    """不存在路径：RetrievalError 2001，错误消息不含路径本体（MUST-19）。"""
-    from devprompt_ai.domain.errors import RetrievalError
-
-    missing = str(tmp_path / "not-exist-dir")
-    svc, _ = _service()
-    with pytest.raises(RetrievalError) as err:
-        await svc.browse_directory(missing)
-    assert err.value.code == 2001
-    assert missing not in str(err.value)

@@ -21,7 +21,7 @@ from devprompt_ai.domain.generate.ports import (
     MultiVariantDraft,
     VariantDraft,
 )
-from devprompt_ai.domain.generate.variants import expand_levels, resolve_level
+from devprompt_ai.domain.generate.variants import expand_levels, plan_levels, resolve_level
 from devprompt_ai.harness import llm as llm_mod
 from devprompt_ai.harness.llm import LLMGenerator
 
@@ -88,7 +88,6 @@ def test_multi_variant_draft_accepts_valid_prefix_sets() -> None:
     [
         pytest.param([], id="n-0"),
         pytest.param(["A", "A"], id="n-2-dup"),
-        pytest.param(["B"], id="skip-B"),
         pytest.param(["A", "C"], id="skip-AC"),
         pytest.param(["B", "C"], id="skip-BC"),
         pytest.param(["A", "B", "A", "C"], id="n-4"),
@@ -364,3 +363,20 @@ async def test_generate_variants_raises_after_second_parse_failure(
 
     assert exc_info.value.code == 4003
     assert len(calls) == 2  # 只重试一次，不无限重试
+
+
+class TestPlanLevels:
+    """多轮产物形态（2026-10-20）：首轮三套、后续单套且不越级。"""
+
+    def test_three_versions_follow_prefix(self) -> None:
+        assert plan_levels("B", max_versions=3) == ["A", "B"]
+
+    def test_single_version_prefers_previous_choice(self) -> None:
+        assert plan_levels("C", max_versions=1, preferred="B") == ["B"]
+
+    def test_single_version_never_exceeds_turn_level(self) -> None:
+        """上一轮选了 C，但本轮取证不完整（level=A）→ 只能出 A（MUST-28 不越级）。"""
+        assert plan_levels("A", max_versions=1, preferred="C") == ["A"]
+
+    def test_single_version_without_preference_uses_current(self) -> None:
+        assert plan_levels("C", max_versions=1) == ["C"]

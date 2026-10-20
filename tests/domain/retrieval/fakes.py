@@ -12,6 +12,7 @@ class FakeCommandRunner(CommandRunner):
     def __init__(self, routes: dict[tuple[str, str], str]) -> None:
         self._routes = routes
         self.calls: list[list[str]] = []
+        self.cwds: list[str | None] = []
 
     async def run(
         self,
@@ -22,6 +23,7 @@ class FakeCommandRunner(CommandRunner):
         cwd: str | None = None,
     ) -> str:
         self.calls.append(args)
+        self.cwds.append(cwd)
         word = args[0] if args else ""
         key = next((a.split("=", 1)[1] for a in args if a.startswith("--route-key=")), "")
         return self._routes.get((word, key), "")

@@ -25,15 +25,20 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "state.truncated",
         "followup.guardrail",
         "followup.escaped",
+        "followup.task_kind",
+        "followup.question_lint",
         "cache.hit",
         "cache.miss",
         "startup.repair",
         "settings.updated",
+        "model_catalog.refreshed",
+        "model_catalog.refresh_failed",
     }
 )
-"""SHOULD-08 固定事件名全集（十一名；made/skipped 同族计一项）。emit 之外的诊断日志用普通logging。
+"""SHOULD-08 固定事件名全集（十三名；made/skipped 同族计一项）。emit 之外的诊断日志用普通logging。
 
 2026-10-15 移除「决策层切换」事件：决策层统一为单一 LLM 实现（无降级切换），该事件已无发射点。
+2026-10-17 新增模型目录两事件：刷新成功（含模型条数）/ 刷新失败（回落旧快照）。
 """
 
 _telemetry_enabled = True
@@ -60,6 +65,14 @@ def emit(event: str, **fields: object) -> None:
     if not _telemetry_enabled:
         return
     logger.info(event, extra=dict(fields))
+
+
+def emit_warning(event: str, **fields: object) -> None:
+    """警告级固定事件（如提问形态不合规）：不是异常，不带堆栈。"""
+    _check_event(event)
+    if not _telemetry_enabled:
+        return
+    logger.warning(event, extra=dict(fields))
 
 
 def emit_error(event: str, **fields: object) -> None:

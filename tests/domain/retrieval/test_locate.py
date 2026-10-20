@@ -26,6 +26,21 @@ _ROUTES = {
 }
 
 
+async def test_definition_search_runs_from_project_root() -> None:
+    """rg 必须以项目根为 cwd：进程 cwd 是本工具仓库，`--glob 相对路径` 否则永不命中。
+
+    真实故障（2026-10-19）：不传 cwd 时定义行号恒为 0、七项取证集体「未找到」，
+    用户在反问卡里看到 5 个无从回答的未知项。
+    """
+    runner = FakeCommandRunner(_ROUTES)
+    # root 非 "." 时读文件要拼绝对路径（FileReader 侧的正确行为，本次不变）
+    reader = FakeFileReader({"D:/proj/src/ui/Button.tsx": _FILE})
+
+    await locate_symbol(_SYM, runner, reader, root="D:/proj")
+
+    assert runner.cwds == ["D:/proj"]
+
+
 async def test_locate_returns_definition_selectors_tokens_tests() -> None:
     runner = FakeCommandRunner(_ROUTES)
     reader = FakeFileReader({"src/ui/Button.tsx": _FILE, "src/ui/Button.test.tsx": "it works"})

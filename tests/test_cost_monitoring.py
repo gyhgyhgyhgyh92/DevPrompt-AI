@@ -16,6 +16,7 @@ import pytest
 from devprompt_ai.common.cost import add_llm_tokens, take_llm_tokens
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.decision.port import (
+    AskQuestion,
     FactJudgment,
     FactProbeOutput,
     RankComponentsOutput,
@@ -35,8 +36,6 @@ from devprompt_ai.domain.models import (
     SessionSummary,
     Symbol,
 )
-from devprompt_ai.domain.ranking.ports import AdoptionRecord, PreferenceStore
-from devprompt_ai.domain.ranking.preference import INITIAL_PREFERENCE
 from devprompt_ai.harness.process import SymbolTableProvider
 from devprompt_ai.interfaces.api import routes
 from devprompt_ai.service import _RANK_CACHE, CostBreakdown, FlowSnapshot, ForgeService
@@ -84,12 +83,18 @@ class FakeDecider:
 
     async def probe_facts(self, sentence: str, facts: list[FactResult]) -> FactProbeOutput:
         add_llm_tokens(self.tokens_per_call)
+        judgments = [
+            FactJudgment(key=f.key, passed=c >= 0.75, confidence=c)
+            for f, c in zip(facts, self.confs, strict=False)
+        ]
+        # 反问时机由决策层给出（2026-10-20）：只对真实缺口提问，等价旧行为
+        gaps = [
+            j.key for j, f in zip(judgments, facts, strict=False) if not (f.passed and j.passed)
+        ]
         return FactProbeOutput(
-            judgments=[
-                FactJudgment(key=f.key, passed=c >= 0.75, confidence=c)
-                for f, c in zip(facts, self.confs, strict=False)
-            ],
+            judgments=judgments,
             overall_confidence=sum(self.confs) / len(self.confs) if self.confs else 0.0,
+            questions=[AskQuestion(key=k, question=f"请确认 {k}") for k in gaps],
         )
 
     async def rank_components(
@@ -166,26 +171,6 @@ class FakeReader:
         return path in self.existing
 
 
-class FakePreferenceStore:
-    """内存偏好存储（PreferenceStore 最小实现，无 I/O）。"""
-
-    def __init__(self) -> None:
-        self.vectors: dict[str, dict[str, float]] = {}
-
-    async def load(self, user_id: str) -> dict[str, float]:
-        vector = self.vectors.get(user_id)
-        return dict(vector) if vector is not None else dict(INITIAL_PREFERENCE)
-
-    async def save(self, user_id: str, vector: dict[str, float]) -> None:
-        self.vectors[user_id] = dict(vector)
-
-    async def record_adoption(self, rec: AdoptionRecord) -> None:
-        return None
-
-    async def clear_adoptions(self, user_id: str) -> int:
-        return 0
-
-
 def _symbols() -> list[Symbol]:
     return [
         Symbol(name="SubmitButton", path="src/ui/button.tsx", line=12, kind="function"),
@@ -202,13 +187,11 @@ def _service(
 ) -> tuple[ForgeService, FakeStore]:
     cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
     store = FakeStore()
-    prefs: PreferenceStore = FakePreferenceStore()
     svc = ForgeService(
         cfg=cfg,
         # 决策层为单一 LLM 实现（2026-10-15）：其调用与实际用量一并入 llm 桶
         decider=FakeDecider([0.9] * 7, decision_tokens_per_call),
         sessions=store,
-        preferences=prefs,
         runner=FakeRunner(),
         reader=FakeReader(
             existing if existing is not None else {"src/ui/button.tsx", "src/ui/button.test.tsx"}

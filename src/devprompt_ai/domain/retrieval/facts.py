@@ -22,6 +22,15 @@ def _ev(raw: str) -> str:
     return raw[:_EVIDENCE_LIMIT] if raw else "未找到"
 
 
+def _rg_cwd(root: str) -> str | None:
+    """rg 必须从**项目根**起搜。
+
+    进程 cwd 是本工具自身仓库，而 `--glob` 用的是目标项目的相对路径——不传 cwd 时
+    永远匹配不到，七项取证会集体误判为「未找到」（真实用户实测的 5 项反问即由此而来）。
+    """
+    return None if root in (".", "") else root
+
+
 async def verify_facts(
     location: CodeLocation,
     sentence: str,
@@ -51,6 +60,7 @@ async def verify_facts(
     out = await runner.run(
         ["rg", "--fixed-strings", "-n", name, "--glob", path, ".", f"--route-key=symbol:{path}"],
         allowed_exit_codes=_RG_ALLOWED,
+        cwd=_rg_cwd(root),
     )
     sym_hit = next((line for line in out.splitlines() if name in line), "")
     results.append(FactResult("symbol_in_file", bool(sym_hit), _ev(sym_hit)))
@@ -63,6 +73,9 @@ async def verify_facts(
                 "rg",
                 "--fixed-strings",
                 "-n",
+                # token 形如 --color-primary-500，直接当位置参数会被 rg 当成命令行选项
+                # （实测 rg: unrecognized flag），必须用 -e 显式声明「这是模式」
+                "-e",
                 token,
                 "--glob",
                 "*.css",
@@ -70,6 +83,7 @@ async def verify_facts(
                 f"--route-key=tokdef:{token}",
             ],
             allowed_exit_codes=_RG_ALLOWED,
+            cwd=_rg_cwd(root),
         )
         if token
         else ""
@@ -81,6 +95,7 @@ async def verify_facts(
     out = await runner.run(
         ["rg", "-n", "data-testid", "--glob", path, ".", f"--route-key=testid:{path}"],
         allowed_exit_codes=_RG_ALLOWED,
+        cwd=_rg_cwd(root),
     )
     tid = next((line for line in out.splitlines() if "data-testid" in line), "")
     results.append(FactResult("has_data_testid", bool(tid), _ev(tid)))
@@ -102,6 +117,7 @@ async def verify_facts(
             f"--route-key=states:{path}",
         ],
         allowed_exit_codes=_RG_ALLOWED,
+        cwd=_rg_cwd(root),
     )
     st = next(
         (

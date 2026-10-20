@@ -7,7 +7,7 @@
 
 断言（F-804 验收）：
 ① 三套方案正文逐套 diff 为空；
-② ranking 视图 fit/pref/total/confidence/gap/marked/reason 七字段逐字段相等。
+② ranking 视图 fit/total/confidence/gap/marked/reason 六字段逐字段相等。
 
 F-804 豁免：决策层与生成器输出均为**确定性 fake**（不调用真实 LLM），故结果可复现。
 本文件仅测试，不改动生产代码；fake 严格按 Protocol 签名实现（MUST-06 单向依赖）。
@@ -27,6 +27,7 @@ import pytest
 
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.decision.port import (
+    AskQuestion,
     FactJudgment,
     FactProbeOutput,
     RankComponentsOutput,
@@ -46,8 +47,6 @@ from devprompt_ai.domain.models import (
     SessionSummary,
     Symbol,
 )
-from devprompt_ai.domain.ranking.ports import AdoptionRecord
-from devprompt_ai.domain.ranking.preference import INITIAL_PREFERENCE
 from devprompt_ai.harness.process import SymbolTableProvider
 from devprompt_ai.interfaces.api import routes
 from devprompt_ai.interfaces.api.app import create_app
@@ -56,7 +55,6 @@ from devprompt_ai.service import _RANK_CACHE, ForgeService
 # F-804 ②：ranking 视图需逐字段对照的七字段（variant 不在比对项内）。
 _RANKING_FIELDS: tuple[str, ...] = (
     "fit",
-    "pref",
     "total",
     "confidence",
     "gap",
@@ -94,25 +92,6 @@ class FakeStore:
         return self.items.pop(session_id, None) is not None
 
 
-class FakePreferenceStore:
-    """PreferenceStore 最小内存实现（无历史 → 恒返回中性初始向量）。"""
-
-    def __init__(self) -> None:
-        self.vectors: dict[str, dict[str, float]] = {}
-
-    async def load(self, user_id: str) -> dict[str, float]:
-        return dict(self.vectors.get(user_id, INITIAL_PREFERENCE))
-
-    async def save(self, user_id: str, vector: dict[str, float]) -> None:
-        self.vectors[user_id] = dict(vector)
-
-    async def record_adoption(self, rec: AdoptionRecord) -> None:  # pragma: no cover - 未触达
-        return None
-
-    async def clear_adoptions(self, user_id: str) -> int:  # pragma: no cover - 未触达
-        return 0
-
-
 class FixedDecider:
     """DecisionPort 确定性实现：rank 恒等序、probe/score 固定值（固定种子）。"""
 
@@ -133,12 +112,18 @@ class FixedDecider:
 
     async def probe_facts(self, sentence: str, facts: list[FactResult]) -> FactProbeOutput:
         keys = [f.key for f in facts]
+        judgments = [
+            FactJudgment(key=k, passed=c >= 0.75, confidence=c)
+            for k, c in zip(keys, self.confs, strict=False)
+        ]
+        # 反问时机由决策层给出（2026-10-20）：只对真实缺口提问，等价旧行为
+        gaps = [
+            j.key for j, f in zip(judgments, facts, strict=False) if not (f.passed and j.passed)
+        ]
         return FactProbeOutput(
-            judgments=[
-                FactJudgment(key=k, passed=c >= 0.75, confidence=c)
-                for k, c in zip(keys, self.confs, strict=False)
-            ],
+            judgments=judgments,
             overall_confidence=sum(self.confs) / len(self.confs) if self.confs else 0.0,
+            questions=[AskQuestion(key=k, question=f"请确认 {k}") for k in gaps],
         )
 
     async def score_prompts(
@@ -235,7 +220,6 @@ def _service(existing: set[str] | None = None) -> ForgeService:
         cfg=cfg,
         decider=FixedDecider(),
         sessions=FakeStore(),
-        preferences=FakePreferenceStore(),
         runner=FakeRunner(),
         reader=FakeReader(existing if existing is not None else {"src/ui/button.tsx"}),
         generator=FixedGenerator(),

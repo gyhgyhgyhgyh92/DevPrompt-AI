@@ -37,6 +37,41 @@ async def _verify(
     return {r.key: ("pass" if r.passed else "fail") for r in results}
 
 
+async def test_rg_runs_from_project_root() -> None:
+    """四条 rg 都必须以项目根为 cwd（2026-10-19 真实故障：不传 cwd 时全部「未找到」）。"""
+    reader = FakeFileReader(
+        {"src/ui/Button.tsx": _FILE}, existing={"src/ui/Button.tsx", "src/ui/Button.test.tsx"}
+    )
+    runner = FakeCommandRunner(_routes(token_defined=True))
+
+    await verify_facts(_LOC_TRUE, "把提交按钮改为 primary-500", runner, reader, root="D:/proj")
+
+    assert runner.cwds == ["D:/proj"] * 4
+
+
+async def test_rg_cwd_is_none_for_default_root() -> None:
+    """root 缺省（"." 或空）时不传 cwd，保持「从当前目录搜」的旧语义。"""
+    reader = FakeFileReader({"src/ui/Button.tsx": _FILE}, existing={"src/ui/Button.tsx"})
+    runner = FakeCommandRunner(_routes(token_defined=True))
+
+    await verify_facts(_LOC_TRUE, "把提交按钮改为 primary-500", runner, reader)
+
+    assert set(runner.cwds) == {None}
+
+
+async def test_token_pattern_uses_dash_e() -> None:
+    """token 以 `--` 开头，必须经 -e 传入，否则 rg 会把它当选项（rg: unrecognized flag）。"""
+    reader = FakeFileReader({"src/ui/Button.tsx": _FILE}, existing={"src/ui/Button.tsx"})
+    runner = FakeCommandRunner(_routes(token_defined=True))
+
+    await verify_facts(_LOC_TRUE, "把提交按钮改为 primary-500", runner, reader)
+
+    token_args = next(
+        a for a in runner.calls if any(x.startswith("--route-key=tokdef:") for x in a)
+    )
+    assert token_args[token_args.index("-e") + 1] == "--color-primary-500"
+
+
 async def test_all_true_case() -> None:
     reader = FakeFileReader(
         {"src/ui/Button.tsx": _FILE, "src/ui/Button.test.tsx": "it works"},
