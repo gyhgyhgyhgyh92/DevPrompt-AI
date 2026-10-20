@@ -47,7 +47,11 @@
   flex: 1;
 }
 
-/* 模型下拉（F-604 多模型注册表）：默认展示当前生效模型完整名称，选项来自注册表 */
+/* 模型选择器（2026-10-18 改造）：下拉列出全部已配置条目，hover 条目从右侧飞出参数面板 */
+.model-picker {
+  position: relative;
+}
+
 .console-input__model-select {
   max-inline-size: 180px;
   padding: var(--space-1) var(--space-1);
@@ -55,6 +59,7 @@
   font-size: var(--text-body-xs);
   color: var(--color-text-muted);
   text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
   background: transparent;
   border: none;
@@ -68,6 +73,121 @@
 .console-input__model-select:disabled {
   cursor: default;
   opacity: 0.6;
+}
+
+.model-picker__menu {
+  position: absolute;
+  inset-block-end: calc(100% + var(--space-1));
+  inset-inline-end: 0;
+  z-index: 20;
+  min-inline-size: 180px;
+  padding: var(--space-1);
+  background: var(--color-surface-overlay);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-menu);
+  box-shadow: var(--shadow-menu);
+}
+
+.model-picker__item {
+  position: relative;
+}
+
+.model-picker__pick {
+  display: block;
+  inline-size: 100%;
+  padding: var(--space-2) var(--space-2);
+  overflow: hidden;
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.model-picker__pick:hover {
+  background: var(--hover);
+}
+
+.model-picker__pick[aria-pressed='true'] {
+  color: var(--brand);
+  background: var(--brand-btn);
+}
+
+/* 参数面板：从 hover 的模型项右侧飞出（不遮住模型列表）。
+   左侧必须**紧贴**模型项（inset-inline-start: 100%，不留间隙）：面板是模型项的 DOM
+   子节点，一旦中间有间隙，指针穿过间隙时就落在了菜单的 padding 上（不再是该项的后代），
+   mouseleave 立刻触发、面板消失——用户根本移不过去。 */
+.model-picker__panel {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 100%;
+  z-index: 30;
+  min-inline-size: 168px;
+  padding: var(--space-2);
+  background: var(--color-surface-overlay);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-menu);
+  box-shadow: var(--shadow-menu);
+}
+
+.model-picker__panel-title {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-muted);
+}
+
+.model-picker__panel-title--split {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  margin-block-start: var(--space-2);
+  padding-block-start: var(--space-2);
+  border-block-start: 1px solid var(--divider);
+}
+
+.model-picker__options {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.model-picker__option {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  inline-size: 100%;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+  text-align: start;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.model-picker__option:hover {
+  background: var(--hover);
+}
+
+.model-picker__check {
+  color: var(--brand);
+}
+
+/* 目录里有但尚未配置的模型 */
+.model-picker__tag {
+  margin-inline-start: auto;
+  padding: 0 var(--space-1);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-faint);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
 }
 
 .console-input__send {

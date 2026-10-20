@@ -1,0 +1,9 @@
+{
+  "name": "devprompt_ai.pick_folder",
+  "description": "DevPrompt AI native folder picker (system folder browser dialog)",
+  "path": "D:\\Works\\DevPrompt AI\\.venv\\Scripts\\devprompt-ai-pick-folder.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://icohhcmnmamnjpngaafppjahjhddaphg/"
+  ]
+}

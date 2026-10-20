@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { putSettings, scanProject } from '../../api/endpoints'
+import { nativePickErrorText, pickFolderViaNative } from '../../api/nativeFolder'
 import { useSettingsStore } from '../../stores/useSettingsStore'
-import { FolderPickerModal } from './FolderPickerModal'
+import { errorMessage } from '../settings/errorMessage'
+import { ModelPicker, type ModelTuning } from './ModelPicker'
 import './ConsoleInput.css'
 
 /** 启动页主视觉固定文案（逐字，spec Task 3）：作为输入区占位展示，用户输入时隐藏。 */
@@ -14,6 +16,11 @@ const MAX_TEXT_ROWS = 6
 interface ConsoleInputProps {
   /** 提交中禁用发送按钮（POST /optimize 有副作用，MUST-15 禁重试靠禁用按钮）。 */
   isSubmitting: boolean
+  /** 多轮 composer：项目路径沿用会话，允许空（后端按 session 继承）。 */
+  projectOptional?: boolean
+  /** 重挂载回填：思考视图切换会卸载本组件，失败退回输入页时草稿不能丢。 */
+  initialSentence?: string
+  initialProject?: string
   /** 提交原句与项目路径（草稿不进 store，上抛交页面调 optimize 流）。 */
   onSubmit: (sentence: string, project: string) => void
 }
@@ -46,22 +53,52 @@ function FolderIcon() {
  * 仅含发送按钮 / 模型下拉（F-604 多模型注册表）/ 选择文件夹（本地，页内浏览器）；
  * 不含附件/审批/麦克风/音频等已移除元素。
  */
-export function ConsoleInput({ isSubmitting, onSubmit }: ConsoleInputProps) {
+export function ConsoleInput({
+  isSubmitting,
+  initialSentence = '',
+  initialProject = '',
+  projectOptional = false,
+  onSubmit,
+}: ConsoleInputProps) {
   // 订阅 settings 单字段（selector 内禁返回新引用：`?? []` 会触发无限重渲染，MUST-16）
   const settings = useSettingsStore((s) => s.settings)
   const setSettings = useSettingsStore((s) => s.setSettings)
   const entries = settings?.models ?? []
-  const [sentence, setSentence] = useState('')
-  const [project, setProject] = useState('')
-  const [isFolderPickerOpen, setFolderPickerOpen] = useState(false)
+  const [sentence, setSentence] = useState(initialSentence)
+  const [project, setProject] = useState(initialProject)
+  const [isPickingFolder, setPickingFolder] = useState(false)
   const [isSwitchingModel, setSwitchingModel] = useState(false)
   const [projectError, setProjectError] = useState<string | null>(null)
 
-  const isDisabled = isSubmitting || sentence.trim() === '' || project.trim() === ''
+  const isDisabled =
+    isSubmitting || sentence.trim() === '' || (!projectOptional && project.trim() === '')
 
   // 当前生效条目（默认展示其完整名称 label）；无激活位时回退首条（防御未激活态）
   const activeEntry = entries.find((m) => m.is_active) ?? entries[0]
   const activeId = activeEntry?.id ?? ''
+
+  /**
+   * 按模型粒度改参数（思考强度 / 上下文窗口档位，2026-10-18 迁入启动页）。
+   *
+   * `models` 是**整表替换**语义，故必须带上全部条目；`api_key` 不回传明文（MUST-19，
+   * 后端对缺省值按「沿用同 id 旧值」处理）。失败不自动重试（MUST-15）。
+   */
+  async function handleTune(id: string, patch: ModelTuning): Promise<void> {
+    if (entries.length === 0) return
+    const models = entries.map((entry) => ({
+      id: entry.id,
+      provider_id: entry.provider_id,
+      model_id: entry.model_id,
+      ...(entry.id === id ? patch : {}),
+    }))
+    try {
+      const next = await putSettings({ models })
+      setSettings(next)
+      setProjectError(null)
+    } catch {
+      setProjectError('参数保存失败，请稍后重试')
+    }
+  }
 
   /** 切换模型（F-604）：经 PUT /settings 落库并整条生效；失败提示不自动重试（MUST-15）。 */
   async function handleSelectModel(id: string): Promise<void> {
@@ -87,17 +124,31 @@ export function ConsoleInput({ isSubmitting, onSubmit }: ConsoleInputProps) {
     try {
       await scanProject(value)
       setProjectError(null)
-    } catch {
-      setProjectError('项目路径不存在或无法扫描')
+    } catch (error) {
+      // 按错误码查文案（2001 路径不存在 / 2004 工具失败 / 其余降级），不再一律说「路径不存在」
+      setProjectError(errorMessage(error, '项目路径不存在或无法扫描'))
     }
   }
 
   /** 页内浏览器确认回调（F-601）：写入后复校验（沿用 GET /project/scan；失败提示不自动重试 MUST-15）。 */
-  function handleSelectFolder(path: string): void {
-    setProject(path)
-    setProjectError(null)
-    setFolderPickerOpen(false)
-    void validateProject(path)
+  /**
+   * 调起系统原生文件夹选择器（2026-10-19：页内资源管理器已下线，改经浏览器扩展
+   * → native messaging host）。取消（空串）时保持原状；未装扩展等失败给明确文案。
+   */
+  async function handlePickFolder(): Promise<void> {
+    if (isPickingFolder) return
+    setPickingFolder(true)
+    try {
+      const { path } = await pickFolderViaNative()
+      if (path === '') return
+      setProject(path)
+      setProjectError(null)
+      await validateProject(path)
+    } catch (error) {
+      setProjectError(nativePickErrorText(error))
+    } finally {
+      setPickingFolder(false)
+    }
   }
 
   return (
@@ -120,20 +171,14 @@ export function ConsoleInput({ isSubmitting, onSubmit }: ConsoleInputProps) {
         />
         <div className="console-input__tools">
           <span className="console-input__spacer" />
-          <select
-            className="console-input__model-select"
-            aria-label="选择模型"
-            value={activeId}
-            disabled={entries.length === 0 || isSwitchingModel}
-            onChange={(event) => void handleSelectModel(event.currentTarget.value)}
-          >
-            {entries.length === 0 ? <option value="">未配置模型</option> : null}
-            {entries.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+          <ModelPicker
+            entries={entries}
+            providers={settings?.providers}
+            activeId={activeId}
+            disabled={isSwitchingModel}
+            onSelect={(id) => void handleSelectModel(id)}
+            onTune={(id, patch) => void handleTune(id, patch)}
+          />
           <button
             type="submit"
             className="console-input__send"
@@ -150,20 +195,21 @@ export function ConsoleInput({ isSubmitting, onSubmit }: ConsoleInputProps) {
             className="console-input__folder-toggle"
             aria-label="选择文件夹（本地）"
             title={project.trim() !== '' ? project : undefined}
-            onClick={() => setFolderPickerOpen(true)}
+            onClick={() => void handlePickFolder()}
+            disabled={isPickingFolder}
           >
             <FolderIcon />
-            <span>{project.trim() !== '' ? baseName(project) : '选择文件夹（本地）'}</span>
+            <span>
+              {isPickingFolder
+                ? '正在打开…'
+                : project.trim() !== ''
+                  ? baseName(project)
+                  : '选择文件夹（本地）'}
+            </span>
           </button>
         </div>
         {projectError !== null ? <p className="console-input__error">{projectError}</p> : null}
       </form>
-      <FolderPickerModal
-        open={isFolderPickerOpen}
-        initialPath={project}
-        onSelect={handleSelectFolder}
-        onClose={() => setFolderPickerOpen(false)}
-      />
     </div>
   )
 }

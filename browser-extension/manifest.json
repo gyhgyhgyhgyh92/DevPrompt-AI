@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "DevPrompt AI 原生文件夹选择器",
+  "version": "0.1.0",
+  "description": "把「选择文件夹（本地）」接到 Windows 原生文件夹选择对话框（经 native messaging host）。",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxS73XnF/RGiw+cB1rL2tCdgd10yhiA2j2c85AYx9Ckq1ZgDw/UA22H0HY7+xUhEQrjmtEyZhhfe7F+s7cjkS7vKzrStFQlAtM9Lb+X/o+CKn+865rub7CBwm274EMg+/zAzgfS5jBpPdQxsSpvIdQdAaEc1UoFkGzMeV1lPMqrEiOmEfok5GRTVHBFxQDjNFuiECr9wtbDn6y48YXRw/XFT9RCHlivYdK6PuBYnp04DNE3SCjssngFsoV5Y20e4qWjNlFSx4nREoyh3kqItHSIMu5F0P/qO7d6TjnG8GhqV2WNeQ8UjluZLQ4upLLke8IRihC0eLu4TaijTXYnnnwQIDAQAB",
+  "permissions": [
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://127.0.0.1/*",
+        "http://localhost/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}

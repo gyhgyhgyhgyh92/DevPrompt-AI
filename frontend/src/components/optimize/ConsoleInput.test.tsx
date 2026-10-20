@@ -1,9 +1,10 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse, SettingsResponse } from '../../api/types'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { ConsoleInput } from './ConsoleInput'
+import { pickFolderViaNative } from '../../api/nativeFolder'
 
 const PROMPT_HINT = '帮你优化每一段提示词，从理清需求到上线-端到端交付生产级结果'
 
@@ -11,29 +12,45 @@ function envelope<T>(data: T): ApiResponse<T> {
   return { code: 0, message: 'ok', request_id: 'test-rid', data }
 }
 
+vi.mock('../../api/nativeFolder', () => ({
+  NOT_INSTALLED_HINT: '未安装扩展',
+  nativePickErrorText: (e: unknown) => (e instanceof Error ? e.message : String(e)),
+  pickFolderViaNative: vi.fn(async () => ({ path: '' })),
+}))
+
 const MODEL_ENTRIES: SettingsResponse['models'] = [
   {
     id: 'm-1',
-    label: 'DeepSeek · deepseek-flash',
+    provider_id: 'p-deepseek',
     provider: 'DeepSeek',
-    base_url: 'https://api.deepseek.com',
     model_id: 'deepseek-flash',
-    api_key_masked: 'sk-••••3f7a',
     is_active: true,
   },
   {
     id: 'm-2',
-    label: 'OpenAI 兼容 · gpt-x',
+    provider_id: 'p-openai',
     provider: 'OpenAI 兼容',
-    base_url: 'https://api.openai.com/v1',
     model_id: 'gpt-x',
-    api_key_masked: 'sk-••••9a2b',
     is_active: false,
   },
 ]
 
 const settingsFixture: SettingsResponse = {
   models: MODEL_ENTRIES,
+  provider_configs: [
+    {
+      id: 'p-deepseek',
+      provider: 'DeepSeek',
+      base_url: 'https://api.deepseek.com',
+      api_key_masked: 'sk-••••3f7a',
+    },
+    {
+      id: 'p-openai',
+      provider: 'OpenAI 兼容',
+      base_url: 'https://api.openai.com/v1',
+      api_key_masked: 'sk-••••9a2b',
+    },
+  ],
   model_service: {
     api_key_masked: 'sk-••••3f7a',
     base_url: 'https://api.deepseek.com',
@@ -66,9 +83,9 @@ function stubFetchByUrl(payloadByPath: { browse: unknown; scan?: unknown }) {
   return mock
 }
 
-/** browse 载荷快捷构造：默认落在目标项目目录（path='D:/ws/repo'）。 */
-function browsePayload(path: string, parent: string | null = null) {
-  return envelope({ path, parent, entries: [], truncated: false })
+/** 模型选择器触发器（2026-10-18 起是自定义下拉，不再是原生 combobox）。 */
+function modelTrigger(): HTMLButtonElement {
+  return screen.getByRole('button', { name: '选择模型' }) as HTMLButtonElement
 }
 
 beforeEach(() => {
@@ -112,90 +129,23 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
     expect(screen.queryByRole('button', { name: '本地' })).toBeNull()
   })
 
-  it('不再存在「项目路径」手动输入文本框（移除手输，仅页内浏览器）', () => {
-    render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
-
-    expect(screen.queryByRole('textbox', { name: '项目路径' })).toBeNull()
-    expect(document.querySelector('.console-input__path-input')).toBeNull()
-  })
-
   it('无输入时发送按钮禁用（防重复/防误触，MUST-15）', () => {
     render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
 
     expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('点击「选择文件夹（本地）」打开页内浏览器，选择后显示 basename 并透传路径', async () => {
-    const user = userEvent.setup()
-    const onSubmit = vi.fn()
-    const fetchMock = stubFetchByUrl({ browse: browsePayload('D:/ws/repo', 'D:/ws') })
-    render(<ConsoleInput isSubmitting={false} onSubmit={onSubmit} />)
-
-    await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
-    await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
-
-    // 页内模态（DOM 内渲染，非系统桌面窗口）
-    expect(await screen.findByRole('dialog', { name: '选择项目文件夹（本地）' })).toBeTruthy()
-    await user.click(await screen.findByRole('button', { name: '选择当前文件夹' }))
-
-    expect(await screen.findByText('repo')).toBeTruthy()
-    expect(screen.queryByRole('dialog', { name: '选择项目文件夹（本地）' })).toBeNull()
-    const browseCall = fetchMock.mock.calls.find((call) =>
-      String(call[0]).includes('/project/browse'),
-    )
-    expect(browseCall).toBeTruthy()
-    // 选择后沿用 scan 复校验（失败提示路径依赖，不再有手输）
-    const scanCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/project/scan'))
-    expect(scanCall).toBeTruthy()
-
-    await user.click(screen.getByRole('button', { name: '发送' }))
-    expect(onSubmit).toHaveBeenCalledWith('加个导出按钮', 'D:/ws/repo')
-  })
-
-  it('取消关闭页内浏览器保持原状且不报错，发送仍禁用', async () => {
-    const user = userEvent.setup()
-    stubFetchByUrl({ browse: browsePayload('D:/ws/repo') })
-    render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
-
-    await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
-    expect(await screen.findByRole('dialog', { name: '选择项目文件夹（本地）' })).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: '取消' }))
-
-    expect(screen.queryByRole('dialog', { name: '选择项目文件夹（本地）' })).toBeNull()
-    expect(screen.getByRole('button', { name: '选择文件夹（本地）' }).textContent).toContain(
-      '选择文件夹（本地）',
-    )
-    expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true)
-  })
-
-  it('浏览器加载失败（业务错误）在模态内显示错误，可取消后保持原状', async () => {
-    const user = userEvent.setup()
-    stubFetchByUrl({
-      browse: { code: 2001, message: '目录不存在或不可访问', request_id: 'r', data: null },
-    })
-    render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
-
-    await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
-
-    expect(await screen.findByText('无法读取该文件夹，请重试')).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: '取消' }))
-    expect(screen.queryByText('无法读取该文件夹，请重试')).toBeNull()
-    expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true)
-  })
-
-  it('模型下拉默认展示当前生效模型完整名称，选项为全部注册表条目', () => {
+  it('模型下拉默认选中当前生效条目，展开后列出全部已配置条目（模型 ID）', async () => {
     useSettingsStore.setState({ settings: settingsFixture })
     render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
 
-    const select = screen.getByRole('combobox', { name: '选择模型' }) as HTMLSelectElement
-    expect(select.value).toBe('m-1')
-    const options = Array.from(select.options).map((o) => o.textContent)
-    expect(options).toEqual(['DeepSeek · deepseek-flash', 'OpenAI 兼容 · gpt-x'])
-    expect(select.selectedOptions[0]?.textContent).toBe('DeepSeek · deepseek-flash')
+    // 2026-10-18 起是自定义下拉（原生 select 无法承载 hover 参数面板）
+    expect(modelTrigger().textContent).toBe('deepseek-flash')
+    fireEvent.click(modelTrigger())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'gpt-x' })).toBeTruthy())
   })
 
   it('切换模型经 PUT /settings 提交 active_model_id 并更新展示', async () => {
-    const user = userEvent.setup()
     const switched = {
       ...settingsFixture,
       models: [
@@ -212,31 +162,133 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
     useSettingsStore.setState({ settings: settingsFixture })
     render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
 
-    await user.selectOptions(screen.getByRole('combobox', { name: '选择模型' }), 'm-2')
+    fireEvent.click(modelTrigger())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'gpt-x' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'gpt-x' }))
 
-    const putCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/settings'))
-    expect(putCall).toBeTruthy()
-    expect(putCall?.[1]?.method).toBe('PUT')
-    expect(String(putCall?.[1]?.body)).toContain('"active_model_id":"m-2"')
-    await waitFor(() =>
-      expect((screen.getByRole('combobox', { name: '选择模型' }) as HTMLSelectElement).value).toBe(
-        'm-2',
-      ),
+    const putCall = fetchMock.mock.calls.find(
+      (call) => String(call[0]).includes('/settings') && call[1]?.method === 'PUT',
     )
+    expect(putCall).toBeTruthy()
+    expect(String(putCall?.[1]?.body)).toContain('"active_model_id":"m-2"')
+    await waitFor(() => expect(modelTrigger().textContent).toBe('gpt-x'))
+  })
+
+  it('hover 参数面板改档位经整表 PUT 提交，且不回传密钥明文（MUST-19）', async () => {
+    const withProviders = {
+      ...settingsFixture,
+      providers: [
+        {
+          id: 'deepseek',
+          label: 'DeepSeek',
+          base_url: 'https://api.deepseek.com',
+          needs_key: true,
+          default_api_mode: 'chat_completions',
+          supported_api_modes: ['chat_completions'],
+          max_context_length: 1_048_576,
+          context_window_tiers: [524_288, 1_048_576],
+          models: [
+            {
+              model_id: 'deepseek-flash',
+              label: 'Flash',
+              max_context_length: 1_048_576,
+              context_window_tiers: [524_288, 1_048_576],
+              reasoning_efforts: ['low', 'high', 'max'],
+              default_effort: 'high',
+            },
+          ],
+          supports_reasoning: true,
+          quirks: '',
+        },
+      ],
+    }
+    const fetchMock = stubFetchByUrl({ browse: envelope(null) })
+    fetchMock.mockImplementation(async () => ({
+      status: 200,
+      headers: { get: () => null },
+      json: async () => envelope(withProviders),
+    }))
+    useSettingsStore.setState({ settings: withProviders })
+    render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
+
+    fireEvent.click(modelTrigger())
+    fireEvent.mouseEnter(screen.getByRole('button', { name: /deepseek-flash/ }).parentElement!)
+    fireEvent.click(await screen.findByRole('button', { name: '524K' }))
+
+    await waitFor(() => {
+      const putCall = fetchMock.mock.calls.find(
+        (call) => String(call[0]).includes('/settings') && call[1]?.method === 'PUT',
+      )
+      expect(putCall).toBeTruthy()
+      const body = String(putCall?.[1]?.body)
+      expect(body).toContain('"max_context_length":524288')
+      // 凭据在 providers 段，条目只带 provider_id 引用（MUST-19）
+      expect(body).toContain('"provider_id":"p-deepseek"')
+      // 整表替换语义：另一条目必须一起提交，否则会被后端视为删除
+      expect(body).toContain('"model_id":"gpt-x"')
+      expect(body).not.toContain('"api_key"')
+    })
   })
 
   it('注册表为空时下拉展示「未配置模型」且禁用', () => {
     useSettingsStore.setState({ settings: { ...settingsFixture, models: [] } })
     render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
 
-    const select = screen.getByRole('combobox', { name: '选择模型' }) as HTMLSelectElement
-    expect(select.disabled).toBe(true)
-    expect(select.options[0]?.textContent).toBe('未配置模型')
+    expect(modelTrigger().disabled).toBe(true)
+    expect(modelTrigger().textContent).toBe('未配置模型')
   })
 
   it('提交中发送按钮禁用', () => {
     render(<ConsoleInput isSubmitting onSubmit={vi.fn()} />)
 
     expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('ConsoleInput 原生文件夹选择器（2026-10-19 扩展桥）', () => {
+  it('点击后经扩展桥取回路径，basename 入库并触发 scan 复校验', async () => {
+    const fetchMock = stubFetchByUrl({ browse: envelope(null) })
+    fetchMock.mockImplementation(async () => ({
+      status: 200,
+      headers: { get: () => null },
+      json: async () => envelope({ total_symbols: 7, total_files: 3, kind_counts: {} }),
+    }))
+    vi.mocked(pickFolderViaNative).mockResolvedValueOnce({ path: 'D:/ws/my-repo' })
+    useSettingsStore.setState({ settings: settingsFixture })
+    render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
+
+    await userEvent.setup().click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
+
+    await waitFor(() => expect(screen.getByText('my-repo')).toBeTruthy())
+    expect(pickFolderViaNative).toHaveBeenCalledTimes(1)
+    // 选中后立即复校验项目路径
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/project/scan'))).toBe(
+        true,
+      ),
+    )
+  })
+
+  it('用户取消：保持原状、不报错、发送仍禁用', async () => {
+    vi.mocked(pickFolderViaNative).mockResolvedValueOnce({ path: '' })
+    useSettingsStore.setState({ settings: settingsFixture })
+    render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
+
+    await userEvent.setup().click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
+
+    await waitFor(() => expect(pickFolderViaNative).toHaveBeenCalled())
+    expect(screen.queryByText('my-repo')).toBeNull()
+    expect(screen.queryByRole('button', { name: '发送' })).toBeTruthy()
+    expect((screen.getByRole('button', { name: '发送' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('未装扩展：给出可执行指引（不静默无反应）', async () => {
+    vi.mocked(pickFolderViaNative).mockRejectedValueOnce(new Error('native host not found'))
+    useSettingsStore.setState({ settings: settingsFixture })
+    render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
+
+    await userEvent.setup().click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
+
+    expect(await screen.findByText('native host not found')).toBeTruthy()
   })
 })

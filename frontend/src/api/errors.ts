@@ -3,14 +3,14 @@
  * 所有失败路径（业务码、契约破坏、网络/超时/中止）统一映射为 ApiError；调用方不重试（MUST-15）。
  */
 
-/** 错误分类：business=信封业务码；contract=契约破坏；其余为传输层。 */
-export type ApiErrorKind = 'business' | 'contract' | 'network' | 'timeout' | 'aborted'
+/** 错误分类：business=信封业务码；contract=契约破坏；http=HTTP 层非 2xx；其余为传输层。 */
+export type ApiErrorKind = 'business' | 'contract' | 'http' | 'network' | 'timeout' | 'aborted'
 
 /** 契约信封成功码：等于它才取 data（错误映射基准）。 */
 export const SUCCESS_CODE = 0
 
 /** 非业务错误的哨兵 code（与后端业务码区间不重叠；分类以 kind 为准）。 */
-const SENTINEL_CODE: Record<Exclude<ApiErrorKind, 'business'>, number> = {
+const SENTINEL_CODE: Record<Exclude<ApiErrorKind, 'business' | 'http'>, number> = {
   contract: -1,
   network: -2,
   timeout: -3,
@@ -50,6 +50,15 @@ export function contractError(message: string, requestId: string, cause?: unknow
 /** 网络层失败（fetch 拒绝且非中止）。 */
 export function networkError(message: string, cause?: unknown): ApiError {
   return new ApiError('network', SENTINEL_CODE.network, message, '', { cause })
+}
+
+/**
+ * HTTP 层非 2xx。code 直接用状态码（与 4 位业务码不冲突），message 带上状态码——
+ * 否则 405「后端未重启」会被统一显示成「网络连接失败」，让人去查网络（真实踩过）。
+ */
+export function httpError(status: number, detail = ''): ApiError {
+  const message = detail === '' ? `服务返回 HTTP ${status}` : `${detail}（HTTP ${status}）`
+  return new ApiError('http', status, message, '')
 }
 
 /** 超时中止（外部调用必须设超时）。 */

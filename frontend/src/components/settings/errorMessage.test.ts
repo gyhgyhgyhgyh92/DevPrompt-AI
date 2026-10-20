@@ -3,6 +3,7 @@ import {
   abortedError,
   businessError,
   contractError,
+  httpError,
   networkError,
   timeoutError,
 } from '../../api/errors'
@@ -51,6 +52,13 @@ describe('errorMessage 三段降级', () => {
     expect(errorMessage(timeoutError('r'), 'F')).toContain('超时')
     expect(errorMessage(abortedError('r'), 'F')).toContain('取消')
     expect(errorMessage(contractError('x', 'r'), 'F')).toContain('契约')
+  })
+
+  it('HTTP 非 2xx 展示状态码，不误报为网络故障', () => {
+    // 405 常见于「后端未重启、新路由未加载」，说成网络问题会把人带偏
+    const text = errorMessage(httpError(405, '流式端点不可用'), 'F')
+    expect(text).toContain('405')
+    expect(text).not.toContain('网络连接失败')
   })
 
   it('成功码不被当作错误展示', () => {

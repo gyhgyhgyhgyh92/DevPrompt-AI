@@ -5,6 +5,7 @@ import {
   abortedError,
   businessError,
   contractError,
+  httpError,
   networkError,
   timeoutError,
 } from './errors'
@@ -119,6 +120,78 @@ export async function request<S extends z.ZodType>(
     throw contractError('响应 data 不符合契约', requestId, dataResult.error)
   }
   return dataResult.data
+}
+
+/** 流式响应回调：onEvent 收到一条已解帧的 data 载荷（原始 JSON 字符串）。 */
+export interface PostStreamHandlers {
+  onOpen?: () => void
+  onEvent?: (data: string) => void
+}
+
+/** 单个 SSE 块取 data 载荷；注释帧（`: ping`）与空块返回 null。 */
+function frameData(block: string): string | null {
+  const lines = block
+    .split('\n')
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.replace(/^data:\s?/, ''))
+  return lines.length === 0 ? null : lines.join('\n')
+}
+
+/**
+ * POST + 流式响应（SSE）消费：EventSource 只支持 GET，而用户原句不能进 URL /
+ * 访问日志（MUST-19），故用 fetch 读 ReadableStream 并按空行分帧。
+ *
+ * 断流即返回，不自动重连（MUST-15 重订由业务层显式发起）；无总超时——服务端每
+ * 15s 发保活注释帧，真卡死由调用方的 AbortSignal 收口。
+ */
+export async function openPostStream(
+  path: string,
+  body: unknown,
+  handlers: PostStreamHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  // 刻意不走 applyRequestInterceptors：其 accept 拦截器固定为 application/json
+  let response: Response
+  try {
+    response = await fetch(path, {
+      method: 'POST',
+      headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal,
+    })
+  } catch (error) {
+    if (signal?.aborted) throw abortedError('')
+    throw networkError('网络请求失败', error)
+  }
+  if (!response.ok) {
+    throw httpError(response.status, '流式端点不可用，请确认后端已重启到最新版本')
+  }
+  const reader = response.body?.getReader()
+  if (!reader) throw networkError('响应不支持流式读取')
+
+  handlers.onOpen?.()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      // CRLF 归一：服务端固定 \n\n，但代理可能改写换行
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n')
+      let cut = buffer.indexOf('\n\n')
+      while (cut >= 0) {
+        const data = frameData(buffer.slice(0, cut))
+        buffer = buffer.slice(cut + 2)
+        if (data !== null) handlers.onEvent?.(data)
+        cut = buffer.indexOf('\n\n')
+      }
+    }
+  } catch (error) {
+    if (signal?.aborted) throw abortedError('')
+    throw networkError('流式连接中断', error)
+  } finally {
+    reader.releaseLock()
+  }
 }
 
 /**
