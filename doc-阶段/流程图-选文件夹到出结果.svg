@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1662" viewBox="0 0 1080 1662" font-family="'Microsoft YaHei','Segoe UI',sans-serif">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker></defs>
+<rect width="100%" height="100%" fill="#f8fafc"/>
+<text x="40" y="52" font-size="25" font-weight="700" fill="#0f172a">DevPrompt AI · 从选文件夹到出结果</text>
+<text x="40" y="80" font-size="13.5" fill="#64748b">代码实际执行路径（2026-10-19，行号以当前工作区为准）</text>
+<text x="1040" y="52" font-size="12.5" fill="#94a3b8" text-anchor="end">service.py · state.py · OptimizePage.tsx</text>
+<text x="1040" y="76" font-size="12.5" fill="#94a3b8" text-anchor="end">同步 POST，一次请求走完全程</text>
+<rect x="40" y="132" width="1000" height="238" rx="12" fill="#ffffff" stroke="#0ea5e9" stroke-width="1.6"/>
+<text x="58" y="158" font-size="15.5" font-weight="700" fill="#0ea5e9">阶段 0 · 选择项目（原生文件夹对话框）</text>
+<line x1="58" y1="162" x2="1022" y2="162" stroke="#0ea5e9" stroke-opacity="0.25"/>
+<circle cx="70" cy="189.5" r="3.4" fill="#0ea5e9"/>
+<text x="86" y="194" font-size="13.5" fill="#1e293b">点击「选择文件夹（本地）」→ postMessage {type:&#x27;pick_folder&#x27;}</text>
+<text x="1022" y="194" font-size="11.5" fill="#94a3b8" text-anchor="end">页面</text>
+<circle cx="70" cy="219.5" r="3.4" fill="#0ea5e9"/>
+<text x="86" y="224" font-size="13.5" fill="#1e293b">content.js 收 window 消息 → chrome.runtime.sendMessage</text>
+<text x="1022" y="224" font-size="11.5" fill="#94a3b8" text-anchor="end">扩展</text>
+<circle cx="70" cy="249.5" r="3.4" fill="#0ea5e9"/>
+<text x="86" y="254" font-size="13.5" fill="#1e293b">background.js 调 sendNativeMessage(&#x27;devprompt_ai.pick_folder&#x27;)</text>
+<text x="1022" y="254" font-size="11.5" fill="#94a3b8" text-anchor="end">service worker</text>
+<circle cx="70" cy="279.5" r="3.4" fill="#0ea5e9"/>
+<text x="86" y="284" font-size="13.5" fill="#1e293b">Chrome 拉起 host exe，argv[1] 校验为 chrome-extension://</text>
+<text x="1022" y="284" font-size="11.5" fill="#94a3b8" text-anchor="end">Chrome</text>
+<circle cx="70" cy="309.5" r="3.4" fill="#0ea5e9"/>
+<text x="86" y="314" font-size="13.5" fill="#1e293b">读定长消息 → pwsh -STA 弹 FolderBrowserDialog（TopMost 置顶）</text>
+<text x="1022" y="314" font-size="11.5" fill="#94a3b8" text-anchor="end">host</text>
+<circle cx="70" cy="339.5" r="3.4" fill="#0ea5e9"/>
+<text x="86" y="344" font-size="13.5" fill="#1e293b">回传 UTF-8 绝对路径 → GET /project/scan 复校验（预热符号表）</text>
+<text x="1022" y="344" font-size="11.5" fill="#94a3b8" text-anchor="end">页面</text>
+<line x1="540.0" y1="378" x2="540.0" y2="402" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<rect x="40" y="414" width="1000" height="118" rx="12" fill="#ffffff" stroke="#6366f1" stroke-width="1.6"/>
+<text x="58" y="440" font-size="15.5" font-weight="700" fill="#6366f1">阶段 1 · 输入原句并点击发送</text>
+<line x1="58" y1="444" x2="1022" y2="444" stroke="#6366f1" stroke-opacity="0.25"/>
+<circle cx="70" cy="471.5" r="3.4" fill="#6366f1"/>
+<text x="86" y="476" font-size="13.5" fill="#1e293b">发送键禁用：提交中 / 原句空 / 路径空（有副作用端点禁重试）</text>
+<text x="1022" y="476" font-size="11.5" fill="#94a3b8" text-anchor="end">页面</text>
+<circle cx="70" cy="501.5" r="3.4" fill="#6366f1"/>
+<text x="86" y="506" font-size="13.5" fill="#1e293b">POST /api/v1/optimize（同步执行，客户端超时 60s）</text>
+<text x="1022" y="506" font-size="11.5" fill="#94a3b8" text-anchor="end">页面 → 后端</text>
+<line x1="540.0" y1="540" x2="540.0" y2="564" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<rect x="40" y="576" width="1000" height="298" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="1.6"/>
+<text x="58" y="602" font-size="15.5" font-weight="700" fill="#2563eb">阶段 2 · 单次请求内跑完检索与研判（RETRIEVING → PROBING）</text>
+<line x1="58" y1="606" x2="1022" y2="606" stroke="#2563eb" stroke-opacity="0.25"/>
+<circle cx="70" cy="633.5" r="3.4" fill="#2563eb"/>
+<text x="86" y="638" font-size="13.5" fill="#1e293b">load_or_create：复用该用户最新会话或新建（session_id = uuid）</text>
+<text x="1022" y="638" font-size="11.5" fill="#94a3b8" text-anchor="end">service</text>
+<circle cx="70" cy="663.5" r="3.4" fill="#2563eb"/>
+<text x="86" y="668" font-size="13.5" fill="#1e293b">符号表：rg 扫描，缓存键 = 项目绝对路径 + mtime，TTL 1 小时</text>
+<text x="1022" y="668" font-size="11.5" fill="#94a3b8" text-anchor="end">service</text>
+<circle cx="70" cy="693.5" r="3.4" fill="#2563eb"/>
+<text x="86" y="698" font-size="13.5" fill="#1e293b">build_candidates 打分后截断到 25 条（MUST-09 硬约束，超限不报错）</text>
+<text x="1022" y="698" font-size="11.5" fill="#94a3b8" text-anchor="end">domain</text>
+<circle cx="70" cy="723.5" r="3.4" fill="#2563eb"/>
+<text x="86" y="728" font-size="13.5" fill="#1e293b">候选 &lt; 3（manual_required）→ 直接 ASKING，问「符号@路径」</text>
+<text x="1022" y="728" font-size="11.5" fill="#94a3b8" text-anchor="end">service</text>
+<circle cx="70" cy="753.5" r="3.4" fill="#2563eb"/>
+<text x="86" y="758" font-size="13.5" fill="#1e293b">_rank_top：决策层排序取 top1，缓存 30 分钟，失败降级取首条</text>
+<text x="1022" y="758" font-size="11.5" fill="#94a3b8" text-anchor="end">LLM</text>
+<circle cx="70" cy="783.5" r="3.4" fill="#2563eb"/>
+<text x="86" y="788" font-size="13.5" fill="#1e293b">locate_symbol：rg --json 在目标文件定位定义行号</text>
+<text x="1022" y="788" font-size="11.5" fill="#94a3b8" text-anchor="end">rg</text>
+<circle cx="70" cy="813.5" r="3.4" fill="#2563eb"/>
+<text x="86" y="818" font-size="13.5" fill="#1e293b">verify_facts：七项事实取证（子进程 rg，异步+超时）</text>
+<text x="1022" y="818" font-size="11.5" fill="#94a3b8" text-anchor="end">rg</text>
+<circle cx="70" cy="843.5" r="3.4" fill="#2563eb"/>
+<text x="86" y="848" font-size="13.5" fill="#1e293b">probe_facts + build_unknowns + resolve_level → 定档 A / B / C</text>
+<text x="1022" y="848" font-size="11.5" fill="#94a3b8" text-anchor="end">LLM</text>
+<line x1="540.0" y1="882" x2="540.0" y2="906" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<rect x="40" y="918" width="1000" height="208" rx="12" fill="#ffffff" stroke="#f59e0b" stroke-width="1.6"/>
+<text x="58" y="944" font-size="15.5" font-weight="700" fill="#f59e0b">阶段 3 · 反问（仅当存在具体未知项；可多轮，无轮数上限）</text>
+<line x1="58" y1="948" x2="1022" y2="948" stroke="#f59e0b" stroke-opacity="0.25"/>
+<circle cx="70" cy="975.5" r="3.4" fill="#f59e0b"/>
+<text x="86" y="980" font-size="13.5" fill="#1e293b">返回 status=&#x27;ask&#x27; → 前端 ChatStream 反问视图（每问绑定一个未知项）</text>
+<text x="1022" y="980" font-size="11.5" fill="#94a3b8" text-anchor="end">页面</text>
+<circle cx="70" cy="1005.5" r="3.4" fill="#f59e0b"/>
+<text x="86" y="1010" font-size="13.5" fill="#1e293b">SSE /progress：每秒 resume() 推一帧，遇 done/ask/guardrail 关流</text>
+<text x="1022" y="1010" font-size="11.5" fill="#94a3b8" text-anchor="end">后端 → 页面</text>
+<circle cx="70" cy="1035.5" r="3.4" fill="#f59e0b"/>
+<text x="86" y="1040" font-size="13.5" fill="#1e293b">批量答复 → POST /followup → CONFIRMING → _reprobe 重算未知项</text>
+<text x="1022" y="1040" font-size="11.5" fill="#94a3b8" text-anchor="end">后端</text>
+<circle cx="70" cy="1065.5" r="3.4" fill="#f59e0b"/>
+<text x="86" y="1070" font-size="13.5" fill="#1e293b">软护栏：轮数 ≥10 或成本超预算 → guardrail，等用户裁决</text>
+<text x="1022" y="1070" font-size="11.5" fill="#94a3b8" text-anchor="end">后端</text>
+<circle cx="70" cy="1095.5" r="3.4" fill="#f59e0b"/>
+<text x="86" y="1100" font-size="13.5" fill="#1e293b">无未知项 → 进入生成；仍有未知 → 继续追问（不静默终止）</text>
+<text x="1022" y="1100" font-size="11.5" fill="#94a3b8" text-anchor="end">后端</text>
+<line x1="540.0" y1="1134" x2="540.0" y2="1158" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<rect x="40" y="1170" width="1000" height="238" rx="12" fill="#ffffff" stroke="#10b981" stroke-width="1.6"/>
+<text x="58" y="1196" font-size="15.5" font-weight="700" fill="#10b981">阶段 4 · 生成与推荐（GENERATING → RANKING → DONE）</text>
+<line x1="58" y1="1200" x2="1022" y2="1200" stroke="#10b981" stroke-opacity="0.25"/>
+<circle cx="70" cy="1227.5" r="3.4" fill="#10b981"/>
+<text x="86" y="1232" font-size="13.5" fill="#1e293b">generate_variants：一次调用出 1~3 套，A/B/C 差异是信息完整度而非文风</text>
+<text x="1022" y="1232" font-size="11.5" fill="#94a3b8" text-anchor="end">LLM</text>
+<circle cx="70" cy="1257.5" r="3.4" fill="#10b981"/>
+<text x="86" y="1262" font-size="13.5" fill="#1e293b">仅 1 套 → 直接 DONE，ranking=null，不打分、不算 d（MUST-28）</text>
+<text x="1022" y="1262" font-size="11.5" fill="#94a3b8" text-anchor="end">service</text>
+<circle cx="70" cy="1287.5" r="3.4" fill="#10b981"/>
+<text x="86" y="1292" font-size="13.5" fill="#1e293b">score_prompts 适配度 + 用户偏好向量匹配 → 总分 = 0.6×适配 + 0.4×偏好</text>
+<text x="1022" y="1292" font-size="11.5" fill="#94a3b8" text-anchor="end">LLM</text>
+<circle cx="70" cy="1317.5" r="3.4" fill="#10b981"/>
+<text x="86" y="1322" font-size="13.5" fill="#1e293b">d = 最高 − 次高；置信度优先于分差（MUST-27 判定，命中即止）</text>
+<text x="1022" y="1322" font-size="11.5" fill="#94a3b8" text-anchor="end">domain</text>
+<circle cx="70" cy="1347.5" r="3.4" fill="#10b981"/>
+<text x="86" y="1352" font-size="13.5" fill="#1e293b">决策层异常 → ranking=null 并继续（宁缺勿假，不阻断流程）</text>
+<text x="1022" y="1352" font-size="11.5" fill="#94a3b8" text-anchor="end">service</text>
+<circle cx="70" cy="1377.5" r="3.4" fill="#10b981"/>
+<text x="86" y="1382" font-size="13.5" fill="#1e293b">transition DONE → flow.completed（套数 / 是否标记 / elapsed_ms）</text>
+<text x="1022" y="1382" font-size="11.5" fill="#94a3b8" text-anchor="end">service</text>
+<line x1="540.0" y1="1416" x2="540.0" y2="1440" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<rect x="40" y="1452" width="1000" height="148" rx="12" fill="#ffffff" stroke="#64748b" stroke-width="1.6"/>
+<text x="58" y="1478" font-size="15.5" font-weight="700" fill="#64748b">阶段 5 · 出结果</text>
+<line x1="58" y1="1482" x2="1022" y2="1482" stroke="#64748b" stroke-opacity="0.25"/>
+<circle cx="70" cy="1509.5" r="3.4" fill="#64748b"/>
+<text x="86" y="1514" font-size="13.5" fill="#1e293b">FlowSnapshot 经 Zod 校验 → 只镜像进 store（畸形丢弃，不重试）</text>
+<text x="1022" y="1514" font-size="11.5" fill="#94a3b8" text-anchor="end">页面</text>
+<circle cx="70" cy="1539.5" r="3.4" fill="#64748b"/>
+<text x="86" y="1544" font-size="13.5" fill="#1e293b">渲染三套卡片 + 推荐徽章 + 评分明细 + target 定位 + facts</text>
+<text x="1022" y="1544" font-size="11.5" fill="#94a3b8" text-anchor="end">页面</text>
+<circle cx="70" cy="1569.5" r="3.4" fill="#64748b"/>
+<text x="86" y="1574" font-size="13.5" fill="#1e293b">采纳 / 👍 / 编辑后采纳 / 跳过 → POST /feedback 更新偏好向量</text>
+<text x="1022" y="1574" font-size="11.5" fill="#94a3b8" text-anchor="end">页面 → 后端</text>
+<text x="40" y="1640" font-size="11.5" fill="#94a3b8">阶段 3 可跳过：研判后无具体未知项时，直接进入阶段 4（一次请求即返回 done）。</text>
+</svg>

@@ -1038,6 +1038,8 @@ src/devprompt_ai/
 │   ├── model_spec.py          文本模型能力元数据 / API 形态 / 上下文窗口档位（纯领域表，25厂商）
 │   ├── model_migration.py     注册表条目归一化（读时补默认值，永不抛异常）
 │   ├── prompt_guard.py        跨域共用 prompt 边界与安全声明（T-1~T-5）
+│   ├── progress.py            思考过程文案（阶段进度纯函数 + ProgressSink Protocol；2026-10-19 供流式端点）
+│   ├── context/build_context.py  多轮上下文装配（2026-10-20：分层预算 + 固定裁剪顺序 + summary_from_turn，纯函数）
 │   ├── startup_report.py      启动自愈报告（类型 + 进程级状态）
 │   ├── models.py              领域数据模型
 │   ├── retrieval/
@@ -1059,7 +1061,7 @@ src/devprompt_ai/
 │   │       └── c_thorough.py
 │   └── ranking/
 │       ├── ports.py            Protocol 定义（偏好读写）
-│       ├── preference.py      偏好向量
+│       ├── ~~preference.py~~    偏好向量（2026-10-21 移除）
 │       ├── score.py           加权总分
 │       └── recommend.py       双阈值标记
 ├── decision/                  决策层实现（单一 LLM 实现）
@@ -1076,14 +1078,17 @@ src/devprompt_ai/
 │   │   └── registry.py      adapter_kind → 构造器
 │   ├── llm.py               build_model(entry) 工厂：按调用构造 Model，**不用全局开关**                 多供应商客户端（openai-agents Runner/Agent 直接在此封装）
 │   ├── guardrails.py          输出校验
+│   ├── trace.py               动作观测层（2026-10-20：包装 CommandRunner/FileReader，把真实 rg/读文件上报成卡片并脱敏）
 │   ├── process.py             检索 I/O Protocol 实现（CommandRunner/FileReader）+ 符号表编排（F-101）
-│   ├── browse.py              目录浏览 I/O（F-601 页内文件夹选择器数据源，GET /project/browse）
+│   ├── dialog.py        原生文件夹选择器（native host 调用）              目录浏览 I/O（F-601 页内文件夹选择器数据源，GET /project/browse）
 │   └── dialog.py              Windows 原生文件夹对话框（pwsh -STA，零新依赖）
 ├── memory/                    唯一允许出现 SQL 的模块
 │   ├── schema.py              表结构与迁移（WAL 初始化 + 幂等建建表；含 forge_quarantine 隔离表）
 │   ├── startup_safety_check.py 启动自愈（N-1：integrity_check → 坏行隔离 → 补齐缺表；永不抛异常）
 │   ├── session_store.py       L1 会话存储（SQLiteSessionStore，经 SessionStore Protocol 注入；CAS 乐观锁）
-│   ├── preference_store.py    L3 偏好向量
+│   ├── turn_store.py          多轮 turn（2026-10-20：append-only，(session_id, turn_index) 唯一索引即乐观锁）
+│   ├── project_note_store.py  L2 结构化记忆（2026-10-20：top-K 检索 + 90 天衰减 + 命中回写）
+│   ├── ~~preference_store.py~~（2026-10-21 移除）    L3 偏好向量
 │   └── project_notes.py       L2 Git notes
 ├── common/                    纯工具，无业务语义
 │   ├── text.py
@@ -1096,7 +1101,7 @@ src/devprompt_ai/
 │   └── api/
 │       ├── __init__.py        包声明（薄壳层约束说明）
 │       ├── app.py             FastAPI 实例 + CORS + 统一异常渲染 + 缓存/安全响应头中间件（M-11）
-│       ├── routes.py          路由薄壳（13 路径/16 操作；参数收拢 → 调 service → 渲染）
+│       ├── routes.py          路由薄壳（14 路径/17 操作；参数收拢 → 调 service → 渲染）
 │       ├── schemas.py         Pydantic v2 请求/响应契约（XxxRequest/XxxResponse）
 │       └── health.py          环境自检（rg/ctags/git、DB 可写、LLM 配置、storage_repair）
 └── observability/
@@ -1119,6 +1124,7 @@ src/devprompt_ai/
 | `domain/decision/port.py` | `rank_components` / `probe_facts` / `score_prompts` | `decision/fallback.py` | 决策层三能力 |
 | `domain/generate/ports.py` | `generate(prompt) -> str` | `harness/llm.py` | LLM 单次调用 |
 | `domain/ranking/ports.py` | `get_preference` / `save_preference` | `memory/preference_store.py` | 偏好向量读写 |
+| `domain/model_catalog/ports.py` | `ModelCatalogFetcher.fetch(base_url, api_key, timeout)` | `harness/models_client.py` | 拉厂商 `/models` 模型清单（2026-10-17） |
 
 **注入位置**：`ForgeService.__init__` 接收全部 Protocol 实例，默认取生产实现，测试时注入 mock。
 
@@ -1154,16 +1160,20 @@ frontend/
     ├── pages/                 路由级组件
     │   ├── OptimizePage.tsx
     │   ├── HistoryPage.tsx         历史页（F-702 独立可用：列表 + 置顶/重命名/删除/复制路径/打开会话）
-    │   └── PreferencePage.tsx      偏好页（F-702 独立可用：读取 → 滑杆调整 → PUT 保存 → 服务端回填）
+    │   └── ~~PreferencePage.tsx~~  偏好页（2026-10-21 移除）
     ├── components/
     │   ├── ui/                通用展示组件
     │   │   ├── Toggle.tsx         开关（设置中心用）
     │   │   └── Slider.tsx         滑条（偏好/设置共用）
     │   ├── optimize/          优化流程组件
-    │   │   ├── ConsoleInput.tsx     启动页主视觉输入卡片（对话式重构；含模型下拉 F-604 多模型）
-    │   │   ├── FolderPickerModal.tsx  页内文件夹选择器（F-601；GET /project/browse 供数，地址栏右侧搜索＝`q` 子树递归）
-    │   │   ├── ChatStream.tsx       对话流（用户气泡 → AI 回复块 → 方案组嵌入）
-    │   │   ├── PromptCard.tsx
+    │   │   ├── ConsoleInput.tsx     启动页主视觉输入卡片（对话式重构；模型选择器见 ModelPicker）
+    │   │   ├── ModelPicker.tsx       模型选择器（2026-10-18：只列已配置条目；hover 飞出按模型参数面板——上下文长度 / 思考模式 / 思考强度，强度在开关关闭时置灰；档位取自官方静态登记，各模型独立）
+    │   │   ├── nativeFolder.ts     原生文件夹选择器桥（2026-10-19：页面 postMessage → 扩展 content script → service worker → native host → 系统对话框）
+    │   │   ├── ChatStream.tsx       对话流（用户气泡 → 回复块：步骤时间轴（每步下方挂过程）+ 方案正文；2026-10-20 移除目标定位/取证/操作栏）
+    │   │   ├── TurnList.tsx         多轮全文流（2026-10-20：进入即并发拉取每轮正文，用户气泡右 / 助手块左）
+    │   │   ├── AskPanel.tsx         反问面板（2026-10-20 v2：内联于对话流、自适应高度、超 60vh 中部滚动、头尾固定）
+    │   │   ├── AskFlow.tsx          反问组合层（持有作答草稿，拼装 AskDialog + FollowupForm，2026-10-20）
+        │   │   ├── PromptCard.tsx
     │   │   ├── VariantTabs.tsx
     │   │   ├── RecommendBadge.tsx
     │   │   ├── ScoreDetail.tsx
@@ -1173,17 +1183,17 @@ frontend/
     │   ├── history/           历史页组件
     │   │   ├── ProjectSidebar.tsx  固定侧边栏（图三：头部「项目」+一键收纳，项目分组 + 会话条目）
     │   │   └── SessionMenu.tsx     会话 ⋮ 菜单（置顶/复制路径/重命名/删除，二次确认）
-    │   ├── preference/        偏好页组件
+    │   ├── ~~preference/~~     偏好页组件（2026-10-21 移除）
     │   │   └── PreferenceEditor.tsx 四维偏好编辑器（F-702 独立可用：滑杆 + 显式保存 + 放弃修改）
     │   └── settings/          设置中心组件（F-604，模态面板）
     │       ├── SettingsModal.tsx      弹窗外壳 + 左侧四项导航
-    │       ├── ModelServicePanel.tsx  模型列表管理（F-604：新增/编辑/删除/设为当前 + 全局调用参数）
+    │       ├── ModelServicePanel.tsx  供应商卡（F-604 供应商中心化：配一次 Base URL/API Key → 刷新模型列表 → 多选 → 一键保存；测试连接与删除均在供应商级）
     │       ├── AppearancePanel.tsx    通用外观（主题/语言/字体/行为开关）
     │       ├── MemoryPanel.tsx        长期记忆（L3 滑条/采纳历史/数据管理）
     │       └── SecurityPanel.tsx      流程与安全（护栏参数/锁定项/清除数据）
     ├── stores/                Zustand store
     │   ├── useOptimizeStore.ts
-    │   ├── usePreferenceStore.ts
+    │   ├── useHistoryStore.ts     会话历史（2026-10-21 由 usePreferenceStore 改名精简）
     │   └── useSettingsStore.ts    设置状态（含 localStorage 读写封装）
     ├── hooks/                 自定义 Hook
     │   ├── useSSE.ts
@@ -1199,6 +1209,7 @@ frontend/
     │   ├── openapi.generated.ts   自动生成，勿手改
     │   ├── common.ts
     │   ├── optimize.ts
+    │   ├── stream.ts             思考过程流事件契约（thought / snapshot / error 判别联合，2026-10-19）
     │   ├── preference.ts
     │   ├── settings.ts           设置契约校验（F-604）
     │   └── errorCodes.ts         错误码 → 用户文案表（N-7；须覆盖后端 ERROR_CODES 全部条目）

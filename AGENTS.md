@@ -151,6 +151,13 @@ harness/ + memory/ + decision/（基础设施层）
 
 **执行标准**：任何涉及流程推进的改动只改 `state.py`，不得在其他层复制状态转移逻辑。
 
+> **2026-10-20 作用域下沉（多轮，批准人=项目所有者）**：状态机仍在 `state.py`，
+> 但**作用域从 session 下沉到 turn**。session 退化为容器（只持 `turn_index` /
+> `current_turn_id`）；每个 turn 从 INIT 跑到 DONE，`TRANSITIONS` 原样不动。
+> `start_turn()` 复用已完成会话时**直接把容器置回 INIT**（不是给 DONE 加出边），
+> 否则 SSE 关闭条件、`resume` 的已结束判定、权限白名单、前端 done 视图四类假设
+> 会同时失效。
+
 ### MUST-07b · 目录结构以项目架构文档为唯一权威
 
 **权威目录树**：`DevPrompt-AI-项目架构文档.md` §4.8（后端）与 §5.1（前端）。
@@ -217,6 +224,9 @@ ripgrep 先压到 ≤25 条候选（仅符号名 + 路径，不含代码正文�
 **执行标准**：
 - 状态推进使用乐观锁或队列，检测到版本冲突即拒绝
 - 收到非法状态转移的请求返回 `6001`，**不静默忽略**
+- **多轮（2026-10-20）**：turn 的 `(session_id, turn_index)` 唯一索引即乐观锁——
+  重复/并发提交在数据库层被拒（`6001`），不依赖前端防抖；占位 turn 在 LLM 调用前
+  INSERT，避免白跑一次生成
 - 涉及状态写入的接口必须带 `request_id` 以便追溯
 
 ---
@@ -422,11 +432,15 @@ ripgrep 先压到 ≤25 条候选（仅符号名 + 路径，不含代码正文�
 
 ```
 unknowns = 具体未决事实清单（探针 unknowns / 取证未决 / 研判缺口）
-每项结构：{键, 缺失原因, 当前最佳推断, 需用户提供什么}
+每项结构：{键, 缺失原因, 当前最佳推断, 需用户提供什么, header, options[], multiSelect}
 
-提问条件：unknowns 非空 → 本轮批量提出，每问绑定一个未知项
+提问条件（2026-10-20 修订，对齐 CodeBuddy SDK AskUserQuestion + 项目提问规范）：
+  决策层在研判时一并给出 task_kind 与 questions（1~4 个）：
+  ① questions 非空 → 本轮按模型给出的问法与选项提出（key 可为事实键或自定义决策键）
+  ② questions 为空 → 本轮不提问（模型判定信息已够；档位仍受 MUST-28 限制）
+  ③ 事实缺口未被任何 question 覆盖时，按缺口兜底生成，绝不静默丢弃
 终止条件（任一即止）：
-  ① unknowns 为空 → 信息充分，直接输出
+  ① 无待问项 → 直接输出
   ② 用户任一轮显式选择「直接生成」→ followup.escaped
   ③ 软护栏触发且用户裁决「直接生成」→ followup.guardrail
 ```
@@ -434,8 +448,15 @@ unknowns = 具体未决事实清单（探针 unknowns / 取证未决 / 研判缺
 **提问纪律**：
 
 - **禁止**泛化提问——「还需要更多信息吗」「信息够了吗」类以『是否继续』为内容的提问一律禁止；每问必须绑定具体未知项并给出当前最佳推断
-- 每轮**批量**提出全部未知项（不逐条骚扰）；用户答复后重新研判，生成新的 unknowns 清单
-- LLM **不自评**信息充分性，只产出 unknowns——原「禁止 LLM 判断够不够」的动机（自我怀疑、永不满足）由该机制结构性消除，而非放宽
+- 每轮**一次批量**提出（官方上限 4 个，按重要性排序，不逐条骚扰）；未问到的未知项留到下一轮，用户答复后重新研判
+- **只问用户才知道的事**：业务意图（新增还是修改）、改动范围、命名偏好、是否补测试、验收口径
+- **禁止把代码事实推给用户**：某按钮/元素在哪个文件、符号是否存在、样式/token 是否已定义、文件类型对不对——这类由决策层自己判断；拿不准就判该事实不通过、降档输出保守方案（MUST-28）。**该规则靠 prompt 强制，不做 key 白名单**（实测：合法意图问题常挂在 `symbol_in_file` 等代码事实键上，按 key 过滤会 100% 误杀）
+- **两套时机口径**（决策层自判 `task_kind`，不新增状态机态）：
+  - `design`（原句简短/模糊，如「加个导出」）→ 深挖技术方案 / 用户体验 / 边缘情况 / 潜在风险 / 权衡取舍
+  - `execution`（含文件、组件、期望行为）→ 只走 5 类闸门：意图 / 范围 / 选型 / 风险 / 验收
+- 问法向官方形态看齐：`header` 短标签（≤12 字）+ 2~4 个 `options`（label + description）+ 可选多选；`question` 以「?」结尾；`label` 1~5 词（中文 ≤6 字）；`description` 写清代价差异；取舍类必须单选；同题选项语义互斥；**保留自由输入**（路径、token 名这类无法枚举的答案）
+- `label` / `description` 禁用半角括号（用全角（））与「逗号+空格」；多选答案以 `", "` 拼接
+- **不合规产出原样展示**，后端只发 `followup.question_lint` 告警（§4 约束靠 prompt 强制，不做修正/丢弃）；唯一硬处理是单轮 ≤4 问
 - 多轮澄清可提升信息完备度档位（A→B→C，联动 MUST-28 不越级输出）
 
 **软护栏**：
@@ -446,13 +467,15 @@ unknowns = 具体未决事实清单（探针 unknowns / 取证未决 / 研判缺
 
 **BREAKING CHANGE 记录**：v1.1 废除「MAX_FOLLOWUP_ROUNDS(2) 轮次上限」与「反问必须有终止」原语义（含原「禁止无限追问」「禁止 LLM 判断信息够不够」两条）。批准人=项目所有者（2026-10-06）。原因=对齐 agentic clarification 最佳实践（Cursor/TraeCode 模式）：复杂意图识别需要无轮次上限的自适应澄清，终止由「具体未知耗尽 + 用户显式意愿」驱动而非轮次计数。
 
+**v1.6 修订（2026-10-20，批准人=项目所有者）**：反问的**时机与问法**改由决策层在研判输出中给出（`FactProbeOutput.questions`），不再「失败事实数 = 问题数」机械生成；单轮上限 4 个，形态对齐 CodeBuddy SDK `AskUserQuestion`（header + options + multiSelect + 保留自由输入）。原「unknowns 非空即全部提出」改为「模型决定问不问、问哪几个」，模型输出 key 越界时仍按未知项兜底。原因=与官方 agentic 交互形态一致，避免 5~7 张无从回答的机械反问卡。
+
 ### MUST-27 · 推荐标记诚实策略
 
 > **符号约定**：`A` / `B` / `C` 专指**方案档位**（保守 / 标准 / 激进）。阈值方案用 `T1` / `T2` / `T3` 表示（已定稿 **T3** = 双阈值），勿混用。
 
 ```
-总分ₓ = 0.6 × 适配度ₓ + 0.4 × 偏好匹配度ₓ
-偏好匹配度 = 1 - mean(|偏好向量ᵢ - 方案特征ᵢ|)   ← 四维度均已归一化到 [0,1]
+总分ₓ = 适配度ₓ        ← 2026-10-21 起：偏好记忆移除，原 0.6/0.4 加权废除（BREAKING）
+（偏好匹配度定义随偏好层一并移除）
 
 d = 最高分 − 次高分
 ```
@@ -638,6 +661,10 @@ d = 最高分 − 次高分
 | 版本 | 日期 | 内容 | 批准人 |
 |---|---|---|---|
 | v1.4 | 2026-10-15 | 裁定方案甲：MUST-25 第二段排序准确率门禁（≥80%）降为参考指标，W3 出口以「LLM 决策 + ripgrep 精确取证」为准 | 项目所有者 |
+| v1.12 | 2026-10-21 | **移除偏好记忆（BREAKING）**：删除 `/preference`、`/feedback`、`DELETE /preference/adoptions` 与两张表、`PreferencePage`/`MemoryPanel`/`usePreferenceStore`、`domain/ranking/preference.py`；MUST-27 总分改为**纯适配度**；记忆只保留「短期 turn 历史 / 长期 project_notes / 会话历史」 | 项目所有者 |
+| v1.8 | 2026-10-20 | 多轮 Agent 重构：MUST-07 状态机作用域下沉到 turn（session 退化为容器，`TRANSITIONS` 不变）；MUST-11 补「`(session_id, turn_index)` 唯一索引即乐观锁」；新增三层记忆（turn 历史 / `project_notes` 结构化 L2 / 偏好投影）与 `build_context` 分层预算（本轮取证永不裁） | 项目所有者 |
+| v1.7 | 2026-10-20 | MUST-26 按《AskUserQuestion 提问规范》重构：①两套时机口径（design 深挖 5 类 / execution 5 类闸门，决策层输出 `task_kind`）②形态硬约束（问号结尾 / header≤12 / options 2–4 / label≤6 字 / description 写代价 / 取舍类单选）③§4.2 禁半角括号与「逗号+空格」④多选改 ", " 拼接⑤允许自定义决策键⑥不合规原样展示，仅 `followup.question_lint` 告警 | 项目所有者 |
+| v1.6 | 2026-10-20 | MUST-26 反问时机与问法改为决策层输出（`questions[]`，单轮上限 4，header + options + multiSelect + 保留自由输入），对齐 CodeBuddy SDK `AskUserQuestion`；unknowns 仍为合法绑定集合，key 越界时兜底 | 项目所有者 |
 | v1.5 | 2026-10-16 | AI 对标优化批次（Batch 0~7）：①新增 LLM 失败细分码 5011 超时 / 5012 限流 / 5013 余额不足 / 5014 鉴权失败 / 5015 上游异常（**注意 5012 与既有 3004 语义相近但不可合并**：3004 是决策阶段限流，5012 是生成阶段）②确立「`code` 为前端查表键、`message` 只进日志」约定，并新增架构检查第 7 项强制前端映射表覆盖 ③新增启动自愈（N-1）④M-1/M-2 经真实统计 0/40后**降级取消**（见实施真源 §Batch 0）。**非 BREAKING**：契约结构未变（13 路径/16 操作），MUST-10 Web 单形态未变 | 项目所有者 |
 | v1.3 | 2026-10-15 | BREAKING：移除 Jev 双路径（`decision/jev.py`、`typesafe-sdk` jev extra、配置键 typesafe_api_key/typesafe_base_url/jev_model_id/jev_timeout/decider、契约 Settings 的 decider 与 CostDetailPayload.jev_*）；决策层统一为单一 LLM 实现，废除 MUST-12「可降级双路径」语义 | 项目所有者 |
 | v1.2 | 2026-10-10 | 废除 CLI 双形态交付，全面转向 Web-only 架构；Web HTTP 层提前至阶段 4.5 实现（`interfaces/api/` 共 9 端点：health、optimize、progress/{flow_id} SSE、followup/{flow_id}、result/{flow_id}、feedback、preference、project/scan、history）；前端 React UI 仍属阶段六 | 项目所有者 |
