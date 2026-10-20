@@ -1,63 +1,54 @@
 import type { z } from 'zod'
+import { EmptyDataSchema, HealthResponseSchema, ScanResponseSchema } from '../schemas/common'
 import {
-  BrowseResponseSchema,
-  EmptyDataSchema,
-  HealthResponseSchema,
-  ScanResponseSchema,
-} from '../schemas/common'
-import {
-  FeedbackRequestSchema,
   FlowSnapshotSchema,
   FollowupRequestSchema,
+  TurnDetailSchema,
+  TurnSummaryListSchema,
   OptimizeRequestSchema,
 } from '../schemas/optimize'
+import { HistoryListSchema, HistoryUpdateRequestSchema } from '../schemas/preference'
 import {
-  AdoptionsClearSchema,
-  HistoryListSchema,
-  HistoryUpdateRequestSchema,
-  PreferenceUpdateRequestSchema,
-  PreferenceVectorSchema,
-} from '../schemas/preference'
-import { SettingsResponseSchema, SettingsUpdateSchema } from '../schemas/settings'
-import { API_BASE_URL, openEventStream, request, type SseHandlers } from './client'
-import { contractError } from './errors'
+  ModelCatalogRefreshRequestSchema,
+  ModelCatalogResponseSchema,
+  SettingsResponseSchema,
+  SettingsUpdateSchema,
+} from '../schemas/settings'
+import { StreamEventSchema, type ActionPayload } from '../schemas/stream'
+import { API_BASE_URL, openEventStream, openPostStream, request, type SseHandlers } from './client'
+import { businessError, contractError, type ApiError } from './errors'
 import type {
-  AdoptionsClearResponse,
-  BrowseResponse,
-  FeedbackRequest,
   FlowSnapshotResponse,
   FollowupRequest,
   HealthResponse,
   HistoryItemPayload,
   HistoryUpdateRequest,
   OptimizeRequest,
-  PreferenceUpdateRequest,
-  PreferenceVectorPayload,
   ScanResponse,
   SettingsResponse,
   SettingsUpdate,
+  TurnDetailPayload,
+  TurnSummaryPayload,
 } from './types'
 
 /** 端点清单（与仓库根 openapi.json 的 paths 一一对应；新增端点必须先冻结契约）。 */
 export const ENDPOINTS = {
   health: `${API_BASE_URL}/health`,
   optimize: `${API_BASE_URL}/optimize`,
+  optimizeStream: `${API_BASE_URL}/optimize/stream`,
   progress: (flowId: string) => `${API_BASE_URL}/progress/${flowId}`,
   followup: (flowId: string) => `${API_BASE_URL}/followup/${flowId}`,
   result: (flowId: string) => `${API_BASE_URL}/result/${flowId}`,
-  feedback: `${API_BASE_URL}/feedback`,
-  preference: `${API_BASE_URL}/preference`,
-  preferenceAdoptions: `${API_BASE_URL}/preference/adoptions`,
   history: `${API_BASE_URL}/history`,
+  sessionTurns: (sessionId: string) =>
+    `${API_BASE_URL}/history/${encodeURIComponent(sessionId)}/turns`,
+  turn: (turnId: string) => `${API_BASE_URL}/turns/${encodeURIComponent(turnId)}`,
   historyItem: (sessionId: string) => `${API_BASE_URL}/history/${encodeURIComponent(sessionId)}`,
   projectScan: (project: string) =>
     `${API_BASE_URL}/project/scan?project=${encodeURIComponent(project)}`,
-  projectBrowse: (path: string, query: string) =>
-    `${API_BASE_URL}/project/browse${
-      path === ''
-        ? ''
-        : `?path=${encodeURIComponent(path)}${query === '' ? '' : `&q=${encodeURIComponent(query)}`}`
-    }`,
+  modelCatalog: (providerId: string) =>
+    `${API_BASE_URL}/settings/models/catalog?provider_id=${encodeURIComponent(providerId)}`,
+  refreshModelCatalog: `${API_BASE_URL}/settings/models/catalog/refresh`,
   settings: `${API_BASE_URL}/settings`,
 } as const
 
@@ -88,6 +79,61 @@ export async function postOptimize(
   })
 }
 
+/** 流式思考过程回调：thought / action 是增量，snapshot / error 是终态（只会来其一）。 */
+export interface StreamOptimizeHandlers {
+  onOpen?: () => void
+  onThought: (text: string, phase: string) => void
+  onAction: (action: ActionPayload, phase: string) => void
+  onSnapshot: (snapshot: FlowSnapshotResponse) => void
+  onError: (error: ApiError) => void
+}
+
+/**
+ * POST /optimize/stream：思考过程流（有副作用端点，禁重试 MUST-15）。
+ * 畸形帧直接丢弃——契约破坏重放只会复现，不重试。
+ */
+export function streamOptimize(
+  body: OptimizeRequest,
+  handlers: StreamOptimizeHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  return openPostStream(
+    ENDPOINTS.optimizeStream,
+    parseBody(OptimizeRequestSchema, body),
+    {
+      onOpen: handlers.onOpen,
+      onEvent: (raw) => {
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(raw)
+        } catch {
+          return
+        }
+        const result = StreamEventSchema.safeParse(parsed)
+        if (!result.success) return
+        const event = result.data
+        if (event.type === 'thought') {
+          handlers.onThought(event.text, event.phase)
+          return
+        }
+        if (event.type === 'action') {
+          handlers.onAction(
+            { title: event.title, detail: event.detail, scope: event.scope },
+            event.phase,
+          )
+          return
+        }
+        if (event.type === 'snapshot') {
+          handlers.onSnapshot(event.data)
+          return
+        }
+        handlers.onError(businessError(event.code, event.message, event.request_id))
+      },
+    },
+    signal,
+  )
+}
+
 /** GET /progress/{flow_id}：SSE 订阅（12 操作之一）；关闭函数交调用方在 cleanup 中触发。 */
 export function subscribeProgress(flowId: string, handlers: SseHandlers): () => void {
   return openEventStream(ENDPOINTS.progress(flowId), handlers)
@@ -114,38 +160,25 @@ export function getResult(flowId: string, signal?: AbortSignal): Promise<FlowSna
 }
 
 /** POST /feedback：有副作用端点（禁重试，MUST-15）；契约 data 恒为 null。 */
-export async function postFeedback(body: FeedbackRequest, signal?: AbortSignal): Promise<void> {
-  await request(ENDPOINTS.feedback, {
-    method: 'POST',
-    schema: EmptyDataSchema,
-    body: parseBody(FeedbackRequestSchema, body),
-    hasSideEffect: true,
-    signal,
-  })
-}
-
-export function getPreference(signal?: AbortSignal): Promise<PreferenceVectorPayload> {
-  return request(ENDPOINTS.preference, {
-    method: 'GET',
-    schema: PreferenceVectorSchema,
-    signal,
-  })
-}
-
-export function putPreference(
-  body: PreferenceUpdateRequest,
-  signal?: AbortSignal,
-): Promise<PreferenceVectorPayload> {
-  return request(ENDPOINTS.preference, {
-    method: 'PUT',
-    schema: PreferenceVectorSchema,
-    body: parseBody(PreferenceUpdateRequestSchema, body),
-    signal,
-  })
-}
-
 export function getHistory(signal?: AbortSignal): Promise<HistoryItemPayload[]> {
   return request(ENDPOINTS.history, { method: 'GET', schema: HistoryListSchema, signal })
+}
+
+/** GET /history/{session_id}/turns：会话的轮次摘要（升序，不含正文）。 */
+export function getSessionTurns(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<TurnSummaryPayload[]> {
+  return request(ENDPOINTS.sessionTurns(sessionId), {
+    method: 'GET',
+    schema: TurnSummaryListSchema,
+    signal,
+  })
+}
+
+/** GET /turns/{turn_id}：单轮全文（历史轮次展开时懒加载）。 */
+export function getTurn(turnId: string, signal?: AbortSignal): Promise<TurnDetailPayload> {
+  return request(ENDPOINTS.turn(turnId), { method: 'GET', schema: TurnDetailSchema, signal })
 }
 
 /** PATCH /history/{session_id}：重命名 / 置顶（有副作用端点，禁重试，MUST-15）；契约 data 恒为 null。 */
@@ -174,15 +207,6 @@ export async function deleteHistory(sessionId: string, signal?: AbortSignal): Pr
 }
 
 /** DELETE /preference/adoptions：清空服务端采纳历史（有副作用端点，禁重试，MUST-15）。 */
-export async function clearAdoptions(signal?: AbortSignal): Promise<AdoptionsClearResponse> {
-  return request(ENDPOINTS.preferenceAdoptions, {
-    method: 'DELETE',
-    schema: AdoptionsClearSchema,
-    hasSideEffect: true,
-    signal,
-  })
-}
-
 export function getSettings(signal?: AbortSignal): Promise<SettingsResponse> {
   return request(ENDPOINTS.settings, { method: 'GET', schema: SettingsResponseSchema, signal })
 }
@@ -204,15 +228,30 @@ export function scanProject(project: string, signal?: AbortSignal): Promise<Scan
   })
 }
 
-/**
- * 目录浏览（F-601 页内文件夹选择器数据源）：path 空串返回驱动器列表；`query` 非空时
- * 由后端对当前目录子树**递归搜索**（仅目录，条目附 `rel_parent`）。逐级导航与实时搜索
- * 均由组件在用户交互时按需调用（GET，无副作用）。
- */
-export function getBrowse(path: string, query = '', signal?: AbortSignal): Promise<BrowseResponse> {
-  return request(ENDPOINTS.projectBrowse(path, query), {
+/** GET 模型目录：读上次落库快照（不联网）。键为供应商 id（2026-10-18 供应商中心化）。 */
+export function getModelCatalog(
+  providerId: string,
+  signal?: AbortSignal,
+): Promise<ModelCatalogResponse> {
+  return request(ENDPOINTS.modelCatalog(providerId), {
     method: 'GET',
-    schema: BrowseResponseSchema,
+    schema: ModelCatalogResponseSchema,
     signal,
   })
 }
+
+/** POST 刷新：现场调该供应商端点的 `/models` → 落库 → 返回合并结果。 */
+export async function refreshModelCatalog(
+  providerId: string,
+  signal?: AbortSignal,
+): Promise<ModelCatalogResponse> {
+  return request(ENDPOINTS.refreshModelCatalog, {
+    method: 'POST',
+    schema: ModelCatalogResponseSchema,
+    body: parseBody(ModelCatalogRefreshRequestSchema, { provider_id: providerId }),
+    signal,
+  })
+}
+
+/** 目录响应类型（由 Zod schema 推导，避免与契约生成类型重复维护）。 */
+export type ModelCatalogResponse = z.infer<typeof ModelCatalogResponseSchema>

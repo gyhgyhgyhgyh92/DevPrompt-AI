@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getHistory, getPreference, getSettings, putSettings } from '../../api/endpoints'
+import { getHistory, getSettings, putSettings } from '../../api/endpoints'
 import type { SettingsResponse } from '../../api/types'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { SettingsModal } from './SettingsModal'
@@ -11,10 +11,7 @@ vi.mock('../../api/endpoints', () => ({
   getSettings: vi.fn(),
   putSettings: vi.fn(),
   getHealth: vi.fn(),
-  getPreference: vi.fn(),
-  putPreference: vi.fn(),
   getHistory: vi.fn(),
-  clearAdoptions: vi.fn(),
 }))
 
 const settingsFixture: SettingsResponse = {
@@ -40,12 +37,6 @@ beforeEach(() => {
   localStorage.clear()
   useSettingsStore.setState({ settings: null })
   vi.mocked(getSettings).mockResolvedValue(settingsFixture)
-  vi.mocked(getPreference).mockResolvedValue({
-    detail_level: 0.3,
-    include_diff: 0.7,
-    specify_tests: 0.2,
-    max_files_norm: 0.6,
-  })
   vi.mocked(getHistory).mockResolvedValue([])
   vi.mocked(putSettings).mockResolvedValue(settingsFixture)
 })
@@ -62,13 +53,12 @@ describe('SettingsModal 契约与开关行为', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('open=true 渲染四项导航且焦点移入面板', async () => {
+  it('open=true 渲染三项导航且焦点移入面板', async () => {
     render(<SettingsModal open onClose={vi.fn()} />)
 
     expect(screen.getByRole('dialog', { name: '设置' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '⚙ 模型服务' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '◐ 通用外观' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: '◈ 长期记忆' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '⚑ 流程与安全' })).toBeTruthy()
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole('dialog', { name: '设置' })),
@@ -117,15 +107,12 @@ describe('SettingsModal 契约与开关行为', () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
 
-  it('四项导航切换渲染对应面板', async () => {
+  it('三项导航切换渲染对应面板', async () => {
     render(<SettingsModal open onClose={vi.fn()} />)
     await waitFor(() => expect(useSettingsStore.getState().settings).not.toBeNull())
 
     fireEvent.click(screen.getByRole('button', { name: '◐ 通用外观' }))
     expect(screen.getByRole('heading', { name: '通用外观' })).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('button', { name: '◈ 长期记忆' }))
-    expect(screen.getByRole('heading', { name: '长期记忆' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: '⚑ 流程与安全' }))
     expect(screen.getByRole('heading', { name: '流程与安全' })).toBeTruthy()

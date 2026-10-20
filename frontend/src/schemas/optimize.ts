@@ -1,17 +1,28 @@
 import { z } from 'zod'
 
-/** POST /optimize 请求体（契约 OptimizeRequest）。 */
+/** POST /optimize 请求体（契约 OptimizeRequest）；session_id 非空 = 同一会话开新一轮。 */
 export const OptimizeRequestSchema = z.object({
   sentence: z.string().min(1),
-  project: z.string().min(1),
+  project: z.string(),
+  session_id: z.string().optional(),
 })
 
 /** 反问未知项（契约 UnknownItemPayload，MUST-26 四要素）。 */
+export const AskOptionSchema = z.object({
+  label: z.string(),
+  description: z.string(),
+})
+
 export const UnknownItemSchema = z.object({
   key: z.string(),
   reason: z.string(),
   best_guess: z.string(),
   ask: z.string(),
+  /** 短标签（官方 AskUserQuestion 的 header，≤12 字；空串表示不显示）。 */
+  header: z.string().default(''),
+  /** 选项（官方 2~4 个；空数组表示只有自由输入）。缺省视为空，兼容旧后端。 */
+  options: z.array(AskOptionSchema).default([]),
+  multi_select: z.boolean().default(false),
 })
 
 /** 方案（契约 VariantPayload；body 为后端生成文本，前端不加工）。 */
@@ -66,6 +77,26 @@ export const FlowSnapshotSchema = z.object({
 })
 
 /** POST /feedback 请求体（契约 FeedbackRequest：variant 采纳 / +edited_text 编辑采纳 / 皆无=跳过）。 */
+/** 多轮轮次摘要（GET /history/{session_id}/turns）：不含原句与方案正文。 */
+export const TurnSummarySchema = z.object({
+  turn_id: z.string(),
+  turn_index: z.number(),
+  state: z.string(),
+  target: z.string().default(''),
+  conclusion: z.string().default(''),
+  open_items: z.array(z.string()).default([]),
+  created_at: z.string().default(''),
+})
+
+export const TurnSummaryListSchema = z.array(TurnSummarySchema)
+
+/** 单轮详情（GET /turns/{turn_id}）：正文懒加载。 */
+export const TurnDetailSchema = TurnSummarySchema.extend({
+  input: z.string().default(''),
+  variants: z.array(VariantSchema).default([]),
+  facts: z.array(FactSchema).default([]),
+})
+
 export const FeedbackRequestSchema = z.object({
   action: z.string(),
   edited_text: z.string().nullish(),

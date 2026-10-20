@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router'
 import { deleteHistory, getHistory, getResult, patchHistory } from '../../api/endpoints'
 import type { HistoryItemPayload } from '../../api/types'
 import { useOptimizeStore } from '../../stores/useOptimizeStore'
-import { usePreferenceStore } from '../../stores/usePreferenceStore'
+import { useHistoryStore } from '../../stores/useHistoryStore'
 import { SessionMenu } from './SessionMenu'
 import './ProjectSidebar.css'
 
@@ -103,7 +103,7 @@ interface ProjectSidebarProps {
 
 export function ProjectSidebar({ onCollapse }: ProjectSidebarProps) {
   const navigate = useNavigate()
-  const history = usePreferenceStore((s) => s.history)
+  const history = useHistoryStore((s) => s.history)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
@@ -114,7 +114,7 @@ export function ProjectSidebar({ onCollapse }: ProjectSidebarProps) {
 
   useEffect(() => {
     getHistory()
-      .then((items) => usePreferenceStore.getState().setHistory(items))
+      .then((items) => useHistoryStore.getState().setHistory(items))
       .catch(() => {
         // 列表加载失败保持空态，不重试（MUST-15）
       })
@@ -135,7 +135,7 @@ export function ProjectSidebar({ onCollapse }: ProjectSidebarProps) {
 
   async function refreshHistory(): Promise<void> {
     const items = await getHistory().catch(() => null)
-    if (items !== null) usePreferenceStore.getState().setHistory(items)
+    if (items !== null) useHistoryStore.getState().setHistory(items)
   }
 
   /** 选中：先同步高亮（乐观反馈 <100ms），再异步载入结果到主区（失败 toast 不取消高亮）。 */

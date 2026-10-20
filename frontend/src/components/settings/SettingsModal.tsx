@@ -3,7 +3,6 @@ import { getSettings } from '../../api/endpoints'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { AppearancePanel } from './AppearancePanel'
 import { errorMessage } from './errorMessage'
-import { MemoryPanel } from './MemoryPanel'
 import { ModelServicePanel } from './ModelServicePanel'
 import { SecurityPanel } from './SecurityPanel'
 import './settings.css'
@@ -13,7 +12,7 @@ export interface SettingsModalProps {
   onClose: () => void
 }
 
-type TabKey = 'model-service' | 'appearance' | 'memory' | 'security'
+type TabKey = 'model-service' | 'appearance' | 'security'
 
 interface TabItem {
   key: TabKey
@@ -24,7 +23,6 @@ interface TabItem {
 const TABS: readonly TabItem[] = [
   { key: 'model-service', icon: '⚙', label: '模型服务' },
   { key: 'appearance', icon: '◐', label: '通用外观' },
-  { key: 'memory', icon: '◈', label: '长期记忆' },
   { key: 'security', icon: '⚑', label: '流程与安全' },
 ]
 
@@ -124,7 +122,6 @@ export function SettingsModal(props: SettingsModalProps) {
             ) : null}
             {activeTab === 'model-service' ? <ModelServicePanel /> : null}
             {activeTab === 'appearance' ? <AppearancePanel /> : null}
-            {activeTab === 'memory' ? <MemoryPanel /> : null}
             {activeTab === 'security' ? <SecurityPanel /> : null}
           </div>
         </div>

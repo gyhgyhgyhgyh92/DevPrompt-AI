@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse, FlowSnapshotResponse, HistoryItemPayload } from '../../api/types'
 import { useOptimizeStore } from '../../stores/useOptimizeStore'
-import { usePreferenceStore } from '../../stores/usePreferenceStore'
+import { useHistoryStore } from '../../stores/useHistoryStore'
 import { ProjectSidebar } from './ProjectSidebar'
 
 function envelope<T>(data: T): ApiResponse<T> {
@@ -82,7 +82,7 @@ function itemTitles(): string[] {
 }
 
 beforeEach(() => {
-  usePreferenceStore.getState().reset()
+  useHistoryStore.getState().reset()
   useOptimizeStore.getState().reset()
 })
 

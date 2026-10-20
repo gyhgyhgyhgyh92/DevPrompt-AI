@@ -1,11 +1,19 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse, FlowSnapshotResponse } from '../api/types'
 import { useOptimizeStore } from '../stores/useOptimizeStore'
-import { usePreferenceStore } from '../stores/usePreferenceStore'
+import { useHistoryStore } from '../stores/useHistoryStore'
 import { OptimizePage } from './OptimizePage'
+
+// 2026-10-19：项目路径改由「浏览器扩展 + native messaging host」的系统对话框取得，
+// jsdom 里没有扩展，故 mock 掉桥；页内文件夹浏览器已下线。
+vi.mock('../api/nativeFolder', () => ({
+  NOT_INSTALLED_HINT: '未安装扩展',
+  nativePickErrorText: (e: unknown) => String(e),
+  pickFolderViaNative: vi.fn(async () => ({ path: 'D:/ws/repo' })),
+}))
 
 function envelope<T>(data: T): ApiResponse<T> {
   return { code: 0, message: 'ok', request_id: 'test-rid', data }
@@ -21,10 +29,82 @@ function jsonResponse(payload: unknown) {
 
 type FetchHandler = (input: string, init?: RequestInit) => unknown
 
+/** POST /optimize/stream 的 mock 回应：把载荷包成一帧终态快照（无 thought）。 */
+function sseResponse(payload: unknown) {
+  const data = (payload as { data?: unknown }).data
+  const bytes = new TextEncoder().encode(`data: ${JSON.stringify({ type: 'snapshot', data })}\n\n`)
+  let sent = false
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    body: {
+      getReader: () => ({
+        read: async () => {
+          if (sent) return { done: true, value: undefined }
+          sent = true
+          return { done: false, value: bytes }
+        },
+        releaseLock: () => undefined,
+      }),
+    },
+  }
+}
+
+/** 可控流：先吐 thought / action 帧，快照帧挂起直到 release()，用于断言「思考中」的中间态。 */
+function gatedStream(
+  thoughts: string[],
+  actions: readonly { title: string; detail: string; scope: string }[],
+  payload: unknown,
+) {
+  const data = (payload as { data?: unknown }).data
+  const encoder = new TextEncoder()
+  const thoughtFrames = [
+    ...thoughts.map((text) =>
+      encoder.encode(`data: ${JSON.stringify({ type: 'thought', text })}\n\n`),
+    ),
+    ...actions.map((action) =>
+      encoder.encode(`data: ${JSON.stringify({ type: 'action', ...action })}\n\n`),
+    ),
+  ]
+  const snapshotFrame = encoder.encode(`data: ${JSON.stringify({ type: 'snapshot', data })}\n\n`)
+  let release: () => void = () => undefined
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let step = 0
+  let sent = false
+  return {
+    release: () => release(),
+    response: {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      body: {
+        getReader: () => ({
+          read: async () => {
+            if (step < thoughtFrames.length) {
+              const value = thoughtFrames[step]
+              step += 1
+              return { done: false, value }
+            }
+            if (sent) return { done: true, value: undefined }
+            await gate
+            sent = true
+            return { done: false, value: snapshotFrame }
+          },
+          releaseLock: () => undefined,
+        }),
+      },
+    },
+  }
+}
+
 function stubFetch(handler: FetchHandler) {
-  const mock = vi.fn(async (input: string, init?: RequestInit) =>
-    jsonResponse(handler(input, init)),
-  )
+  const mock = vi.fn(async (input: string, init?: RequestInit) => {
+    const payload = handler(input, init)
+    return input.includes('/optimize/stream') ? sseResponse(payload) : jsonResponse(payload)
+  })
   vi.stubGlobal('fetch', mock)
   return mock
 }
@@ -99,7 +179,7 @@ beforeEach(() => {
   MockEventSource.instances = []
   vi.stubGlobal('EventSource', MockEventSource)
   useOptimizeStore.getState().reset()
-  usePreferenceStore.getState().reset()
+  useHistoryStore.getState().reset()
 })
 
 afterEach(() => {
@@ -117,26 +197,6 @@ describe('OptimizePage 三栏工作台', () => {
     expect(screen.queryByRole('complementary', { name: '上下文面板' })).toBeNull()
   })
 
-  it('上下文信息以内嵌小节渲染目标定位与取证事实', () => {
-    const seed = snapshotFixture({
-      target: { name: 'build', path: 'src/app.py', line: 12 },
-      facts: [
-        { key: 'fact_a', passed: true, evidence: '定位到 build' },
-        { key: 'fact_b', passed: false, evidence: '共 3 处调用' },
-      ],
-    })
-    useOptimizeStore.getState().applySnapshot(seed)
-    stubApi([{ match: '/result', payload: envelope(seed) }])
-
-    renderPage()
-
-    const panel = screen.getByRole('region', { name: '上下文信息' })
-    expect(within(panel).getByText('build@src/app.py:12')).toBeTruthy()
-    expect(within(panel).getByText('fact_a')).toBeTruthy()
-    expect(within(panel).getByText('✗')).toBeTruthy()
-    expect(within(panel).getByText('共 3 处调用')).toBeTruthy()
-  })
-
   it('无流程时渲染启动卡片（原句输入 + 发送 + 选择文件夹（本地））', () => {
     stubApi([{ match: '/preference', payload: envelope(vectorFixture) }])
 
@@ -145,13 +205,23 @@ describe('OptimizePage 三栏工作台', () => {
     expect(screen.getByRole('textbox', { name: '优化原句' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '发送' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '选择文件夹（本地）' })).toBeTruthy()
-    expect(screen.queryByText('直接生成（A 保守版 + 待确认清单）')).toBeNull()
+    expect(screen.queryByText('直接生成')).toBeNull()
   })
 
   it('提交优化调用 POST /optimize 并切换到反问态', async () => {
     const user = userEvent.setup()
     const asked = snapshotFixture({
-      questions: [{ key: 'target', reason: '缺目标定位', best_guess: 'build()', ask: '改哪里？' }],
+      questions: [
+        {
+          key: 'target',
+          reason: '缺目标定位',
+          best_guess: 'build()',
+          ask: '改哪里？',
+          header: '',
+          options: [],
+          multi_select: false,
+        },
+      ],
     })
     const mock = stubApi([
       {
@@ -164,8 +234,7 @@ describe('OptimizePage 三栏工作台', () => {
 
     renderPage()
     await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
-    await user.click(await screen.findByRole('button', { name: '选择当前文件夹' }))
-    expect(await screen.findByText('repo')).toBeTruthy()
+    await screen.findByText('repo')
     await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
     await user.click(screen.getByRole('button', { name: '发送' }))
 
@@ -175,7 +244,74 @@ describe('OptimizePage 三栏工作台', () => {
       expect(String(call?.[1]?.body)).toContain('"sentence":"加个导出按钮"')
     })
     expect(await screen.findByText('缺目标定位')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '提交答复' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '提交' })).toBeTruthy()
+  })
+
+  it('结果态输入区常驻，第二轮提交带上一次 session_id（多轮）', async () => {
+    const user = userEvent.setup()
+    const done = snapshotFixture({ status: 'done', state: 'DONE' })
+    const mock = stubApi([
+      { match: '/optimize', payload: envelope(done) },
+      { match: '/history', payload: envelope([]) },
+    ])
+    // 模拟「已有一轮结果」：直接种快照，页面上应有常驻输入区
+    useOptimizeStore.getState().applySnapshot(done)
+
+    renderPage()
+
+    const input = await screen.findByRole('textbox', { name: '优化原句' })
+    await user.type(input, '再加一个禁用态')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    await waitFor(() => {
+      const call = mock.mock.calls.filter(([url]) => String(url).includes('/optimize')).at(-1)
+      const body = JSON.parse(String(call?.[1]?.body ?? '{}')) as { session_id?: string }
+      expect(body.session_id).toBe('sess-1')
+    })
+  })
+
+  it('提交即切思考视图，快照到达后折叠思考并显示反问卡', async () => {
+    const user = userEvent.setup()
+    const asked = snapshotFixture({
+      questions: [
+        {
+          key: 'target',
+          reason: '缺目标定位',
+          best_guess: 'build()',
+          ask: '改哪里？',
+          header: '',
+          options: [],
+          multi_select: false,
+        },
+      ],
+    })
+    const gate = gatedStream(
+      ['正在检索相关代码'],
+      [{ title: '检索符号', detail: 'rg -n Foo --glob src/a.ts', scope: '命中 2 行' }],
+      envelope(asked),
+    )
+    const mock = vi.fn(async (input: string) =>
+      input.includes('/optimize/stream') ? gate.response : jsonResponse(envelope(null)),
+    )
+    vi.stubGlobal('fetch', mock)
+
+    renderPage()
+    await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
+    await screen.findByText('repo')
+    await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    // 尚未收到快照：步骤时间轴已出现，过程挂在对应步骤下，反问卡还不该出现
+    expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
+    expect(await screen.findByText(/正在检索相关代码/)).toBeTruthy()
+    expect(await screen.findByText('检索符号')).toBeTruthy()
+    expect(screen.queryByText('缺目标定位')).toBeNull()
+
+    gate.release()
+
+    expect(await screen.findByText('缺目标定位')).toBeTruthy()
+    // 过程不因反问出现而消失
+    expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
   })
 })
 
@@ -183,7 +319,15 @@ describe('OptimizePage 三态容器', () => {
   it('反问态渲染澄清卡、已澄清 chips 与逃生按钮', () => {
     const seed = snapshotFixture({
       questions: [
-        { key: 'scope', reason: '缺改造范围', best_guess: '仅首页', ask: '改多大范围？' },
+        {
+          key: 'scope',
+          reason: '缺改造范围',
+          best_guess: '仅首页',
+          ask: '改多大范围？',
+          header: '',
+          options: [],
+          multi_select: false,
+        },
       ],
       cleared: ['target'],
     })
@@ -195,8 +339,8 @@ describe('OptimizePage 三态容器', () => {
     expect(screen.getByText('缺改造范围')).toBeTruthy()
     expect(screen.getByText('scope')).toBeTruthy()
     expect(screen.getByText('target')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /直接生成（A 保守版/ })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '采纳 A' })).toBeNull()
+    expect(screen.getByRole('button', { name: /直接生成/ })).toBeTruthy()
+    expect(document.querySelector('.chat-suggestions')).toBeNull()
   })
 
   it('escape 逃生按钮以 escape 模式调用 POST /followup', async () => {
@@ -209,7 +353,7 @@ describe('OptimizePage 三态容器', () => {
     ])
 
     renderPage()
-    await user.click(screen.getByRole('button', { name: /直接生成（A 保守版/ }))
+    await user.click(screen.getByRole('button', { name: /直接生成/ }))
 
     await waitFor(() => {
       const call = mock.mock.calls.find(([input]) => input.includes('/api/v1/followup/sess-1'))
@@ -254,32 +398,6 @@ describe('OptimizePage 三态容器', () => {
     expect(screen.queryByText(/【推荐】/)).toBeNull()
   })
 
-  it('反馈按钮以 adopt 动作调用 POST /feedback', async () => {
-    const user = userEvent.setup()
-    const seed = snapshotFixture({
-      status: 'done',
-      state: 'DONE',
-      variants: [{ title: '保守方案', body: 'b1', level: 'A', changes: [] }],
-    })
-    useOptimizeStore.getState().applySnapshot(seed)
-    const mock = stubApi([
-      { match: '/feedback', payload: envelope(null) },
-      { match: '/result', payload: envelope(seed) },
-    ])
-
-    renderPage()
-    await user.click(screen.getByRole('button', { name: '采纳 A' }))
-
-    await waitFor(() => {
-      const call = mock.mock.calls.find(([input]) => input.includes('/api/v1/feedback'))
-      expect(call?.[1]?.method).toBe('POST')
-      expect(String(call?.[1]?.body)).toContain('"action":"adopt"')
-      expect(String(call?.[1]?.body)).toContain('"variant":"A"')
-    })
-  })
-})
-
-describe('OptimizePage 恢复与侧栏', () => {
   it('挂载时经 GET /result/{flow_id} 做服务端权威恢复', async () => {
     useOptimizeStore.getState().applySnapshot(snapshotFixture())
     const mock = stubApi([
@@ -295,7 +413,12 @@ describe('OptimizePage 恢复与侧栏', () => {
       const call = mock.mock.calls.find(([input]) => input.includes('/api/v1/result/sess-1'))
       expect(call?.[1]?.method).toBe('GET')
     })
-    expect(await screen.findByText('CONFIRMING')).toBeTruthy()
+    await waitFor(() => {
+      const labels = Array.from(document.querySelectorAll('.chat-reply__phase-label')).map(
+        (el) => el.textContent,
+      )
+      expect(labels).toContain('整理答复')
+    })
   })
 
   it('优化页不再内嵌会话侧栏（已迁至 AppShell）', async () => {

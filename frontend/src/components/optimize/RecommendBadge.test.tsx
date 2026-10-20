@@ -10,7 +10,6 @@ const ranking: RankingViewPayload = {
   marked: true,
   reason: '分差明显',
   fit: 0.8,
-  pref: 0.7,
   total: 0.75,
 }
 

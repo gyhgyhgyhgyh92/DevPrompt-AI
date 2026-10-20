@@ -10,7 +10,6 @@ const ranking: RankingViewPayload = {
   marked: false,
   reason: '三套适配度接近，建议人工选择',
   fit: 0.8,
-  pref: 0.7,
   total: 0.75,
 }
 

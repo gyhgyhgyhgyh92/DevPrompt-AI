@@ -70,6 +70,74 @@
   color: var(--color-text-primary);
 }
 
+/* 多轮全文流（2026-10-20）：每轮完整铺开——用户气泡靠右、助手块靠左 */
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.thread__omitted,
+.thread__loading,
+.thread__open {
+  margin: 0;
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+}
+
+.thread__turn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.thread__round {
+  padding: 0 var(--space-2);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-muted);
+  background: var(--color-border-subtle);
+  border-radius: var(--radius-full);
+}
+
+.thread__variant {
+  margin-block-start: var(--space-3);
+  padding-inline-start: var(--space-3);
+  border-inline-start: 2px solid var(--color-border-subtle);
+}
+
+.thread__variant-title {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0;
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.thread__level {
+  padding: 0 var(--space-2);
+  font: var(--font-code-medium);
+  color: var(--color-text-brand);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-sm);
+}
+
+.thread__variant-body {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-body-xs);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* hidden 属性会被上面的 display:flex/inline-flex 覆盖，需显式收口 */
+.chat-reply__status[hidden],
+.chat-reply__actions[hidden] {
+  display: none;
+}
+
 /* 状态 / 耗时折叠行（替代原状态步进器信息位，MUST-07 只镜像） */
 .chat-reply__status {
   display: inline-flex;
@@ -103,26 +171,111 @@
 }
 
 /* 阶段列表简版（展开细节） */
+/* 流程阶段（2026-10-20）：纵向时间轴，中文名 + 这一步在做什么 */
 .chat-reply__phases {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: 6px;
   margin: var(--space-2) 0 0;
   padding: 0;
-  list-style: none;
-  font: var(--font-code-regular);
   font-size: var(--text-caption-sm);
-  color: var(--color-text-muted);
+  list-style: none;
 }
 
 .chat-reply__phase {
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-sm);
+  display: block;
+  padding-block-end: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+.chat-reply__phase-head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.chat-reply__phase--done {
+  color: var(--color-text-secondary);
 }
 
 .chat-reply__phase--current {
   color: var(--color-text-brand);
+}
+
+.chat-reply__phase-mark {
+  inline-size: 12px;
+  text-align: center;
+}
+
+.chat-reply__phase-label {
+  min-inline-size: 68px;
+  font-weight: 500;
+}
+
+.chat-reply__phase-hint {
+  flex: 1;
+  color: var(--color-text-muted);
+}
+
+.chat-reply__phase-tag {
+  padding: 0 var(--space-2);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-brand);
   background: var(--color-primary-soft);
+  border-radius: var(--radius-full);
+}
+
+/* 每个步骤下方的过程（2026-10-20）：文字段 + 工具卡片 */
+.chat-reply__phase-log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+  padding-inline-start: 20px;
+  list-style: none;
+  border-inline-start: 2px solid var(--color-border-subtle);
+}
+
+.chat-reply__phase-text {
+  margin: 0;
+  font-size: var(--text-caption-sm);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.chat-reply__phase-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-code);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.chat-reply__phase-card-title {
+  font-size: var(--text-caption-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.chat-reply__phase-card-detail {
+  flex: 1;
+  overflow: hidden;
+  font: var(--font-code-regular);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-reply__phase-card-scope {
+  font: var(--font-code-regular);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-muted);
 }
 
 .chat-reply__divider {

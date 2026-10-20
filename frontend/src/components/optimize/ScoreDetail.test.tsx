@@ -11,21 +11,19 @@ const ranking: RankingViewPayload = {
   marked: true,
   reason: '分差明显',
   fit: 0.8,
-  pref: 0.7,
   total: 0.75,
 }
 
 afterEach(cleanup)
 
 describe('ScoreDetail 评分明细', () => {
-  it('展开后显示 fit/pref/total 三个后端数值', async () => {
+  it('展开后显示 fit/total 两个后端数值', async () => {
     const user = userEvent.setup()
     render(<ScoreDetail ranking={ranking} />)
 
     await user.click(screen.getByText('评分明细'))
 
     expect(screen.getByText('适配度 0.8')).toBeTruthy()
-    expect(screen.getByText('偏好匹配 0.7')).toBeTruthy()
     expect(screen.getByText('总分 0.75')).toBeTruthy()
   })
 
@@ -35,6 +33,6 @@ describe('ScoreDetail 评分明细', () => {
 
     await user.click(screen.getByText('评分明细'))
 
-    expect(screen.getByText(/总分 = 适配度加权/)).toBeTruthy()
+    expect(screen.getByText(/总分 = 适配度/)).toBeTruthy()
   })
 })

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { useOptimizeStore } from './stores/useOptimizeStore'
-import { usePreferenceStore } from './stores/usePreferenceStore'
+import { useHistoryStore } from './stores/useHistoryStore'
 
 function jsonResponse(payload: unknown) {
   return { status: 200, headers: { get: () => null }, json: async () => payload }
@@ -26,12 +26,59 @@ function drawer(container: HTMLElement): HTMLElement {
 
 beforeEach(() => {
   useOptimizeStore.getState().reset()
-  usePreferenceStore.getState().reset()
+  useHistoryStore.getState().reset()
 })
 
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+})
+
+describe('App 标题栏 API pill', () => {
+  /** 构造一份 /health 载荷：API 项固定 ok，系统项按 need 参数给 ok/坏。 */
+  function healthPayload(llmOk: boolean, systemOk: boolean) {
+    return {
+      code: 0,
+      message: 'ok',
+      request_id: 'rid',
+      data: {
+        checks: [
+          { name: 'llm_config', ok: llmOk, detail: 'https://api.deepseek.com / deepseek-flash' },
+          { name: 'rg', ok: systemOk, detail: 'ripgrep 15.0.0' },
+        ],
+        is_healthy: llmOk && systemOk,
+      },
+    }
+  }
+
+  function stubHealth(payload: unknown) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse(payload)),
+    )
+  }
+
+  it('API 正常时显示「API 正常」', async () => {
+    stubHealth(healthPayload(true, true))
+    render(<App />)
+
+    expect(await screen.findByText('API 正常')).toBeTruthy()
+  })
+
+  it('llm_config 坏时显示「API 异常」', async () => {
+    stubHealth(healthPayload(false, true))
+    render(<App />)
+
+    expect(await screen.findByText('API 异常')).toBeTruthy()
+  })
+
+  it('无关子系统坏掉**不**误报「API 异常」（回归：曾把用户引向查密钥）', async () => {
+    stubHealth(healthPayload(true, false))
+    render(<App />)
+
+    expect(await screen.findByText('API 正常')).toBeTruthy()
+    expect(screen.queryByText('API 异常')).toBeNull()
+  })
 })
 
 describe('App 响应式抽屉（<768 侧边栏折叠）', () => {

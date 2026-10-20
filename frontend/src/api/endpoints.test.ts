@@ -1,16 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  clearAdoptions,
-  getBrowse,
   getHealth,
   getHistory,
-  getPreference,
   getResult,
   getSettings,
-  postFeedback,
   postFollowup,
   postOptimize,
-  putPreference,
   putSettings,
   scanProject,
 } from './endpoints'
@@ -122,15 +117,6 @@ describe('api/endpoints 12 操作', () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/result/sess-1')
   })
 
-  it('postFeedback 契约 data 恒为 null，成功返回 void', async () => {
-    const fetchMock = stubFetchJson(envelope(null))
-
-    await expect(
-      postFeedback({ session_id: 'sess-1', action: 'adopt', variant: 'A' }),
-    ).resolves.toBeUndefined()
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/feedback')
-  })
-
   it('scanProject 对 project 参数做 URL 编码', async () => {
     const fetchMock = stubFetchJson(
       envelope({ total_symbols: 12, total_files: 3, kind_counts: { function: 4 } }),
@@ -141,53 +127,9 @@ describe('api/endpoints 12 操作', () => {
       `/api/v1/project/scan?project=${encodeURIComponent('D:/我的 项目')}`,
     )
   })
-
-  it('getBrowse 以 GET 携带编码 path 调用；空 path 不携带参数（驱动器列表）', async () => {
-    const fetchMock = stubFetchJson(
-      envelope({ path: 'D:/ws/repo', parent: 'D:/ws', entries: [], truncated: false }),
-    )
-
-    await expect(getBrowse('D:/我的 项目')).resolves.toMatchObject({ path: 'D:/ws/repo' })
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      `/api/v1/project/browse?path=${encodeURIComponent('D:/我的 项目')}`,
-    )
-    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('GET')
-    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined()
-
-    fetchMock.mockClear()
-    await getBrowse('')
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/project/browse')
-  })
-
-  it('getBrowse 携带 q 时追加编码 &q=（子树递归搜索）', async () => {
-    const fetchMock = stubFetchJson(
-      envelope({ path: 'D:/ws', parent: 'D:/', entries: [], truncated: false }),
-    )
-
-    await getBrowse('D:/ws', '我的 项目')
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      `/api/v1/project/browse?path=${encodeURIComponent('D:/ws')}&q=${encodeURIComponent('我的 项目')}`,
-    )
-  })
 })
 
 describe('api/endpoints 偏好与设置', () => {
-  it('getPreference / putPreference 读写 L3 向量', async () => {
-    const vector = {
-      detail_level: 0.25,
-      include_diff: 0.75,
-      specify_tests: 0.1,
-      max_files_norm: 0.9,
-    }
-    const fetchMock = stubFetchJson(envelope(vector))
-
-    await expect(getPreference()).resolves.toEqual(vector)
-    await expect(putPreference({ detail_level: 0.4 })).resolves.toEqual(vector)
-    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/v1/preference')
-    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe('PUT')
-    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({ detail_level: 0.4 }))
-  })
-
   it('getHistory 返回会话摘要列表', async () => {
     stubFetchJson(
       envelope([
@@ -206,14 +148,6 @@ describe('api/endpoints 偏好与设置', () => {
     await expect(getHistory()).resolves.toHaveLength(1)
   })
 
-  it('clearAdoptions 走 DELETE /preference/adoptions 并返回清空条数', async () => {
-    const fetchMock = stubFetchJson(envelope({ cleared: 3 }))
-
-    await expect(clearAdoptions()).resolves.toEqual({ cleared: 3 })
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/preference/adoptions')
-    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('DELETE')
-  })
-
   it('getSettings / putSettings 读写设置视图', async () => {
     const fetchMock = stubFetchJson(envelope(settings))
 
@@ -229,9 +163,7 @@ describe('api/endpoints 偏好与设置', () => {
     const fetchMock = stubFetchJson(envelope(settings))
 
     await putSettings({
-      models: [
-        { id: 'm-1', label: 'A', provider: 'DeepSeek', base_url: 'https://a', model_id: 'x' },
-      ],
+      models: [{ id: 'm-1', provider_id: 'p-1', model_id: 'x' }],
       active_model_id: 'm-1',
     })
 

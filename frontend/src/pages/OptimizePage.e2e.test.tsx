@@ -1,11 +1,19 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse, FlowSnapshotResponse } from '../api/types'
 import { useOptimizeStore } from '../stores/useOptimizeStore'
-import { usePreferenceStore } from '../stores/usePreferenceStore'
+import { useHistoryStore } from '../stores/useHistoryStore'
 import { OptimizePage } from './OptimizePage'
+
+// 2026-10-19：项目路径改由「浏览器扩展 + native messaging host」的系统对话框取得，
+// jsdom 里没有扩展，故 mock 掉桥；页内文件夹浏览器已下线。
+vi.mock('../api/nativeFolder', () => ({
+  NOT_INSTALLED_HINT: '未安装扩展',
+  nativePickErrorText: (e: unknown) => String(e),
+  pickFolderViaNative: vi.fn(async () => ({ path: 'D:/ws/repo' })),
+}))
 
 /* mock e2e 六路径（tasks.md 6.5）：只 mock api 层返回，store 内部全真实。 */
 
@@ -19,10 +27,33 @@ function jsonResponse(payload: unknown) {
 
 type FetchHandler = (input: string, init?: RequestInit) => unknown
 
+/** POST /optimize/stream 的 mock 回应：把载荷包成一帧终态快照（无 thought）。 */
+function sseResponse(payload: unknown) {
+  const data = (payload as { data?: unknown }).data
+  const bytes = new TextEncoder().encode(`data: ${JSON.stringify({ type: 'snapshot', data })}\n\n`)
+  let sent = false
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    body: {
+      getReader: () => ({
+        read: async () => {
+          if (sent) return { done: true, value: undefined }
+          sent = true
+          return { done: false, value: bytes }
+        },
+        releaseLock: () => undefined,
+      }),
+    },
+  }
+}
+
 function stubFetch(handler: FetchHandler) {
-  const mock = vi.fn(async (input: string, init?: RequestInit) =>
-    jsonResponse(handler(input, init)),
-  )
+  const mock = vi.fn(async (input: string, init?: RequestInit) => {
+    const payload = handler(input, init)
+    return input.includes('/optimize/stream') ? sseResponse(payload) : jsonResponse(payload)
+  })
   vi.stubGlobal('fetch', mock)
   return mock
 }
@@ -95,7 +126,7 @@ beforeEach(() => {
   MockEventSource.instances = []
   vi.stubGlobal('EventSource', MockEventSource)
   useOptimizeStore.getState().reset()
-  usePreferenceStore.getState().reset()
+  useHistoryStore.getState().reset()
 })
 
 afterEach(() => {
@@ -123,8 +154,7 @@ describe('mock e2e 六路径', () => {
 
     renderPage()
     await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
-    await user.click(await screen.findByRole('button', { name: '选择当前文件夹' }))
-    expect(await screen.findByText('repo')).toBeTruthy()
+    await screen.findByText('repo')
     await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
     await user.click(screen.getByRole('button', { name: '发送' }))
 
@@ -142,15 +172,32 @@ describe('mock e2e 六路径', () => {
     expect(bubble.className).toContain('chat-user-bubble')
     expect(screen.getByRole('article', { name: 'AI 回复' })).toBeTruthy()
     expect(document.querySelector('.chat-reply__divider')).not.toBeNull()
-    expect(screen.getByText('由 AI 生成')).toBeTruthy()
+    // 底部图标行（复制/重试/赞踩/AI 生成）已按用户要求移除
+    expect(document.querySelector('.chat-reply__actions')).toBeNull()
   })
 
   it('② 反问 → 批量答复 → DONE：澄清卡数量与 answers 提交', async () => {
     const user = userEvent.setup()
     const asked = snapshotFixture({
       questions: [
-        { key: 'target', reason: '缺目标定位', best_guess: 'build()', ask: '改哪里？' },
-        { key: 'scope', reason: '缺改造范围', best_guess: '仅首页', ask: '改多大范围？' },
+        {
+          key: 'target',
+          reason: '缺目标定位',
+          best_guess: 'build()',
+          ask: '改哪里？',
+          header: '',
+          options: [],
+          multi_select: false,
+        },
+        {
+          key: 'scope',
+          reason: '缺改造范围',
+          best_guess: '仅首页',
+          ask: '改多大范围？',
+          header: '',
+          options: [],
+          multi_select: false,
+        },
       ],
       cleared: ['lang'],
     })
@@ -172,17 +219,16 @@ describe('mock e2e 六路径', () => {
 
     renderPage()
     await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
-    await user.click(await screen.findByRole('button', { name: '选择当前文件夹' }))
-    expect(await screen.findByText('repo')).toBeTruthy()
+    await screen.findByText('repo')
     await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
     await user.click(screen.getByRole('button', { name: '发送' }))
 
     expect(await screen.findByText('缺目标定位')).toBeTruthy()
-    expect(screen.getAllByRole('textbox', { name: '答复' })).toHaveLength(2)
-    const inputs = screen.getAllByRole('textbox', { name: '答复' })
+    expect(screen.getAllByRole('textbox', { name: '输入自定义回答' })).toHaveLength(2)
+    const inputs = screen.getAllByRole('textbox', { name: '输入自定义回答' })
     await user.type(inputs[0] as HTMLInputElement, 'build()')
     await user.type(inputs[1] as HTMLInputElement, '仅首页')
-    await user.click(screen.getByRole('button', { name: '提交答复' }))
+    await user.click(screen.getByRole('button', { name: '提交' }))
 
     await waitFor(() => {
       const call = mock.mock.calls.find(([input]) => input.includes('/api/v1/followup/sess-1'))
@@ -197,7 +243,17 @@ describe('mock e2e 六路径', () => {
   it('③ ASKING → 逃生 → 单套 A 无 ranking：不显推荐徽章与评分（MUST-28）', async () => {
     const user = userEvent.setup()
     const asked = snapshotFixture({
-      questions: [{ key: 'target', reason: '缺目标定位', best_guess: 'build()', ask: '改哪里？' }],
+      questions: [
+        {
+          key: 'target',
+          reason: '缺目标定位',
+          best_guess: 'build()',
+          ask: '改哪里？',
+          header: '',
+          options: [],
+          multi_select: false,
+        },
+      ],
     })
     const escaped = snapshotFixture({
       status: 'done',
@@ -217,12 +273,11 @@ describe('mock e2e 六路径', () => {
 
     renderPage()
     await user.click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
-    await user.click(await screen.findByRole('button', { name: '选择当前文件夹' }))
-    expect(await screen.findByText('repo')).toBeTruthy()
+    await screen.findByText('repo')
     await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
     await user.click(screen.getByRole('button', { name: '发送' }))
 
-    await user.click(await screen.findByRole('button', { name: /直接生成（A 保守版/ }))
+    await user.click(await screen.findByRole('button', { name: '直接生成' }))
 
     await waitFor(() => {
       const call = mock.mock.calls.find(([input]) => input.includes('/api/v1/followup/sess-1'))
@@ -242,7 +297,15 @@ describe('mock e2e 六路径', () => {
       state: 'ASKING',
       cleared: ['target'],
       questions: [
-        { key: 'scope', reason: '缺改造范围', best_guess: '仅首页', ask: '改多大范围？' },
+        {
+          key: 'scope',
+          reason: '缺改造范围',
+          best_guess: '仅首页',
+          ask: '改多大范围？',
+          header: '',
+          options: [],
+          multi_select: false,
+        },
       ],
     })
     useOptimizeStore.getState().applySnapshot(seed)
@@ -275,7 +338,7 @@ describe('mock e2e 六路径', () => {
     ])
 
     renderPage()
-    await user.click(screen.getByRole('button', { name: '直接生成' }))
+    await user.click(screen.getByRole('button', { name: '直接生成（保守版）' }))
 
     await waitFor(() => {
       const call = mock.mock.calls.find(([input]) => input.includes('/api/v1/followup/sess-1'))
@@ -308,7 +371,5 @@ describe('mock e2e 六路径', () => {
     // 刷新恢复：AI 回复块存在（旧会话无原句 → 无用户气泡，仅显状态）
     expect(screen.getByRole('article', { name: 'AI 回复' })).toBeTruthy()
     expect(document.querySelector('.chat-user-bubble')).toBeNull()
-    const panel = screen.getByRole('region', { name: '上下文信息' })
-    expect(within(panel).getByText(/暂无目标定位|build@/)).toBeTruthy()
   })
 })

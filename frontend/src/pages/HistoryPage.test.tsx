@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse, HistoryItemPayload } from '../api/types'
 import { useOptimizeStore } from '../stores/useOptimizeStore'
-import { usePreferenceStore } from '../stores/usePreferenceStore'
+import { useHistoryStore } from '../stores/useHistoryStore'
 import { HistoryPage } from './HistoryPage'
 
 function envelope<T>(data: T): ApiResponse<T> {
@@ -43,7 +43,7 @@ const listPayload = [item()]
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
-  usePreferenceStore.getState().reset()
+  useHistoryStore.getState().reset()
   useOptimizeStore.getState().reset()
 })
 

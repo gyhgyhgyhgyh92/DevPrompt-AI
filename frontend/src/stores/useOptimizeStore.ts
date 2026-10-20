@@ -2,10 +2,12 @@ import { create } from 'zustand'
 import type {
   FlowSnapshotResponse,
   RankingViewPayload,
+  TurnSummaryPayload,
   UnknownItemPayload,
   VariantPayload,
 } from '../api/types'
 import { FlowSnapshotSchema } from '../schemas/optimize'
+import type { ActionPayload, ThinkingItem } from '../schemas/stream'
 import type { SseStatus } from '../types'
 
 /** 契约载荷按生成类型派生（F-705：勿在 api/types.ts 之外手写结构）。 */
@@ -36,6 +38,20 @@ interface OptimizeState {
   facts: readonly FactPayload[]
   sseStatus: SseStatus
   isSubmitting: boolean
+  /** 当前会话的轮次摘要（升序）；多轮历史渲染用，正文按需懒加载。 */
+  turns: readonly TurnSummaryPayload[]
+  setTurns: (turns: readonly TurnSummaryPayload[]) => void
+  /** 当前展示轮次（最新一轮在 ChatStream 里渲染，历史列表据此排除它）。 */
+  currentTurnId: string | null
+  setCurrentTurnId: (turnId: string | null) => void
+  /** 思考过程时间线（文字段与动作卡片按到达顺序排列）。 */
+  thinking: readonly ThinkingItem[]
+  /** 思考流进行中（传输层状态，不是 FlowState，MUST-07 不新增状态机态）。 */
+  isThinking: boolean
+  beginThinking: () => void
+  appendThought: (text: string, phase?: string) => void
+  appendAction: (action: ActionPayload, phase?: string) => void
+  endThinking: () => void
   /** 应用流程快照（POST /optimize、GET /result、SSE 推送共用同一入口）。 */
   applySnapshot: (snapshot: FlowSnapshotResponse) => void
   /** 处理 SSE 原始消息：畸形即丢弃（契约破坏不重试，MUST-15），合法才更新状态。 */
@@ -59,6 +75,10 @@ const initialState: Pick<
   | 'facts'
   | 'sseStatus'
   | 'isSubmitting'
+  | 'turns'
+  | 'currentTurnId'
+  | 'thinking'
+  | 'isThinking'
 > = {
   sessionId: null,
   state: 'INIT',
@@ -72,10 +92,60 @@ const initialState: Pick<
   facts: [],
   sseStatus: 'idle',
   isSubmitting: false,
+  turns: [],
+  currentTurnId: null,
+  thinking: [],
+  isThinking: false,
+}
+
+/** 时间线条目 id：只用于 React key，不入契约。 */
+let thinkingSeq = 0
+function nextThinkingId(): string {
+  thinkingSeq += 1
+  return `think-${thinkingSeq}`
 }
 
 export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
   ...initialState,
+  // 新一轮提交：清掉上一轮快照与 sessionId——否则旧会话的 SSE 仍在心跳，
+  // 会把上一轮快照推回来并提前结束思考。
+  setTurns: (turns) => set({ turns }),
+  setCurrentTurnId: (turnId) => set({ currentTurnId: turnId }),
+  // 多轮：新一轮不清容器（session 与历史轮次保留），只重置本轮快照与思考区
+  beginThinking: () =>
+    set((state) => ({
+      ...initialState,
+      sessionId: state.sessionId,
+      turns: state.turns,
+      currentTurnId: state.currentTurnId,
+      isThinking: true,
+    })),
+  appendThought: (text, phase = '') =>
+    set((state) => {
+      if (!state.isThinking) return { thinking: state.thinking }
+      const last = state.thinking.at(-1)
+      // 同一阶段的文字段合并，避免碎片化；跨阶段另起一段
+      if (last?.kind === 'text' && last.phase === phase) {
+        return {
+          thinking: [...state.thinking.slice(0, -1), { ...last, text: last.text + text }],
+        }
+      }
+      return {
+        thinking: [...state.thinking, { id: nextThinkingId(), kind: 'text', text, phase }],
+      }
+    }),
+  appendAction: (action, phase = '') =>
+    set((state) =>
+      state.isThinking
+        ? {
+            thinking: [
+              ...state.thinking,
+              { id: nextThinkingId(), kind: 'action', ...action, phase },
+            ],
+          }
+        : { thinking: state.thinking },
+    ),
+  endThinking: () => set({ isThinking: false }),
   applySnapshot: (snapshot) =>
     set({
       sessionId: snapshot.session_id,
@@ -88,6 +158,8 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
       ranking: snapshot.ranking ?? null,
       target: snapshot.target ?? null,
       facts: snapshot.facts ?? [],
+      // 终态快照即思考结束：无论流何时关闭，都不留「思考中」
+      isThinking: false,
     }),
   applySseMessage: (raw) => {
     let parsed: unknown

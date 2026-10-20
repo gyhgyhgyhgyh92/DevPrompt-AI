@@ -1,27 +1,29 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { FollowupRequest } from '../api/types'
-import { getHistory, getResult, postFeedback, postFollowup, postOptimize } from '../api/endpoints'
+import {
+  getHistory,
+  getResult,
+  getSessionTurns,
+  getTurn,
+  postFollowup,
+  streamOptimize,
+} from '../api/endpoints'
 import { ChatStream } from '../components/optimize/ChatStream'
 import { ConsoleInput } from '../components/optimize/ConsoleInput'
+import { TurnList } from '../components/optimize/TurnList'
 import { errorMessage } from '../components/settings/errorMessage'
 import { useSSE } from '../hooks/useSSE'
 import { useOptimizeStore } from '../stores/useOptimizeStore'
-import { usePreferenceStore } from '../stores/usePreferenceStore'
-import type { VariantLevel } from '../types'
+import { useHistoryStore } from '../stores/useHistoryStore'
 
-type FlowView = 'input' | 'asking' | 'result'
+type FlowView = 'input' | 'thinking' | 'asking' | 'result'
 
-/** 三态容器视图选择（仅按后端 status 镜像渲染；状态转移逻辑唯一在后端，MUST-07）。 */
-function resolveFlowView(status: string | null): FlowView {
+/** 视图选择（仅按后端 status 镜像渲染；状态转移逻辑唯一在后端，MUST-07）。 */
+function resolveFlowView(status: string | null): Exclude<FlowView, 'thinking'> {
   if (status === null) return 'input'
   if (status === 'done' || status === 'aborted') return 'result'
   return 'asking'
-}
-
-/** 契约枚举收窄（level 契约为自由字符串，反馈请求仅接受 A/B/C；集合匹配非业务判定）。 */
-function toVariantLevel(level: string): VariantLevel | null {
-  return level === 'A' || level === 'B' || level === 'C' ? level : null
 }
 
 /** 错误文案走统一降级链（按 code 查表 → 后端 message → fallback，N-7）。 */
@@ -40,9 +42,11 @@ export function OptimizePage() {
     cleared,
     variants,
     ranking,
-    target,
-    facts,
     isSubmitting,
+    thinking,
+    isThinking,
+    turns,
+    currentTurnId,
   } = useOptimizeStore(
     useShallow((s) => ({
       sessionId: s.sessionId,
@@ -53,9 +57,11 @@ export function OptimizePage() {
       cleared: s.cleared,
       variants: s.variants,
       ranking: s.ranking,
-      target: s.target,
-      facts: s.facts,
       isSubmitting: s.isSubmitting,
+      turns: s.turns,
+      currentTurnId: s.currentTurnId,
+      thinking: s.thinking,
+      isThinking: s.isThinking,
     })),
   )
 
@@ -65,8 +71,30 @@ export function OptimizePage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState<number | null>(null)
+  const streamRef = useRef<AbortController | null>(null)
 
   useSSE(sessionId)
+
+  // 多轮历史（切片 2）：会话确定后拉一次轮次摘要；正文由 TurnList 展开时懒加载
+  const setTurns = useOptimizeStore((s) => s.setTurns)
+  useEffect(() => {
+    if (sessionId === null) {
+      setTurns([])
+      return undefined
+    }
+    let cancelled = false
+    void getSessionTurns(sessionId)
+      .then((items) => {
+        if (!cancelled) setTurns(items)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId, setTurns])
+
+  // 卸载即中止在途流（MUST-15：不重连；后端据此把会话置 ABORTED）
+  useEffect(() => () => streamRef.current?.abort(), [])
 
   // 服务端权威恢复（GET /result）：store 里已有流程即重建快照；失败保持现状，不重试（MUST-15）
   useEffect(() => {
@@ -95,14 +123,6 @@ export function OptimizePage() {
     return () => clearInterval(timer)
   }, [startedAt, status])
 
-  /** 当前首选档位（编辑后采纳 / 👍 用）：后端标记的档位，否则首个方案；渲染门非业务判定（MUST-08）。 */
-  function primaryLevel(): VariantLevel | null {
-    const store = useOptimizeStore.getState()
-    const marked = store.ranking?.marked ? store.ranking.variant : null
-    const raw = marked ?? store.variants[0]?.level ?? ''
-    return toVariantLevel(raw)
-  }
-
   async function runFollowup(body: FollowupRequest): Promise<void> {
     const activeSessionId = useOptimizeStore.getState().sessionId
     if (!activeSessionId) return
@@ -118,60 +138,59 @@ export function OptimizePage() {
     }
   }
 
+  /**
+   * 提交走流式端点：点击即切思考视图，thought 帧按序累积，终态快照切反问/结果视图。
+   * 有副作用端点禁重试（MUST-15），中止由 AbortController 收口。
+   */
   async function handleOptimizeSubmit(nextSentence: string, nextProject: string): Promise<void> {
     const store = useOptimizeStore.getState()
     store.setSubmitting(true)
+    store.beginThinking()
     setSentence(nextSentence)
     setProject(nextProject)
     setStartedAt(Date.now())
     setElapsedSeconds(0)
     setErrorMessage(null)
-    try {
-      const snapshot = await postOptimize({ sentence: nextSentence, project: nextProject })
-      store.applySnapshot(snapshot)
-      const items = await getHistory().catch(() => null)
-      if (items !== null) usePreferenceStore.getState().setHistory(items)
-    } catch (error) {
-      setErrorMessage(toMessage(error))
-    } finally {
-      store.setSubmitting(false)
-    }
-  }
 
-  /** 重跑同一句（复用提交路径，防重靠提交中禁用，MUST-15）。 */
-  function handleRetry(): void {
-    if (sentence.trim() === '' || project.trim() === '') return
-    void handleOptimizeSubmit(sentence, project)
-  }
-
-  async function handleFeedback(variant: VariantLevel | null): Promise<void> {
+    const controller = new AbortController()
+    streamRef.current = controller
+    // 多轮：带上当前会话 id，后端在同一 session 起新 turn（空则新建会话）
     const activeSessionId = useOptimizeStore.getState().sessionId
-    if (!activeSessionId) return
-    setIsBusy(true)
-    setErrorMessage(null)
     try {
-      await postFeedback({
-        session_id: activeSessionId,
-        action: variant === null ? 'skip' : 'adopt',
-        variant,
-      })
+      await streamOptimize(
+        { sentence: nextSentence, project: nextProject, session_id: activeSessionId ?? undefined },
+        {
+          onThought: (text, phase) => useOptimizeStore.getState().appendThought(text, phase),
+          onAction: (action, phase) => useOptimizeStore.getState().appendAction(action, phase),
+          onSnapshot: (snapshot) => {
+            useOptimizeStore.getState().applySnapshot(snapshot)
+            void getSessionTurns(snapshot.session_id)
+              .then((items) => {
+                const store = useOptimizeStore.getState()
+                store.setTurns(items)
+                store.setCurrentTurnId(items.at(-1)?.turn_id ?? null)
+              })
+              .catch(() => undefined)
+            void getHistory()
+              .then((items) => useHistoryStore.getState().setHistory(items))
+              .catch(() => undefined)
+          },
+          onError: (error) => setErrorMessage(toMessage(error)),
+        },
+        controller.signal,
+      )
     } catch (error) {
-      setErrorMessage(toMessage(error))
+      // 主动中止（卸载）不提示；其余失败给出降级文案
+      if (!controller.signal.aborted) setErrorMessage(toMessage(error))
     } finally {
-      setIsBusy(false)
+      streamRef.current = null
+      useOptimizeStore.getState().endThinking()
+      useOptimizeStore.getState().setSubmitting(false)
     }
   }
 
-  function handleThumb(isUp: boolean): void {
-    if (!isUp) {
-      void handleFeedback(null)
-      return
-    }
-    const level = primaryLevel()
-    if (level !== null) void handleFeedback(level)
-  }
-
-  const view = resolveFlowView(status)
+  // 思考中优先于一切：提交后立即离开输入页，不等后端返回
+  const view: FlowView = isThinking ? 'thinking' : resolveFlowView(status)
 
   return (
     <div className="optimize-page">
@@ -179,6 +198,8 @@ export function OptimizePage() {
         <div className="optimize-page__center">
           <ConsoleInput
             isSubmitting={isSubmitting || isBusy}
+            initialSentence={sentence}
+            initialProject={project}
             onSubmit={(nextSentence, nextProject) => {
               void handleOptimizeSubmit(nextSentence, nextProject)
             }}
@@ -186,33 +207,48 @@ export function OptimizePage() {
           {errorMessage !== null ? <p className="thread__error">{errorMessage}</p> : null}
         </div>
       ) : (
-        <ChatStream
-          state={state}
-          status={status}
-          sentence={sentence}
-          message={message}
-          questions={questions}
-          cleared={cleared}
-          variants={variants}
-          ranking={ranking}
-          target={target}
-          facts={facts}
-          elapsedSeconds={elapsedSeconds}
-          errorMessage={errorMessage}
-          isBusy={isBusy || isSubmitting}
-          canRetry={sentence.trim() !== '' && project.trim() !== ''}
-          onSubmitAnswers={(answers) => void runFollowup({ answers, escape: false })}
-          onEscape={() => void runFollowup({ escape: true })}
-          onGuardrail={(action) => void runFollowup({ escape: false, guardrail_action: action })}
-          onAdopt={(level) => void handleFeedback(level)}
-          onEditAdopt={() => {
-            const level = primaryLevel()
-            if (level !== null) void handleFeedback(level)
-          }}
-          onSkip={() => void handleFeedback(null)}
-          onThumb={handleThumb}
-          onRetry={handleRetry}
-        />
+        <>
+          {/* 历史轮次：最后一条即当前 ChatStream 展示的这轮，故从列表里排除 */}
+          <TurnList
+            turns={
+              currentTurnId === null
+                ? turns
+                : turns.filter((turn) => turn.turn_id !== currentTurnId)
+            }
+            loadTurn={getTurn}
+          />
+          <ChatStream
+            state={state}
+            status={status}
+            sentence={sentence}
+            thinking={thinking}
+            isThinking={isThinking}
+            message={message}
+            questions={questions}
+            cleared={cleared}
+            variants={variants}
+            ranking={ranking}
+            elapsedSeconds={elapsedSeconds}
+            errorMessage={errorMessage}
+            isBusy={isBusy || isSubmitting}
+            onSubmitAnswers={(answers) => void runFollowup({ answers, escape: false })}
+            onEscape={() => void runFollowup({ escape: true })}
+            onGuardrail={(action) => void runFollowup({ escape: false, guardrail_action: action })}
+          />
+          {/* 多轮：输入区常驻，提交即在同一会话追加一轮（思考中不展示，避免误触） */}
+          {isThinking ? null : (
+            <div className="optimize-page__composer">
+              <ConsoleInput
+                isSubmitting={isSubmitting || isBusy}
+                initialProject={project}
+                projectOptional
+                onSubmit={(nextSentence, nextProject) => {
+                  void handleOptimizeSubmit(nextSentence, nextProject)
+                }}
+              />
+            </div>
+          )}
+        </>
       )}
     </div>
   )

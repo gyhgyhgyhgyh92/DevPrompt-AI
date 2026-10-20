@@ -252,6 +252,15 @@ pre {
   padding: var(--space-6);
 }
 
+/* 多轮输入区：结果/反问视图下常驻底部（2026-10-20） */
+.optimize-page__composer {
+  position: sticky;
+  inset-block-end: 0;
+  margin-block-start: var(--space-4);
+  padding-block: var(--space-3);
+  background: var(--color-surface-base);
+}
+
 /* 条目状态徽章/项目名（旧 SessionSidebar 已删除，HistoryPage 复用此二类） */
 
 .session-sidebar__badge {
@@ -331,6 +340,22 @@ pre {
   border-radius: var(--radius-md);
 }
 
+.clarify-card__head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+/* 官方 AskUserQuestion 的 header：chip 形式的短标签 */
+.clarify-card__header {
+  padding: 0 var(--space-2);
+  font-size: var(--text-caption-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: var(--color-border-subtle);
+  border-radius: var(--radius-full);
+}
+
 .clarify-card__key {
   align-self: flex-start;
   padding: 0 var(--space-2);
@@ -338,6 +363,59 @@ pre {
   color: var(--color-text-brand);
   background: var(--color-primary-soft);
   border-radius: var(--radius-sm);
+}
+
+.clarify-card__ask {
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.clarify-card__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.clarify-option {
+  display: flex;
+  flex-direction: row;
+  gap: var(--space-2);
+  align-items: flex-start;
+  max-inline-size: 260px;
+  padding: var(--space-2) var(--space-3);
+  text-align: start;
+  cursor: pointer;
+  background: var(--color-surface-base);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  transition:
+    border-color 0.16s ease-out,
+    background 0.16s ease-out;
+}
+
+.clarify-option:hover:not(:disabled) {
+  border-color: var(--color-primary-500);
+}
+
+.clarify-option--chosen {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary-500);
+}
+
+.clarify-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.clarify-option__label {
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+}
+
+.clarify-option__desc {
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-muted);
 }
 
 .clarify-card__reason {
@@ -516,4 +594,80 @@ pre {
   .layout-container {
     padding-inline: var(--space-3);
   }
+}
+
+/* 反问面板（2026-10-20 v2）：嵌在对话流内，自适应高度，超 60vh 后中部滚动 */
+.ask-panel {
+  display: flex;
+  flex-direction: column;
+  max-block-size: min(60vh, 680px);
+  margin-block-start: var(--space-3);
+  overflow: hidden;
+  background: var(--color-surface-base);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 6%);
+}
+
+.ask-panel__head {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-block-end: 1px solid var(--color-border-subtle);
+}
+
+.ask-panel__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 22px;
+  block-size: 22px;
+  font-size: var(--text-caption-sm);
+  font-weight: 600;
+  color: var(--color-primary-500);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-full);
+}
+
+.ask-panel__title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--text-body-md);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.ask-panel__progress {
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-muted);
+}
+
+/* 唯一可滚动区域：min-block-size:0 让 flex 子项真正收缩 */
+.ask-panel__body {
+  flex: 1;
+  min-block-size: 0;
+  padding: var(--space-3) var(--space-4);
+  overflow-y: auto;
+}
+
+.ask-panel__foot {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-block-start: 1px solid var(--color-border-subtle);
+}
+
+.ask-panel__hint {
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-muted);
+}
+
+.ask-panel__actions {
+  display: flex;
+  gap: var(--space-2);
 }

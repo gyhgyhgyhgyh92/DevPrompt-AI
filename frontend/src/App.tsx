@@ -6,9 +6,12 @@ import { ProjectSidebar } from './components/history/ProjectSidebar'
 import { SettingsModal } from './components/settings/SettingsModal'
 import { AppRoutes } from './router'
 import { useOptimizeStore } from './stores/useOptimizeStore'
-import { usePreferenceStore } from './stores/usePreferenceStore'
+import { useHistoryStore } from './stores/useHistoryStore'
 
 type ApiStatus = 'checking' | 'ok' | 'down'
+
+/** GET /health 里代表「API 可用性」的检查项名（后端检查项标识，非前端判定）。 */
+const LLM_CHECK_NAME = 'llm_config'
 
 const API_STATUS_TEXT: Record<ApiStatus, string> = {
   checking: 'API 检测中',
@@ -30,14 +33,20 @@ export function App() {
   const { sessionId, state, sseStatus } = useOptimizeStore(
     useShallow((s) => ({ sessionId: s.sessionId, state: s.state, sseStatus: s.sseStatus })),
   )
-  const history = usePreferenceStore((s) => s.history)
+  const history = useHistoryStore((s) => s.history)
 
   // 标题栏 API pill 数据源（GET /health）；失败即降级为「API 异常」，不重试（MUST-15）
+  //
+  // 只看 **llm_config** 那项，不看 is_healthy：pill 的文案声明的是「API 状态」，
+  // 而 is_healthy 是**全系统**健康度——ripgrep 缺失、DB 被锁等无关故障都会把它压成
+  // false，于是明明密钥与端点都好却显示「API 异常」，只把人引向错误的排查方向。
   useEffect(() => {
     let isCancelled = false
     getHealth()
       .then((health) => {
-        if (!isCancelled) setApiStatus(health.is_healthy ? 'ok' : 'down')
+        if (isCancelled) return
+        const llm = health.checks.find((item) => item.name === LLM_CHECK_NAME)
+        setApiStatus(llm?.ok === true ? 'ok' : 'down')
       })
       .catch(() => {
         if (!isCancelled) setApiStatus('down')

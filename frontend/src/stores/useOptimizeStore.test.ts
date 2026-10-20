@@ -19,7 +19,17 @@ function snapshotOf(overrides?: Partial<FlowSnapshotResponse>): FlowSnapshotResp
     state: 'RANKING',
     status: 'done',
     message: 'ok',
-    questions: [{ key: 'target', reason: '缺失', best_guess: 'Foo', ask: '改哪里？' }],
+    questions: [
+      {
+        key: 'target',
+        reason: '缺失',
+        best_guess: 'Foo',
+        ask: '改哪里？',
+        header: '',
+        options: [],
+        multi_select: false,
+      },
+    ],
     cleared: ['scope'],
     variants: [
       { title: '保守', body: 'b1', level: 'A', changes: [] },
@@ -91,6 +101,33 @@ describe('useOptimizeStore 快照镜像', () => {
     useOptimizeStore.getState().applySseMessage(JSON.stringify({ state: 'DONE', status: 'done' }))
 
     expect(useOptimizeStore.getState().state).toBe('INIT')
+  })
+
+  it('beginThinking 保留会话容器（多轮），只重置本轮快照', () => {
+    const store = useOptimizeStore.getState()
+    store.applySnapshot(snapshotOf())
+    store.setTurns([
+      {
+        turn_id: 't1',
+        turn_index: 0,
+        state: 'DONE',
+        target: 'Button',
+        conclusion: '复用令牌',
+        open_items: [],
+        created_at: '',
+      },
+    ])
+    store.setCurrentTurnId('t1')
+
+    useOptimizeStore.getState().beginThinking()
+
+    const next = useOptimizeStore.getState()
+    expect(next.sessionId).toBe('sess-1') // 容器不丢，下一轮复用
+    expect(next.turns).toHaveLength(1)
+    expect(next.currentTurnId).toBe('t1')
+    expect(next.isThinking).toBe(true)
+    expect(next.variants).toEqual([]) // 本轮快照被清
+    expect(next.status).toBeNull()
   })
 
   it('reset 清空流程状态回初始值', () => {

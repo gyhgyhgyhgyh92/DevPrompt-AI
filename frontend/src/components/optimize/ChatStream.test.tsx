@@ -1,244 +1,164 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { RankingViewPayload, VariantPayload } from '../../api/types'
+import type { ThinkingItem } from '../../schemas/stream'
 import { ChatStream } from './ChatStream'
 
 afterEach(cleanup)
 
-type ChatStreamProps = Parameters<typeof ChatStream>[0]
+type Props = Parameters<typeof ChatStream>[0]
 
-const variantsThree: VariantPayload[] = [
-  { title: '保守方案', body: 'body-A', level: 'A', changes: ['改一'] },
-  { title: '标准方案', body: 'body-B', level: 'B', changes: ['改二'] },
-  { title: '激进方案', body: 'body-C', level: 'C', changes: ['改三'] },
-]
-
-const rankingMarked: RankingViewPayload = {
-  variant: 'B',
-  gap: 0.25,
-  confidence: 0.9,
-  marked: true,
-  reason: '分差明显',
-  fit: 0.8,
-  pref: 0.7,
-  total: 0.75,
-}
-
-function baseProps(overrides: Partial<ChatStreamProps> = {}): ChatStreamProps {
+function baseProps(overrides: Partial<Props> = {}): Props {
   return {
     state: 'DONE',
     status: 'done',
     sentence: '加个导出按钮',
+    thinking: [],
+    isThinking: false,
     message: '',
     questions: [],
     cleared: [],
-    variants: variantsThree,
-    ranking: rankingMarked,
-    target: null,
-    facts: [],
-    elapsedSeconds: 3,
+    variants: [
+      {
+        title: '标准版',
+        body: '请为列表页新增导出按钮：读取当前筛选结果，导出为 CSV。',
+        level: 'B',
+        changes: ['新增导出按钮'],
+      },
+    ],
+    ranking: null,
+    elapsedSeconds: null,
     errorMessage: null,
     isBusy: false,
-    canRetry: true,
     onSubmitAnswers: vi.fn(),
     onEscape: vi.fn(),
     onGuardrail: vi.fn(),
-    onAdopt: vi.fn(),
-    onEditAdopt: vi.fn(),
-    onSkip: vi.fn(),
-    onThumb: vi.fn(),
-    onRetry: vi.fn(),
     ...overrides,
   }
 }
 
-function renderChat(overrides: Partial<ChatStreamProps> = {}) {
-  const props = baseProps(overrides)
-  render(<ChatStream {...props} />)
-  return props
-}
-
-describe('ChatStream 用户气泡与回复块结构', () => {
-  it('渲染右对齐用户气泡（原句内容 + chat-user-bubble 类）', () => {
-    renderChat()
-
-    const bubble = screen.getByText('加个导出按钮')
-    expect(bubble.className).toContain('chat-user-bubble')
-    expect(bubble.closest('.chat-stream__row--user')).not.toBeNull()
-  })
-
-  it('无原句时不渲染用户气泡（恢复的旧会话）', () => {
-    renderChat({ sentence: '' })
-
-    expect(document.querySelector('.chat-user-bubble')).toBeNull()
-    expect(screen.getByRole('article', { name: 'AI 回复' })).toBeTruthy()
-  })
-
-  it('回复块含品牌标识、状态折叠行与分隔线', () => {
-    renderChat()
+describe('ChatStream 结构与阶段', () => {
+  it('回复块含品牌标识、步骤时间轴与分隔线', () => {
+    render(<ChatStream {...baseProps()} />)
 
     expect(screen.getByText('DevPrompt AI')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /状态/ })).toBeTruthy()
-    expect(screen.getByText('DONE')).toBeTruthy()
+    expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
     expect(document.querySelector('.chat-reply__divider')).not.toBeNull()
   })
-})
 
-describe('ChatStream 状态 / 耗时折叠行', () => {
-  it('点击折叠行展开阶段列表（aria-expanded 切换）', async () => {
-    const user = userEvent.setup()
-    renderChat()
+  it('步骤用中文展示，并给出每一步在做什么', () => {
+    render(<ChatStream {...baseProps({ state: 'GENERATING', status: 'ask' })} />)
 
-    const toggle = screen.getByRole('button', { name: /状态/ })
-    expect(toggle.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByRole('list', { name: '流程阶段' })).toBeNull()
-
-    await user.click(toggle)
-
-    expect(toggle.getAttribute('aria-expanded')).toBe('true')
-    expect(screen.getByRole('list', { name: '流程阶段' })).toBeTruthy()
+    const labels = Array.from(document.querySelectorAll('.chat-reply__phase-label')).map(
+      (el) => el.textContent,
+    )
+    expect(labels).toEqual([
+      '初始化',
+      '检索代码',
+      '研判信息',
+      '等待确认',
+      '整理答复',
+      '生成方案',
+      '评估推荐',
+      '已完成',
+      '已中止',
+    ])
+    expect(screen.getByText('一次调用产出 1~3 套方案')).toBeTruthy()
+    expect(screen.getByText('进行中')).toBeTruthy()
   })
 
-  it('有计时时显示耗时秒数，无计时时仅显状态', () => {
-    renderChat({ elapsedSeconds: 12 })
-    expect(screen.getByText('耗时 12s')).toBeTruthy()
+  it('每个阶段下方展示属于它的过程（文字段与工具卡片）', () => {
+    const thinking: ThinkingItem[] = [
+      { id: 't1', kind: 'text', text: '符号表就绪，共 12 个符号', phase: 'RETRIEVING' },
+      {
+        id: 'a1',
+        kind: 'action',
+        title: '检索符号',
+        detail: 'rg -n Foo --glob src/a.ts',
+        scope: '命中 2 行',
+        phase: 'RETRIEVING',
+      },
+      { id: 't2', kind: 'text', text: '七项取证完成', phase: 'PROBING' },
+    ]
+    render(<ChatStream {...baseProps({ thinking, state: 'DONE' })} />)
 
-    cleanup()
+    // 检索步骤下挂着文字与工具卡片
+    expect(screen.getByText('符号表就绪，共 12 个符号')).toBeTruthy()
+    expect(screen.getByText('检索符号')).toBeTruthy()
+    expect(screen.getByText('命中 2 行')).toBeTruthy()
+    // 研判步骤下挂着另一段
+    expect(screen.getByText('七项取证完成')).toBeTruthy()
 
-    renderChat({ elapsedSeconds: null })
-    expect(screen.queryByText(/耗时/)).toBeNull()
-    expect(screen.getByText('DONE')).toBeTruthy()
-  })
-})
-
-/** 操作栏图标组容器（卡内亦有「复制」按钮，故按容器定位以消歧）。 */
-function actionBar(): HTMLElement {
-  const node = document.querySelector('.chat-reply__actions')
-  if (node === null) throw new Error('缺少操作栏')
-  return node as HTMLElement
-}
-
-describe('ChatStream 操作栏', () => {
-  it('渲染 复制/重试/赞/踩 图标按钮与「由 AI 生成」', () => {
-    renderChat()
-
-    const bar = within(actionBar())
-    expect(bar.getByRole('button', { name: '复制' })).toBeTruthy()
-    expect(bar.getByRole('button', { name: '重试' })).toBeTruthy()
-    expect(bar.getByRole('button', { name: '赞' })).toBeTruthy()
-    expect(bar.getByRole('button', { name: '踩' })).toBeTruthy()
-    expect(screen.getByText('由 AI 生成')).toBeTruthy()
+    const retrieving = Array.from(document.querySelectorAll('.chat-reply__phase'))[1]
+    expect(retrieving?.textContent).toContain('符号表就绪')
+    expect(retrieving?.textContent).toContain('检索符号')
   })
 
-  it('复制把当前会话全部方案正文写入剪贴板', async () => {
-    const user = userEvent.setup()
-    const writeText = vi.fn(() => Promise.resolve())
-    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
-    renderChat()
+  it('无阶段标签的旧事件归到当前阶段，不会丢失', () => {
+    const thinking: ThinkingItem[] = [{ id: 't1', kind: 'text', text: '旧格式过程', phase: '' }]
+    render(<ChatStream {...baseProps({ thinking, state: 'DONE' })} />)
 
-    await user.click(within(actionBar()).getByRole('button', { name: '复制' }))
-
-    expect(writeText).toHaveBeenCalledWith('body-A\n\nbody-B\n\nbody-C')
+    expect(screen.getByText('旧格式过程')).toBeTruthy()
   })
 
-  it('重试触发重跑；无原句/项目时禁用', async () => {
-    const user = userEvent.setup()
-    const props = renderChat()
-
-    await user.click(within(actionBar()).getByRole('button', { name: '重试' }))
-    expect(props.onRetry).toHaveBeenCalledTimes(1)
-
-    cleanup()
-
-    renderChat({ canRetry: false })
-    const retry = within(actionBar()).getByRole('button', { name: '重试' }) as HTMLButtonElement
-    expect(retry.disabled).toBe(true)
-  })
-
-  it('赞/踩映射操作栏反馈', async () => {
-    const user = userEvent.setup()
-    const props = renderChat()
-
-    await user.click(within(actionBar()).getByRole('button', { name: '赞' }))
-    await user.click(within(actionBar()).getByRole('button', { name: '踩' }))
-
-    expect(props.onThumb).toHaveBeenNthCalledWith(1, true)
-    expect(props.onThumb).toHaveBeenNthCalledWith(2, false)
+  it('显示耗时', () => {
+    render(<ChatStream {...baseProps({ elapsedSeconds: 42 })} />)
+    expect(screen.getByText('耗时 42s')).toBeTruthy()
   })
 })
 
-describe('ChatStream 建议胶囊与方案嵌入', () => {
-  it('DONE 态渲染 采纳 A/B/C + 编辑后采纳 + 跳过 胶囊并各自触发回调', async () => {
+describe('ChatStream 结果与反问', () => {
+  it('结果态渲染方案正文，且不再有目标定位 / 取证事实 / 采纳操作栏 / 底部图标', () => {
+    render(<ChatStream {...baseProps()} />)
+
+    expect(screen.getByText(/导出为 CSV/)).toBeTruthy()
+    expect(screen.queryByText('目标定位')).toBeNull()
+    expect(screen.queryByText('取证事实')).toBeNull()
+    expect(document.querySelector('.chat-suggestions')).toBeNull() // 采纳/编辑/跳过整行
+    expect(document.querySelector('.chat-reply__actions')).toBeNull() // 底部图标行
+    expect(screen.queryByText('由 AI 生成')).toBeNull()
+  })
+
+  it('思考中不渲染正文', () => {
+    render(<ChatStream {...baseProps({ isThinking: true, status: null, state: 'RETRIEVING' })} />)
+
+    expect(screen.queryByText(/导出为 CSV/)).toBeNull()
+    expect(screen.queryByRole('button', { name: '提交' })).toBeNull()
+  })
+
+  it('反问态渲染问答面板并可提交', async () => {
+    const onSubmitAnswers = vi.fn()
+    render(
+      <ChatStream
+        {...baseProps({
+          status: 'ask',
+          state: 'ASKING',
+          questions: [
+            {
+              key: 'scope',
+              reason: '范围不明',
+              best_guess: '',
+              ask: '改动范围？',
+              header: '范围',
+              options: [{ label: '只改一处', description: '' }],
+              multi_select: false,
+            },
+          ],
+          onSubmitAnswers,
+        })}
+      />,
+    )
+
     const user = userEvent.setup()
-    const props = renderChat()
+    expect(screen.getByText('需要你确认 1 个问题')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: /只改一处/ }))
+    await user.click(screen.getByRole('button', { name: '提交' }))
 
-    await user.click(screen.getByRole('button', { name: /采纳 B/ }))
-    await user.click(screen.getByRole('button', { name: /编辑后采纳/ }))
-    await user.click(screen.getByRole('button', { name: /跳过/ }))
-
-    expect(props.onAdopt).toHaveBeenCalledWith('B')
-    expect(props.onEditAdopt).toHaveBeenCalledTimes(1)
-    expect(props.onSkip).toHaveBeenCalledTimes(1)
+    expect(onSubmitAnswers).toHaveBeenCalledWith({ scope: '只改一处' })
   })
 
-  it('方案组嵌入正文：三卡 + 命中档位推荐徽章', () => {
-    renderChat()
-
-    expect(screen.getByRole('article', { name: '方案 A' })).toBeTruthy()
-    expect(screen.getByRole('article', { name: '方案 B' })).toBeTruthy()
-    expect(screen.getByRole('article', { name: '方案 C' })).toBeTruthy()
-    expect(screen.getByText(/【推荐】B/)).toBeTruthy()
-  })
-
-  it('未标记推荐时由 ConfidenceNotice 呈现后端 reason（不静默）', () => {
-    renderChat({
-      ranking: { ...rankingMarked, marked: false, reason: '三套适配度接近，建议人工选择' },
-    })
-
-    expect(screen.getByText('三套适配度接近，建议人工选择')).toBeTruthy()
-    expect(screen.queryByText(/【推荐】/)).toBeNull()
-  })
-
-  it('MUST-28 单套无 ranking：仅 A 卡，无推荐徽章/评分明细，提示人工选择', () => {
-    renderChat({
-      variants: [{ title: '保守方案', body: 'body-A', level: 'A', changes: [] }],
-      ranking: null,
-    })
-
-    expect(screen.getByRole('article', { name: '方案 A' })).toBeTruthy()
-    expect(screen.queryByRole('article', { name: '方案 B' })).toBeNull()
-    expect(screen.queryByText(/【推荐】/)).toBeNull()
-    expect(screen.queryByText('评分明细')).toBeNull()
-    expect(screen.getByText('后端未产生推荐视图，请人工选择')).toBeTruthy()
-  })
-})
-
-describe('ChatStream 追问与上下文', () => {
-  it('追问态以回复块形式呈现澄清卡与逃生按钮', () => {
-    renderChat({
-      state: 'ASKING',
-      status: 'ask',
-      variants: [],
-      ranking: null,
-      questions: [{ key: 'target', reason: '缺目标定位', best_guess: 'build()', ask: '改哪里？' }],
-      cleared: ['lang'],
-    })
-
-    expect(screen.getByText('缺目标定位')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '提交答复' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /直接生成（A 保守版/ })).toBeTruthy()
-  })
-
-  it('上下文信息内嵌小节渲染目标定位与取证事实', () => {
-    renderChat({
-      target: { name: 'build', path: 'src/app.py', line: 12 },
-      facts: [{ key: 'fact_a', passed: true, evidence: '定位到 build' }],
-    })
-
-    const panel = screen.getByRole('region', { name: '上下文信息' })
-    expect(within(panel).getByText('build@src/app.py:12')).toBeTruthy()
-    expect(within(panel).getByText('fact_a')).toBeTruthy()
-    expect(within(panel).getByText('定位到 build')).toBeTruthy()
+  it('错误文案可见', () => {
+    render(<ChatStream {...baseProps({ errorMessage: '网络连接失败' })} />)
+    expect(screen.getByText('网络连接失败')).toBeTruthy()
   })
 })

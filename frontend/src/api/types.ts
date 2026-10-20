@@ -1,8 +1,6 @@
 import type { components } from '../schemas/openapi.generated'
 
 /** 请求/响应类型直接取自生成契约（F-705：字段以后端 Pydantic 为唯一来源，勿手写）。 */
-export type AdoptionsClearResponse = components['schemas']['AdoptionsClearResponse']
-export type FeedbackRequest = components['schemas']['FeedbackRequest']
 export type FlowSnapshotResponse = components['schemas']['FlowSnapshotResponse']
 export type FollowupRequest = components['schemas']['FollowupRequest']
 export type HealthCheckItem = components['schemas']['HealthCheckItem']
@@ -10,14 +8,12 @@ export type HealthResponse = components['schemas']['HealthResponse']
 export type HistoryItemPayload = components['schemas']['HistoryItemPayload']
 export type HistoryUpdateRequest = components['schemas']['HistoryUpdateRequest']
 export type OptimizeRequest = components['schemas']['OptimizeRequest']
-export type PreferenceUpdateRequest = components['schemas']['PreferenceUpdateRequest']
-export type PreferenceVectorPayload = components['schemas']['PreferenceVectorPayload']
-export type BrowseEntryPayload = components['schemas']['BrowseEntryPayload']
-export type BrowseResponse = components['schemas']['BrowseResponse']
 export type RankingViewPayload = components['schemas']['RankingViewPayload']
 export type ScanResponse = components['schemas']['ScanResponse']
 export type SettingsResponse = components['schemas']['SettingsResponse']
 export type SettingsUpdate = components['schemas']['SettingsUpdate']
+export type TurnSummaryPayload = components['schemas']['TurnSummaryPayload']
+export type TurnDetailPayload = components['schemas']['TurnDetailPayload']
 export type UnknownItemPayload = components['schemas']['UnknownItemPayload']
 export type VariantPayload = components['schemas']['VariantPayload']
 
