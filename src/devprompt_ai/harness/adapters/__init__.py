@@ -15,6 +15,16 @@ provider 反复设置会相互覆盖（A 请求设 responses、B 请求设 chat_
 
 from __future__ import annotations
 
-from devprompt_ai.harness.adapters.registry import build_adapter, supported_adapter_kinds
+from devprompt_ai.harness.adapters.registry import (
+    adapter_kind_for,
+    build_adapter,
+    registered_api_modes,
+    supported_adapter_kinds,
+)
 
-__all__ = ["build_adapter", "supported_adapter_kinds"]
+__all__ = [
+    "adapter_kind_for",
+    "build_adapter",
+    "registered_api_modes",
+    "supported_adapter_kinds",
+]

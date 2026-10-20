@@ -32,12 +32,17 @@ class TestEntryBackfill:
         entry, problems = normalize_entry(dict(_LEGACY_ENTRY))
         assert problems == []
         assert entry["capabilities"]["supports_tools"] is True
-        assert entry["capabilities"]["max_context_length"] == 128000
+        assert entry["capabilities"]["max_context_length"] == 1_048_576
 
     def test_existing_fields_untouched(self) -> None:
         entry, _ = normalize_entry(dict(_LEGACY_ENTRY))
-        for key in ("id", "label", "provider", "base_url", "api_key", "model_id"):
+        for key in ("id", "provider", "base_url", "api_key", "model_id"):
             assert entry[key] == _LEGACY_ENTRY[key]
+
+    def test_dropped_label_is_purged(self) -> None:
+        """已下线的 label 必须清掉，否则每次保存都把它原样写回设置文件。"""
+        entry, _ = normalize_entry(dict(_LEGACY_ENTRY))
+        assert "label" not in entry
 
     def test_is_idempotent(self) -> None:
         """归一化两次结果必须一致——否则每次读文件都会「进化」一次。"""

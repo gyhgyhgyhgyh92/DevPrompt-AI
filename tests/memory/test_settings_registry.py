@@ -44,7 +44,7 @@ class TestReadTimeNormalisation:
         _write(settings_file, {"models": [dict(_OLD_ENTRY)], "active_model_id": "m-e94707cd"})
         entry = read_model_registry()["models"][0]
         assert entry["capabilities"]["supports_tools"] is True
-        assert entry["capabilities"]["max_context_length"] == 128000
+        assert entry["capabilities"]["max_context_length"] == 1_048_576
 
     def test_api_key_and_id_survive_normalisation(self, settings_file: Path) -> None:
         """归一化绝不能删掉密钥或条目 id——这是本模块最不能出错的地方。"""
@@ -58,30 +58,18 @@ class TestReadTimeNormalisation:
         _write(settings_file, {"models": [dict(_OLD_ENTRY)], "active_model_id": "m-e94707cd"})
         assert read_model_registry()["active_model_id"] == "m-e94707cd"
 
-    def test_unsupported_params_stripped_on_read(self, settings_file: Path) -> None:
-        """手工写入的不支持参数，不该在读回后继续留在下发路径上。"""
-        _write(
-            settings_file,
-            {
-                "models": [
-                    {**_OLD_ENTRY, "provider": "anthropic", "param_overrides": {"temperature": 0.5}}
-                ]
-            },
-        )
-        entry = read_model_registry()["models"][0]
-
 
 class TestDegradation:
     def test_missing_file_yields_empty(self, settings_file: Path) -> None:
-        assert read_model_registry() == {"models": [], "active_model_id": ""}
+        assert read_model_registry() == {"providers": [], "models": [], "active_model_id": ""}
 
     def test_corrupted_file_yields_empty(self, settings_file: Path) -> None:
         settings_file.write_text("{ 这不是合法 JSON", encoding="utf-8")
-        assert read_model_registry() == {"models": [], "active_model_id": ""}
+        assert read_model_registry() == {"providers": [], "models": [], "active_model_id": ""}
 
     def test_wrong_types_yield_empty(self, settings_file: Path) -> None:
         _write(settings_file, {"models": "不是列表", "active_model_id": 123})
-        assert read_model_registry() == {"models": [], "active_model_id": ""}
+        assert read_model_registry() == {"providers": [], "models": [], "active_model_id": ""}
 
     def test_dangling_active_id_is_cleared(self, settings_file: Path) -> None:
         """激活位指向已删除条目时回落为空，避免上层拿到悬空引用。"""
@@ -90,7 +78,7 @@ class TestDegradation:
 
     def test_disabled_store_yields_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("DEVPROMPT_SETTINGS_FILE", "")
-        assert read_model_registry() == {"models": [], "active_model_id": ""}
+        assert read_model_registry() == {"providers": [], "models": [], "active_model_id": ""}
 
 
 class TestWriteTimeUpgrade:
@@ -105,7 +93,7 @@ class TestWriteTimeUpgrade:
         registry = read_model_registry()
         write_model_registry(registry["models"], registry["active_model_id"])
         reread = read_model_registry()["models"][0]
-        assert reread["capabilities"]["max_context_length"] == 128000
+        assert reread["capabilities"]["max_context_length"] == 1_048_576
 
     def test_write_preserves_unknown_fields(self, settings_file: Path) -> None:
         write_model_registry([{**_OLD_ENTRY, "我的备注": "保留"}], None)
@@ -127,10 +115,14 @@ class TestWriteTimeUpgrade:
         assert settings_file.stat().st_mode & 0o777 == 0o600
 
     def test_write_succeeds_with_secret_material(self, settings_file: Path) -> None:
-        """全平台可断言的部分：含密钥的条目确实落盘了（权限语义由平台各自保证）。"""
+        """全平台可断言的部分：含密钥的条目确实落盘了（权限语义由平台各自保证）。
+
+        2026-10-18 起密钥只存供应商段一份，故断言移到 ``providers``。
+        """
         write_model_registry([dict(_OLD_ENTRY)], None)
         saved = json.loads(settings_file.read_text(encoding="utf-8"))
-        assert saved["models"][0]["api_key"] == "sk-old-value"
+        assert saved["providers"][0]["api_key"] == "sk-old-value"
+        assert "api_key" not in saved["models"][0]
 
     def test_active_none_preserves_existing(self, settings_file: Path) -> None:
         _write(settings_file, {"models": [dict(_OLD_ENTRY)], "active_model_id": "m-e94707cd"})

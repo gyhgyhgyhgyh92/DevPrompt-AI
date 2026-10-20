@@ -54,6 +54,35 @@ _REGISTRY: Final[dict[str, ModelBuilder]] = {
 }
 
 
+#: api_mode -> adapter_kind。2026-10-18：api_mode 成为路由的唯一真值源，
+#: ProviderSpec 的 adapter_kind 已删除——否则两者会漂移，
+#: 用户在 UI 里选了一种形态、实际却跑另一种协议。
+_API_MODE_ADAPTERS: Final[dict[str, str]] = {
+    "chat_completions": "openai_compat",
+    "responses": "openai_responses",
+    "anthropic_messages": "anthropic_native",
+    "gemini_generate_content": "gemini_native",
+}
+
+
+def adapter_kind_for(api_mode: str) -> str:
+    """api_mode → adapter_kind。
+
+    :raises KeyError: 未登记的 api_mode ——这是**开发期错误**（静态表与注册表不一致），
+        故直接抛而非静默回落到 chat_completions：静默会让用户以为在用自己选的形态，
+        实际走了其他协议。
+    """
+    kind = _API_MODE_ADAPTERS.get(api_mode)
+    if kind is None:
+        raise KeyError(f"未登记的 api_mode: {api_mode!r}；已登记：{sorted(_API_MODE_ADAPTERS)}")
+    return kind
+
+
+def registered_api_modes() -> tuple[str, ...]:
+    """全部已登记的 api_mode（供测试断言「每种 api_mode 都有构造器」）。"""
+    return tuple(sorted(_API_MODE_ADAPTERS))
+
+
 def supported_adapter_kinds() -> tuple[str, ...]:
     """全部已登记的 adapter_kind（供测试断言「表里的 kind 都有构造器」）。"""
     return tuple(sorted(_REGISTRY))
@@ -73,4 +102,10 @@ def build_adapter(adapter_kind: str, model: str, client: AsyncOpenAI, **kwargs: 
     return builder(model, client, **kwargs)
 
 
-__all__ = ["ModelBuilder", "build_adapter", "supported_adapter_kinds"]
+__all__ = [
+    "ModelBuilder",
+    "adapter_kind_for",
+    "build_adapter",
+    "registered_api_modes",
+    "supported_adapter_kinds",
+]

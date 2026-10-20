@@ -24,7 +24,12 @@ from devprompt_ai.domain.model_spec import (
     max_context_length_of,
     resolve_api_mode,
 )
-from devprompt_ai.harness.adapters import build_adapter, supported_adapter_kinds
+from devprompt_ai.harness.adapters import (
+    adapter_kind_for,
+    build_adapter,
+    registered_api_modes,
+    supported_adapter_kinds,
+)
 from devprompt_ai.harness.adapters.anthropic_native import AnthropicNativeModel
 from devprompt_ai.harness.adapters.gemini_native import GeminiNativeModel
 from devprompt_ai.harness.llm import build_model
@@ -41,15 +46,27 @@ def openai_client() -> AsyncOpenAI:
 
 
 class TestRegistry:
-    def test_every_spec_kind_has_a_builder(self) -> None:
-        """PROVIDER_SPECS 引用的 adapter_kind 必须都有构造器。
+    def test_every_api_mode_has_a_builder(self) -> None:
+        """每种 api_mode 都有构造器（api_mode 是路由的唯一真值源）。
 
-        这条断言防「表里加了 provider 但忘登记构造器」——那种疏漏会让运行时才炸。
+        防「静态表里写了新的 supported_api_modes 但漏登记构造器」——那种疏漏会让运行时才炸。
         """
-        used = {spec.adapter_kind for spec in PROVIDER_SPECS.values()}
-        assert used <= set(supported_adapter_kinds()), (
-            f"未登记的 kind: {used - set(supported_adapter_kinds())}"
+        used = {mode for spec in PROVIDER_SPECS.values() for mode in spec.supported_api_modes}
+        used.add(spec_default_mode := next(iter(PROVIDER_SPECS.values())).api_mode)
+        assert used <= set(registered_api_modes()), (
+            f"未登记的 api_mode: {used - set(registered_api_modes())}"
         )
+        assert spec_default_mode in registered_api_modes()
+
+    def test_every_api_mode_maps_to_kind_with_builder(self) -> None:
+        """每种 api_mode 的映射目标都必须有构造器（否则路由到个未登记的 kind）。"""
+        for mode in registered_api_modes():
+            assert adapter_kind_for(mode) in supported_adapter_kinds()
+
+    def test_unknown_api_mode_raises_not_fallback(self) -> None:
+        """未登记 api_mode 必须报错——静默回落到 chat_completions 会让用户以为在用自己选的形态。"""
+        with pytest.raises(KeyError, match="未登记的 api_mode"):
+            adapter_kind_for("no_such_mode")
 
     def test_unknown_kind_raises_not_fallback(self) -> None:
         """未登记 kind 必须报错——静默回落会让用户以为在用原生协议，实际走了兼容层。"""
@@ -94,10 +111,6 @@ class TestApiModeResolution:
 
     def test_override_accepted_when_supported(self) -> None:
         assert resolve_api_mode("custom", "responses") == "responses"
-
-    def test_local_providers_do_not_need_key(self) -> None:
-        for key in ("ollama", "vllm", "lmstudio"):
-            assert PROVIDER_SPECS[key].needs_key is False
 
     def test_verified_providers_have_real_base_url(self) -> None:
         """已查证到端点的 provider 必须填真实值（2026-09-17 联网核实）。
@@ -357,7 +370,6 @@ class TestBuildModelFactory:
             ("deepseek", "OpenAIChatCompletionsModel"),
             ("zhipu", "OpenAIChatCompletionsModel"),
             ("moonshot", "OpenAIChatCompletionsModel"),
-            ("ollama", "OpenAIChatCompletionsModel"),
             ("openai", "OpenAIResponsesModel"),
             ("anthropic", "AnthropicNativeModel"),
             ("gemini", "GeminiNativeModel"),
@@ -795,18 +807,12 @@ class TestProviderDirectory:
             "supported_api_modes",
             "max_context_length",
             "context_window_tiers",
+            "models",
             "supports_reasoning",
             "quirks",
         }
         for entry in providers_projection():
             assert set(entry) == expected, f"目录字段与契约不符：{set(entry) ^ expected}"
-
-    def test_local_providers_need_no_key(self) -> None:
-        from devprompt_ai.domain.model_spec import providers_projection
-
-        by_id = {e["id"]: e for e in providers_projection()}
-        for key in ("ollama", "vllm", "lmstudio"):
-            assert by_id[key]["needs_key"] is False
 
     def test_projection_carries_verified_base_urls(self) -> None:
         """目录投影必须带出已核实的端点（前端下拉据此预填 Base URL）。"""
@@ -875,3 +881,88 @@ class TestEntryFieldNormalization:
         assert entry["api_mode"] == "responses"
         assert entry["reasoning_effort"] == "high"
         assert entry["max_context_length"] == 64000
+
+
+class TestApiModeRouting:
+    """api_mode 为路由真值源（2026-10-18）。"""
+
+    def test_custom_provider_anthropic_messages_builds_native(
+        self, openai_client: AsyncOpenAI
+    ) -> None:
+        """custom + anthropic_messages → 原生适配器，且 base_url 落到 SDK client。
+
+        回归：之前两个原生 adapter 完全忽略 base_url，选了原生形态也会打到
+        Anthropic 官方端点而失败；且 adapter_kind 才是唯一决定者，api_mode 选了不生效。
+        """
+        model = AnthropicNativeModel(
+            "claude-x",
+            openai_client,
+            api_key="sk-ant",
+            base_url="https://api.deepseek.com/anthropic",
+        )
+        native = model._ensure_native()
+        assert model.describe().startswith("AnthropicNativeModel")
+        assert str(native.base_url).startswith("https://api.deepseek.com/anthropic")
+
+    def test_gemini_native_receives_base_url(self, openai_client: AsyncOpenAI) -> None:
+        """genai.Client 没有 base_url 参数，必须走 HttpOptions（已核实安装版本字段）。"""
+        model = GeminiNativeModel(
+            "gemini-x",
+            openai_client,
+            api_key="g",
+            base_url="https://gemini.example/v1beta",
+        )
+        native = model._ensure_native()
+        assert model.describe().startswith("GeminiNativeModel")
+        # genai.Client._api_client 惰构，真实 client 在 _models 下（已核实安装版本的属性路径）
+        assert "/v1beta" in str(native._models._api_client._http_options.base_url)
+
+    def test_build_model_routes_by_api_mode(self) -> None:
+        """build_model 按 api_mode 选构造器：同 provider 不同形态 → 不同适配器。"""
+        import devprompt_ai.harness.llm as llm_mod
+        from devprompt_ai.config import AppConfig
+
+        llm_mod._client = None
+        llm_mod._client_key = None
+        chat = build_model(
+            AppConfig(
+                llm_provider="custom",
+                llm_model="m-x",
+                llm_base_url="https://relay.example/v1",
+                llm_api_key="sk-x",
+            )
+        )
+        anthropic = build_model(
+            AppConfig(
+                llm_provider="custom",
+                llm_model="m-x",
+                llm_base_url="https://relay.example/v1",
+                llm_api_key="sk-x",
+                api_mode="anthropic_messages",
+            )
+        )
+        assert type(chat).__name__ == "OpenAIChatCompletionsModel"
+        assert isinstance(anthropic, AnthropicNativeModel)
+
+    def test_client_cache_key_covers_endpoint_and_key(self) -> None:
+        """缓存键必须含 base_url / api_key：同 model 换端点换密钥不得复用旧 client。"""
+        import devprompt_ai.harness.llm as llm_mod
+        from devprompt_ai.config import AppConfig
+
+        llm_mod._client = None
+        llm_mod._client_key = None
+        cfg_a = AppConfig(
+            llm_provider="custom", llm_model="m", llm_base_url="https://a/v1", llm_api_key="sk-a"
+        )
+        first = llm_mod._ensure_client(cfg_a)
+        assert llm_mod._ensure_client(cfg_a) is first  # 同配置复用
+        other = llm_mod._ensure_client(
+            AppConfig(
+                llm_provider="custom",
+                llm_model="m",
+                llm_base_url="https://b/v1",
+                llm_api_key="sk-b",
+            )
+        )
+        assert other is not first
+        assert str(other.base_url).startswith("https://b/v1")

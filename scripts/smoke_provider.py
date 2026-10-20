@@ -18,7 +18,7 @@ from agents import Agent, Runner, function_tool
 from pydantic import BaseModel
 
 from devprompt_ai.config import AppConfig
-from devprompt_ai.domain.model_spec import PROVIDER_SPECS, resolve_api_mode, resolve_provider_key
+from devprompt_ai.domain.model_spec import resolve_api_mode
 from devprompt_ai.harness.llm import _ensure_client, build_model  # noqa: PLC2701 -- 冒烟脚本专用
 from devprompt_ai.memory.settings_store import read_model_registry
 
@@ -222,9 +222,7 @@ async def probe_target(target: Target) -> Report:
         model=target.model,
         provider=target.provider,
         api_mode=resolve_api_mode(target.provider, target.api_mode),
-        # 本地推理引擎（ollama/vllm/lmstudio）本就无 key，不能据此判 untested
-        has_key=bool(target.api_key)
-        or not PROVIDER_SPECS[resolve_provider_key(target.provider)].needs_key,
+        has_key=bool(target.api_key),
     )
     cfg = _cfg_for(target)
     try:

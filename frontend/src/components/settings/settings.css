@@ -181,8 +181,18 @@
   align-items: center;
 }
 
+.settings-hint--clamp {
+  /* 单行省略：提示文字换行会把条目行高撑到 3 倍（2026-10-18 浏览器实测） */
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .settings-btn {
   padding: var(--space-2) var(--space-4);
+  /* 按钮文字不得竖排：窄容器里换行会把行高撑到 2~3 倍（2026-10-18 浏览器实测） */
+  white-space: nowrap;
   font: var(--font-body-medium);
   color: var(--color-text-primary);
   background: var(--color-surface-base);
@@ -205,6 +215,49 @@
   color: var(--color-danger-500);
   background: var(--color-danger-soft);
   border-color: var(--color-danger-500);
+}
+
+/* 占满字段宽度的按钮（模型 ID 下方的「刷新模型列表」） */
+.settings-btn--block {
+  width: 100%;
+  margin-block-start: var(--space-2);
+}
+
+/* 供应商卡下的可用模型多选列表（2026-10-18 供应商中心化） */
+.provider-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.provider-model-list__item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.provider-model-list__label {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  font-family: var(--font-code-regular);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.provider-model-list__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .settings-segment {

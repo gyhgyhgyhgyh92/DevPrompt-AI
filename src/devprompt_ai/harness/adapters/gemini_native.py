@@ -35,10 +35,15 @@ from devprompt_ai.harness.adapters.base import BaseNativeModel
 class GeminiNativeModel(BaseNativeModel):
     """Gemini GenerateContent 原生形态的 Model 实现。"""
 
-    def __init__(self, model: str, client: AsyncOpenAI, *, api_key: str = "") -> None:
+    def __init__(
+        self, model: str, client: AsyncOpenAI, *, api_key: str = "", base_url: str = ""
+    ) -> None:
         super().__init__(model, api_mode="gemini_generate_content")
         self._client = client  # 仅为接口统一；原生路径另建 SDK client
         self._api_key = api_key
+        #: 原生端点；留空则用 SDK 默认。`genai.Client` 没有 base_url 参数，
+        #: 必须走 `http_options=HttpOptions(base_url=...)`（已核实安装版本的字段）。
+        self._base_url = base_url
         self._native: Any = None  # google.genai.Client，惰性构造
 
     def _ensure_native(self) -> Any:
@@ -46,11 +51,16 @@ class GeminiNativeModel(BaseNativeModel):
             return self._native
         try:
             from google import genai
+            from google.genai import types
         except ImportError as exc:  # pragma: no cover - 依赖未安装
             raise RuntimeError(
                 "使用 Gemini 原生形态需安装依赖：uv add google-genai（或 --extra gemini）"
             ) from exc
-        self._native = genai.Client(api_key=self._api_key or "EMPTY")
+        # kwargs 散装而不是直接 **展开：后者让 mypy 无法匹配参数位置（质量不可丢）
+        kwargs: dict[str, Any] = {"api_key": self._api_key or "EMPTY"}
+        if self._base_url:
+            kwargs["http_options"] = types.HttpOptions(base_url=self._base_url)
+        self._native = genai.Client(**kwargs)
         return self._native
 
     # ------------------------------------------------------------------
@@ -267,10 +277,15 @@ def _usage_from_gemini(metadata: Any) -> Any:
 
 
 def build_gemini_model(
-    model: str, client: AsyncOpenAI, *, api_key: str = "", api_mode: str = ""
+    model: str,
+    client: AsyncOpenAI,
+    *,
+    api_key: str = "",
+    base_url: str = "",
+    api_mode: str = "",
 ) -> Any:
     """构造 Gemini 原生 Model（registry 入口）。"""
-    return GeminiNativeModel(model, client, api_key=api_key)
+    return GeminiNativeModel(model, client, api_key=api_key, base_url=base_url)
 
 
 __all__ = ["GeminiNativeModel", "build_gemini_model"]

@@ -130,9 +130,9 @@ def test_read_model_registry_missing_and_corrupt(
 ) -> None:
     """注册表缺失/损坏均静默返回空表（列表降级为空，不影响 model_service）。"""
     settings_file, _ = local_paths
-    assert read_model_registry() == {"models": [], "active_model_id": ""}
+    assert read_model_registry() == {"providers": [], "models": [], "active_model_id": ""}
     settings_file.write_text("{not-json", encoding="utf-8")
-    assert read_model_registry() == {"models": [], "active_model_id": ""}
+    assert read_model_registry() == {"providers": [], "models": [], "active_model_id": ""}
 
 
 def test_write_model_registry_roundtrip_and_active_keeps(
@@ -143,7 +143,6 @@ def test_write_model_registry_roundtrip_and_active_keeps(
     entries = [
         {
             "id": "m-1",
-            "label": "A",
             "provider": "DeepSeek",
             "base_url": "https://a",
             "api_key": "sk-a-1234567890",
@@ -160,7 +159,9 @@ def test_write_model_registry_roundtrip_and_active_keeps(
     write_model_registry(entries, None)  # None 保留既有激活位
     assert read_model_registry()["active_model_id"] == "m-1"
     doc = json.loads(settings_file.read_text(encoding="utf-8"))
-    assert doc["models"][0]["api_key"] == "sk-a-1234567890"  # 明文仅落设置文件
+    # 2026-10-18 起密钥只存供应商段一份，明文仍仅落设置文件（MUST-19）
+    assert doc["providers"][0]["api_key"] == "sk-a-1234567890"
+    assert "api_key" not in doc["models"][0]
 
 
 def test_write_model_registry_disabled_rejects(monkeypatch: pytest.MonkeyPatch) -> None:

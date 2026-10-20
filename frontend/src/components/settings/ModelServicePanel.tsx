@@ -1,52 +1,54 @@
 import { useEffect, useState } from 'react'
-import { getHealth, putSettings } from '../../api/endpoints'
+import { getModelCatalog, putSettings, refreshModelCatalog } from '../../api/endpoints'
+import type { ModelCatalogItem } from '../../schemas/settings'
 import type { SettingsResponse, SettingsUpdate } from '../../api/types'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import type { ModelCapabilities } from '../../schemas/modelSpec'
-import { ApiModeSelect, ContextWindowSelect } from './ApiModeSelect'
+import { ApiModeSelect } from './ApiModeSelect'
 import { ModelCapabilityBadge } from './ModelCapabilityBadge'
 import { findProvider, ProviderSelect } from './ProviderSelect'
 import { errorMessage } from './errorMessage'
 import './settings.css'
 
 /**
- * 供应商清单**不再硬编码**（2026-09-17 W8）：改由后端 `SettingsResponse.providers`
- * 目录驱动。理由：厂商清单会随发版过期，前端写死一份必然与后端漂移
- * （此前 PROVIDERS 只有 3 项，而后端表里有 24 个）。
- * 目录中 `base_url` 为空 = 该厂商官方端点未登记，由 Base URL 输入框旁提示自填。
+ * 供应商中心化配置面板（2026-10-18 重构，F-604 模型服务标签页）。
+ *
+ * 配置单位从「模型条目」上移到「供应商」：每个供应商配一次 `Base URL` + `API Key`，
+ * 刷新拿到该端点可用的 `model_id` 列表，**多选勾选**后一键保存——勾选列表就是该供应商
+ * 的生效模型集合（未勾选的条目随 `models` 整表替换被删除，用户裁定）。
+ *
+ * 两个易混概念：`provider_configs` 是用户自己配置的供应商（可写，密钥脱敏回显）；
+ * `settings.providers` 是后端静态厂商目录（只读，驱动供应商下拉与档位数据）。
+ * 供应商清单**不硬编码**（2026-09-17 W8）——写死一份必然与后端漂移。
  */
 
-/** GET /health 的 LLM 配置检查位名称（后端检查项标识，非前端判定）。 */
-const LLM_CHECK_NAME = 'llm_config'
-
-/** 单条模型草稿（F-604 多模型注册表）：id=null 为尚未保存的新条目；apiKey 空=保留原密钥。 */
-interface ModelEntryDraft {
+/** 供应商草稿：`id` 由前端预生成（新供应商也要有 id，条目才能在同一次请求里引用它）。 */
+interface ProviderDraft {
   key: string
-  id: string | null
-  label: string
+  id: string
   provider: string
   baseUrl: string
   apiKey: string
   masked: string
+  /** 勾选的 model_id 集合 = 该供应商的生效模型集合。 */
+  selected: string[]
+  /** 勾选项的按模型参数（key = model_id）。 */
+  perModel: Record<string, { apiMode: string }>
+}
+
+/** 已存条目（渲染能力徽标与「当前」标记）。 */
+interface ModelRow {
+  id: string
+  providerId: string
   modelId: string
-  /** 2026-09-17 迁移：能力元数据（只读展示，切换供应商时重新取）。 */
+  isActive: boolean
   capabilities: ModelCapabilities
-  /** 2026-09-17 W8：API 形态（空 = 按 provider 默认推断）。 */
   apiMode: string
-  /** 思考强度（空 = 不下发）。 */
-  reasoningEffort: string
-  /** 上下文窗口档位（null = 沿用厂商标称）。 */
-  maxContextLength: number | null
 }
 
-/** 全局调用参数草稿（不进注册表，仍写 model_service 段）。 */
-interface GlobalForm {
-  timeout: string
-  temperature: string
-  maxTokens: string
-}
+type Catalog = { models: ModelCatalogItem[]; warning: string | null; fetched_at: string | null }
 
-let draftSeq = 0
+const EMPTY_CATALOG: Catalog = { models: [], warning: null, fetched_at: null }
 
 /** 未知能力时的兜底（后端保证下发，`.default()` 只在老数据缺字段时生效）。 */
 const FALLBACK_CAPABILITIES: ModelCapabilities = {
@@ -55,138 +57,206 @@ const FALLBACK_CAPABILITIES: ModelCapabilities = {
   max_context_length: null,
 }
 
-/** 由后端视图构造草稿：密钥不回填（回显恒脱敏，MUST-19）。 */
-function draftsFromSettings(settings: SettingsResponse): ModelEntryDraft[] {
-  return settings.models.map((m) => ({
-    key: m.id,
+let draftSeq = 0
+
+/** 预生成供应商引用键：条目必须在同一次请求里引用它，故 id 由前端先给。 */
+function newProviderId(): string {
+  draftSeq += 1
+  return `p-new-${draftSeq}`
+}
+
+function providerDraftsFrom(settings: SettingsResponse): ProviderDraft[] {
+  const models = settings.models ?? []
+  return (settings.provider_configs ?? []).map((p) => {
+    const owned = models.filter((m) => m.provider_id === p.id)
+    return {
+      key: p.id,
+      id: p.id,
+      provider: p.provider,
+      baseUrl: p.base_url,
+      apiKey: '',
+      masked: p.api_key_masked,
+      selected: owned.map((m) => m.model_id),
+      perModel: Object.fromEntries(owned.map((m) => [m.model_id, { apiMode: m.api_mode ?? '' }])),
+    }
+  })
+}
+
+function modelRowsFrom(settings: SettingsResponse): ModelRow[] {
+  return (settings.models ?? []).map((m) => ({
     id: m.id,
-    label: m.label,
-    provider: m.provider,
-    baseUrl: m.base_url,
-    apiKey: '',
-    masked: m.api_key_masked,
+    providerId: m.provider_id,
     modelId: m.model_id,
+    isActive: m.is_active,
     capabilities: m.capabilities ?? FALLBACK_CAPABILITIES,
     apiMode: m.api_mode ?? '',
-    reasoningEffort: m.reasoning_effort ?? '',
-    maxContextLength: m.max_context_length ?? null,
   }))
 }
 
-function globalFromSettings(settings: SettingsResponse): GlobalForm {
-  const s = settings.model_service
+/**
+ * draft → PUT /settings 载荷。
+ *
+ * `reasoning_effort` / `max_context_length` **刻意不下发**：这两项按模型粒度在启动页
+ * 配置（hover 模型下拉的面板），后端对缺省值的语义是「沿用同 id 旧值」，故这里保存
+ * 不会覆盖它们。`api_key` 空值同样表示沿用——前端只有脱敏值（MUST-19）。
+ */
+function buildPayload(drafts: ProviderDraft[], rows: ModelRow[]): NonNullable<SettingsUpdate> {
+  const rowIndex = new Map(rows.map((r) => [`${r.providerId}|${r.modelId}`, r]))
+  const models: NonNullable<SettingsUpdate['models']> = []
+  for (const draft of drafts) {
+    for (const modelId of draft.selected) {
+      const existing = rowIndex.get(`${draft.id}|${modelId}`)
+      models.push({
+        ...(existing === undefined ? {} : { id: existing.id }),
+        provider_id: draft.id,
+        model_id: modelId,
+        api_mode: draft.perModel[modelId]?.apiMode ?? existing?.apiMode ?? '',
+      })
+    }
+  }
   return {
-    timeout: String(s.timeout),
-    temperature: s.temperature == null ? '' : String(s.temperature),
-    maxTokens: s.max_tokens == null ? '' : String(s.max_tokens),
+    provider_configs: drafts.map((d) => ({
+      id: d.id,
+      provider: d.provider,
+      base_url: d.baseUrl.trim(),
+      ...(d.apiKey === '' ? {} : { api_key: d.apiKey }),
+    })),
+    models,
   }
 }
 
-/** 数字字段解析：空串 = 保持不变（undefined）；非法输入单独报错而非静默丢弃。 */
-function readOptionalNumber(raw: string): { ok: true; value: number | undefined } | { ok: false } {
-  const trimmed = raw.trim()
-  if (trimmed === '') return { ok: true, value: undefined }
-  const value = Number(trimmed)
-  return Number.isFinite(value) ? { ok: true, value } : { ok: false }
-}
-
-/**
- * 模型服务面板（F-604 模型服务标签页，2026-10-13 改为模型列表管理）：
- * 顶部维护多模型注册表（新增/编辑/删除/设为当前，整表经 PUT /settings 落库）；
- * 底部保留全局调用参数（超时/温度/max_tokens）与「测试连接」。
- */
+/** 模型服务面板：按供应商配置凭据 → 刷新模型列表 → 多选 → 一键保存。 */
 export function ModelServicePanel() {
   const settings = useSettingsStore((state) => state.settings)
   const setSettings = useSettingsStore((state) => state.setSettings)
-  const [drafts, setDrafts] = useState<ModelEntryDraft[]>([])
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [globalForm, setGlobalForm] = useState<GlobalForm | null>(null)
+  const [drafts, setDrafts] = useState<ProviderDraft[]>([])
+  const [rows, setRows] = useState<ModelRow[]>([])
   const [status, setStatus] = useState<{ ok: boolean; text: string }>({ ok: true, text: '' })
-  const [testResult, setTestResult] = useState<{ ok: boolean; detail: string } | null>(null)
   const [isBusy, setIsBusy] = useState(false)
+  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; detail: string }>>(
+    {},
+  )
+  const [catalogs, setCatalogs] = useState<Record<string, Catalog>>({})
+  const [refreshingKeys, setRefreshingKeys] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     if (!settings) return
-    setDrafts(draftsFromSettings(settings))
-    setActiveId(settings.models.find((m) => m.is_active)?.id ?? null)
-    setGlobalForm(globalFromSettings(settings))
+    setDrafts(providerDraftsFrom(settings))
+    setRows(modelRowsFrom(settings))
   }, [settings])
 
-  if (!settings || !globalForm) {
+  // 进面板先读已落库的目录快照（不联网）：否则模型多选列表一片空白，用户以为没配好。
+  const savedIds = (settings?.provider_configs ?? []).map((p) => p.id).join(',')
+  useEffect(() => {
+    if (savedIds === '') return
+    let cancelled = false
+    void Promise.all(
+      savedIds.split(',').map((providerId) =>
+        getModelCatalog(providerId).then(
+          (result) => ({ providerId, result }),
+          (error: unknown) => ({ providerId, error }),
+        ),
+      ),
+    ).then((outcomes) => {
+      if (cancelled) return
+      setCatalogs((prev) => {
+        const next = { ...prev }
+        for (const o of outcomes) {
+          // 只填空白：刷新按钮拿到的现场数据比快照新，不能被慢一步的快照覆盖
+          if (next[o.providerId] !== undefined) continue
+          next[o.providerId] =
+            'error' in o
+              ? {
+                  models: [],
+                  warning: errorMessage(o.error, '模型列表读取失败'),
+                  fetched_at: null,
+                }
+              : {
+                  models: o.result.models,
+                  warning: o.result.warning ?? null,
+                  fetched_at: o.result.fetched_at ?? null,
+                }
+        }
+        return next
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [savedIds])
+
+  if (!settings) {
     return <p className="settings-note">设置加载中…</p>
   }
 
   const providerDirectory = settings.providers ?? []
+  const catalogFor = (key: string): Catalog => catalogs[key] ?? EMPTY_CATALOG
+  const isRefreshing = (key: string) => refreshingKeys[key] === true
 
-  const patchDraft = (key: string, patch: Partial<ModelEntryDraft>) =>
+  const patchDraft = (key: string, patch: Partial<ProviderDraft>) =>
     setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)))
 
-  const addDraft = () => {
-    draftSeq += 1
+  const toggleModel = (key: string, modelId: string) =>
+    setDrafts((prev) =>
+      prev.map((d) =>
+        d.key === key
+          ? {
+              ...d,
+              selected: d.selected.includes(modelId)
+                ? d.selected.filter((m) => m !== modelId)
+                : [...d.selected, modelId],
+            }
+          : d,
+      ),
+    )
+
+  const setApiMode = (key: string, modelId: string, apiMode: string) =>
+    setDrafts((prev) =>
+      prev.map((d) =>
+        d.key === key ? { ...d, perModel: { ...d.perModel, [modelId]: { apiMode } } } : d,
+      ),
+    )
+
+  const addProvider = () => {
+    const id = newProviderId()
     setDrafts((prev) => [
       ...prev,
       {
-        key: `new-${draftSeq}`,
-        id: null,
-        label: '',
+        key: id,
+        id,
         provider: '',
         baseUrl: '',
         apiKey: '',
         masked: '',
-        modelId: '',
-        capabilities: FALLBACK_CAPABILITIES,
-        apiMode: '',
-        reasoningEffort: '',
-        maxContextLength: null,
+        selected: [],
+        perModel: {},
       },
     ])
   }
 
-  const removeDraft = (key: string) => {
-    setDrafts((prev) => {
-      const target = prev.find((d) => d.key === key)
-      if (target?.id !== null && target?.id === activeId) setActiveId(null)
-      return prev.filter((d) => d.key !== key)
-    })
+  /** 删除供应商：级联——它下面的条目随 `models` 整表替换一起消失（用户裁定）。 */
+  const removeProvider = (key: string) => {
+    const count = drafts.find((d) => d.key === key)?.selected.length ?? 0
+    if (
+      count > 0 &&
+      !window.confirm(
+        `删除该供应商会一并删除其下 ${count} 个已勾选模型（凭据也没了，条目留着也调不通）。确认删除？`,
+      )
+    ) {
+      return
+    }
+    setDrafts((prev) => prev.filter((d) => d.key !== key))
   }
 
-  /** 保存 = PUT /settings：models 整表 + active_model_id + 全局参数；密钥仅在输入新值时回传明文。 */
-  const saveForm = async (): Promise<boolean> => {
-    const timeout = readOptionalNumber(globalForm.timeout)
-    const temperature = readOptionalNumber(globalForm.temperature)
-    const maxTokens = readOptionalNumber(globalForm.maxTokens)
-    if (!timeout.ok || !temperature.ok || !maxTokens.ok) {
-      setStatus({ ok: false, text: '调用参数必须是数字' })
+  /** 保存整表：`provider_configs` 为权威列表（未出现的被删除），`models` 只含勾选项。 */
+  const saveAll = async (): Promise<boolean> => {
+    if (drafts.some((d) => d.provider.trim() === '' || d.baseUrl.trim() === '')) {
+      setStatus({ ok: false, text: '每个供应商都要选厂商并填写 Base URL' })
       return false
-    }
-    if (drafts.some((d) => d.modelId.trim() === '')) {
-      setStatus({ ok: false, text: '每个模型条目都必须填写模型 ID' })
-      return false
-    }
-    const models: NonNullable<SettingsUpdate['models']> = drafts.map((d) => ({
-      ...(d.id === null ? {} : { id: d.id }),
-      label: d.label.trim(),
-      provider: d.provider,
-      base_url: d.baseUrl.trim(),
-      model_id: d.modelId.trim(),
-      ...(d.apiKey === '' ? {} : { api_key: d.apiKey }),
-      // 三个新字段：空值即「沿用/不设置」，后端会按 provider 默认兜底
-      api_mode: d.apiMode,
-      reasoning_effort: d.reasoningEffort,
-      max_context_length: d.maxContextLength,
-    }))
-    const model_service: NonNullable<SettingsUpdate['model_service']> = {
-      timeout: timeout.value,
-      temperature: temperature.value,
-      max_tokens: maxTokens.value,
     }
     setIsBusy(true)
     try {
-      const next = await putSettings({
-        models,
-        ...(activeId === null ? {} : { active_model_id: activeId }),
-        model_service,
-      })
+      const next = await putSettings(buildPayload(drafts, rows))
       setSettings(next)
       setStatus({ ok: true, text: '已保存' })
       return true
@@ -198,23 +268,63 @@ export function ModelServicePanel() {
     }
   }
 
-  /** 测试连接（D-6F-2 口径）：先 PUT 保存，再读 GET /health 的 LLM 配置检查位呈现结果。 */
-  const testConnection = async () => {
-    const saved = await saveForm()
+  /**
+   * 刷新模型列表 = 真实网络探测 `GET {base_url}/models`（带该供应商自己的 Key）。
+   * 必须先保存：后端按 `provider_id` 从 settings.json 取密钥，新供应商没落盘就取不到。
+   */
+  const refreshCatalog = async (key: string) => {
+    const draft = drafts.find((d) => d.key === key)
+    if (draft === undefined) return
+    const saved = await saveAll()
     if (!saved) return
-    setIsBusy(true)
+    setRefreshingKeys((prev) => ({ ...prev, [key]: true }))
     try {
-      const health = await getHealth()
-      const check = health.checks.find((item) => item.name === LLM_CHECK_NAME)
-      setTestResult(
-        check
-          ? { ok: check.ok, detail: check.detail }
-          : { ok: false, detail: '健康检查未包含 LLM 配置检查项，信息不足（待上报 D-6F-2）' },
-      )
+      const result = await refreshModelCatalog(draft.id)
+      setCatalogs((prev) => ({
+        ...prev,
+        [key]: {
+          models: result.models,
+          warning: result.warning ?? null,
+          fetched_at: result.fetched_at ?? null,
+        },
+      }))
+      setStatus({
+        ok: !result.warning,
+        text: result.warning ?? `已获取 ${result.models.length} 个模型`,
+      })
     } catch (error) {
-      setStatus({ ok: false, text: errorMessage(error, '健康检查失败') })
+      setStatus({ ok: false, text: errorMessage(error, '刷新失败') })
     } finally {
-      setIsBusy(false)
+      setRefreshingKeys((prev) => ({ ...prev, [key]: false }))
+    }
+  }
+
+  /**
+   * 测试连接（2026-10-18 移到供应商级）：探测的是「端点 + 密钥是否可用」，与模型无关，
+   * 放在每个条目一行只会给出重复且误导的结果。复用刷新端点，零新增端点。
+   */
+  const testConnection = async (key: string) => {
+    const draft = drafts.find((d) => d.key === key)
+    if (draft === undefined) return
+    // 同样必须先保存：后端按 provider_id 从 settings.json 取密钥（MUST-19），
+    // 刚新增还没落盘的供应商探测必然报「供应商不存在」。
+    if (!(await saveAll())) return
+    setRefreshingKeys((prev) => ({ ...prev, [key]: true }))
+    try {
+      const result = await refreshModelCatalog(draft.id)
+      setTestResults((prev) => ({
+        ...prev,
+        [key]: result.warning
+          ? { ok: false, detail: result.warning }
+          : { ok: true, detail: '连接成功' },
+      }))
+    } catch (error) {
+      setTestResults((prev) => ({
+        ...prev,
+        [key]: { ok: false, detail: errorMessage(error, '连接失败') },
+      }))
+    } finally {
+      setRefreshingKeys((prev) => ({ ...prev, [key]: false }))
     }
   }
 
@@ -222,57 +332,36 @@ export function ModelServicePanel() {
     <section className="settings-panel" aria-label="模型服务">
       <h3 className="settings-panel__title">模型服务</h3>
       <p className="settings-panel__desc">
-        维护已配置的模型（启动页下拉即列出这些条目）；「设为当前」的条目生效于后续生成调用。
+        按供应商配置一次 Base URL 与 API Key，刷新获取可用模型列表，勾选需要的模型后保存；
+        当前生效项在启动页切换。
       </p>
-      <div className="settings-model-list" aria-label="模型列表">
+      <div className="settings-model-list" aria-label="供应商列表">
         {drafts.length === 0 ? (
-          <p className="settings-note">尚未配置任何模型，点击「新增模型」开始。</p>
+          <p className="settings-note">尚未配置任何供应商，点击「新增供应商」开始。</p>
         ) : null}
         {drafts.map((draft) => {
           const pickedProvider = findProvider(providerDirectory, draft.provider)
+          const catalog = catalogFor(draft.key)
+          const rowByModel = new Map(
+            rows.filter((r) => r.providerId === draft.id).map((r) => [r.modelId, r]),
+          )
           return (
             <div key={draft.key} className="settings-model-row">
               <div className="settings-model-row__head">
                 <span className="settings-model-row__title">
-                  {draft.label.trim() !== '' ? draft.label : draft.modelId || '新模型'}
+                  {pickedProvider?.label ?? draft.provider ?? '新供应商'}
                 </span>
-                {draft.id !== null && draft.id === activeId ? (
-                  <span className="settings-model-badge">当前</span>
-                ) : null}
-                <ModelCapabilityBadge capabilities={draft.capabilities} />
+                <span className="settings-model-badge">{draft.selected.length} 个模型</span>
                 <span className="settings-model-row__spacer" />
                 <button
                   type="button"
-                  className="settings-btn settings-btn--small"
-                  disabled={draft.id === null || draft.id === activeId}
-                  title={draft.id === null ? '保存后可设为当前' : undefined}
-                  onClick={() => draft.id !== null && setActiveId(draft.id)}
-                >
-                  设为当前
-                </button>
-                <button
-                  type="button"
                   className="settings-btn settings-btn--small settings-btn--danger"
-                  onClick={() => removeDraft(draft.key)}
+                  onClick={() => removeProvider(draft.key)}
                 >
-                  删除
+                  删除供应商
                 </button>
               </div>
               <div className="settings-grid">
-                <div className="settings-field">
-                  <label className="settings-label" htmlFor={`${draft.key}-label`}>
-                    显示名称
-                  </label>
-                  <input
-                    id={`${draft.key}-label`}
-                    className="settings-input"
-                    value={draft.label}
-                    placeholder="留空则自动生成（供应商 · 模型 ID）"
-                    onChange={(event) =>
-                      patchDraft(draft.key, { label: event.currentTarget.value })
-                    }
-                  />
-                </div>
                 <div className="settings-field">
                   <label className="settings-label" htmlFor={`${draft.key}-provider`}>
                     供应商
@@ -285,9 +374,6 @@ export function ModelServicePanel() {
                       patchDraft(draft.key, {
                         provider: value,
                         ...(picked && picked.base_url !== '' ? { baseUrl: picked.base_url } : {}),
-                        // 换供应商时清空参数与形态：新厂商不支持的留着只会 mislead
-                        apiMode: '',
-                        reasoningEffort: '',
                       })
                     }}
                   />
@@ -307,19 +393,6 @@ export function ModelServicePanel() {
                   {pickedProvider?.base_url === '' ? (
                     <span className="settings-hint">官方端点未登记，请自行查询该厂商文档填写</span>
                   ) : null}
-                </div>
-                <div className="settings-field">
-                  <label className="settings-label" htmlFor={`${draft.key}-model-id`}>
-                    模型 ID
-                  </label>
-                  <input
-                    id={`${draft.key}-model-id`}
-                    className="settings-input"
-                    value={draft.modelId}
-                    onChange={(event) =>
-                      patchDraft(draft.key, { modelId: event.currentTarget.value })
-                    }
-                  />
                 </div>
                 <div className="settings-field">
                   <label className="settings-label" htmlFor={`${draft.key}-api-key`}>
@@ -342,86 +415,98 @@ export function ModelServicePanel() {
                   </span>
                 </div>
               </div>
-              <div className="model-param-section">
-                <ApiModeSelect
-                  supported={pickedProvider?.supported_api_modes ?? []}
-                  value={draft.apiMode}
-                  defaultMode={pickedProvider?.default_api_mode ?? 'chat_completions'}
-                  supportsReasoning={pickedProvider?.supports_reasoning ?? false}
-                  reasoningEffort={draft.reasoningEffort}
-                  onModeChange={(apiMode) => patchDraft(draft.key, { apiMode })}
-                  onEffortChange={(reasoningEffort) => patchDraft(draft.key, { reasoningEffort })}
-                />
-                <ContextWindowSelect
-                  value={draft.maxContextLength}
-                  vendorWindow={pickedProvider?.max_context_length}
-                  tiers={pickedProvider?.context_window_tiers ?? []}
-                  onChange={(value) => patchDraft(draft.key, { maxContextLength: value })}
-                />
+              <div className="settings-actions">
+                <button
+                  type="button"
+                  className="settings-btn"
+                  disabled={isBusy || isRefreshing(draft.key)}
+                  onClick={() => void refreshCatalog(draft.key)}
+                  title={catalog.fetched_at ? '上次刷新：' + catalog.fetched_at : '尚未刷新过'}
+                >
+                  {isRefreshing(draft.key) ? '刷新中…' : '刷新模型列表'}
+                </button>
+                <button
+                  type="button"
+                  className="settings-btn"
+                  disabled={isBusy || isRefreshing(draft.key)}
+                  onClick={() => void testConnection(draft.key)}
+                >
+                  {isRefreshing(draft.key) ? '测试中…' : '测试连接'}
+                </button>
+              </div>
+              {testResults[draft.key] ? (
+                <p
+                  className={
+                    testResults[draft.key]?.ok
+                      ? 'settings-status settings-status--ok'
+                      : 'settings-status settings-status--error'
+                  }
+                >
+                  {testResults[draft.key]?.detail}
+                </p>
+              ) : null}
+              {catalog.warning ? (
+                <span className="settings-error" role="alert">
+                  {catalog.warning}
+                </span>
+              ) : null}
+              <div className="settings-field">
+                <div className="settings-label">可用模型（勾选即启用，未勾选的将删除）</div>
+                {catalog.models.length === 0 ? (
+                  <span className="settings-hint">先点「刷新模型列表」获取该端点的可用模型</span>
+                ) : (
+                  <ul className="provider-model-list">
+                    {catalog.models.map((item) => {
+                      const checked = draft.selected.includes(item.model_id)
+                      const row = rowByModel.get(item.model_id)
+                      return (
+                        <li key={item.model_id} className="provider-model-list__item">
+                          <label className="provider-model-list__label">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleModel(draft.key, item.model_id)}
+                            />
+                            <span className="provider-model-list__name">{item.model_id}</span>
+                            {row?.isActive ? (
+                              <span className="settings-model-badge">当前</span>
+                            ) : null}
+                            {row !== undefined ? (
+                              <ModelCapabilityBadge capabilities={row.capabilities} />
+                            ) : null}
+                          </label>
+                          {checked ? (
+                            <ApiModeSelect
+                              id={`${draft.key}-${item.model_id}-api-mode`}
+                              supported={pickedProvider?.supported_api_modes ?? []}
+                              value={draft.perModel[item.model_id]?.apiMode ?? row?.apiMode ?? ''}
+                              defaultMode={pickedProvider?.default_api_mode ?? 'chat_completions'}
+                              onModeChange={(apiMode) =>
+                                setApiMode(draft.key, item.model_id, apiMode)
+                              }
+                            />
+                          ) : null}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
               </div>
             </div>
           )
         })}
       </div>
       <div className="settings-actions">
-        <button type="button" className="settings-btn" disabled={isBusy} onClick={addDraft}>
-          新增模型
+        <button type="button" className="settings-btn" disabled={isBusy} onClick={addProvider}>
+          新增供应商
         </button>
-      </div>
-
-      <h3 className="settings-panel__title">全局调用参数</h3>
-      <div className="settings-grid">
-        <div className="settings-field">
-          <label className="settings-label" htmlFor="settings-timeout">
-            超时（秒）
-          </label>
-          <input
-            id="settings-timeout"
-            className="settings-input"
-            value={globalForm.timeout}
-            onChange={(event) =>
-              setGlobalForm({ ...globalForm, timeout: event.currentTarget.value })
-            }
-          />
-        </div>
-        <div className="settings-field">
-          <label className="settings-label" htmlFor="settings-temperature">
-            温度
-          </label>
-          <input
-            id="settings-temperature"
-            className="settings-input"
-            value={globalForm.temperature}
-            onChange={(event) =>
-              setGlobalForm({ ...globalForm, temperature: event.currentTarget.value })
-            }
-          />
-        </div>
-        <div className="settings-field">
-          <label className="settings-label" htmlFor="settings-max-tokens">
-            max_tokens
-          </label>
-          <input
-            id="settings-max-tokens"
-            className="settings-input"
-            value={globalForm.maxTokens}
-            onChange={(event) =>
-              setGlobalForm({ ...globalForm, maxTokens: event.currentTarget.value })
-            }
-          />
-        </div>
-      </div>
-      <div className="settings-actions">
         <button
           type="button"
           className="settings-btn settings-btn--primary"
           disabled={isBusy}
-          onClick={saveForm}
+          onClick={() => void saveAll()}
         >
           保存
-        </button>
-        <button type="button" className="settings-btn" disabled={isBusy} onClick={testConnection}>
-          测试连接
         </button>
       </div>
       {status.text !== '' ? (
@@ -433,17 +518,6 @@ export function ModelServicePanel() {
           }
         >
           {status.text}
-        </p>
-      ) : null}
-      {testResult ? (
-        <p
-          className={
-            testResult.ok
-              ? 'settings-status settings-status--ok'
-              : 'settings-status settings-status--error'
-          }
-        >
-          {testResult.ok ? 'LLM 配置检查通过' : 'LLM 配置检查未通过'}：{testResult.detail}
         </p>
       ) : null}
     </section>

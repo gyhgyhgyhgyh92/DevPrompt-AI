@@ -31,6 +31,8 @@ gemini = ["google-genai>=2.31,<3"]
 # console script：默认动作即启动本地服务（`devprompt-ai --help` 查看全部参数）
 [project.scripts]
 devprompt-ai = "devprompt_ai.main:main"
+# native messaging host（2026-10-19）：浏览器扩展拉起此脚本弹系统原生文件夹选择器（stdio 长度前缀协议）
+devprompt-ai-pick-folder = "devprompt_ai.native_host:main"
 
 [build-system]
 requires = ["hatchling"]

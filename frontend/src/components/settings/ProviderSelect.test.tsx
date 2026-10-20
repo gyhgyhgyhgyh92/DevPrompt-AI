@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ProviderDirectoryEntry } from '../../schemas/settings'
-import { ApiModeSelect, ContextWindowSelect, REASONING_EFFORTS } from './ApiModeSelect'
+import { ApiModeSelect } from './ApiModeSelect'
 import { findProvider, formatWindow, ProviderSelect } from './ProviderSelect'
 
 /**
@@ -22,6 +22,8 @@ const PROVIDERS: ProviderDirectoryEntry[] = [
     default_api_mode: 'chat_completions',
     supported_api_modes: ['chat_completions'],
     max_context_length: 64000,
+    context_window_tiers: [64000],
+    models: [],
     supports_reasoning: false,
     quirks: '',
   },
@@ -33,6 +35,8 @@ const PROVIDERS: ProviderDirectoryEntry[] = [
     default_api_mode: 'chat_completions',
     supported_api_modes: ['chat_completions', 'responses'],
     max_context_length: 128000,
+    context_window_tiers: [128000],
+    models: [],
     supports_reasoning: true,
     quirks: '',
   },
@@ -43,6 +47,8 @@ const PROVIDERS: ProviderDirectoryEntry[] = [
     needs_key: true,
     default_api_mode: 'chat_completions',
     supported_api_modes: ['chat_completions'],
+    context_window_tiers: [],
+    models: [],
     supports_reasoning: false,
     quirks: '',
   },
@@ -112,13 +118,10 @@ describe('formatWindow', () => {
   })
 })
 
-describe('ApiModeSelect', () => {
+describe('ApiModeSelect（2026-10-18 起不含思考强度/上下文窗口，二者已迁至启动页模型下拉）', () => {
   const base = {
     defaultMode: 'chat_completions',
-    supportsReasoning: false,
-    reasoningEffort: '',
     onModeChange: vi.fn(),
-    onEffortChange: vi.fn(),
   }
 
   it('可选模式来自后端目录 supported_api_modes', () => {
@@ -127,28 +130,22 @@ describe('ApiModeSelect', () => {
     expect(options).toContain('responses')
   })
 
-  it('首项是「默认（provider 默认形态）」', () => {
+  it('只有一种形态时不渲染下拉（不渲染冗余的「默认」+同值两项）', () => {
     render(<ApiModeSelect {...base} supported={['chat_completions']} value="" />)
-    expect(screen.getAllByRole('option')[0]?.textContent).toContain('chat_completions')
+    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(screen.getByText(/chat_completions（该供应商仅支持这一种形态）/)).toBeTruthy()
   })
 
   it('目录为空时回落到默认形态，不显示空下拉', () => {
     render(<ApiModeSelect {...base} supported={[]} value="" />)
-    const options = screen.getAllByRole('option').map((o) => o.textContent)
-    expect(options.some((t) => t === 'chat_completions')).toBe(true)
+    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(screen.getByText(/chat_completions/)).toBeTruthy()
   })
 
-  it('不支持推理的 provider 不显示思考强度', () => {
+  it('不再渲染思考强度与上下文窗口（已迁至启动页）', () => {
     render(<ApiModeSelect {...base} supported={['chat_completions']} value="" />)
     expect(screen.queryByLabelText('思考强度')).toBeNull()
-  })
-
-  it('支持推理的 provider 显示思考强度且含 none', () => {
-    render(<ApiModeSelect {...base} supported={['chat_completions']} supportsReasoning value="" />)
-    const options = screen.getAllByRole('option').map((o) => o.textContent)
-    expect(options.some((t) => t?.includes('none'))).toBe(true)
-    expect(REASONING_EFFORTS).toHaveLength(6)
-    expect(REASONING_EFFORTS[0]?.value).toBe('')
+    expect(screen.queryByLabelText('上下文窗口')).toBeNull()
   })
 
   it('切换形态触发 onModeChange', () => {
@@ -163,54 +160,5 @@ describe('ApiModeSelect', () => {
     )
     fireEvent.change(screen.getByLabelText('API 形态'), { target: { value: 'responses' } })
     expect(onModeChange).toHaveBeenCalledWith('responses')
-  })
-})
-
-describe('ContextWindowSelect 档位单选', () => {
-  const base = { vendorWindow: 200000, tiers: [128000, 200000], onChange: vi.fn() }
-
-  it('只提供厂商给出的档位，不给自由输入', () => {
-    render(<ContextWindowSelect {...base} value={null} />)
-    const labels = screen.getAllByRole('option').map((o) => o.textContent)
-    expect(labels.some((t) => t?.includes('128K'))).toBe(true)
-    expect(labels.some((t) => t?.includes('200K'))).toBe(true)
-    expect(screen.queryByRole('textbox')).toBeNull()
-  })
-
-  it('厂商标称档位带标注', () => {
-    render(<ContextWindowSelect {...base} value={null} />)
-    expect(screen.getByText(/厂商标称/)).toBeTruthy()
-  })
-
-  it('选中档位触发 onChange', () => {
-    const onChange = vi.fn()
-    render(<ContextWindowSelect {...base} onChange={onChange} value={null} />)
-    fireEvent.change(screen.getByLabelText('上下文窗口'), { target: { value: '128000' } })
-    expect(onChange).toHaveBeenCalledWith(128000)
-  })
-
-  it('选中厂商标称值即回落为 null（不冗余保存）', () => {
-    const onChange = vi.fn()
-    render(<ContextWindowSelect {...base} onChange={onChange} value={128000} />)
-    fireEvent.change(screen.getByLabelText('上下文窗口'), { target: { value: '200000' } })
-    expect(onChange).toHaveBeenCalledWith(null)
-  })
-
-  it('厂商窗口未登记时整块不渲染（不显示占位数字）', () => {
-    const { container } = render(
-      <ContextWindowSelect {...base} vendorWindow={null} tiers={[]} value={null} />,
-    )
-    expect(container.textContent).toBe('')
-  })
-
-  it('无可选档位时禁用下拉（只能用厂商标称）', () => {
-    render(<ContextWindowSelect {...base} tiers={[]} value={null} />)
-    expect((screen.getByLabelText('上下文窗口') as HTMLSelectElement).disabled).toBe(true)
-  })
-
-  it('文案不含截断承诺（只告警不截断）', () => {
-    render(<ContextWindowSelect {...base} value={null} />)
-    expect(screen.queryByText(/自动截断/)).toBeNull()
-    expect(screen.getByText(/不截断证据/)).toBeTruthy()
   })
 })

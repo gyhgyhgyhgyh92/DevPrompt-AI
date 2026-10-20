@@ -2,10 +2,24 @@ import { useEffect, useState } from 'react'
 import type { ProviderDirectoryEntry } from '../../schemas/settings'
 
 /** 契约侧类型（api/types.ts 由 openapi 生成），比 Zod 推断更贴近服务端实际下发。 */
-type ProviderEntry = Omit<ProviderDirectoryEntry, 'supported_api_modes'> & {
+type ProviderEntry = Omit<
+  ProviderDirectoryEntry,
+  'supported_api_modes' | 'context_window_tiers' | 'models'
+> & {
   supported_api_modes?: string[] | undefined
   /** 上下文窗口档位；契约里可选（老数据无此字段） */
   context_window_tiers?: number[] | undefined
+  /** 模型级目录（窗口/档位/思考强度均按模型粒度）；老数据无此字段 */
+  models?:
+    | ReadonlyArray<{
+        model_id: string
+        label?: string
+        max_context_length?: number | null
+        context_window_tiers?: number[]
+        reasoning_efforts?: string[]
+        default_effort?: string
+      }>
+    | undefined
 }
 
 export interface ProviderSelectProps {

@@ -43,11 +43,16 @@ _MAX_MODEL_LEN = 200
 class AnthropicNativeModel(BaseNativeModel):
     """Anthropic Messages 原生形态的 Model 实现。"""
 
-    def __init__(self, model: str, client: AsyncOpenAI, *, api_key: str = "") -> None:
+    def __init__(
+        self, model: str, client: AsyncOpenAI, *, api_key: str = "", base_url: str = ""
+    ) -> None:
         super().__init__(model, api_mode="anthropic_messages")
         # client 参数仅用于接口统一（OpenAI 兼容路径需要）；原生路径另建 SDK client
         self._client = client
         self._api_key = api_key
+        #: 原生端点；留空则用 SDK 默认（api.anthropic.com）。供应商提供 Anthropic 兼容层时
+        #: 必须下传其自身的 base_url，否则请求会打到 Anthropic 官方而失败。
+        self._base_url = base_url
         self._native: Any = None  # anthropic.AsyncAnthropic，惰性构造
 
     # ------------------------------------------------------------------
@@ -63,7 +68,11 @@ class AnthropicNativeModel(BaseNativeModel):
             raise RuntimeError(
                 "使用 Anthropic 原生形态需安装依赖：uv add anthropic（或 --extra anthropic）"
             ) from exc
-        self._native = anthropic.AsyncAnthropic(api_key=self._api_key or "EMPTY")
+        # kwargs 散装而不是直接**展开：后者让 mypy 无法匹配参数位置（质量不可丢）
+        kwargs: dict[str, Any] = {"api_key": self._api_key or "EMPTY"}
+        if self._base_url:
+            kwargs["base_url"] = self._base_url
+        self._native = anthropic.AsyncAnthropic(**kwargs)
         return self._native
 
     # ------------------------------------------------------------------
@@ -287,10 +296,15 @@ def _usage_from_anthropic(usage: Any) -> Any:
 
 
 def build_anthropic_model(
-    model: str, client: AsyncOpenAI, *, api_key: str = "", api_mode: str = ""
+    model: str,
+    client: AsyncOpenAI,
+    *,
+    api_key: str = "",
+    base_url: str = "",
+    api_mode: str = "",
 ) -> Any:
     """构造 Anthropic 原生 Model（registry 入口）。"""
-    return AnthropicNativeModel(model, client, api_key=api_key)
+    return AnthropicNativeModel(model, client, api_key=api_key, base_url=base_url)
 
 
 __all__ = ["AnthropicNativeModel", "build_anthropic_model"]

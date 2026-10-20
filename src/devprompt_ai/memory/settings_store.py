@@ -21,7 +21,13 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from devprompt_ai.domain.model_migration import normalize_registry
+from devprompt_ai.domain.model_migration import (
+    attach_providers,
+    join_providers,
+    normalize_providers,
+    normalize_registry,
+    split_registry,
+)
 from devprompt_ai.memory.schema import SETTINGS_DDL
 
 _DEFAULT_SETTINGS_FILE = "~/.devprompt-ai/settings.json"
@@ -32,6 +38,8 @@ _FILE_PERMISSIONS = 0o600
 # 多模型注册表在 settings.json 中的键（F-604：模型列表 + 当前生效条目 id）
 _REGISTRY_KEY = "models"
 _ACTIVE_KEY = "active_model_id"
+# 供应商配置段（2026-10-18 供应商中心化重构）：端点与密钥只存一份，条目按 provider_id 引用
+_PROVIDERS_KEY = "providers"
 
 
 class SettingsStoreError(RuntimeError):
@@ -93,37 +101,58 @@ def write_model_settings(values: dict[str, Any]) -> None:
 
 
 def read_model_registry() -> dict[str, Any]:
-    """读 settings.json 的模型注册表：返回 ``{"models": [...], "active_model_id": str}``。
+    """读 settings.json 的模型注册表：返回 ``{"providers": [...], "models": [...],
+    "active_model_id": str}``。
 
-    **读时归一化**（2026-09-17模型管理迁移）：逐条经 `domain.model_migration.normalize_entry`
-    补齐 `capabilities` / `param_overrides`，因此六字段的旧条目无需迁移脚本即可使用，
-    且在下次保存时自动升级为新结构。归一化**永不抛异常**——数据文件由用户手工编辑也可能出错，
-    读取失败不该让配置丢失或让服务起不来。
+    **读时归一化 + 旧格式迁移**（2026-09-17 条目迁移；2026-10-18 供应商中心化）：
+    旧格式条目（自带 ``provider``/``base_url``/``api_key``、无 ``provider_id``）由
+    `attach_providers` 按端点归并进供应商段——**密钥不丢**，无需迁移脚本。
+    归一化**永不抛异常**：数据文件由用户手工编辑也可能出错，读取失败不该让配置丢失。
+
+    返回的 ``models`` 是**展平条目**（补回了 ``provider``/``base_url``/``api_key``），
+    让 `service` 等内部消费方无需感知供应商段的存在。
 
     缺失/损坏静默返回空表（列表展示降级为空，不影响 model_service 生效配置）。
     """
     doc = _read_doc()
+    providers = normalize_providers(doc.get(_PROVIDERS_KEY))
     raw_models = doc.get(_REGISTRY_KEY)
-    models = normalize_registry(raw_models)
+    seeded = (
+        [dict(m) for m in raw_models if isinstance(m, dict)] if isinstance(raw_models, list) else []
+    )
+    # 先定 provider_id 与 provider（能力兜底要用），再归一化，最后展平端点与密钥
+    models, providers = attach_providers(seeded, providers)
+    models = normalize_registry(models)
+    models = join_providers(models, providers)
     active = doc.get(_ACTIVE_KEY)
     active_id = active if isinstance(active, str) else ""
     # 激活位指向已被删除的条目时回落为空，避免上层拿到悬空引用
     if active_id and not any(str(item.get("id")) == active_id for item in models):
         active_id = ""
-    return {"models": models, "active_model_id": active_id}
+    return {"providers": providers, "models": models, "active_model_id": active_id}
 
 
-def write_model_registry(models: list[dict[str, Any]], active_model_id: str | None) -> None:
+def write_model_registry(
+    models: list[dict[str, Any]],
+    active_model_id: str | None,
+    providers: list[dict[str, Any]] | None = None,
+) -> None:
     """整表写注册表：``models`` 全量替换；``active_model_id`` None 不覆盖既有值。
 
-    写入前统一经 :func:`normalize_registry` 归一化——「读时补、写时全」，
-    保证落盘结构始终是完整的（不会出现只存了六字段的老结构）。
-    非字典条目被静默丢弃（与既有读侧行为一致：脏数据不该让整个写入失败）。
+    ``providers`` 为**权威供应商列表**（None = 按条目端点派生，兼容旧调用方）：
+    显式给出时未出现的记录一并删除，其条目随 ``models`` 整表替换消失（级联删除）；
+    刚配好、还没勾选任何模型的供应商记录在列表里，故保留。
+
+    写入前统一经 :func:`normalize_registry` 归一化 + :func:`split_registry` 拆分——
+    「读时补、写时全」，落盘条目只存 ``provider_id`` 引用。
 
     与 ``write_model_settings`` 共用同一原子替换 + 0600 实现（MUST-19：密钥唯一落盘处不变）。
     """
     doc = _read_doc()
-    doc[_REGISTRY_KEY] = normalize_registry(models)
+    existing = normalize_providers(doc.get(_PROVIDERS_KEY))
+    entries, records = split_registry(normalize_registry(models), providers, existing)
+    doc[_PROVIDERS_KEY] = records
+    doc[_REGISTRY_KEY] = entries
     if active_model_id is not None:
         doc[_ACTIVE_KEY] = active_model_id
     _write_doc(doc, "设置文件已禁用（DEVPROMPT_SETTINGS_FILE 为空），无法写模型注册表")
