@@ -7,6 +7,7 @@ create_decider 保留函数名与签名（调用方零改动），恒返回 LLMF
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 
 from devprompt_ai.common.text import estimate_tokens
 from devprompt_ai.config import AppConfig
@@ -27,10 +28,16 @@ from devprompt_ai.domain.decision.port import (
     RankComponentsOutput,
     ScorePromptsOutput,
 )
+from devprompt_ai.domain.errors import DevPromptError
 from devprompt_ai.domain.models import Candidate, FactResult
+from devprompt_ai.harness.ask_tool import parse_ask_call
 from devprompt_ai.harness.guardrails import validate_ranking
-from devprompt_ai.harness.llm import chat_structured
-from devprompt_ai.observability.logging import emit
+from devprompt_ai.harness.llm import (
+    chat_structured,
+    chat_with_tools,
+    parse_structured,
+)
+from devprompt_ai.observability.logging import emit, emit_warning
 
 logger = logging.getLogger("devprompt.decision")
 
@@ -85,7 +92,18 @@ class LLMFallbackDecider:
         validate_ranking(out, len(candidates))
         return out
 
-    async def probe_facts(self, sentence: str, facts: list[FactResult]) -> FactProbeOutput:
+    async def probe_facts(
+        self,
+        sentence: str,
+        facts: list[FactResult],
+        *,
+        answered: Mapping[str, str] | None = None,
+    ) -> FactProbeOutput:
+        """研判：走 AskUserQuestion 工具调用；模型不调工具时解析 JSON。
+
+        降级：任一 provider 报错（含不支持 tools）→ 回落 ``chat_structured`` 且本轮不提问，
+        并发 ``decision.tools_unsupported`` 告警（不静默 500）。
+        """
         listing = "\n".join(
             f"- {f.key}: {'真' if f.passed else '假'}（证据：{f.evidence}）" for f in facts
         )
@@ -93,14 +111,39 @@ class LLMFallbackDecider:
             FACTS_USER.format(evidence=facts_evidence(sentence, listing)),
             self._cfg.max_state_tokens,
         )
-        return await chat_structured(
-            self._cfg,
-            FactProbeOutput,
-            FACTS_SYSTEM,
-            user,
-            # 真实冒烟（6G，2026-10-12）：DeepSeek 探针峰值 >10s 致间歇 500，弃用短超时
-            # 改随 cfg.llm_timeout（可配置）；成本失控由 MUST-26 成本护栏兜底
-        )
+        if answered:
+            block = "\n".join(f"- 问：{q}\n  答：{a}" for q, a in answered.items())
+            user = f"{user}\n\n【已确认的问答（不要再问这些）】\n{block}"
+
+        try:
+            result = await chat_with_tools(self._cfg, FACTS_SYSTEM, user)
+        except DevPromptError as exc:
+            emit_warning("decision.tools_unsupported", reason=type(exc).__name__)
+            return await chat_structured(self._cfg, FactProbeOutput, FACTS_SYSTEM, user)
+
+        if result.tool_call is not None:
+            ask = parse_ask_call(result.tool_call.arguments)
+            if ask is None:
+                emit_warning("decision.ask_args_invalid", call_id=result.tool_call.call_id)
+                return FactProbeOutput(
+                    judgments=[],
+                    overall_confidence=0.0,
+                    questions=[],
+                    ask_call_id=result.tool_call.call_id,
+                )
+            return FactProbeOutput(
+                judgments=[],
+                overall_confidence=0.0,
+                questions=ask.questions,
+                task_kind=ask.task_kind,
+                ask_call_id=result.tool_call.call_id,
+            )
+
+        parsed = parse_structured(FactProbeOutput, result.text)
+        if parsed is not None:
+            return parsed
+        # 文本不是合法 JSON：退回结构化调用（自带纠偏重试与错误码细分）
+        return await chat_structured(self._cfg, FactProbeOutput, FACTS_SYSTEM, user)
 
     async def score_prompts(
         self, context: str, variants: list[tuple[str, str]]

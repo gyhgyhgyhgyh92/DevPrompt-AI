@@ -597,6 +597,7 @@ class ForgeService:
             await transition(session, FlowState.ABORTED, self._sessions)
         except Exception:
             logger.exception("state.abort_failed", extra={"session_id": session.session_id})
+
     async def list_history(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
         """GET /history 转正（T6-11）：脱敏会话摘要（无原句明文，MUST-19）。"""
         return await self._sessions.list_recent(user_id, limit)
@@ -953,6 +954,7 @@ class ForgeService:
             # N-6：响应契约不变（不加字段），但把「跳过了什么」放进 context 供日志/测试检索
             settings["skipped"] = skipped
         return settings
+
     async def scan_project(self, project_root: str) -> dict[str, Any]:
         """F-101 只读统计（Web /project/scan 薄透传）：符号总数/文件数/类别分布。
 
@@ -976,6 +978,7 @@ class ForgeService:
             "total_files": len(files),
             "kind_counts": ranked,
         }
+
     async def _edited_similarity(self, session_id: str, edited_text: str, variant: str) -> float:
         """编辑相似度：difflib.SequenceMatcher.ratio（标准库，MUST-04）。
 
@@ -1020,6 +1023,9 @@ class ForgeService:
         facts = [FactResult(**f) for f in session.data.get("facts", [])]
         probe = await self._decider.probe_facts(session.data["sentence"], facts)
         self._observe_probe(probe, request_id)
+        if probe.ask_call_id:
+            # AskUserQuestion 的 call_id：只落审计信息，不含原句（MUST-19）
+            session.data["pending_tool_call"] = probe.ask_call_id
         session.data["probe_confidence"] = probe.overall_confidence
         unknowns = build_unknowns(probe, facts, clarifications=session.data.get("clarifications"))
         session.data["unknowns"] = [dataclasses.asdict(u) for u in unknowns]
@@ -1046,8 +1052,14 @@ class ForgeService:
     async def _reprobe(self, session: FlowSession) -> FlowSnapshot:
         """F-204：答复后重新研判（取证结果不变，clarifications 已更新）。"""
         facts = [FactResult(**f) for f in session.data.get("facts", [])]
-        probe = await self._decider.probe_facts(session.data["sentence"], facts)
+        probe = await self._decider.probe_facts(
+            session.data["sentence"],
+            facts,
+            answered=dict(session.data.get("clarifications", {})),
+        )
         self._observe_probe(probe, str(session.data.get("last_request_id", "")))
+        if probe.ask_call_id:
+            session.data["pending_tool_call"] = probe.ask_call_id
         unknowns = build_unknowns(probe, facts, clarifications=session.data.get("clarifications"))
         session.data["unknowns"] = [dataclasses.asdict(u) for u in unknowns]
         guard = GuardrailState(

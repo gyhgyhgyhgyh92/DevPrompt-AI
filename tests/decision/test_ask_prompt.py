@@ -63,7 +63,9 @@ class TestShapeConstraints:
 
 
 class TestOutputContract:
-    def test_user_prompt_declares_questions_and_task_kind(self) -> None:
+    def test_user_prompt_routes_questions_through_tool(self) -> None:
+        """JSON 里不再要求 questions：提问必须走工具调用（2026-10-22）。"""
         assert '"task_kind"' in FACTS_USER
-        assert '"questions"' in FACTS_USER
-        assert "为空数组表示" in FACTS_USER
+        assert "AskUserQuestion" in FACTS_USER
+        assert "不要输出任何 JSON" in FACTS_USER
+        assert "不含 questions 字段" in FACTS_USER

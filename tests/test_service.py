@@ -1,5 +1,6 @@
 """ForgeService 全流程测试（Fake 注入，无真实 I/O）。"""
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -91,7 +92,13 @@ class FakeDecider:
         self.rank_calls = 0
         self.score_calls = 0
 
-    async def probe_facts(self, sentence: str, facts: list[FactResult]) -> FactProbeOutput:
+    async def probe_facts(
+        self,
+        sentence: str,
+        facts: list[FactResult],
+        *,
+        answered: Mapping[str, str] | None = None,
+    ) -> FactProbeOutput:
         if self.probe_error is not None:
             raise self.probe_error
         keys = [f.key for f in facts]
@@ -241,11 +248,11 @@ async def test_optimize_full_flow_with_questions() -> None:
     svc, store = _service()
     snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
     assert snap.status == "ask"
-    assert [q.key for q in snap.questions] == ["test_file_exists"]
+    assert [q.key for q in snap.questions] == ["请确认 test_file_exists"]
     snap2 = await svc.ask_followup(
         "local",
         snap.session_id,
-        {"test_file_exists": "新增 src/ui/button.test.tsx"},
+        {"请确认 test_file_exists": "新增 src/ui/button.test.tsx"},
         request_id="r2",
     )
     assert snap2.status == "done"
@@ -294,6 +301,21 @@ async def test_done_appends_one_turn(tmp_path: Any) -> None:
     assert stored[0].state == "DONE"
     assert stored[0].output  # 方案全文已落库
     assert stored[0].facts  # 取证件随轮次保存
+
+
+async def test_ask_call_id_is_recorded() -> None:
+    """AskUserQuestion 的 call_id 落会话，便于审计（不含原句，MUST-19）。"""
+
+    class CallIdDecider(FakeDecider):
+        async def probe_facts(self, sentence, facts, *, answered=None):  # type: ignore[no-untyped-def]
+            probe = await super().probe_facts(sentence, facts, answered=answered)
+            return probe.model_copy(update={"ask_call_id": "call-abc"})
+
+    svc, store = _service(decider=CallIdDecider([0.9] * 7))
+    snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+
+    assert snap.status == "ask"
+    assert store.items[snap.session_id].data["pending_tool_call"] == "call-abc"
 
 
 async def test_second_turn_reuses_same_session(tmp_path: Any) -> None:
@@ -642,7 +664,7 @@ async def test_flow_events_chain_without_sentence(caplog: pytest.LogCaptureFixtu
         snap = await svc.optimize("local", ".", sentence, request_id="r1")
         if snap.status == "ask":
             await svc.ask_followup(
-                "local", snap.session_id, {"test_file_exists": "已确认"}, request_id="r2"
+                "local", snap.session_id, {"请确认 test_file_exists": "已确认"}, request_id="r2"
             )
     names = [r.getMessage() for r in caplog.records]
     assert "flow.started" in names
@@ -684,7 +706,9 @@ async def test_failed_ask_followup_aborts_session() -> None:
 
     svc._reprobe = _boom  # type: ignore[method-assign]
     with pytest.raises(RuntimeError, match="reprobe down"):
-        await svc.ask_followup("local", snap.session_id, {"test_file_exists": "x"}, request_id="r2")
+        await svc.ask_followup(
+            "local", snap.session_id, {"请确认 test_file_exists": "x"}, request_id="r2"
+        )
     assert store.items[snap.session_id].state == "ABORTED"
 
 

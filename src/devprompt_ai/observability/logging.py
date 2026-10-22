@@ -25,6 +25,8 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "state.truncated",
         "followup.guardrail",
         "followup.escaped",
+        "decision.tools_unsupported",
+        "decision.ask_args_invalid",
         "followup.task_kind",
         "followup.question_lint",
         "cache.hit",

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import difflib
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
@@ -110,7 +110,13 @@ class FixedDecider:
     ) -> RankComponentsOutput:
         return RankComponentsOutput(order=list(range(len(candidates))), confidence=0.9)
 
-    async def probe_facts(self, sentence: str, facts: list[FactResult]) -> FactProbeOutput:
+    async def probe_facts(
+        self,
+        sentence: str,
+        facts: list[FactResult],
+        *,
+        answered: Mapping[str, str] | None = None,
+    ) -> FactProbeOutput:
         keys = [f.key for f in facts]
         judgments = [
             FactJudgment(key=k, passed=c >= 0.75, confidence=c)
@@ -298,7 +304,7 @@ async def test_followup_recovery_consistency(monkeypatch: pytest.MonkeyPatch) ->
         live_ask = resp.json()["data"]
         flow_id = live_ask["session_id"]
         assert live_ask["status"] == "ask"
-        assert [q["key"] for q in live_ask["questions"]] == ["test_file_exists"]
+        assert [q["key"] for q in live_ask["questions"]] == ["请确认 test_file_exists"]
 
         # 路径②：SSE 中断 → GET /result 重建（ASKING 阶段对照）
         await _first_sse_event(client, flow_id)
@@ -309,7 +315,7 @@ async def test_followup_recovery_consistency(monkeypatch: pytest.MonkeyPatch) ->
         # 路径①：POST /followup 批量答复推进至 DONE（实时快照，含方案与 ranking）
         resp = await client.post(
             f"/api/v1/followup/{flow_id}",
-            json={"answers": {"test_file_exists": "新增 src/ui/button.test.tsx"}},
+            json={"answers": {"请确认 test_file_exists": "新增 src/ui/button.test.tsx"}},
         )
         assert resp.status_code == 200
         live_done = resp.json()["data"]

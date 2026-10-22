@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -117,7 +118,13 @@ class _DryMockDecider:
     ) -> RankComponentsOutput:
         return RankComponentsOutput(order=list(range(len(candidates))), confidence=0.5)
 
-    async def probe_facts(self, sentence: str, facts: list[FactResult]) -> FactProbeOutput:
+    async def probe_facts(
+        self,
+        sentence: str,
+        facts: list[FactResult],
+        *,
+        answered: Mapping[str, str] | None = None,
+    ) -> FactProbeOutput:
         return FactProbeOutput(judgments=[], overall_confidence=0.5)
 
     async def score_prompts(

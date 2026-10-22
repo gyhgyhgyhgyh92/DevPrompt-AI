@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
@@ -81,7 +82,13 @@ class FakeDecider:
         self.confs = confs
         self.tokens_per_call = tokens_per_call
 
-    async def probe_facts(self, sentence: str, facts: list[FactResult]) -> FactProbeOutput:
+    async def probe_facts(
+        self,
+        sentence: str,
+        facts: list[FactResult],
+        *,
+        answered: Mapping[str, str] | None = None,
+    ) -> FactProbeOutput:
         add_llm_tokens(self.tokens_per_call)
         judgments = [
             FactJudgment(key=f.key, passed=c >= 0.75, confidence=c)
@@ -229,7 +236,7 @@ async def test_cost_accumulates_across_requests() -> None:
     done = await svc.ask_followup(
         "local",
         ask.session_id,
-        {"test_file_exists": "新增 src/ui/button.test.tsx"},
+        {"请确认 test_file_exists": "新增 src/ui/button.test.tsx"},
         request_id="r2",
     )
     assert done.status == "done"

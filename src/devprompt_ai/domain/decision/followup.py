@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Protocol
 
 from devprompt_ai.domain.decision.port import AskQuestion, FactProbeOutput
-from devprompt_ai.domain.decision.probes import PROBE_ASK_TEXT
 from devprompt_ai.domain.models import FactResult
 
 _EVIDENCE_LIMIT = 120
@@ -111,81 +110,46 @@ def build_unknowns(
     *,
     clarifications: dict[str, str] | None = None,
 ) -> list[UnknownItem]:
-    """由决策层决定「问不问、怎么问」（对齐 CodeBuddy SDK 的 AskUserQuestion）。
+    """把工具调用解析出的问题转成未知项（2026-10-22 起答案键 = ``question`` 原文）。
 
-    - ``questions`` 为空 → 模型判定信息已够，本轮不提问（档位仍受 resolve_level 约束，
-      不会越级输出）
-    - ``questions`` 非空 → 只接受绑定真实缺口的 key（防幻觉），按模型给的顺序截断到
-      :data:`MAX_QUESTIONS` 个；没被问到的缺口留到下一轮
-    - 模型给的问题全部对不上缺口 → 按缺口兜底生成，绝不静默丢弃（MUST-26）
+    对齐 CodeBuddy SDK：``answers[question] = label``，因此去重也按问题文本比对。
+
+    - ``questions`` 为空 → 本轮不提问（模型没调工具，或参数畸形已在上层记录）
+    - 已答过的 question 文本直接跳过；重复文本只保留第一次出现
+    - 截断到 :data:`MAX_QUESTIONS` 个；``facts`` 仅保留参数位（工具调用路径不再按事实键匹配）
+
+    shortcut: 问题文本比对——模型改写措辞即视为新问题，会重复问一次，靠软护栏兜底。
     """
     clar = clarifications or {}
-    judgment_by_key = {j.key: j for j in probe.judgments}
-    gaps: dict[str, UnknownItem] = {}
-    for fact in facts:
-        if fact.key in clar:
-            continue  # 已澄清（MUST-26：答复即解除该未知项）
-        judgment = judgment_by_key.get(fact.key)
-        if fact.passed and (judgment is None or judgment.passed):
-            continue
-        reason = (
-            fact.evidence
-            if not fact.passed
-            else (f"研判置信度不足（{judgment.confidence:.2f}）" if judgment else "未判定")
-        )
-        gaps[fact.key] = UnknownItem(
-            key=fact.key,
-            reason=reason[:_EVIDENCE_LIMIT],
-            best_guess=fact.evidence[:_EVIDENCE_LIMIT] if fact.passed else "",
-            ask=PROBE_ASK_TEXT.get(fact.key, fact.key),
-        )
-
     if not probe.questions:
         return []
 
-    # 模型用自定义键（不绑定取证失败项）时也允许提问：设计类深挖与执行类闸门
-    # （范围/选型/验收）本来就不对应七项事实；只认事实键会让这些合理问题被静默丢弃
-    # （2026-10-20 实测：具体需求下模型的 2 个闸门问题全被丢）。
     default_reason = DESIGN_REASON if probe.task_kind == "design" else EXECUTION_REASON
-    for index, question in enumerate(probe.questions):
-        key = question.key.strip() or f"q-{index}"
-        if key in clar:
-            continue  # 同一键答过就不再问（模型换个键复述由 10 轮软护栏兜底）
-        gaps.setdefault(
-            key,
-            UnknownItem(
-                key=key, reason=default_reason, best_guess="", ask=question.question.strip()
-            ),
-        )
-
     asked: list[UnknownItem] = []
     seen: set[str] = set()
-    for index, question in enumerate(probe.questions):
-        # design 允许模型用自定义键（空键归一为 q-{i}，避免去重失效）
-        key = question.key.strip() or f"q-{index}"
-        gap = gaps.get(key)
-        if gap is None or key in seen:
+    for question in probe.questions:
+        key = question.question.strip()
+        if key == "" or key in clar or key in seen:
             continue
         seen.add(key)
-        # 不合规产出原样下发（用户 2026-10-20 裁定）：此处不做 label/description/header 截断，
-        # 违规只由 lint_questions 记日志，避免「悄悄修正」掩盖真实问题
-        options = tuple(
-            UnknownOption(label=item.label.strip(), description=item.description.strip())
-            for item in question.options
-            if item.label.strip()
-        )
         asked.append(
-            replace(
-                gap,
-                ask=question.question.strip() or gap.ask,
+            UnknownItem(
+                key=key,
+                reason=default_reason,
+                best_guess="",
+                ask=key,
                 header=question.header.strip(),
-                options=options,
+                options=tuple(
+                    UnknownOption(label=item.label.strip(), description=item.description.strip())
+                    for item in question.options
+                    if item.label.strip()
+                ),
                 multi_select=question.multi_select,
             )
         )
         if len(asked) >= MAX_QUESTIONS:
             break
-    return asked or list(gaps.values())[:MAX_QUESTIONS]
+    return asked
 
 
 @dataclass(slots=True)

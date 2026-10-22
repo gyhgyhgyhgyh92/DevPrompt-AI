@@ -267,7 +267,9 @@ async def test_followup_answers_mode(
 ) -> None:
     fake_service.status = "done"
     fake_service.state = "DONE"
-    resp = await client.post("/api/v1/followup/s1", json={"answers": {"test_file_exists": "有"}})
+    resp = await client.post(
+        "/api/v1/followup/s1", json={"answers": {"请确认 test_file_exists": "有"}}
+    )
     assert resp.status_code == 200
     assert resp.json()["data"]["status"] == "done"
 
@@ -590,4 +592,3 @@ async def test_x_request_id_echoed_from_request(
     resp = await client.get("/api/v1/settings", headers={"X-Request-ID": "trace-123"})
     assert resp.headers["x-request-id"] == "trace-123"
     assert resp.json()["request_id"] == "trace-123"
-

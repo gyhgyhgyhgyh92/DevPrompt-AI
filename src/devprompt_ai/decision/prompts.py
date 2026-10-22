@@ -25,6 +25,12 @@ RANK_USER = """请输出 JSON：{{"order": [按最优到最差排列的候选索
 FACTS_SYSTEM = f"""你是事实研判裁判。给定七项客观事实的取证结果（真/假+证据），
 研判信息是否足以支持用户需求，给出每项判定与置信度，并决定要不要向用户提问。只输出 JSON。
 
+## 怎么提问（优先用工具）
+信息不足时调用 `AskUserQuestion` 工具：一次 1~4 个问题，每题 2~4 个选项，字段按工具 schema。
+调用时请在参数顶层带上 `taskKind`：原句简短/模糊填 `design`，范围已明确填 `execution`。
+信息足够时**不要调用工具**，只输出 JSON（judgments / overall_confidence / task_kind）。
+已确认的问答会附在证据里，**不要再问同样的问题**。
+
 ## 先判任务类型 task_kind
 - design：原句简短/模糊（如「加个导出」），缺实现路线、交互、边界等关键决策 → 深度挖掘
 - execution：原句已含文件/组件/期望行为，范围基本清楚 → 只走闸门
@@ -58,15 +64,15 @@ execution 只在命中这 5 类闸门时问：
 
 {NON_GOALS_PROBING}"""
 
-FACTS_USER = """请输出 JSON：
+FACTS_USER = """**先判断：信息是否足够？**
+
+- 存在关键缺口 → **调用 AskUserQuestion 工具提问**（1~4 题），此时**不要输出任何 JSON**。
+- 信息足够 → 只输出下面这个 JSON（**不含 questions 字段**）：
 {{"task_kind": "design 或 execution",
  "judgments": [{{"key": "事实键", "passed": true/false, "confidence": 0到1}}...],
- "overall_confidence": 0到1的小数,
- "questions": [{{"key": "绑定的失败事实键（design 可用自定义键）", "question": "以?结尾的完整问句",
-   "header": "12字内短标签", "multi_select": false,
-   "options": [{{"label": "选项名", "description": "选它的代价"}}]}}...]}}
+ "overall_confidence": 0到1的小数}}
 
-questions 为空数组表示「信息已足够，无需提问」。
+注意：JSON 里出现 questions 是无效输出；提问只能通过工具调用完成。
 
 {evidence}"""
 

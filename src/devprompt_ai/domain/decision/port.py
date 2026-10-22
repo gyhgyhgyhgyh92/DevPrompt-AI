@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field, field_validator
@@ -59,6 +60,8 @@ class FactProbeOutput(BaseModel):
     overall_confidence: float = Field(ge=0.0, le=1.0)
     #: 模型决定「问不问、问几个」；空表示当前信息已够，直接生成（不机械追问）。
     questions: list[AskQuestion] = Field(default_factory=list)
+    #: AskUserQuestion 的 call_id（来自 function_call，仅用于审计/追踪）
+    ask_call_id: str = ""
     #: 决策层自判的任务类型：design = 原句模糊需深挖 5 类；execution = 范围已知走闸门。
     #: 缺省 execution 保证旧 mock / 旧输出零改动。
     task_kind: Literal["design", "execution"] = "execution"
@@ -87,8 +90,18 @@ class DecisionPort(Protocol):
         """组件排序：原句 + 候选（仅符号名+路径，MUST-09 顺序：候选已在检索段压好）。"""
         ...
 
-    async def probe_facts(self, sentence: str, facts: list[FactResult]) -> FactProbeOutput:
-        """事实研判：取证结果 + 原句 → 各项判定 + 综合置信度。"""
+    async def probe_facts(
+        self,
+        sentence: str,
+        facts: list[FactResult],
+        *,
+        answered: Mapping[str, str] | None = None,
+    ) -> FactProbeOutput:
+        """事实研判：取证结果 + 原句 → 判定 + 置信度 + 可选提问。
+
+        ``answered`` 是已确认的问答（question 原文 → 答案），重建 prompt 时注入，
+        让模型不要重复提问（anthropic/gemini 原生适配器不支持回喂 tool result，故重建）。
+        """
         ...
 
     async def score_prompts(

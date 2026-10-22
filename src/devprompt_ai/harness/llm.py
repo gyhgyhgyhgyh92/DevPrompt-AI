@@ -27,6 +27,8 @@ from agents import (
     set_default_openai_client,
     set_tracing_disabled,
 )
+from agents.models.interface import ModelTracing
+from agents.tool import FunctionTool
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ValidationError
 
@@ -48,6 +50,7 @@ from devprompt_ai.domain.prompt_guard import (
     build_evidence_block,
 )
 from devprompt_ai.harness.adapters import adapter_kind_for, build_adapter
+from devprompt_ai.harness.ask_tool import ASK_TOOL_DEFINITION, ASK_TOOL_NAME
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -435,3 +438,130 @@ def _llm_failure_error(exc: BaseException, cfg: AppConfig, output_type: type[obj
         code=code,
         context={**context, "scenario": scenario},
     )
+
+
+def _text_of(output: object) -> str:
+    """从 ModelResponse.output 提取助手文本（兼容 SDK 对象与原生适配器的 dict）。"""
+    parts: list[str] = []
+    for item in output if isinstance(output, list) else []:
+        if isinstance(item, dict):
+            if item.get("type") != "message":
+                continue
+            for block in item.get("content") or []:
+                if isinstance(block, dict) and block.get("type") == "output_text":
+                    parts.append(str(block.get("text") or ""))
+            continue
+        if getattr(item, "type", "") != "message":
+            continue
+        for block in getattr(item, "content", []) or []:
+            text = getattr(block, "text", None)
+            if text:
+                parts.append(str(text))
+    return "".join(parts)
+
+
+class ToolCallRequest(BaseModel):
+    """一次工具调用的原始参数（不含密钥/原句，可安全落会话）。"""
+
+    call_id: str = ""
+    name: str
+    arguments: str = ""
+
+
+class ToolChatResult(BaseModel):
+    """带工具的调用结果：要么拿到 tool_call，要么拿到文本（供 _parse_model）。"""
+
+    tool_call: ToolCallRequest | None = None
+    text: str = ""
+
+
+async def _noop_invoke(_ctx: object, _args: str) -> str:
+    """占位实现：本模块只取 function_call，不执行工具（作答在流程里由用户完成）。"""
+    return ""
+
+
+def _ask_function_tool() -> FunctionTool:
+    """构造 AskUserQuestion 的 FunctionTool（仅用于让模型产出 function_call）。"""
+    return FunctionTool(
+        name=ASK_TOOL_NAME,
+        description=str(ASK_TOOL_DEFINITION["function"]["description"]),
+        params_json_schema=ASK_TOOL_DEFINITION["function"]["parameters"],
+        on_invoke_tool=_noop_invoke,
+        # 我们的 schema 带 maxLength/minItems 等描述性约束，不满足 strict 模式的全字段 required 要求
+        strict_json_schema=False,
+    )
+
+
+def _first_function_call(output: list[object]) -> ToolCallRequest | None:
+    """从 ModelResponse.output 取第一个 function_call。
+
+    原生适配器（anthropic/gemini）返回的是普通 dict，SDK 适配器返回
+    ``ResponseFunctionToolCall`` 实例——两种形态都要认。
+    """
+    for item in output:
+        if isinstance(item, dict):
+            if item.get("type") == "function_call":
+                return ToolCallRequest(
+                    call_id=str(item.get("call_id") or ""),
+                    name=str(item.get("name") or ""),
+                    arguments=str(item.get("arguments") or ""),
+                )
+            continue
+        if getattr(item, "type", "") == "function_call":
+            return ToolCallRequest(
+                call_id=str(getattr(item, "call_id", "") or ""),
+                name=str(getattr(item, "name", "") or ""),
+                arguments=str(getattr(item, "arguments", "") or ""),
+            )
+    return None
+
+
+def parse_structured(output_type: type[ModelT], raw: str) -> ModelT | None:
+    """把模型文本解析成结构化输出（复用 chat_structured 的容错口径）。"""
+    return _parse_model(output_type, raw)
+
+
+async def chat_with_tools(
+    cfg: AppConfig,
+    system: str,
+    user: str,
+    *,
+    timeout: float | None = None,
+) -> ToolChatResult:
+    """单次带工具调用：模型可回 function_call（AskUserQuestion），否则回文本。
+
+    刻意**不用 Runner**：``Runner.run(max_turns=1)`` 在模型发起工具调用时会自动执行
+    工具并继续，用满轮数只会抛 ``MaxTurnsExceeded``，拿不到稳定的 call 参数。
+    这里直接调 ``Model.get_response``，工具不会被真正执行（``on_invoke_tool`` 是空桩）。
+
+    四种 provider 都能传 tools 并解析 function_call；但 anthropic/gemini 原生适配器
+    不支持回喂 ``function_call_output``，因此答案不通过 tool result 回传，而是由调用方
+    重建 prompt 携带「已答问题 + 答案」（见 decision/fallback.py）。
+    """
+    model = build_model(cfg)
+    settings = ModelSettings(tool_choice="auto")
+    effective_timeout = timeout if timeout is not None else cfg.llm_timeout
+    try:
+        response = await asyncio.wait_for(
+            model.get_response(
+                system_instructions=system,
+                input=user,
+                model_settings=settings,
+                tools=[_ask_function_tool()],
+                output_schema=None,
+                handoffs=[],
+                tracing=ModelTracing.DISABLED,
+                previous_response_id=None,
+                conversation_id=None,
+                prompt=None,
+            ),
+            timeout=effective_timeout,
+        )
+    except Exception as exc:
+        raise _llm_failure_error(exc, cfg, ToolChatResult) from exc
+
+    _record_usage(getattr(response, "usage", None))
+    tool_call = _first_function_call(list(response.output))
+    if tool_call is not None:
+        return ToolChatResult(tool_call=tool_call)
+    return ToolChatResult(text=_text_of(response.output))

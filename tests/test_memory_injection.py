@@ -42,10 +42,9 @@ class RecordingGenerator(FakeGenerator):
         )
 
 
-def _service_with_generator(
-    gen: GeneratePort, existing: set[str]
-) -> ForgeService:
+def _service_with_generator(gen: GeneratePort, existing: set[str]) -> ForgeService:
     from devprompt_ai.harness.process import SymbolTableProvider
+
     svc = ForgeService(
         cfg=AppConfig(_env_file=None),  # type: ignore[call-arg]
         decider=FakeDecider([0.9] * 7),
@@ -71,7 +70,7 @@ async def test_l1_session_memory_off_fresh_session_completes() -> None:
     done = await svc.ask_followup(
         "local",
         snap.session_id,
-        {"test_file_exists": "新增 src/ui/button.test.tsx"},
+        {"请确认 test_file_exists": "新增 src/ui/button.test.tsx"},
         request_id="r2",
     )
     assert done.status == "done"
@@ -86,7 +85,7 @@ async def test_l1_session_memory_off_fresh_session_completes() -> None:
     done2 = await svc2.ask_followup(
         "local",
         snap2.session_id,
-        {"test_file_exists": "新增 src/ui/button.test.tsx"},
+        {"请确认 test_file_exists": "新增 src/ui/button.test.tsx"},
         request_id="r4",
     )
     assert done2.status == "done" and done2.state == "DONE"

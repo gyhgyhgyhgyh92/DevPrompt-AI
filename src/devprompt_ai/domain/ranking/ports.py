@@ -14,5 +14,3 @@ VariantFeatures: TypeAlias = dict[
     Literal["detail_level", "include_diff", "specify_tests", "max_files_norm"],
     float,
 ]
-
-
