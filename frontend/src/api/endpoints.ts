@@ -118,7 +118,12 @@ export function streamOptimize(
         }
         if (event.type === 'action') {
           handlers.onAction(
-            { title: event.title, detail: event.detail, scope: event.scope },
+            {
+              title: event.title,
+              detail: event.detail,
+              scope: event.scope,
+              output: event.output,
+            },
             event.phase,
           )
           return

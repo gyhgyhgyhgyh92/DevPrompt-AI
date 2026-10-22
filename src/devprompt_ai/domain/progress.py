@@ -31,6 +31,9 @@ class ActionInfo:
     scope: str = ""
     """范围标签，如「命中 4 行」「L1-146」；空串表示不展示。"""
 
+    output: str = ""
+    """脱敏并截断后的命令输出（≤20 行、≤2000 字符）；空串表示无输出可展示。"""
+
 
 @dataclass(frozen=True, slots=True)
 class ProgressEvent:

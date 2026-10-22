@@ -1,9 +1,15 @@
+import { useEffect, useState } from 'react'
+
 import type { RankingViewPayload, UnknownItemPayload, VariantPayload } from '../../api/types'
 import type { ThinkingItem } from '../../schemas/stream'
 import { AskFlow } from './AskFlow'
 import { ConfidenceNotice } from './ConfidenceNotice'
+import { TraceEntry } from './TraceEntry'
 import { VariantTabs } from './VariantTabs'
 import './ChatStream.css'
+
+/** 思考静默多久后提示「正在规划下一步」。 */
+const IDLE_HINT_MS = 1500
 
 const PHASES = [
   'INIT',
@@ -38,23 +44,11 @@ interface PhaseLogProps {
 function PhaseLog({ items }: PhaseLogProps) {
   if (items.length === 0) return null
   return (
-    <ul className="chat-reply__phase-log">
+    <div className="chat-reply__phase-log">
       {items.map((item) => (
-        <li key={item.id}>
-          {item.kind === 'text' ? (
-            <p className="chat-reply__phase-text">{item.text}</p>
-          ) : (
-            <div className="chat-reply__phase-card">
-              <span className="chat-reply__phase-card-title">{item.title}</span>
-              <code className="chat-reply__phase-card-detail">{item.detail}</code>
-              {item.scope !== '' ? (
-                <span className="chat-reply__phase-card-scope">{item.scope}</span>
-              ) : null}
-            </div>
-          )}
-        </li>
+        <TraceEntry key={item.id} item={item} />
       ))}
-    </ul>
+    </div>
   )
 }
 
@@ -108,6 +102,17 @@ export function ChatStream({
   onGuardrail,
 }: ChatStreamProps) {
   const isResult = status === 'done' || status === 'aborted'
+  // 思考静默 1.5s 后提示「正在规划下一步」：新事件到达即消失（纯前端状态）
+  const [isIdle, setIdle] = useState(false)
+  useEffect(() => {
+    if (!isThinking) {
+      setIdle(false)
+      return undefined
+    }
+    setIdle(false)
+    const timer = window.setTimeout(() => setIdle(true), IDLE_HINT_MS)
+    return () => window.clearTimeout(timer)
+  }, [isThinking, thinking.length])
   const currentIndex = PHASES.findIndex((phase) => phase === state)
 
   return (
@@ -164,6 +169,8 @@ export function ChatStream({
             )
           })}
         </ol>
+
+        {isThinking && isIdle ? <p className="chat-reply__planning">正在规划下一步</p> : null}
 
         <hr className="chat-reply__divider" />
 

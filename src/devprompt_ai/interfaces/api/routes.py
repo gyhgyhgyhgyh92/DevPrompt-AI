@@ -164,6 +164,7 @@ async def post_optimize_stream(request: Request, req: OptimizeRequest) -> Stream
                     "title": event.action.title,
                     "detail": event.action.detail,
                     "scope": event.action.scope,
+                    "output": event.action.output,
                 }
             )
 

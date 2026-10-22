@@ -304,7 +304,7 @@ describe('OptimizePage 三栏工作台', () => {
     // 尚未收到快照：步骤时间轴已出现，过程挂在对应步骤下，反问卡还不该出现
     expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
     expect(await screen.findByText(/正在检索相关代码/)).toBeTruthy()
-    expect(await screen.findByText('检索符号')).toBeTruthy()
+    expect(await screen.findByText('命令已执行')).toBeTruthy()
     expect(screen.queryByText('缺目标定位')).toBeNull()
 
     gate.release()

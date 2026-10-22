@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ThinkingItem } from '../../schemas/stream'
@@ -67,7 +67,7 @@ describe('ChatStream 结构与阶段', () => {
     expect(screen.getByText('进行中')).toBeTruthy()
   })
 
-  it('每个阶段下方展示属于它的过程（文字段与工具卡片）', () => {
+  it('每个阶段下方展示思考块与动作行，可展开命令与输出', async () => {
     const thinking: ThinkingItem[] = [
       { id: 't1', kind: 'text', text: '符号表就绪，共 12 个符号', phase: 'RETRIEVING' },
       {
@@ -76,22 +76,74 @@ describe('ChatStream 结构与阶段', () => {
         title: '检索符号',
         detail: 'rg -n Foo --glob src/a.ts',
         scope: '命中 2 行',
+        output: 'src/a.ts:1:Foo',
         phase: 'RETRIEVING',
       },
       { id: 't2', kind: 'text', text: '七项取证完成', phase: 'PROBING' },
     ]
     render(<ChatStream {...baseProps({ thinking, state: 'DONE' })} />)
 
-    // 检索步骤下挂着文字与工具卡片
+    // 思考文字在灰底块内，动作渲染为「命令已执行」
     expect(screen.getByText('符号表就绪，共 12 个符号')).toBeTruthy()
-    expect(screen.getByText('检索符号')).toBeTruthy()
-    expect(screen.getByText('命中 2 行')).toBeTruthy()
-    // 研判步骤下挂着另一段
     expect(screen.getByText('七项取证完成')).toBeTruthy()
+    expect(screen.getByText('命令已执行')).toBeTruthy()
+    expect(screen.getByText('命中 2 行')).toBeTruthy()
 
-    const retrieving = Array.from(document.querySelectorAll('.chat-reply__phase'))[1]
-    expect(retrieving?.textContent).toContain('符号表就绪')
-    expect(retrieving?.textContent).toContain('检索符号')
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /命令已执行/ }))
+
+    expect(screen.getByText('rg -n Foo --glob src/a.ts')).toBeTruthy()
+    expect(screen.getByText('src/a.ts:1:Foo')).toBeTruthy()
+  })
+
+  it('读取文件的动作显示「已读取」且展开只显示内容', async () => {
+    const thinking: ThinkingItem[] = [
+      {
+        id: 'a1',
+        kind: 'action',
+        title: '读取文件',
+        detail: 'src/ui/Button.tsx',
+        scope: 'L1-20',
+        output: 'line1\nline2',
+        phase: 'PROBING',
+      },
+    ]
+    render(<ChatStream {...baseProps({ thinking, state: 'DONE' })} />)
+
+    expect(screen.getByText('已读取 src/ui/Button.tsx')).toBeTruthy()
+    await userEvent.setup().click(screen.getByRole('button', { name: /已读取/ }))
+    expect(document.querySelector('.trace-step__code--output')?.textContent).toBe('line1\nline2')
+  })
+
+  it('输出为空时不渲染输出块', async () => {
+    const thinking: ThinkingItem[] = [
+      {
+        id: 'a1',
+        kind: 'action',
+        title: '检索符号',
+        detail: 'rg -n Foo',
+        scope: '无匹配',
+        output: '',
+        phase: 'RETRIEVING',
+      },
+    ]
+    render(<ChatStream {...baseProps({ thinking, state: 'DONE' })} />)
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /命令已执行/ }))
+    expect(document.querySelectorAll('.trace-step__code--output')).toHaveLength(0)
+  })
+
+  it('思考静默 1.5 秒后提示「正在规划下一步」', () => {
+    vi.useFakeTimers()
+    render(<ChatStream {...baseProps({ isThinking: true, status: null, state: 'RETRIEVING' })} />)
+
+    expect(screen.queryByText('正在规划下一步')).toBeNull()
+    act(() => {
+      vi.advanceTimersByTime(1600)
+    })
+    expect(screen.getByText('正在规划下一步')).toBeTruthy()
+
+    vi.useRealTimers()
   })
 
   it('无阶段标签的旧事件归到当前阶段，不会丢失', () => {

@@ -9,6 +9,8 @@ export const ActionPayloadSchema = z.object({
   title: z.string(),
   detail: z.string(),
   scope: z.string(),
+  /** 脱敏并截断后的命令输出（≤20 行 / ≤2000 字符）；空串表示无输出可展示。 */
+  output: z.string().default(''),
 })
 
 export const StreamEventSchema = z.discriminatedUnion('type', [
@@ -19,6 +21,7 @@ export const StreamEventSchema = z.discriminatedUnion('type', [
     title: z.string(),
     detail: z.string(),
     scope: z.string(),
+    output: z.string().default(''),
   }),
   z.object({ type: z.literal('snapshot'), data: FlowSnapshotSchema }),
   z.object({
@@ -42,4 +45,12 @@ export type StreamErrorEvent = Extract<StreamEvent, { type: 'error' }>
  */
 export type ThinkingItem =
   | { id: string; kind: 'text'; text: string; phase: string }
-  | { id: string; kind: 'action'; title: string; detail: string; scope: string; phase: string }
+  | {
+      id: string
+      kind: 'action'
+      title: string
+      detail: string
+      scope: string
+      output: string
+      phase: string
+    }

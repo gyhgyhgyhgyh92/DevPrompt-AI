@@ -32,6 +32,9 @@ logger = logging.getLogger(__name__)
 
 _ROUTE_KEY_PREFIX: Final = "--route-key="
 _MAX_DETAIL: Final = 160
+#: 动作输出上限（渲染成可展开代码块；超限截断并标记）
+_OUTPUT_MAX_LINES: Final = 20
+_OUTPUT_MAX_CHARS: Final = 2000
 
 #: 盘符绝对路径（D:/x/y、D:\x\y）：卡片里整体收窄为末两段。
 _ABS_PATH_RE: Final = re.compile(r"[A-Za-z]:[\\/][^\s\"']*")
@@ -58,6 +61,25 @@ def redact(text: str, root: str) -> str:
 
 def _clip(text: str) -> str:
     return text if len(text) <= _MAX_DETAIL else text[: _MAX_DETAIL - 1] + "…"
+
+
+def _output(lines: list[str], root: str) -> str:
+    """把命令输出脱敏后截断（≤20 行 / ≤2000 字符），超限追加省略标记。
+
+    先 ``redact`` 再截断：绝对路径不能出现在前端（MUST-19）。
+    """
+    if not lines:
+        return ""
+    kept = [redact(line, root) for line in lines]
+    truncated = False
+    if len(kept) > _OUTPUT_MAX_LINES:
+        kept = kept[:_OUTPUT_MAX_LINES]
+        truncated = True
+    text = "\n".join(kept)
+    if len(text) > _OUTPUT_MAX_CHARS - 8:
+        text = text[: _OUTPUT_MAX_CHARS - 8]
+        truncated = True
+    return text + ("\n…（已截断）" if truncated else "")
 
 
 def _title(args: list[str]) -> str:
@@ -98,12 +120,14 @@ class TracingRunner:
         )
         # 只改展示副本，args 本身绝不能动（否则改变真实 rg 行为）
         shown = [arg for arg in args if not arg.startswith(_ROUTE_KEY_PREFIX)]
-        hits = sum(1 for line in out.splitlines() if line.strip())
+        lines = out.splitlines()
+        hits = sum(1 for line in lines if line.strip())
         await self._emit(
             ActionInfo(
                 title=_title(args),
                 detail=_clip(redact(" ".join(shown), self._root)),
                 scope=f"命中 {hits} 行" if hits else "无匹配",
+                output=_output(lines, self._root),
             )
         )
         return out
@@ -132,7 +156,7 @@ class TracingReader:
 
     async def read(self, path: str) -> str:
         text = await self._inner.read(path)
-        lines = len(text.splitlines())
+        lines = text.splitlines()
         try:
             await self._sink.emit(
                 ProgressEvent(
@@ -140,7 +164,8 @@ class TracingReader:
                     action=ActionInfo(
                         title="读取文件",
                         detail=_clip(redact(path, self._root)),
-                        scope=f"L1-{lines}" if lines else "",
+                        scope=f"L1-{len(lines)}" if lines else "",
+                        output=_output(lines, self._root),
                     ),
                 )
             )

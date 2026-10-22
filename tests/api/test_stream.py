@@ -145,6 +145,7 @@ async def test_action_frame_carries_card_payload(
     card = frames[1]
     assert card["title"] == "检索符号"
     assert card["scope"] == "命中 2 行"
+    assert "output" in card
     assert card["detail"].startswith("rg -n Foo")
 
 

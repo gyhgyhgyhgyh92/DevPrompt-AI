@@ -422,3 +422,131 @@
   margin-inline-start: var(--space-2);
   color: var(--color-text-muted);
 }
+
+/* 思考过程条目（2026-10-22，对齐参考截图）：灰底思考块 + 动作行 + 可展开代码块 */
+.trace-thought {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-code);
+  border-radius: var(--radius-sm);
+}
+
+.trace-step {
+  margin-block-end: var(--space-2);
+}
+
+.trace-step__head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.trace-step__toggle {
+  display: flex;
+  flex: 1;
+  gap: var(--space-2);
+  align-items: center;
+  padding: 2px var(--space-2);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-secondary);
+  text-align: start;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.trace-step__toggle:hover:not(:disabled) {
+  background: var(--color-border-subtle);
+}
+
+.trace-step__toggle:disabled {
+  cursor: default;
+}
+
+.trace-step__icon {
+  display: inline-flex;
+  color: var(--color-text-muted);
+}
+
+.trace-step__scope {
+  color: var(--color-text-muted);
+}
+
+.trace-step__caret {
+  transition: transform 0.16s ease-out;
+}
+
+.trace-step__toggle[aria-expanded='true'] .trace-step__caret {
+  transform: rotate(90deg);
+}
+
+.trace-step__copy {
+  display: inline-flex;
+  padding: 2px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+}
+
+.trace-step__copy:hover {
+  color: var(--color-text-secondary);
+}
+
+.trace-step__body {
+  margin-block-start: var(--space-2);
+  padding: var(--space-2);
+  background: var(--color-surface-code);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.trace-step__code {
+  max-block-size: 240px;
+  margin: 0;
+  overflow: auto;
+  font: var(--font-code-regular);
+  font-size: var(--text-caption-sm);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.trace-step__code--output {
+  margin-block-start: var(--space-2);
+  padding-block-start: var(--space-2);
+  border-block-start: 1px solid var(--color-border-subtle);
+  color: var(--color-text-muted);
+}
+
+.chat-reply__planning {
+  margin: var(--space-1) 0 0;
+  padding-inline-start: 20px;
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-muted);
+  animation: planning-breathe 2s ease-in-out infinite;
+}
+
+@keyframes planning-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-reply__planning {
+    animation: none;
+  }
+}

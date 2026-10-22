@@ -152,3 +152,47 @@ def test_action_detail_never_leaks_root() -> None:
     args: list[Any] = ["rg", "--glob", "D:/proj/src/a.ts", "."]
     detail = redact(" ".join(str(a) for a in args), _ROOT)
     assert "D:/proj" not in detail
+
+
+class TestOutputCapture:
+    """动作输出：复用 lines、脱敏、20 行 / 2000 字符截断（2026-10-22）。"""
+
+    async def test_output_truncated_to_twenty_lines(self) -> None:
+        sink = FakeSink()
+        runner = TracingRunner(
+            FakeRunner("\n".join(f"line{i}" for i in range(30)) + "\n"), sink, _ROOT
+        )
+
+        await runner.run(["rg", "x"])
+
+        output = sink.actions()[0].output
+        assert "…（已截断）" in output
+        assert "line0" in output
+        assert "line29" not in output
+        assert len(output.splitlines()) <= 21
+
+    async def test_output_redacts_absolute_paths(self) -> None:
+        sink = FakeSink()
+        runner = TracingRunner(FakeRunner("hit D:/proj/src/a.ts\n"), sink, _ROOT)
+
+        await runner.run(["rg", "x"])
+
+        output = sink.actions()[0].output
+        assert "D:/proj" not in output
+        assert "src/a.ts" in output
+
+    async def test_empty_output_stays_empty(self) -> None:
+        sink = FakeSink()
+        runner = TracingRunner(FakeRunner(""), sink, _ROOT)
+
+        await runner.run(["rg", "x"])
+
+        assert sink.actions()[0].output == ""
+
+    async def test_reader_reports_content_head(self) -> None:
+        sink = FakeSink()
+        reader = TracingReader(FakeReader("a\nb\nc\n"), sink, _ROOT)
+
+        await reader.read("D:/proj/src/a.ts")
+
+        assert sink.actions()[0].output == "a\nb\nc"

@@ -97,7 +97,12 @@ describe('streamOptimize', () => {
     await streamOptimize({ sentence: '改按钮', project: '.' }, spy)
 
     expect(spy.onAction).toHaveBeenCalledWith(
-      { title: '检索符号', detail: 'rg -n Foo --glob src/a.ts', scope: '命中 2 行' },
+      {
+        title: '检索符号',
+        detail: 'rg -n Foo --glob src/a.ts',
+        scope: '命中 2 行',
+        output: '',
+      },
       '',
     )
   })
