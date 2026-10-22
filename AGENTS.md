@@ -326,6 +326,7 @@ ripgrep 先压到 ≤25 条候选（仅符号名 + 路径，不含代码正文�
 | ❌ 密钥进日志 | 任何级别都不记录 |
 | ❌ access token 存 localStorage | XSS 防护基本要求 |
 | ❌ 用户原句进生产日志 | INFO 级别不落盘原句与完整路径 |
+| ❌ 动作输出无限上送 | 前端展示的动作输出必须先 `redact` 再截断（≤20 行 / ≤2000 字符），超限追加「…（已截断）」 |
 | ❌ 错误响应回传堆栈 | 仅返回 code + message + request_id |
 
 **执行标准**：提交前自检改动中是否含 `.env`、密钥字面量、临时路径。
@@ -434,11 +435,15 @@ ripgrep 先压到 ≤25 条候选（仅符号名 + 路径，不含代码正文�
 unknowns = 具体未决事实清单（探针 unknowns / 取证未决 / 研判缺口）
 每项结构：{键, 缺失原因, 当前最佳推断, 需用户提供什么, header, options[], multiSelect}
 
-提问条件（2026-10-20 修订，对齐 CodeBuddy SDK AskUserQuestion + 项目提问规范）：
-  决策层在研判时一并给出 task_kind 与 questions（1~4 个）：
-  ① questions 非空 → 本轮按模型给出的问法与选项提出（key 可为事实键或自定义决策键）
+提问条件（2026-10-22 修订：改为**工具调用**，与 CodeBuddy SDK 一致）：
+  模型在研判时调用 `AskUserQuestion` 工具（1~4 问），宿主拦截 tool_call 并落为未知项：
+  ① 拿到 tool_call → 本轮按工具参数里的问法与选项提出；**答案键 = question 原文**
+     （本项目扩展：参数顶层可带 `taskKind`(design/execution)，缺省 execution；
+     这是唯一偏离官方 schema 的字段，官方四项仍为 required）
+     （`answers[question] = label`，与官方一致）
   ② questions 为空 → 本轮不提问（模型判定信息已够；档位仍受 MUST-28 限制）
-  ③ 事实缺口未被任何 question 覆盖时，按缺口兜底生成，绝不静默丢弃
+  ③ 工具参数畸形 → 视为未提问（记 `decision.ask_args_invalid`），走生成路径
+  ④ provider 不支持 tools → 回落结构化调用且本轮不提问（记 `decision.tools_unsupported`）
 终止条件（任一即止）：
   ① 无待问项 → 直接输出
   ② 用户任一轮显式选择「直接生成」→ followup.escaped
@@ -661,6 +666,9 @@ d = 最高分 − 次高分
 | 版本 | 日期 | 内容 | 批准人 |
 |---|---|---|---|
 | v1.4 | 2026-10-15 | 裁定方案甲：MUST-25 第二段排序准确率门禁（≥80%）降为参考指标，W3 出口以「LLM 决策 + ripgrep 精确取证」为准 | 项目所有者 |
+| v1.15 | 2026-10-22 | 思考过程改为参考截图形态：灰底思考块 + 动作行（已读取 / 命令已执行）+ 可展开命令与输出（≤20 行 / 2KB，脱敏）+ 静默 1.5s「正在规划下一步」；阶段结构保留 | 项目所有者 |
+| v1.14 | 2026-10-22 | 工具参数新增**非官方扩展字段** `taskKind`（可选，缺省 execution）：解决工具调用轮次拿不到任务类型、模糊句原因文案失真的偏差 | 项目所有者 |
+| v1.13 | 2026-10-22 | 提问改为 **AskUserQuestion 工具调用**（对齐 CodeBuddy SDK）：模型发 tool_call → 宿主拦截 → `answers[question] = label` 回填；新增 `harness/ask_tool.py` 与 `chat_with_tools`；不支持 tools 的 provider 降级为不提问 | 项目所有者 |
 | v1.12 | 2026-10-21 | **移除偏好记忆（BREAKING）**：删除 `/preference`、`/feedback`、`DELETE /preference/adoptions` 与两张表、`PreferencePage`/`MemoryPanel`/`usePreferenceStore`、`domain/ranking/preference.py`；MUST-27 总分改为**纯适配度**；记忆只保留「短期 turn 历史 / 长期 project_notes / 会话历史」 | 项目所有者 |
 | v1.8 | 2026-10-20 | 多轮 Agent 重构：MUST-07 状态机作用域下沉到 turn（session 退化为容器，`TRANSITIONS` 不变）；MUST-11 补「`(session_id, turn_index)` 唯一索引即乐观锁」；新增三层记忆（turn 历史 / `project_notes` 结构化 L2 / 偏好投影）与 `build_context` 分层预算（本轮取证永不裁） | 项目所有者 |
 | v1.7 | 2026-10-20 | MUST-26 按《AskUserQuestion 提问规范》重构：①两套时机口径（design 深挖 5 类 / execution 5 类闸门，决策层输出 `task_kind`）②形态硬约束（问号结尾 / header≤12 / options 2–4 / label≤6 字 / description 写代价 / 取舍类单选）③§4.2 禁半角括号与「逗号+空格」④多选改 ", " 拼接⑤允许自定义决策键⑥不合规原样展示，仅 `followup.question_lint` 告警 | 项目所有者 |

@@ -1078,6 +1078,7 @@ src/devprompt_ai/
 │   │   └── registry.py      adapter_kind → 构造器
 │   ├── llm.py               build_model(entry) 工厂：按调用构造 Model，**不用全局开关**                 多供应商客户端（openai-agents Runner/Agent 直接在此封装）
 │   ├── guardrails.py          输出校验
+│   ├── ask_tool.py            AskUserQuestion 工具定义与参数解析（2026-10-22：schema/解析/畸形降级/扩展字段 taskKind）
 │   ├── trace.py               动作观测层（2026-10-20：包装 CommandRunner/FileReader，把真实 rg/读文件上报成卡片并脱敏）
 │   ├── process.py             检索 I/O Protocol 实现（CommandRunner/FileReader）+ 符号表编排（F-101）
 │   ├── dialog.py        原生文件夹选择器（native host 调用）              目录浏览 I/O（F-601 页内文件夹选择器数据源，GET /project/browse）
@@ -1170,6 +1171,7 @@ frontend/
     │   │   ├── ModelPicker.tsx       模型选择器（2026-10-18：只列已配置条目；hover 飞出按模型参数面板——上下文长度 / 思考模式 / 思考强度，强度在开关关闭时置灰；档位取自官方静态登记，各模型独立）
     │   │   ├── nativeFolder.ts     原生文件夹选择器桥（2026-10-19：页面 postMessage → 扩展 content script → service worker → native host → 系统对话框）
     │   │   ├── ChatStream.tsx       对话流（用户气泡 → 回复块：步骤时间轴（每步下方挂过程）+ 方案正文；2026-10-20 移除目标定位/取证/操作栏）
+    │   │   ├── TraceEntry.tsx       思考过程条目（2026-10-22：灰底思考块 + 动作行 + 可展开命令/输出）
     │   │   ├── TurnList.tsx         多轮全文流（2026-10-20：进入即并发拉取每轮正文，用户气泡右 / 助手块左）
     │   │   ├── AskPanel.tsx         反问面板（2026-10-20 v2：内联于对话流、自适应高度、超 60vh 中部滚动、头尾固定）
     │   │   ├── AskFlow.tsx          反问组合层（持有作答草稿，拼装 AskDialog + FollowupForm，2026-10-20）
