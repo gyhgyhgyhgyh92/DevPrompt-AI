@@ -1028,6 +1028,8 @@ def split_identifier(name: str) -> tuple[str, str]:
 src/devprompt_ai/
 ├── __init__.py
 ├── main.py                    ASGI 入口（再导出 `interfaces/api/app.py` 已创建的 app 实例，供 `uvicorn devprompt_ai.main:app`；另承载 `[project.scripts] devprompt-ai` 的 serve 入口）
+├── native_host.py             Chrome/Edge native messaging host（2026-10-19：stdio 4 字节长度前缀协议，弹系统原生文件夹选择器回传绝对路径；`[project.scripts] devprompt-ai-pick-folder`）
+├── desktop.py                 桌面端 sidecar 入口（2026-10-22：Electron 桌面壳 spawn 的子进程；127.0.0.1 内核分配随机端口、已 listen socket 直传 uvicorn（无「先报端口后 bind」竞态）、stdout 单行 `DPROMPT_READY {"port": N}` 协议、access 日志改道 stderr、优雅退出复用 uvicorn 信号处理；serve 的就是 `interfaces.api.app:app` 同一实例，`[project.scripts] devprompt-ai-desktop`）
 ├── service.py                 ForgeService 唯一业务入口
 ├── state.py                   优化流程状态机
 ├── config.py                  Pydantic Settings
@@ -1081,8 +1083,7 @@ src/devprompt_ai/
 │   ├── ask_tool.py            AskUserQuestion 工具定义与参数解析（2026-10-22：schema/解析/畸形降级/扩展字段 taskKind）
 │   ├── trace.py               动作观测层（2026-10-20：包装 CommandRunner/FileReader，把真实 rg/读文件上报成卡片并脱敏）
 │   ├── process.py             检索 I/O Protocol 实现（CommandRunner/FileReader）+ 符号表编排（F-101）
-│   ├── dialog.py        原生文件夹选择器（native host 调用）              目录浏览 I/O（F-601 页内文件夹选择器数据源，GET /project/browse）
-│   └── dialog.py              Windows 原生文件夹对话框（pwsh -STA，零新依赖）
+│   └── dialog.py              Windows 原生文件夹对话框（pwsh -STA，零新依赖；native_host.py 与桌面壳之外，Web 形态由浏览器扩展经 native messaging 调起）
 ├── memory/                    唯一允许出现 SQL 的模块
 │   ├── schema.py              表结构与迁移（WAL 初始化 + 幂等建建表；含 forge_quarantine 隔离表）
 │   ├── startup_safety_check.py 启动自愈（N-1：integrity_check → 坏行隔离 → 补齐缺表；永不抛异常）
@@ -1138,6 +1139,25 @@ src/devprompt_ai/
 ### 5.1 完整目录树
 
 ```
+desktop/                               Electron 桌面壳（2026-10-22，仅 Windows；业务逻辑零侵入，MUST-10）
+├── package.json                       electron 依赖与 pnpm.onlyBuiltDependencies（pnpm 10 默认不跑依赖安装脚本）
+├── pnpm-lock.yaml
+├── .npmrc                             electron_mirror=npmmirror（本机网络无法直连 GitHub）
+├── tsconfig.json                      壳代码 TS 配置（CommonJS 输出；无 verbatimModuleSyntax——与 CJS 冲突）
+├── README.md                          开发态跑壳 / 冒烟 / 打包 / 已知边界
+├── src/
+│   ├── main.ts                        主进程：单实例锁、spawn sidecar、解析 DPROMPT_READY 行（30s 超时）、建 BrowserWindow 加载随机端口、注入 DEVPROMPT_FRONTEND_DIST/DPROMPT_RG_PATH/DPROMPT_CTAGS_PATH、退出杀进程树（kill→500ms→taskkill /T /F）
+│   └── preload.ts                     contextBridge 暴露 window.devpromptDesktop.pickFolder() 与 platform
+├── pyinstaller/
+│   ├── sidecar.spec                   PyInstaller one-dir 规格：入口 desktop.py、collect_submodules(agents/devprompt_ai/uvicorn)、copy_metadata(mcp/openai-agents)（修复 importlib.metadata 冻结态崩溃）、collect_data_files(agents)（修复 prompts/*.md 缺失）、version_file 版本资源（版本读 pyproject.toml）
+│   └── （运行时生成 .tmp/sidecar-version-info.txt，不入库）
+├── installer/
+│   └── devprompt.iss                  Inno Setup 7：PrivilegesRequired=lowest 装 {localappdata}\Programs、固定 AppId 覆盖安装、CloseApplications、userdesktop 图标、卸载清 resources\sidecar\.logs
+└── scripts/
+    ├── build-sidecar.ps1              uv run pyinstaller 打 sidecar + 收集 rg.exe/ctags.exe（PATH→WinGet→WorkBuddy→DPROMPT_*_PATH，缺失明确报错）
+    ├── build-desktop.ps1              五步流水线：前端构建 → 壳编译 → sidecar → staging 组装 → iscc 安装包（版本注入自 pyproject.toml）
+    └── smoke-sidecar.ps1              PyInstaller 产物守门冒烟（模拟安装态环境变量：ready 行 / health 六项 / dist 托管 / stdout 协议纯净）
+
 frontend/
 ├── package.json
 ├── pnpm-lock.yaml
@@ -1169,7 +1189,6 @@ frontend/
     │   ├── optimize/          优化流程组件
     │   │   ├── ConsoleInput.tsx     启动页主视觉输入卡片（对话式重构；模型选择器见 ModelPicker）
     │   │   ├── ModelPicker.tsx       模型选择器（2026-10-18：只列已配置条目；hover 飞出按模型参数面板——上下文长度 / 思考模式 / 思考强度，强度在开关关闭时置灰；档位取自官方静态登记，各模型独立）
-    │   │   ├── nativeFolder.ts     原生文件夹选择器桥（2026-10-19：页面 postMessage → 扩展 content script → service worker → native host → 系统对话框）
     │   │   ├── ChatStream.tsx       对话流（用户气泡 → 回复块：步骤时间轴（每步下方挂过程）+ 方案正文；2026-10-20 移除目标定位/取证/操作栏）
     │   │   ├── TraceEntry.tsx       思考过程条目（2026-10-22：灰底思考块 + 动作行 + 可展开命令/输出）
     │   │   ├── TurnList.tsx         多轮全文流（2026-10-20：进入即并发拉取每轮正文，用户气泡右 / 助手块左）
@@ -1204,6 +1223,7 @@ frontend/
     ├── api/                   请求封装
     │   ├── client.ts          基础请求层
     │   ├── endpoints.ts       接口定义
+    │   ├── nativeFolder.ts    原生文件夹选择器桥（2026-10-19：页面 postMessage → 扩展 content script → service worker → native host → 系统对话框；2026-10-22 桌面化：优先走 window.devpromptDesktop 桥（Electron preload），无桥时原样回落扩展链路，取消均为空串同构）
     │   ├── interceptors.ts    拦截器
     │   ├── errors.ts          错误处理
     │   └── types.ts           请求响应类型

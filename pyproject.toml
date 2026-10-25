@@ -19,6 +19,8 @@ dev = [
     "pytest-asyncio>=0.24",
     "pytest-cov>=7.1,<8",
     "httpx>=0.28",
+    # 桌面端 sidecar 打包（构建期工具，非运行时依赖）；版本经 PyPI 核实（MUST-24b）
+    "pyinstaller>=6.22.3,<7",
 ]
 # 原生协议适配（2026-09-17 多供应商扩展）：仅在使用 Anthropic / Gemini 原生
 # api_mode 时才需要。MUST-04 论证：这两个 SDK 的请求结构、鉴权方式、流式事件形状
@@ -33,6 +35,8 @@ gemini = ["google-genai>=2.31,<3"]
 devprompt-ai = "devprompt_ai.main:main"
 # native messaging host（2026-10-19）：浏览器扩展拉起此脚本弹系统原生文件夹选择器（stdio 长度前缀协议）
 devprompt-ai-pick-folder = "devprompt_ai.native_host:main"
+# 桌面端 sidecar（2026-10-22）：Electron 桌面壳 spawn 的子进程，随机端口 + stdout 就绪协议
+devprompt-ai-desktop = "devprompt_ai.desktop:main"
 
 [build-system]
 requires = ["hatchling"]

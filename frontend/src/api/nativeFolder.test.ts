@@ -93,3 +93,40 @@ describe('pickFolderViaNative（扩展桥）', () => {
     }
   })
 })
+
+describe('pickFolderViaNative（桌面桥，Electron preload）', () => {
+  afterEach(() => {
+    delete window.devpromptDesktop
+  })
+
+  it('有桥：走桥且不发 postMessage（不依赖浏览器扩展）', async () => {
+    window.devpromptDesktop = {
+      pickFolder: vi.fn(async () => ({ path: 'D:/desktop/repo' })),
+      platform: 'win32',
+    }
+    const postMessage = vi.spyOn(window, 'postMessage')
+
+    await expect(pickFolderViaNative()).resolves.toEqual({ path: 'D:/desktop/repo' })
+
+    expect(postMessage).not.toHaveBeenCalled()
+    expect(window.devpromptDesktop?.pickFolder).toHaveBeenCalledTimes(1)
+  })
+
+  it('桌面桥取消：空串而非报错（与扩展链路同构）', async () => {
+    window.devpromptDesktop = {
+      pickFolder: vi.fn(async () => ({ path: '' })),
+      platform: 'win32',
+    }
+    await expect(pickFolderViaNative()).resolves.toEqual({ path: '' })
+  })
+
+  it('桌面桥抛错：原样抛出（不伪装成「未装扩展」）', async () => {
+    window.devpromptDesktop = {
+      pickFolder: vi.fn(async () => {
+        throw new Error('dialog failed')
+      }),
+      platform: 'win32',
+    }
+    await expect(pickFolderViaNative()).rejects.toThrow('dialog failed')
+  })
+})

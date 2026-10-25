@@ -4,6 +4,9 @@
  *
  * 为什么必须走扩展：浏览器的文件选择 API 刻意不暴露绝对路径，而 GET /project/scan
  * 需要绝对路径去服务端扫描。详见 browser-extension/README.md。
+ *
+ * 桌面形态（2026-10-22）：Electron 壳经 window.devpromptDesktop 桥直接弹主进程
+ * 原生对话框，不经扩展；两条链路同构（取消均为空串）。
  */
 import { errorMessage } from '../components/settings/errorMessage'
 
@@ -19,6 +22,18 @@ export const NOT_INSTALLED_HINT =
 export interface NativePickResult {
   /** 用户选中的绝对路径；取消时为空串。 */
   path: string
+}
+
+/** 桌面壳（Electron preload）暴露的桥；仅桌面形态存在，Web 形态为 undefined。 */
+interface DesktopBridge {
+  pickFolder(): Promise<NativePickResult>
+  platform: string
+}
+
+declare global {
+  interface Window {
+    devpromptDesktop?: DesktopBridge
+  }
 }
 
 interface BridgeResponse {
@@ -38,7 +53,7 @@ export function nativePickErrorText(error: unknown): string {
 }
 
 /**
- * 通过扩展调起系统原生文件夹选择器。
+ * 通过扩展调起系统原生文件夹选择器；桌面壳优先走 window.devpromptDesktop 桥。
  *
  * @returns 选中路径；用户取消返回 `{ path: '' }`。
  * @throws 未装扩展 / 非 Chromium 浏览器 / 宿主无响应（超时），文案含补救步骤。
@@ -48,6 +63,10 @@ export function pickFolderViaNative(
 ): Promise<NativePickResult> {
   if (typeof window === 'undefined') {
     return Promise.reject(new Error('非浏览器环境，无法调起系统文件夹选择器'))
+  }
+  // 桌面壳（Electron）：preload 桥直达主进程原生对话框，不依赖浏览器扩展
+  if (window.devpromptDesktop) {
+    return window.devpromptDesktop.pickFolder()
   }
   seq += 1
   const id = 'pick-' + Date.now() + '-' + seq

@@ -5,6 +5,8 @@ __pycache__/
 *.py[cod]
 node_modules/
 frontend/dist/
+desktop/dist/
+.tmp/
 *.tsbuildinfo
 .logs/
 *.db

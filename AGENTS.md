@@ -1,6 +1,6 @@
 # DevPrompt AI · Agent 宪法
 
-> 版本 v1.5 · 2026-10-16（新增：LLM 失败细分码 5011~5015、`code` 为前端查表键的约定、启动自愈；BREAKING 无，批准人=项目所有者）
+> 版本 v1.6 · 2026-10-22（新增：MUST-10 修订为「Web+桌面双交付形态」，BREAKING，批准人=项目所有者；桌面化技术栈与 F-701~F-704 见功能清单）
 > **本文件是 AI 在本项目执行任何任务时必须加载并遵守的最高规则。**
 > 规则冲突时，本文件 > 其他文档 > 一般工程惯例。
 > 详细说明见 `DevPrompt-AI-技术栈文档.md`、`DevPrompt-AI-功能清单.md`、`DevPrompt-AI-项目架构文档.md`。
@@ -198,9 +198,10 @@ ripgrep 先压到 ≤25 条候选（仅符号名 + 路径，不含代码正文�
 
 **执行标准**：state 提交前预校验长度，超限截断并记 `state.truncated` 日志。
 
-### MUST-10 · 单一 Web 形态
+### MUST-10 · 单一业务来源（双交付形态）
 
-本产品仅有 Web 一种交付形态（FastAPI HTTP API + 前端 UI），业务逻辑只允许存在一份。
+产品有两种交付形态——**Web**（FastAPI HTTP API + 浏览器）与**桌面**（Electron 壳 +
+PyInstaller sidecar，仅 Windows），业务逻辑只允许存在一份。
 
 | 保证 | 方式 |
 |---|---|
@@ -208,12 +209,20 @@ ripgrep 先压到 ≤25 条候选（仅符号名 + 路径，不含代码正文�
 | 状态单一 | 同一 `state.py` + 同一 L1 Session，前端 store 仅为镜像 |
 | 记忆单一 | 同一套 `memory/` |
 | 配置单一 | 同一份 `config.py` |
+| 入口单一 | 桌面 sidecar（`src/devprompt_ai/desktop.py`）serve 的就是 `interfaces.api.app:app` 同一实例；Electron 壳（`desktop/`）只做进程编排与窗口管理，不含业务逻辑 |
 
 **禁止**（薄壳约束——破坏单一来源的典型做法）：
 - ❌ `interfaces/api/` 路由层出现任何业务逻辑（评分、判定、阈值比较、状态转移）
 - ❌ 前端自己算总分
 - ❌ HTTP 层自定义阈值
 - ❌ HTTP 层与 service 层缓存策略不一致
+- ❌ `desktop/`（Electron 壳）内出现评分、阈值、状态转移等业务逻辑
+- ❌ sidecar 在「随机端口 + 就绪协议 + 优雅退出」之外再包一层业务
+
+> **2026-10-22 BREAKING（项目所有者批准）**：原「单一 Web 形态」修订为「Web + 桌面
+> 双形态」。两种形态共用同一份 `service`/`state`/`memory`/`config` 与同一
+> `~/.devprompt-ai` 数据目录，可交替使用；桌面端用随机本地端口，与 Web 版 8000
+> 互不冲突。业务判定位置（MUST-08）不变。权威目录树见项目架构文档 §4.8 / §5.1。
 
 ### MUST-11 · 状态变更必须串行化
 
@@ -351,7 +360,7 @@ ripgrep 先压到 ≤25 条候选（仅符号名 + 路径，不含代码正文�
 
 **type**：`feat` `fix` `refactor` `perf` `docs` `test` `build` `ci` `chore` `style`
 
-**scope**：与目录对应 —— `retrieval` `decision` `generate` `ranking` `memory` `service` `api` `web` `harness` `config`
+**scope**：与目录对应 —— `retrieval` `decision` `generate` `ranking` `memory` `service` `api` `web` `harness` `config` `desktop`（2026-10-22 新增，对应 `desktop/` 桌面壳）
 
 **规则**：
 - subject ≤72 字符，动词开头，不加句号

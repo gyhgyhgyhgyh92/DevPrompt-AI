@@ -28,16 +28,24 @@
 |---|---|---|
 | [Python](https://www.python.org/) | ≥ 3.10（推荐 3.13） | 后端运行时 |
 | [uv](https://docs.astral.sh/uv/) | 任意 | Python 依赖管理 |
-| [Node.js](https://nodejs.org/) | ^20.19 / ^22.12 | 前端构建 |
-| [pnpm](https://pnpm.io/) | ^10.15 | 前端依赖管理 |
+| [Node.js](https://nodejs.org/) | ≥ 20.19 或 ≥ 22.12（Vite 7 引擎要求，实测 24.x 可用） | 前端构建 |
+| [pnpm](https://pnpm.io/) | ≥ 10.15（实测 10.33） | 前端依赖管理 |
 | [ripgrep](https://github.com/BurntSushi/ripgrep) | 任意 | 代码检索（**必需**） |
 | [universal-ctags](https://github.com/universal-ctags/ctags) | 任意 | 符号表构建（**必需**） |
 
 > **不必手工配置 PATH**：项目会依次尝试 ①系统 PATH → ②环境变量
 > `DPROMPT_RG_PATH` / `DPROMPT_CTAGS_PATH` → ③WinGet 与编辑器内置工具目录扫描，
 > 自动定位这两个可执行文件。找不到时会在启动自检（`GET /api/v1/health`）中报告并给出安装指引。
+> 桌面安装包已随附这两个二进制（`resources\tools\`），终端用户无需安装。
+
+> **已验证环境**（2026-10-22，Windows）：uv 0.11.28 · Node v24.14.0 · pnpm 10.33.0 ·
+> ripgrep 15.0.0 · Universal Ctags 6.1.0。下文命令均在该环境端到端跑通：
+> `uv sync` → `pnpm build` → 启动后 `GET /api/v1/health` 六项检查全绿。
 
 ### 三步启动
+
+> 已初始化过的机器（`.venv` 与 `frontend/node_modules` 均已存在）可跳过第 2、3 步，
+> 直接进入下方「启动」；`.env` 已配置好模型服务时无需任何额外步骤。
 
 ```powershell
 # 1. 配置（复制后填入你的模型服务信息）
@@ -84,6 +92,39 @@ pnpm dev
 
 > ⚠️ 端口必须一致：`main.py` 的 `DEFAULT_PORT` 与 `frontend/vite.config.ts` 的 proxy
 > 目标同为 8000，改一侧需同步另一侧（有测试 `test_default_port_matches_vite_dev_proxy` 兜底）。
+
+---
+
+## 桌面端（Windows 安装包）
+
+把同一套前端与后端打进一个可安装的桌面应用：安装后从开始菜单或桌面图标双击启动，
+独立窗口承载完整界面，无需终端、无需浏览器、无需装 ripgrep/ctags。
+业务逻辑与 Web 版**完全同一份**，两边共用 `~/.devprompt-ai` 数据，可交替使用。
+
+### 用户使用
+
+1. 获取 `desktop/dist/installer/DevPromptAISetup-<version>.exe`（由开发者构建产出）
+2. 双击安装（每用户安装到 `%LOCALAPPDATA%\Programs\DevPrompt AI`，免 UAC；
+   升级 = 重跑新安装包覆盖安装）
+3. 首次运行若见 SmartScreen「未知发布方」提示，点「更多信息 → 仍要运行」
+   （内部工具未购买代码签名证书，属信誉警告而非病毒判定）
+
+### 开发者构建
+
+```powershell
+# 前置：Node ≥22.12 / pnpm ≥10.15 / uv / Inno Setup 7（iscc）
+# Electron 二进制经 npmmirror 下载（desktop/.npmrc 已配镜像）
+
+# 一条命令：前端构建 → 壳编译 → PyInstaller sidecar → staging → 安装包
+pwsh -File desktop/scripts/build-desktop.ps1
+# 产物：desktop/dist/installer/DevPromptAISetup-<version>.exe（版本号读 pyproject.toml）
+
+# 只验证打包后的 sidecar 能跑（不等安装包，模拟安装态环境变量）
+pwsh -File desktop/scripts/smoke-sidecar.ps1
+```
+
+架构、开发态跑壳、已知边界（无自动更新 / 无代码签名 / 无应用图标）见
+`desktop/README.md`；桌面端需求条目 F-905-1~4 见功能清单。
 
 ---
 
@@ -177,6 +218,13 @@ frontend/src/
 ├── components/        三大组件组（optimize / settings / history / preference）
 ├── stores/            Zustand（optimize / settings / preference）
 └── schemas/           Zod 校验 + 契约生成类型 + 错误码文案表
+
+desktop/               Electron 桌面壳（仅 Windows，2026-10-22）
+├── src/main.ts        spawn sidecar / 解析就绪协议 / 建窗 / 单实例 / 退出杀树
+├── src/preload.ts     contextBridge：window.devpromptDesktop.pickFolder()
+├── pyinstaller/       sidecar 打包规格（one-dir + 版本资源）
+├── installer/         Inno Setup 安装脚本
+└── scripts/           build-sidecar / build-desktop / smoke-sidecar
 ```
 
 架构规范、接口定义与错误码清单见 `DevPrompt-AI-项目架构文档.md`；开发约定见 `AGENTS.md`。

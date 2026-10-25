@@ -1,0 +1,22 @@
+{
+  "name": "devprompt-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "DevPrompt AI 桌面壳（Electron + Python sidecar，仅 Windows）",
+  "packageManager": "pnpm@10.15.0",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "pnpm build && electron ."
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "electron": "^45.0.0",
+    "typescript": "~5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron"
+    ]
+  }
+}

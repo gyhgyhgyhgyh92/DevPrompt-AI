@@ -771,6 +771,70 @@ frontend/src/
 - 问题多于可视面积时只滚动面板中部，头尾固定；问题少时面板自然变矮
 - 已答计数随作答实时更新；Esc 触发逃生
 
+## F-905 桌面端交付（2026-10-22 批次，仅 Windows；宪法 v1.6 / MUST-10 双形态）
+
+> 本批次在「业务逻辑零改动」前提下新增桌面交付形态：Electron 壳（`desktop/`）+
+> PyInstaller sidecar（`src/devprompt_ai/desktop.py`）。两种形态共用同一份
+> `service`/`state`/`memory`/`config` 与同一 `~/.devprompt-ai` 数据目录。
+
+### F-905-1 安装与升级
+
+**输入**：`desktop/dist/installer/DevPromptAISetup-<version>.exe`（Inno Setup 制作）。
+
+**行为**：
+- 每用户安装到 `{localappdata}\Programs\DevPrompt AI`（`PrivilegesRequired=lowest`，免 UAC）
+- 创建开始菜单组（启动 + 卸载两项）与可选桌面快捷方式（`{userdesktop}`；公共桌面需管理员，刻意不用）
+- 重跑安装包即覆盖升级：固定 AppId + 固定安装目录 + `CloseApplications`（装前关运行中的进程）
+- 卸载清除安装目录、开始菜单、桌面图标，并清理 `resources\sidecar\.logs`（sidecar 的 LOG_DIR 相对其 CWD）
+
+**验收**：
+- 静默安装 `/VERYSILENT` exit 0；产物五件套齐全（`DevPrompt AI.exe`、`resources/app`、`resources/frontend-dist`、`resources/sidecar`、`resources/tools`）
+- 连续两次安装均 exit 0（覆盖升级路径）
+- 卸载后安装目录 / 开始菜单 / 桌面图标零残留
+
+### F-905-2 零命令行启动
+
+**输入**：用户双击开始菜单/桌面图标。
+
+**行为**：
+- 主进程 spawn sidecar；sidecar 在 127.0.0.1 绑定**内核分配随机端口**（已 listen socket 直传 uvicorn，无抢占竞态；随机端口天然避开 Web 版 8000）
+- sidecar 就绪后向 stdout 打印单行 `DPROMPT_READY {"port": N}`（其余输出一律 stderr，协议流零污染）；主进程 30s 超时未见即杀子进程并弹错误窗
+- 主进程建 BrowserWindow 加载 `http://127.0.0.1:<port>`；渲染进程 `/api/v1` 相对路径天然同源，前端零改动
+- 单实例锁：二次启动聚焦既有窗口，不起第二个 sidecar（MUST-11 串行写入的另一道保险）
+- 退出杀进程树：`kill()` → 500ms 宽限 → `taskkill /pid <pid> /T /F`；SQLite WAL 不留锁
+- sidecar 就绪后意外死亡：弹可操作错误窗而非留空白窗口
+
+**验收**：
+- `smoke-sidecar.ps1`：打包产物随机端口就绪、`/api/v1/health` 六项全绿（llm_config / rg / ctags / git / db_writable / storage_repair）、前端 dist 托管 200、stdout 仅协议单行
+- 安装版 e2e：启动后 health `is_healthy=true`、`GET /` 200；退出后 sidecar 进程树零残留
+
+### F-905-3 原生文件夹选择（桌面桥）
+
+**输入**：窗口内点「选择文件夹（本地）」。
+
+**行为**：
+- preload 经 contextBridge 暴露 `window.devpromptDesktop.pickFolder()` → IPC → 主进程 `dialog.showOpenDialog(properties: ['openDirectory'])`
+- 前端 `api/nativeFolder.ts` **优先走桌面桥**；无桥（Web 形态）时原样回落浏览器扩展 postMessage 链路；两条链路同构（取消均为 `{ path: '' }`）
+- 不依赖浏览器扩展即可拿到绝对路径（`GET /project/scan` 的前提）
+
+**验收**：
+- 桌面形态点按钮弹 Windows 原生目录对话框，回传绝对路径；取消回传空串不报错
+- Web 形态（无桥）既有扩展链路行为不变（`nativeFolder.test.ts` 全覆盖）
+- 桌面桥存在时不发 postMessage；桥抛错时原样抛出，不伪装成「未装扩展」
+
+### F-905-4 检索工具随包分发
+
+**输入**：构建机（`build-sidecar.ps1` 执行环境）。
+
+**行为**：
+- rg.exe / ctags.exe 构建时收集（PATH → WinGet Links → WorkBuddy vendor → `DPROMPT_*_PATH`，都没有则明确报错，不静默跳过）
+- 安装时落 `resources\tools/`；主进程 spawn sidecar 时经 `DPROMPT_RG_PATH` / `DPROMPT_CTAGS_PATH` 注入环境，命中 `common/process.py` 解析链第 2 级
+- end-user 机器无需安装 ripgrep/ctags、无需配 PATH
+
+**验收**：
+- 安装版 health 的 `rg` / `ctags` 两项 ok，且 detail 显示的是**包内二进制**的版本
+- 二进制产物不入库（`.gitignore` 覆盖 `desktop/dist/`，MUST-23）
+
 ## F-708 思考过程流式展示（2026-10-19）
 
 **输入**：`POST /api/v1/optimize/stream`（请求体同 `OptimizeRequest`，响应为 `text/event-stream`）。

@@ -569,3 +569,66 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | 上下文管理 | 模型自主决定压缩时机（Agentic Context Management） | 确定性状态机 + 压缩发生在阶段边界 | 借鉴其思想，但本项目流程固定为四阶段，不需要模型判断压缩时机 |
 | 动态提醒 | Reminder 机制动态注入上下文 | L2 项目记忆在阶段三注入 | 目标一致，机制不同 |
 | SDK 形态 | 闭源，云端推理 | 私有代码库不上云 | 定位根本差异，不可调和 |
+
+---
+
+# 九、桌面端技术栈（2026-10-22 新增，宪法 v1.6 / MUST-10 双交付形态）
+
+## 9.1 选型与版本（均经官方页面核实，MUST-24b）
+
+| 组件 | 版本 | 角色 | 版本来源 |
+|---|---|---|---|
+| Electron | `^45.0.0` | 桌面壳（仅 Windows）：窗口、原生对话框、进程编排 | npmjs.com/package/electron（2026-10-22 核实 latest 45.0.0；engines node ≥22.12） |
+| PyInstaller | `>=6.22.3,<7` | sidecar 打包（one-dir），构建期工具（dev extra） | pypi.org/project/pyinstaller（2026-10-22 核实 latest 6.22.3） |
+| Inno Setup | 7.1.0（2026-08-12 发布；6.x 线最终版 6.7.3） | 安装器：免 UAC 每用户安装、覆盖升级、卸载 | jrsoftware.org/isdl.php（2026-10-22 核实） |
+| @types/node | `^24.19.2` | 壳代码 TS 类型（开发机 Node 24.14） | npmjs.com（2026-10-22 核实 latest 24.x） |
+
+业务运行时**零新增依赖**：sidecar 打的就是既有 FastAPI/uvicorn/openai-agents 栈，
+serve 的是 `interfaces.api.app:app` 同一实例（MUST-10 入口单一）。
+
+## 9.2 MUST-04 第 5 级论证（为什么可以新增这三个依赖）
+
+1. **Electron**：语言/框架无内置桌面能力；标准库无；项目内无既有桌面壳；已登记依赖
+   （FastAPI/pydantic 等）均与桌面窗口无关。候选第 5 级方案中，pywebview 需引入
+   Python 侧 GUI 运行时且窗口能力弱（无托盘/自动更新生态），Tauri 需先装 Rust
+   工具链（本机未装，且 sidecar 分发复杂度相同）。Electron 的 Node 工具链本机现成，
+   由用户于 2026-10-22 决策轮选定。
+2. **PyInstaller**：把 Python 运行时+依赖打包成 Windows 可执行文件，标准库与既有
+   依赖均无此能力；是 end-user 零依赖运行的前提。属构建期工具，不进运行时依赖。
+3. **Inno Setup**：制作带开始菜单/卸载项/覆盖升级的安装器，无等价标准能力。
+   electron-builder 曾被评估并**放弃**：本项目不用它的 NSIS/Squirrel 目标（Inno 承担
+   安装器）、不签名、不自动更新——它只提供二进制 staging，而手工 staging 约 30 行
+   PowerShell 即可覆盖，引入 26.x 重依赖不划算（2026-10-22 取舍留痕）。
+
+## 9.3 构建安全（PyInstaller 产物防误报）
+
+PyInstaller bootloader 是被滥用最多的打包器之一，匿名打包二进制是杀软误报重灾区。
+已落地的四层防护：
+
+| 措施 | 状态 | 说明 |
+|---|---|---|
+| one-dir 而非 one-file | ✅ | one-file 启动时向临时目录解压，行为特征接近 dropper |
+| 禁用 UPX | ✅ | UPX 加壳是杀软重点启发式特征 |
+| 版本资源元数据 | ✅ | sidecar exe 与安装器均嵌入 ProductName/Company/OriginalFilename（版本读 pyproject.toml 单一来源）；SmartScreen 与 Defender 启发式有据可依 |
+| console 模式 | ✅ | sidecar 的 stdout 本就是协议通道；窗口化隐藏控制台反而增加可疑度 |
+
+**未做**：代码签名（需购买证书，用户已裁定 YAGNI）。后果是首次运行 SmartScreen 提示
+「未知发布方」——这是信誉警告而非木马判定，点「更多信息→仍要运行」一次即过；
+iscc 原生支持 `--signtool`，将来拿到证书可在 `build-desktop.ps1` 的 iscc 调用处接入。
+
+**实测说明**：本开发机 Windows Defender 处于关闭状态且无其他 AV 注册，无法在本机做
+实时扫描验收；分发前应在开启 Defender 的机器上对
+`desktop/dist/installer/DevPromptAISetup-*.exe` 与 sidecar exe 各做一次
+`MpCmdRun -Scan -ScanType 3 -File` 全扫。
+
+## 9.4 分发形态与网络约束
+
+- 安装位置 `{localappdata}\Programs\DevPrompt AI`（`PrivilegesRequired=lowest`，免 UAC）
+- 升级 = 重跑安装包覆盖安装（固定 AppId + `UsePreviousAppDir`）；**不做自动更新**（YAGNI）
+- Electron 二进制经 `desktop/.npmrc` 的 `electron_mirror=https://npmmirror.com/mirrors/electron/`
+  下载（本机网络无法直连 GitHub，TLS 握手失败）
+- pnpm 10 默认不执行依赖的安装脚本，`desktop/package.json` 的
+  `pnpm.onlyBuiltDependencies: ["electron"]` 为 electron 的二进制下载开白名单
+- rg.exe / ctags.exe 构建时收集进安装包 `resources/tools/`，主进程经
+  `DPROMPT_RG_PATH` / `DPROMPT_CTAGS_PATH` 注入 sidecar 环境
+  （命中 `common/process.py` 解析链第 2 级，零业务改动）
