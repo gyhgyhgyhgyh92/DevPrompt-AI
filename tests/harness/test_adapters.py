@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 from typing import Any, cast
 
 import pytest
@@ -33,6 +34,30 @@ from devprompt_ai.harness.adapters import (
 from devprompt_ai.harness.adapters.anthropic_native import AnthropicNativeModel
 from devprompt_ai.harness.adapters.gemini_native import GeminiNativeModel
 from devprompt_ai.harness.llm import build_model
+
+
+def _has_sdk(module: str) -> bool:
+    """可选 SDK 是否可导入（anthropic / google-genai 都是 optional extras）。
+
+    必须吞掉 ModuleNotFoundError：查子模块（google.genai）会先导入父包 google，
+    父包缺失时 find_spec 直接抛错而非返回 None——那会让整个测试模块收集失败。
+    """
+    try:
+        return importlib.util.find_spec(module) is not None
+    except ModuleNotFoundError:
+        return False
+
+
+# 原生适配器里有一批用例**必须**要真实 SDK，光 fake 掉 client 不够：
+# Gemini 的 _build_config 要用真实的 types.GenerateContentConfig；
+# Anthropic 的 _ensure_native 要构造真实 AsyncAnthropic。
+# 缺依赖时跳过而非失败——装上 extras 后这些用例照常真跑，不降低覆盖率。
+_GEMINI_SKIP = pytest.mark.skipif(
+    not _has_sdk("google.genai"), reason="未安装 google-genai（可选 extra：gemini）"
+)
+_ANTHROPIC_SKIP = pytest.mark.skipif(
+    not _has_sdk("anthropic"), reason="未安装 anthropic（可选 extra：anthropic）"
+)
 
 
 @pytest.fixture
@@ -303,6 +328,7 @@ class TestGeminiProtocolMapping:
         assert isinstance(items[0]["arguments"], str)
         assert '"a": 1' in items[0]["arguments"]
 
+    @_GEMINI_SKIP
     async def test_get_response_end_to_end_with_fake_sdk(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -633,6 +659,7 @@ class TestGeminiStreaming:
     def setup_method(self) -> None:
         self.model = GeminiNativeModel("gemini-x", AsyncOpenAI(api_key="EMPTY"), api_key="k")
 
+    @_GEMINI_SKIP
     async def test_emits_text_delta_events(self, monkeypatch: pytest.MonkeyPatch) -> None:
         class _Part:
             text = "好"
@@ -674,6 +701,7 @@ class TestGeminiStreaming:
         assert len(events) == 1
         assert events[0].data.delta == "好"
 
+    @_GEMINI_SKIP
     async def test_skips_empty_chunks(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """无 candidates 的 chunk（安全过滤等场景）须跳过而非崩。"""
 
@@ -886,6 +914,7 @@ class TestEntryFieldNormalization:
 class TestApiModeRouting:
     """api_mode 为路由真值源（2026-10-18）。"""
 
+    @_ANTHROPIC_SKIP
     def test_custom_provider_anthropic_messages_builds_native(
         self, openai_client: AsyncOpenAI
     ) -> None:
@@ -904,6 +933,7 @@ class TestApiModeRouting:
         assert model.describe().startswith("AnthropicNativeModel")
         assert str(native.base_url).startswith("https://api.deepseek.com/anthropic")
 
+    @_GEMINI_SKIP
     def test_gemini_native_receives_base_url(self, openai_client: AsyncOpenAI) -> None:
         """genai.Client 没有 base_url 参数，必须走 HttpOptions（已核实安装版本字段）。"""
         model = GeminiNativeModel(

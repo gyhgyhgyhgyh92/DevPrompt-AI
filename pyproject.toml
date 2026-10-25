@@ -66,6 +66,12 @@ files = ["src", "tests", "scripts"]
 module = ["agents.*", "openai.*"]
 ignore_missing_imports = true
 
+# 可选 extras（anthropic / gemini）：CI 与默认安装均不装这两个 SDK，
+# 故按「缺失」处理而不让门禁变红——与上方 agents/openai 同一惯例。
+[[tool.mypy.overrides]]
+module = ["google.*", "anthropic.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
+# openai 3.x 把 HTTP 模型 vendored 成 httpx2：SDK 异常的 request/response 形参
+# 标注的就是 httpx2 类型，用 httpx 构造会在 mypy strict 下报类型不符
+import httpx2
 import openai
 import pytest
 
@@ -73,10 +75,13 @@ def _stub_client(
     monkeypatch.setattr(mc, "AsyncOpenAI", lambda **kw: _FakeClient(payload=payload, exc=exc, **kw))
 
 
-def _status_error(exc_cls: type[Exception], status: int) -> Exception:
-    """构造带 HTTP 响应上下文的 SDK 异常（SDK 要求 status_code 存在）。"""
-    request = httpx.Request("GET", "https://api.example.com/v1/models")
-    return exc_cls("boom", response=httpx.Response(status, request=request), body=None)
+def _status_error(exc_cls: type[openai.APIStatusError], status: int) -> Exception:
+    """构造带 HTTP 响应上下文的 SDK 异常（SDK 要求 status_code 存在）。
+
+    形参收窄到 APIStatusError：调用方传的都是它的子类，且只有它接受 response/body。
+    """
+    request = httpx2.Request("GET", "https://api.example.com/v1/models")
+    return exc_cls("boom", response=httpx2.Response(status, request=request), body=None)
 
 
 class TestParseModelEntry:
@@ -103,8 +108,10 @@ class TestParseModelEntry:
         assert parse_model_entry(None) is None
 
     def test_non_positive_window_ignored(self) -> None:
-        assert parse_model_entry({"id": "m", "context_window": 0}).max_context_length is None
-        assert parse_model_entry({"id": "m", "context_window": True}).max_context_length is None
+        zero = parse_model_entry({"id": "m", "context_window": 0})
+        assert zero is not None and zero.max_context_length is None
+        truthy = parse_model_entry({"id": "m", "context_window": True})
+        assert truthy is not None and truthy.max_context_length is None
 
     def test_string_window_accepted(self) -> None:
         info = parse_model_entry({"id": "m", "context_window": "131072"})
@@ -136,7 +143,8 @@ class TestParseModelsResponse:
         assert [m.model_id for m in models] == ["deepseek-flash", "deepseek-v4-pro"]
 
     def test_malformed_payloads_yield_empty(self) -> None:
-        for payload in (None, [], {"data": None}, {"data": {}}, "text"):
+        payloads: list[Any] = [None, [], {"data": None}, {"data": {}}, "text"]
+        for payload in payloads:
             assert parse_models_response(payload) == []
 
     def test_invalid_entries_skipped(self) -> None:
@@ -177,7 +185,7 @@ class TestFetcher:
             (_status_error(openai.RateLimitError, 429), "限流"),
             (_status_error(openai.NotFoundError, 404), "未提供模型列表接口"),
             (_status_error(openai.APIStatusError, 500), "HTTP 500"),
-            (openai.APIConnectionError(request=httpx.Request("GET", "https://x")), "无法连接"),
+            (openai.APIConnectionError(request=httpx2.Request("GET", "https://x")), "无法连接"),
         ],
     )
     async def test_errors_are_user_readable(
@@ -193,7 +201,7 @@ class TestFetcher:
         assert _SECRET not in message, "错误文案绝不能泄漏 api_key（MUST-19）"
 
     async def test_timeout_is_user_readable(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        request = httpx.Request("GET", "https://api.example.com/v1/models")
+        request = httpx2.Request("GET", "https://api.example.com/v1/models")
         _stub_client(monkeypatch, None, openai.APITimeoutError(request=request))
         with pytest.raises(CatalogFetchError, match="超时"):
             await OpenAIModelsFetcher().fetch(
