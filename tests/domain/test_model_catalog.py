@@ -20,6 +20,16 @@ from devprompt_ai.domain.model_catalog import (
 )
 
 
+def _must(items: list[ModelCatalogItem], model_id: str) -> ModelCatalogItem:
+    """测试专用收窄：`find_item` 返回 Optional，取属性前先断言存在（mypy strict）。
+
+    直接 `find_item(...).attr` 在缺项时抛 AttributeError，断言后失败信息是「缺哪个模型」。
+    """
+    item = find_item(items, model_id)
+    assert item is not None, f"目录里应存在 {model_id}"
+    return item
+
+
 class TestCleanTiers:
     def test_illegal_tier_is_dropped(self) -> None:
         merged = merge_catalog(
@@ -32,7 +42,7 @@ class TestCleanTiers:
             ],
             provider="deepseek",
         )
-        tiers = find_item(merged, "m-1").context_window_tiers
+        tiers = _must(merged, "m-1").context_window_tiers
         assert 1_048_576 not in tiers, "超过窗口上限的档位必须丢弃（防假安全感）"
         assert tiers == (64_000, 131_072, 200_000), "厂商档位与标准阶梯取并集"
 
@@ -41,7 +51,7 @@ class TestCleanTiers:
             [RemoteModelInfo(model_id="m-1", context_window_tiers=(64_000,))],
             provider="yi",
         )
-        item = find_item(merged, "m-1")
+        item = _must(merged, "m-1")
         assert item.context_window_tiers == (), "窗口未知就没有合法档位可言"
         assert item.max_context_length is None
 
@@ -54,7 +64,7 @@ class TestMergeCatalog:
             provider="deepseek",
             static_items=static_catalog("deepseek"),
         )
-        item = find_item(merged, "deepseek-v4-pro")
+        item = _must(merged, "deepseek-v4-pro")
         assert item.source == "remote"
         assert item.max_context_length == 1_048_576
 
@@ -65,7 +75,7 @@ class TestMergeCatalog:
             provider="deepseek",
             static_items=static_catalog("deepseek"),
         )
-        item = find_item(merged, "deepseek-flash")
+        item = _must(merged, "deepseek-flash")
         assert item.source == "remote"
         assert item.max_context_length == 1_048_576
         assert item.context_window_tiers == (131_072, 262_144, 524_288, 1_048_576)
