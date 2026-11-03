@@ -51,6 +51,8 @@
 
   /* 尺寸规格 */
   --sidebar-width: 260px;
+  /* 品牌标识前景（方块内的气泡/火花，浅深主题同为白） */
+  --color-brand-on: #ffffff;
   --icon-size: 16px;
   --menu-item-height: 34px;
 

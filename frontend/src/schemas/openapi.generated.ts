@@ -55,7 +55,11 @@ export interface paths {
         get: operations["get_history_api_v1_history_get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Project History
+         * @description 项目级批量删除（2026-11-01）：删该 project_root 下全部会话记录，磁盘文件不动。
+         */
+        delete: operations["delete_project_history_api_v1_history_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -356,6 +360,25 @@ export interface components {
             code: number;
             /** Data */
             data?: null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
+        /** ApiResponse[ProjectDeleteResponse] */
+        ApiResponse_ProjectDeleteResponse_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["ProjectDeleteResponse"] | null;
             /**
              * Message
              * @default ok
@@ -904,6 +927,14 @@ export interface components {
             telemetry?: boolean | null;
         };
         /**
+         * ProjectDeleteResponse
+         * @description DELETE /history?project_root= 数据体：实际删除的会话条数（0 = 该项目无会话）。
+         */
+        ProjectDeleteResponse: {
+            /** Deleted */
+            deleted: number;
+        };
+        /**
          * ProviderConfigUpdate
          * @description PUT /settings providers 段条目：`id` 缺省为新增（后端生成 ``p-`` + uuid8）。
          *
@@ -1300,6 +1331,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_list_HistoryItemPayload__"];
+                };
+            };
+        };
+    };
+    delete_project_history_api_v1_history_delete: {
+        parameters: {
+            query?: {
+                project_root?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProjectDeleteResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

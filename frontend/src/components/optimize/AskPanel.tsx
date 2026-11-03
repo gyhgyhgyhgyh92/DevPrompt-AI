@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useId, useState } from 'react'
 
 interface AskPanelProps {
   /** 本轮问题总数。 */
@@ -30,52 +30,74 @@ export function AskPanel({
   onEscape,
   children,
 }: AskPanelProps) {
-  // Esc = 直接生成；提交中不响应，避免并发请求
+  const bodyId = useId()
+  // 折叠为纯表现层局部状态（MUST-16 不上提）；新一批问题由父级 key 重挂载回到展开态
+  const [isCollapsed, setCollapsed] = useState(false)
+  const heading = title ?? `需要你确认 ${total} 个问题`
+
+  // Esc = 直接生成；提交中与收起态不响应（收起时按键不可见，响应等于误触逃生）
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key !== 'Escape' || isBusy) return
+      if (event.key !== 'Escape' || isBusy || isCollapsed) return
       event.preventDefault()
       onEscape()
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isBusy, onEscape])
+  }, [isBusy, isCollapsed, onEscape])
 
   return (
-    <section className="ask-panel" role="group" aria-label={title ?? `需要你确认 ${total} 个问题`}>
+    <section className="ask-panel" role="group" aria-label={heading}>
       <header className="ask-panel__head">
-        <span className="ask-panel__icon" aria-hidden="true">
-          ?
-        </span>
-        <h2 className="ask-panel__title">{title ?? `需要你确认 ${total} 个问题`}</h2>
-        <span className="ask-panel__progress">
-          {answered} / {total} 已答
-        </span>
+        <button
+          type="button"
+          className="ask-panel__toggle"
+          aria-expanded={!isCollapsed}
+          aria-controls={isCollapsed ? undefined : bodyId}
+          onClick={() => setCollapsed((current) => !current)}
+        >
+          <span className="ask-panel__icon" aria-hidden="true">
+            ?
+          </span>
+          <span className="ask-panel__title">{heading}</span>
+          <span className="ask-panel__progress">
+            {answered} / {total} 已答
+          </span>
+          <span className="ask-panel__caret" aria-hidden="true">
+            ▾
+          </span>
+        </button>
       </header>
 
-      <div className="ask-panel__body">{children}</div>
+      {isCollapsed ? null : (
+        <>
+          <div className="ask-panel__body" id={bodyId}>
+            {children}
+          </div>
 
-      <footer className="ask-panel__foot">
-        <span className="ask-panel__hint">Esc 取消 · 有多选时可勾多项</span>
-        <div className="ask-panel__actions">
-          <button
-            type="button"
-            className="button button--ghost"
-            disabled={isBusy}
-            onClick={onEscape}
-          >
-            直接生成
-          </button>
-          <button
-            type="button"
-            className="button button--primary"
-            disabled={isBusy}
-            onClick={onSubmit}
-          >
-            提交
-          </button>
-        </div>
-      </footer>
+          <footer className="ask-panel__foot">
+            <span className="ask-panel__hint">Esc 取消 · 有多选时可勾多项</span>
+            <div className="ask-panel__actions">
+              <button
+                type="button"
+                className="button button--ghost"
+                disabled={isBusy}
+                onClick={onEscape}
+              >
+                直接生成
+              </button>
+              <button
+                type="button"
+                className="button button--primary"
+                disabled={isBusy}
+                onClick={onSubmit}
+              >
+                提交
+              </button>
+            </div>
+          </footer>
+        </>
+      )}
     </section>
   )
 }

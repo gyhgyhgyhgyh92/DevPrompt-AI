@@ -1165,15 +1165,17 @@ frontend/
     ├── components/
     │   ├── ui/                通用展示组件
     │   │   ├── Toggle.tsx         开关（设置中心用）
-    │   │   └── Slider.tsx         滑条（偏好/设置共用）
+    │   │   ├── Slider.tsx         滑条（偏好/设置共用）
+    │   │   ├── ConfirmDialog.tsx  通用确认弹窗（2026-11-01：遮罩 + 标题 + 正文 + 取消/危险确认，Esc/焦点管理）
+    │   │   └── BrandMark.tsx      品牌标识内联 SVG（2026-11-01：气泡 + 火花，颜色随主题 token）
     │   ├── optimize/          优化流程组件
-    │   │   ├── ConsoleInput.tsx     启动页主视觉输入卡片（对话式重构；模型选择器见 ModelPicker）
+    │   │   ├── ConsoleInput.tsx     启动页主视觉输入卡片（对话式重构；2026-11-01 输入随内容自动增高至 6 行；模型选择器见 ModelPicker）
     │   │   ├── ModelPicker.tsx       模型选择器（2026-10-18：只列已配置条目；hover 飞出按模型参数面板——上下文长度 / 思考模式 / 思考强度，强度在开关关闭时置灰；档位取自官方静态登记，各模型独立）
     │   │   ├── nativeFolder.ts     原生文件夹选择器桥（2026-10-19：页面 postMessage → 扩展 content script → service worker → native host → 系统对话框）
     │   │   ├── ChatStream.tsx       对话流（用户气泡 → 回复块：步骤时间轴（每步下方挂过程）+ 方案正文；2026-10-20 移除目标定位/取证/操作栏）
     │   │   ├── TraceEntry.tsx       思考过程条目（2026-10-22：灰底思考块 + 动作行 + 可展开命令/输出）
     │   │   ├── TurnList.tsx         多轮全文流（2026-10-20：进入即并发拉取每轮正文，用户气泡右 / 助手块左）
-    │   │   ├── AskPanel.tsx         反问面板（2026-10-20 v2：内联于对话流、自适应高度、超 60vh 中部滚动、头尾固定）
+    │   │   ├── AskPanel.tsx         反问面板（2026-10-20 v2：内联于对话流、自适应高度、超 60vh 中部滚动、头尾固定；2026-11-01 头部改折叠栏，收起只留一行摘要）
     │   │   ├── AskFlow.tsx          反问组合层（持有作答草稿，拼装 AskDialog + FollowupForm，2026-10-20）
         │   │   ├── PromptCard.tsx
     │   │   ├── VariantTabs.tsx
@@ -1183,8 +1185,8 @@ frontend/
     │   │   ├── FollowupForm.tsx
     │   │   └── CopyButton.tsx
     │   ├── history/           历史页组件
-    │   │   ├── ProjectSidebar.tsx  固定侧边栏（图三：头部「项目」+一键收纳，项目分组 + 会话条目）
-    │   │   └── SessionMenu.tsx     会话 ⋮ 菜单（置顶/复制路径/重命名/删除，二次确认）
+    │   │   ├── ProjectSidebar.tsx  固定侧边栏（图三：头部「项目」+一键收纳；2026-11-01 起按 project_root 分组，组头带项目级删除）
+    │   │   └── SessionMenu.tsx     会话 ⋮ 菜单（置顶/复制路径/重命名/删除；2026-11-01 删除改为上抛，确认统一走 ConfirmDialog）
     │   ├── ~~preference/~~     偏好页组件（2026-10-21 移除）
     │   │   └── PreferenceEditor.tsx 四维偏好编辑器（F-702 独立可用：滑杆 + 显式保存 + 放弃修改）
     │   └── settings/          设置中心组件（F-604，模态面板）

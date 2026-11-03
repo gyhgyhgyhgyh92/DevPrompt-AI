@@ -9,7 +9,6 @@ const ranking = {
   marked: true,
   reason: '分差较大',
   fit: 0.8,
-  pref: 0.7,
   total: 0.76,
 }
 

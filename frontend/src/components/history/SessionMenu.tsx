@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import './SessionMenu.css'
 
 interface SessionMenuProps {
@@ -70,7 +70,8 @@ function TrashIcon() {
 
 /**
  * 条目 ⋮ 弹出菜单（图四 1:1，spec Task 5，F-703）：4 项（置顶任务/复制项目路径/重命名/删除任务）。
- * Esc 与外点关闭；Tab 可达（原生 button）；删除为红色且二次确认。
+ * Esc 与外点关闭；Tab 可达（原生 button）；删除为红色，点击后上抛给外层统一确认弹窗
+ * （2026-11-01：原菜单内「二次点击」改为 `ConfirmDialog`，与项目级删除同一套确认形态）。
  */
 export function SessionMenu({
   isPinned,
@@ -81,7 +82,6 @@ export function SessionMenu({
   onClose,
 }: SessionMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
-  const [isConfirmingDelete, setConfirmingDelete] = useState(false)
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent): void {
@@ -99,14 +99,6 @@ export function SessionMenu({
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [onClose])
-
-  function handleDeleteClick(): void {
-    if (isConfirmingDelete) {
-      onDelete()
-      return
-    }
-    setConfirmingDelete(true)
-  }
 
   return (
     <div className="session-menu" role="menu" ref={menuRef} aria-label="会话操作">
@@ -132,10 +124,10 @@ export function SessionMenu({
         type="button"
         role="menuitem"
         className="session-menu__item session-menu__item--danger"
-        onClick={handleDeleteClick}
+        onClick={onDelete}
       >
         <TrashIcon />
-        <span>{isConfirmingDelete ? '确认删除？' : '删除任务'}</span>
+        <span>删除任务</span>
       </button>
     </div>
   )

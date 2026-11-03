@@ -1,9 +1,11 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { SettingsResponse } from './api/types'
 import { App } from './App'
 import { useOptimizeStore } from './stores/useOptimizeStore'
 import { useHistoryStore } from './stores/useHistoryStore'
+import { useSettingsStore } from './stores/useSettingsStore'
 
 function jsonResponse(payload: unknown) {
   return { status: 200, headers: { get: () => null }, json: async () => payload }
@@ -27,6 +29,7 @@ function drawer(container: HTMLElement): HTMLElement {
 beforeEach(() => {
   useOptimizeStore.getState().reset()
   useHistoryStore.getState().reset()
+  useSettingsStore.setState({ settings: null })
 })
 
 afterEach(() => {
@@ -154,5 +157,50 @@ describe('App 一键收纳（F-602，2026-10-13）', () => {
 
     await user.click(screen.getByRole('button', { name: '打开侧边栏' }))
     expect(shell().className).toBe('app-shell')
+  })
+})
+
+/** 最小设置视图：只保留启动页模型按钮需要的 models 段（其余段按契约兜底）。 */
+const settingsFixture: SettingsResponse = {
+  models: [
+    {
+      id: 'm-1',
+      provider_id: 'p-1',
+      provider: 'DeepSeek',
+      model_id: 'deepseek-flash',
+      is_active: true,
+    },
+  ],
+  model_service: {
+    api_key_masked: 'sk-••••3f7a',
+    base_url: 'https://api.deepseek.com',
+    model_id: 'deepseek-flash',
+    provider: 'DeepSeek',
+    timeout: 60,
+    max_tokens: null,
+    temperature: null,
+  },
+  process: { followup_cost_budget: 2, followup_soft_round_guard: 12, telemetry: true },
+  locked: { candidate_limit: 25 },
+}
+
+describe('App 设置预加载（2026-11-03）', () => {
+  it('挂载即加载设置：启动页模型按钮显示当前生效模型，不再是「未配置模型」', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        jsonResponse({
+          code: 0,
+          message: 'ok',
+          request_id: 'rid',
+          data: String(input).includes('/api/v1/settings') ? settingsFixture : null,
+        }),
+      ),
+    )
+
+    render(<App />)
+
+    expect(await screen.findByText('deepseek-flash')).toBeTruthy()
+    expect(screen.queryByText('未配置模型')).toBeNull()
   })
 })

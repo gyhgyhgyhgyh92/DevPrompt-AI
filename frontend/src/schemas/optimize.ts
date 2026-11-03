@@ -39,7 +39,6 @@ export const RankingViewSchema = z.object({
   fit: z.number(),
   gap: z.number(),
   marked: z.boolean(),
-  pref: z.number(),
   reason: z.string(),
   total: z.number(),
   variant: z.string(),

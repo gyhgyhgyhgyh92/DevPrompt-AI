@@ -74,6 +74,9 @@ class FakeStore:
     async def delete(self, session_id: str) -> bool:
         return self.items.pop(session_id, None) is not None
 
+    async def delete_by_project(self, user_id: str, project_root: str) -> int:
+        return 0  # 本用例不覆盖项目级删除（详见 test_session_store.py）
+
 
 class FakeDecider:
     """三方法全接：每次调用累加决策层 token 用量（LLM 实际入 llm 桶）。"""

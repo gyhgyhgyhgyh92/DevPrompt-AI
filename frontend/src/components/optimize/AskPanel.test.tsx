@@ -90,4 +90,33 @@ describe('AskPanel 内联反问面板', () => {
     renderPanel({ title: '软护栏：请裁决' })
     expect(screen.getByText('软护栏：请裁决')).toBeTruthy()
   })
+
+  it('折叠后只剩一行摘要（问题区与底部按钮不渲染），再次点击恢复展开', async () => {
+    renderPanel()
+    const user = userEvent.setup()
+    const toggle = screen.getByRole('button', { name: /需要你确认 3 个问题/ })
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+
+    await user.click(toggle)
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(document.querySelector('.ask-panel__body')).toBeNull()
+    expect(document.querySelector('.ask-panel__foot')).toBeNull()
+    expect(screen.getByText('需要你确认 3 个问题')).toBeTruthy()
+    expect(screen.getByText('1 / 3 已答')).toBeTruthy()
+
+    await user.click(toggle)
+
+    expect(document.querySelector('.ask-panel__body')).not.toBeNull()
+  })
+
+  it('收起态不响应 Esc（看不见的「直接生成」不该被误触）', async () => {
+    const { onEscape } = renderPanel()
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: /需要你确认 3 个问题/ }))
+    await user.keyboard('{Escape}')
+
+    expect(onEscape).not.toHaveBeenCalled()
+  })
 })

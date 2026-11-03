@@ -31,9 +31,12 @@ export function AskFlow({
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const answered = questions.filter((item) => (answers[item.key] ?? '').trim() !== '').length
   const isGuardrail = status === 'guardrail'
+  // 新一批问题到达时重挂载面板，把用户上一轮收起的折叠态复位为展开
+  const questionsKey = questions.map((item) => item.key).join('|')
 
   return (
     <AskPanel
+      key={questionsKey}
       total={questions.length}
       answered={answered}
       isBusy={isBusy}

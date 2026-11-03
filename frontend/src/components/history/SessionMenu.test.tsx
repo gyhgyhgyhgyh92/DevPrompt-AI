@@ -48,15 +48,12 @@ describe('SessionMenu ⋮ 弹出菜单', () => {
     expect(props.onClose).toHaveBeenCalled()
   })
 
-  it('删除需二次确认：首次点击不变确认文案，二次点击才触发删除', async () => {
+  it('删除项点击即上抛 onDelete（确认弹窗由外层负责）', async () => {
     const user = userEvent.setup()
     const props = renderMenu()
 
     await user.click(screen.getByRole('menuitem', { name: /删除任务/ }))
-    expect(screen.getByRole('menuitem', { name: /确认删除？/ })).toBeTruthy()
-    expect(props.onDelete).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole('menuitem', { name: /确认删除？/ }))
     expect(props.onDelete).toHaveBeenCalledTimes(1)
   })
 })

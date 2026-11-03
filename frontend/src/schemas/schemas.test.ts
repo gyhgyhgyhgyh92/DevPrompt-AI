@@ -105,7 +105,6 @@ describe('schemas/optimize 契约校验', () => {
         fit: 1,
         gap: 1,
         marked: true,
-        pref: 1,
         reason: '',
         total: 1,
         variant: 'A',

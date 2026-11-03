@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router'
 import { deleteHistory, getHistory, getResult, patchHistory } from '../api/endpoints'
 import type { HistoryItemPayload } from '../api/types'
 import { SessionMenu } from '../components/history/SessionMenu'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { useOptimizeStore } from '../stores/useOptimizeStore'
 import { useHistoryStore } from '../stores/useHistoryStore'
 import { formatDateTime } from '../utils/format'
@@ -48,6 +49,9 @@ export function HistoryPage() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
+  // 删除确认（2026-11-01）：菜单只选目标，执行统一走 ConfirmDialog
+  const [pendingDelete, setPendingDelete] = useState<HistoryItemPayload | null>(null)
+  const [isDeleting, setDeleting] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -126,8 +130,8 @@ export function HistoryPage() {
     }
   }
 
-  async function handleDelete(item: HistoryItemPayload): Promise<void> {
-    setOpenMenuId(null)
+  async function handleConfirmDelete(item: HistoryItemPayload): Promise<void> {
+    setDeleting(true)
     try {
       await deleteHistory(item.session_id)
       // 删掉主区正打开的会话时复位流程状态，避免残留已删除会话的三套方案
@@ -139,6 +143,9 @@ export function HistoryPage() {
       showToast('已删除')
     } catch {
       showToast('删除失败')
+    } finally {
+      setDeleting(false)
+      setPendingDelete(null)
     }
   }
 
@@ -244,7 +251,10 @@ export function HistoryPage() {
                         onPin={() => void handlePin(item)}
                         onCopyPath={() => handleCopyPath(item)}
                         onRename={() => startRename(item)}
-                        onDelete={() => void handleDelete(item)}
+                        onDelete={() => {
+                          setOpenMenuId(null)
+                          setPendingDelete(item)
+                        }}
                         onClose={() => setOpenMenuId(null)}
                       />
                     ) : null}
@@ -256,6 +266,17 @@ export function HistoryPage() {
           </>
         ) : null}
       </div>
+
+      {pendingDelete !== null ? (
+        <ConfirmDialog
+          title="删除会话"
+          description={`将删除「${itemTitle(pendingDelete)}」这条会话记录及其历史轮次，不会删除本地项目文件。`}
+          confirmLabel="删除会话"
+          isBusy={isDeleting}
+          onConfirm={() => void handleConfirmDelete(pendingDelete)}
+          onClose={() => setPendingDelete(null)}
+        />
+      ) : null}
 
       {toast !== null ? (
         <div className="project-sidebar__toast" role="status">

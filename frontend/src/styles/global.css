@@ -9,7 +9,7 @@
 html,
 body,
 #root {
-  min-block-size: 100%;
+  block-size: 100%;
 }
 
 body {
@@ -17,8 +17,8 @@ body {
   font: var(--font-body-regular);
   color: var(--color-text-primary);
   background: var(--color-surface-base);
-  /* 全页禁横向滚动（窄屏/超宽屏均不出现横向溢出） */
-  overflow-x: hidden;
+  /* 固定视口（2026-11-01 桌面化）：浏览器整页不再滚动，滚动全部下沉到内部内容区 */
+  overflow: hidden;
 }
 
 /* 细滚动条（色值取 token；浅/深主题自适应，参考图浅色系观感） */
@@ -82,7 +82,9 @@ pre {
 .app-shell {
   display: flex;
   flex-direction: column;
-  min-block-size: 100vh;
+  /* 100dvh 兼容移动端地址栏收放；overflow 收口保证外壳永不产生滚动条 */
+  block-size: 100dvh;
+  overflow: hidden;
 }
 
 /* AppShell 主体：左侧固定侧边栏列 + 右侧主区（Task 4 布局整合） */
@@ -133,6 +135,7 @@ pre {
 /* 汉堡按钮（☰）：唤出窄屏抽屉；≥768 隐藏（见文件末尾媒体查询） */
 .app-titlebar__menu {
   display: none;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   inline-size: var(--space-8);
@@ -151,26 +154,42 @@ pre {
 
 .app-titlebar {
   display: flex;
+  flex-wrap: nowrap;
   gap: var(--space-4);
   align-items: center;
+  min-inline-size: 0;
   padding: var(--space-3) var(--space-4);
   background: var(--color-surface-raised);
   border-block-end: 1px solid var(--color-border-subtle);
 }
 
+/* 品牌与操作不参与压缩；只有项目 chip 允许收缩并省略号（2026-11-02 实测窄屏文字竖排修复） */
 .app-titlebar__logo {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: var(--space-2);
+  align-items: center;
   font: var(--font-body-bold);
   color: var(--color-text-brand);
+  white-space: nowrap;
 }
 
 .app-titlebar__chip {
+  min-inline-size: 0;
   padding: var(--space-1) var(--space-3);
+  overflow: hidden;
   font: var(--font-code-regular);
   color: var(--color-text-secondary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
   background: var(--color-surface-code);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-full);
-  overflow-wrap: anywhere;
+}
+
+.app-titlebar > .button {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .app-titlebar__spacer {
@@ -179,10 +198,12 @@ pre {
 
 .api-pill {
   display: inline-flex;
+  flex-shrink: 0;
   gap: var(--space-2);
   align-items: center;
   font: var(--font-code-regular);
   color: var(--color-text-secondary);
+  white-space: nowrap;
 }
 
 .api-pill__dot {
@@ -200,11 +221,12 @@ pre {
   background: var(--color-danger-500);
 }
 
+/* 主区是「舞台」不再自己滚动：滚动由页面内部容器负责（对话流 / 历史列表） */
 .app-main {
   flex: 1;
   min-block-size: 0;
   min-inline-size: 0;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .app-statusbar {
@@ -220,26 +242,33 @@ pre {
 
 /* 三栏工作台 */
 
+/* 页面级舞台：高度撑满主区、自身不滚动，滚动交给 .workspace__thread */
 .workspace {
   display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) 18rem;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
+  block-size: 100%;
+  min-block-size: 0;
   padding: var(--space-4);
-  min-block-size: 100%;
+  overflow: hidden;
 }
 
 .workspace__thread {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  min-block-size: 0;
   min-inline-size: 0;
+  overflow-y: auto;
 }
 
-/* 优化页容器（初始态居中主视觉 / 有会话时结果区） */
+/* 优化页容器（初始态居中主视觉 / 有会话时结果区）：撑满主区且自身不滚动 */
 .optimize-page {
   display: flex;
   flex-direction: column;
-  min-block-size: 100%;
+  block-size: 100%;
+  min-block-size: 0;
+  overflow: hidden;
 }
 
 .optimize-page__center {
@@ -247,18 +276,29 @@ pre {
   flex: 1;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /* safe center：内容超高时退回顶部对齐，避免溢出部分无法滚动到达 */
+  justify-content: safe center;
   gap: var(--space-3);
+  min-block-size: 0;
   padding: var(--space-6);
+  overflow-y: auto;
 }
 
-/* 多轮输入区：结果/反问视图下常驻底部（2026-10-20） */
+/* 对话流滚动区（2026-11-01）：多轮内容在此滚动，输入区固定在它下方 */
+.optimize-page__thread {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+/* 多轮输入区：结果/反问视图下常驻底部（2026-11-01：由 sticky 改为固定 flex 块） */
 .optimize-page__composer {
-  position: sticky;
-  inset-block-end: 0;
-  margin-block-start: var(--space-4);
+  flex-shrink: 0;
   padding-block: var(--space-3);
   background: var(--color-surface-base);
+  border-block-start: 1px solid var(--divider);
 }
 
 /* 条目状态徽章/项目名（旧 SessionSidebar 已删除，HistoryPage 复用此二类） */
@@ -554,6 +594,26 @@ pre {
 
 /* 窄屏（<768）：侧边栏折叠为抽屉（汉堡唤出 + 遮罩/Esc 关闭）；三栏塌陷为单列 */
 @media (max-width: 767.98px) {
+  /* 窄屏标题栏（2026-11-02 实测）：项目名已在抽屉里，chip 让位给品牌与操作，避免文字竖排 */
+  .app-titlebar {
+    gap: var(--space-2);
+  }
+
+  .app-titlebar__chip {
+    display: none;
+  }
+
+  /* 状态栏保持单行、可横向滚（整页仍不产生滚动条） */
+  .app-statusbar {
+    flex-wrap: nowrap;
+    gap: var(--space-3);
+    overflow-x: auto;
+  }
+
+  .app-statusbar > span {
+    flex-shrink: 0;
+  }
+
   .workspace {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -609,13 +669,42 @@ pre {
   box-shadow: 0 1px 2px rgb(15 23 42 / 6%);
 }
 
+/* 折叠栏（2026-11-01）：整行可点击收起/展开，收起后只剩这一行摘要 */
 .ask-panel__head {
-  display: flex;
   flex-shrink: 0;
+  border-block-end: 1px solid var(--color-border-subtle);
+}
+
+.ask-panel__toggle {
+  display: flex;
   gap: var(--space-3);
   align-items: center;
+  inline-size: 100%;
   padding: var(--space-3) var(--space-4);
-  border-block-end: 1px solid var(--color-border-subtle);
+  text-align: start;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+
+.ask-panel__toggle:hover {
+  background: var(--hover);
+}
+
+.ask-panel__caret {
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-muted);
+  transition: transform 0.16s ease-out;
+}
+
+.ask-panel__toggle[aria-expanded='false'] .ask-panel__caret {
+  transform: rotate(-90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ask-panel__caret {
+    transition: none;
+  }
 }
 
 .ask-panel__icon {

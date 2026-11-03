@@ -31,6 +31,7 @@ from devprompt_ai.interfaces.api.schemas import (
     ModelCatalogRefreshRequest,
     ModelCatalogResponse,
     OptimizeRequest,
+    ProjectDeleteResponse,
     RankingViewPayload,
     ScanResponse,
     SettingsResponse,
@@ -370,6 +371,17 @@ async def delete_history(request: Request, session_id: str) -> ApiResponse[None]
     svc = await get_service()
     await svc.delete_session(_USER_ID, session_id)
     return _ok(None, request_id)
+
+
+@router.delete("/history")
+async def delete_project_history(
+    request: Request, project_root: str = ""
+) -> ApiResponse[ProjectDeleteResponse]:
+    """项目级批量删除（2026-11-01）：删该 project_root 下全部会话记录，磁盘文件不动。"""
+    request_id = _request_id(request)
+    svc = await get_service()
+    deleted = await svc.delete_project_sessions(_USER_ID, project_root)
+    return _ok(ProjectDeleteResponse(deleted=deleted), request_id)
 
 
 @router.get("/settings")

@@ -204,7 +204,7 @@ describe('HistoryPage 历史列表', () => {
     expect(await screen.findByText('已重命名')).toBeTruthy()
   })
 
-  it('删除需菜单内二次确认，确认后调 DELETE 并复位主区当前会话', async () => {
+  it('删除需确认弹窗，确认后调 DELETE 并复位主区当前会话', async () => {
     const calls: { url: string; method: string }[] = []
     let exists = true
     vi.stubGlobal(
@@ -240,7 +240,7 @@ describe('HistoryPage 历史列表', () => {
     // 未确认前不得发出 DELETE
     expect(calls.some((call) => call.method === 'DELETE')).toBe(false)
 
-    fireEvent.click(screen.getByRole('menuitem', { name: '确认删除？' }))
+    fireEvent.click(screen.getByRole('button', { name: '删除会话' }))
 
     await waitFor(() => {
       expect(calls.some((call) => call.method === 'DELETE')).toBe(true)

@@ -88,6 +88,46 @@
   color: var(--color-text-muted);
 }
 
+.project-sidebar__group-name {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 项目级删除（2026-11-01）：默认透明但保留 Tab 可达，hover / 键盘聚焦时显现 */
+.project-sidebar__group-delete {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--space-5);
+  block-size: var(--space-5);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition: opacity 0.16s ease-out;
+}
+
+.project-sidebar__group-head:hover .project-sidebar__group-delete,
+.project-sidebar__group-delete:focus-visible {
+  opacity: 1;
+}
+
+.project-sidebar__group-delete:hover {
+  color: var(--color-danger-500);
+  background: var(--color-danger-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-sidebar__group-delete {
+    transition: none;
+  }
+}
+
 .project-sidebar__items {
   display: flex;
   flex-direction: column;

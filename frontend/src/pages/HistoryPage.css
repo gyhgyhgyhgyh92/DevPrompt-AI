@@ -1,11 +1,17 @@
 /* 历史记录页（HistoryPage）：条目行 + 操作区 + 失败提示 */
 
+/* 页头常驻（2026-11-01 桌面化）：只有列表区滚动，标题与返回链接不随内容滚走 */
 .history-page__head {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-3);
   margin-block-end: var(--space-4);
+  padding-block-end: var(--space-2);
+  background: var(--color-surface-base);
 }
 
 .history-page__head h1 {

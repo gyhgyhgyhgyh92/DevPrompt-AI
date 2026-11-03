@@ -5,6 +5,7 @@ __pycache__/
 *.py[cod]
 node_modules/
 frontend/dist/
+desktop/dist/
 *.tsbuildinfo
 .logs/
 *.db
@@ -21,3 +22,4 @@ eval/repos/
 .mypy_cache/
 .ruff_cache/
 .codebuddy/
+.tmp/

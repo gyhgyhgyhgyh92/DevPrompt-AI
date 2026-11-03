@@ -191,3 +191,7 @@ class SessionStore(Protocol):
     async def delete(self, session_id: str) -> bool:
         """物理删除会话；rowcount>0 为 True（不存在返回 False）。"""
         ...
+
+    async def delete_by_project(self, user_id: str, project_root: str) -> int:
+        """项目级批量删除：按 payload.project_root 匹配后一次删净，返回删除条数。"""
+        ...

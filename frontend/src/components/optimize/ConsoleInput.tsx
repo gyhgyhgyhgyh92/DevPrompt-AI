@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { putSettings, scanProject } from '../../api/endpoints'
 import { nativePickErrorText, pickFolderViaNative } from '../../api/nativeFolder'
 import { useSettingsStore } from '../../stores/useSettingsStore'
@@ -9,7 +9,7 @@ import './ConsoleInput.css'
 /** 启动页主视觉固定文案（逐字，spec Task 3）：作为输入区占位展示，用户输入时隐藏。 */
 const PROMPT_HINT = '帮你优化每一段提示词，从理清需求到上线-端到端交付生产级结果'
 
-/** 输入自适应高度区间（1~6 行），超出由 textarea 内部滚动。 */
+/** 输入自适应高度区间（1~6 行），超出由 textarea 内部滚动（上限见 ConsoleInput.css）。 */
 const MIN_TEXT_ROWS = 1
 const MAX_TEXT_ROWS = 6
 
@@ -69,6 +69,22 @@ export function ConsoleInput({
   const [isPickingFolder, setPickingFolder] = useState(false)
   const [isSwitchingModel, setSwitchingModel] = useState(false)
   const [projectError, setProjectError] = useState<string | null>(null)
+  const textRef = useRef<HTMLTextAreaElement | null>(null)
+
+  // 随内容自动增高（含自动换行，不只是 \n 行数）：先复位再量 scrollHeight，上限由 CSS 收口。
+  // shortcut: jsdom 的 scrollHeight 恒为 0，此时不写内联高度，退回 rows 按行数估算
+  useLayoutEffect(() => {
+    const node = textRef.current
+    if (node === null) return
+    // 空输入交回 rows 的自然高度：实测窄屏下清空后量到 2 行（placeholder 折行），高度回不去
+    if (sentence === '') {
+      node.style.height = ''
+      return
+    }
+    node.style.height = 'auto'
+    if (node.scrollHeight === 0) return
+    node.style.height = `${node.scrollHeight}px`
+  }, [sentence])
 
   const isDisabled =
     isSubmitting || sentence.trim() === '' || (!projectOptional && project.trim() === '')
@@ -162,6 +178,7 @@ export function ConsoleInput({
         }}
       >
         <textarea
+          ref={textRef}
           aria-label="优化原句"
           className="console-input__text"
           value={sentence}

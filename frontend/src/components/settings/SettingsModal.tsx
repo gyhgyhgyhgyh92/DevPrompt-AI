@@ -81,6 +81,7 @@ export function SettingsModal(props: SettingsModalProps) {
     <div className="settings-overlay">
       <div
         className="settings-modal"
+        data-tab={activeTab}
         role="dialog"
         aria-modal="true"
         aria-label="设置"

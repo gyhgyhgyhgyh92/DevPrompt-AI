@@ -146,6 +146,11 @@ class RankingView:
     total: float
 
 
+# 旧会话（2026-10-21 偏好记忆移除前）的 ranking 带已废弃的 pref 字段。
+# 重建时按字段白名单过滤，否则 RankingView(**data) 抛 TypeError，历史会话整体 500。
+_RANKING_KEYS = frozenset(f.name for f in dataclasses.fields(RankingView))
+
+
 @dataclass(frozen=True, slots=True)
 class CostBreakdown:
     """F-805 成本明细：单次优化 token 用量（LLM 实际用量）。
@@ -654,6 +659,13 @@ class ForgeService:
         """DELETE /history/{session_id}：归属校验后物理删除。"""
         await self._load_owned(user_id, session_id)
         await self._sessions.delete(session_id)
+
+    async def delete_project_sessions(self, user_id: str, project_root: str) -> int:
+        """DELETE /history?project_root=：删除该项目下全部会话记录（磁盘文件不动），返回条数。"""
+        target = project_root.strip()
+        if target == "":
+            raise DevPromptError("缺少必填参数：project_root", code=1001)
+        return await self._sessions.delete_by_project(user_id, target)
 
     def _registry_view(self) -> list[dict[str, Any]]:
         """注册表脱敏视图（F-604 多模型）：api_key 恒脱敏；is_active 由激活位比对得出。
@@ -1408,7 +1420,11 @@ class ForgeService:
             questions=questions,
             cleared=sorted(session.data.get("clarifications", {}).keys()),
             variants=[VariantDraft(**v) for v in session.data.get("variants", [])],
-            ranking=RankingView(**ranking_data) if isinstance(ranking_data, dict) else None,
+            ranking=(
+                RankingView(**{k: v for k, v in ranking_data.items() if k in _RANKING_KEYS})
+                if isinstance(ranking_data, dict)
+                else None
+            ),
             target=target,
             facts=facts,
             cost=cost,

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter } from 'react-router'
 import { useShallow } from 'zustand/react/shallow'
-import { getHealth } from './api/endpoints'
+import { getHealth, getSettings } from './api/endpoints'
 import { ProjectSidebar } from './components/history/ProjectSidebar'
 import { SettingsModal } from './components/settings/SettingsModal'
+import { BrandMark } from './components/ui/BrandMark'
 import { AppRoutes } from './router'
 import { useOptimizeStore } from './stores/useOptimizeStore'
 import { useHistoryStore } from './stores/useHistoryStore'
+import { useSettingsStore } from './stores/useSettingsStore'
 
 type ApiStatus = 'checking' | 'ok' | 'down'
 
@@ -34,6 +36,7 @@ export function App() {
     useShallow((s) => ({ sessionId: s.sessionId, state: s.state, sseStatus: s.sseStatus })),
   )
   const history = useHistoryStore((s) => s.history)
+  const setSettings = useSettingsStore((s) => s.setSettings)
 
   // 标题栏 API pill 数据源（GET /health）；失败即降级为「API 异常」，不重试（MUST-15）
   //
@@ -55,6 +58,21 @@ export function App() {
       isCancelled = true
     }
   }, [])
+
+  // 设置预加载（2026-11-03）：启动页/结果页的模型选择器只读 store，此前仅打开设置弹窗才加载，
+  // 于是进入页面恒显示「未配置模型」且下拉被禁用（后端 active_model_id 其实一直正常）。
+  // 失败保持 null 不重试（MUST-15），设置面板打开时仍会再取一次。
+  useEffect(() => {
+    let isCancelled = false
+    getSettings()
+      .then((next) => {
+        if (!isCancelled) setSettings(next)
+      })
+      .catch(() => undefined)
+    return () => {
+      isCancelled = true
+    }
+  }, [setSettings])
 
   // 抽屉打开时 Esc 关闭（无障碍要求；关闭后移除监听）
   useEffect(() => {
@@ -101,7 +119,10 @@ export function App() {
           >
             ☰
           </button>
-          <span className="app-titlebar__logo">● DevPrompt AI</span>
+          <span className="app-titlebar__logo">
+            <BrandMark size={18} />
+            DevPrompt AI
+          </span>
           <span className="app-titlebar__chip">
             {activeProject ? `▸ ${activeProject}` : '▸ 未选择项目'}
           </span>
@@ -120,7 +141,7 @@ export function App() {
         </header>
         <div className="app-body">
           <div className={isDrawerOpen ? 'app-drawer app-drawer--open' : 'app-drawer'}>
-            <ProjectSidebar onCollapse={handleCollapse} />
+            <ProjectSidebar onCollapse={handleCollapse} onSelect={() => setDrawerOpen(false)} />
           </div>
           {isDrawerOpen ? (
             <button

@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -163,7 +163,6 @@ const rankingFixture = {
   marked: true,
   reason: '分差明显',
   fit: 0.8,
-  pref: 0.7,
   total: 0.75,
 }
 
@@ -268,6 +267,33 @@ describe('OptimizePage 三栏工作台', () => {
       const body = JSON.parse(String(call?.[1]?.body ?? '{}')) as { session_id?: string }
       expect(body.session_id).toBe('sess-1')
     })
+  })
+
+  it('结果态对话区贴底跟随；用户上滚后新内容不再强拉（对齐 Codex 滚动行为）', async () => {
+    const done = snapshotFixture({ status: 'done', state: 'DONE' })
+    stubApi([{ match: '/history', payload: envelope([]) }])
+    useOptimizeStore.getState().applySnapshot(done)
+    renderPage()
+
+    const thread = await waitFor(() => {
+      const node = document.querySelector('.optimize-page__thread')
+      if (node === null) throw new Error('对话流滚动区未渲染')
+      return node as HTMLElement
+    })
+    Object.defineProperty(thread, 'scrollHeight', { value: 500, configurable: true })
+    Object.defineProperty(thread, 'clientHeight', { value: 200, configurable: true })
+
+    // 仍在底部附近（距底 < 80px）：新内容到达 → 跟随到底
+    thread.scrollTop = 320
+    fireEvent.scroll(thread)
+    useOptimizeStore.getState().applySnapshot({ ...done, message: '第二轮结论' })
+    await waitFor(() => expect(thread.scrollTop).toBe(500))
+
+    // 上滚 300px 回看历史：新内容不得把视口拽到底
+    thread.scrollTop = 0
+    fireEvent.scroll(thread)
+    useOptimizeStore.getState().applySnapshot({ ...done, message: '第三轮结论' })
+    await waitFor(() => expect(thread.scrollTop).toBe(0))
   })
 
   it('提交即切思考视图，快照到达后折叠思考并显示反问卡', async () => {

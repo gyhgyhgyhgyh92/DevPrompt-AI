@@ -36,6 +36,11 @@ export const HistoryUpdateRequestSchema = z.object({
 /** GET /history 数据体（契约 ApiResponse[list[HistoryItemPayload]] 的 data）。 */
 export const HistoryListSchema = z.array(HistoryItemSchema)
 
+/** DELETE /history?project_root= 数据体（契约 ProjectDeleteResponse；实际删除的会话条数）。 */
+export const ProjectDeleteSchema = z.object({
+  deleted: z.number(),
+})
+
 /** DELETE /preference/adoptions 数据体（契约 AdoptionsClearResponse；清空条数）。 */
 export const AdoptionsClearSchema = z.object({
   cleared: z.number(),

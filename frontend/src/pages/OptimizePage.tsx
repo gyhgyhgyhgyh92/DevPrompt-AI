@@ -19,6 +19,9 @@ import { useHistoryStore } from '../stores/useHistoryStore'
 
 type FlowView = 'input' | 'thinking' | 'asking' | 'result'
 
+/** 距底部多少像素内视为「贴底」：在此范围内新内容自动跟随，超出则视为用户正在回看历史。 */
+const THREAD_BOTTOM_GAP = 80
+
 /** 视图选择（仅按后端 status 镜像渲染；状态转移逻辑唯一在后端，MUST-07）。 */
 function resolveFlowView(status: string | null): Exclude<FlowView, 'thinking'> {
   if (status === null) return 'input'
@@ -72,8 +75,34 @@ export function OptimizePage() {
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState<number | null>(null)
   const streamRef = useRef<AbortController | null>(null)
+  const threadRef = useRef<HTMLDivElement | null>(null)
+  // 贴底跟随标志：用户上滚后不再把视口拽回底部（对齐 Codex 的线程滚动行为）
+  const isStickToBottomRef = useRef(true)
 
   useSSE(sessionId)
+
+  /** 记录用户是否仍在底部附近（滚动容器唯一来源是对话流，状态不上提，MUST-16）。 */
+  function handleThreadScroll(): void {
+    const node = threadRef.current
+    if (node === null) return
+    isStickToBottomRef.current =
+      node.scrollHeight - node.scrollTop - node.clientHeight < THREAD_BOTTOM_GAP
+  }
+
+  // 内容增量（思考帧、轮次、每轮状态、方案）：仅在贴底时跟随
+  useEffect(() => {
+    const node = threadRef.current
+    if (node === null || !isStickToBottomRef.current) return
+    node.scrollTop = node.scrollHeight
+  }, [thinking, turns, status, message, questions, variants, isThinking])
+
+  // 进入或切换会话：重置贴底并直接落到底（换会话不该停在上一段的滚动位置）
+  useEffect(() => {
+    isStickToBottomRef.current = true
+    const node = threadRef.current
+    if (node === null) return
+    node.scrollTop = node.scrollHeight
+  }, [sessionId])
 
   // 多轮历史（切片 2）：会话确定后拉一次轮次摘要；正文由 TurnList 展开时懒加载
   const setTurns = useOptimizeStore((s) => s.setTurns)
@@ -208,33 +237,38 @@ export function OptimizePage() {
         </div>
       ) : (
         <>
-          {/* 历史轮次：最后一条即当前 ChatStream 展示的这轮，故从列表里排除 */}
-          <TurnList
-            turns={
-              currentTurnId === null
-                ? turns
-                : turns.filter((turn) => turn.turn_id !== currentTurnId)
-            }
-            loadTurn={getTurn}
-          />
-          <ChatStream
-            state={state}
-            status={status}
-            sentence={sentence}
-            thinking={thinking}
-            isThinking={isThinking}
-            message={message}
-            questions={questions}
-            cleared={cleared}
-            variants={variants}
-            ranking={ranking}
-            elapsedSeconds={elapsedSeconds}
-            errorMessage={errorMessage}
-            isBusy={isBusy || isSubmitting}
-            onSubmitAnswers={(answers) => void runFollowup({ answers, escape: false })}
-            onEscape={() => void runFollowup({ escape: true })}
-            onGuardrail={(action) => void runFollowup({ escape: false, guardrail_action: action })}
-          />
+          {/* 对话流滚动区（2026-11-01）：外壳固定视口，只有这里滚动 */}
+          <div className="optimize-page__thread" ref={threadRef} onScroll={handleThreadScroll}>
+            {/* 历史轮次：最后一条即当前 ChatStream 展示的这轮，故从列表里排除 */}
+            <TurnList
+              turns={
+                currentTurnId === null
+                  ? turns
+                  : turns.filter((turn) => turn.turn_id !== currentTurnId)
+              }
+              loadTurn={getTurn}
+            />
+            <ChatStream
+              state={state}
+              status={status}
+              sentence={sentence}
+              thinking={thinking}
+              isThinking={isThinking}
+              message={message}
+              questions={questions}
+              cleared={cleared}
+              variants={variants}
+              ranking={ranking}
+              elapsedSeconds={elapsedSeconds}
+              errorMessage={errorMessage}
+              isBusy={isBusy || isSubmitting}
+              onSubmitAnswers={(answers) => void runFollowup({ answers, escape: false })}
+              onEscape={() => void runFollowup({ escape: true })}
+              onGuardrail={(action) =>
+                void runFollowup({ escape: false, guardrail_action: action })
+              }
+            />
+          </div>
           {/* 多轮：输入区常驻，提交即在同一会话追加一轮（思考中不展示，避免误触） */}
           {isThinking ? null : (
             <div className="optimize-page__composer">

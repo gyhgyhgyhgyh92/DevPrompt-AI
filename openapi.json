@@ -119,6 +119,37 @@
         "title": "ApiResponse[NoneType]",
         "type": "object"
       },
+      "ApiResponse_ProjectDeleteResponse_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectDeleteResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[ProjectDeleteResponse]",
+        "type": "object"
+      },
       "ApiResponse_ScanResponse_": {
         "properties": {
           "code": {
@@ -1204,6 +1235,20 @@
         "title": "ProcessUpdate",
         "type": "object"
       },
+      "ProjectDeleteResponse": {
+        "description": "DELETE /history?project_root= 数据体：实际删除的会话条数（0 = 该项目无会话）。",
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "title": "ProjectDeleteResponse",
+        "type": "object"
+      },
       "ProviderConfigUpdate": {
         "description": "PUT /settings providers 段条目：`id` 缺省为新增（后端生成 ``p-`` + uuid8）。\n\n**权威列表语义**：本次未出现的既有供应商记录一律删除，其下模型条目随 `models`\n整表替换一并消失（用户裁定的级联删除）。`api_key` 空值/None = 沿用同 id 旧值，\n与 `ModelEntryUpdate` 的密钥语义一致——前端只有脱敏值，不会回传明文（MUST-19）。",
         "properties": {
@@ -1869,6 +1914,45 @@
       }
     },
     "/api/v1/history": {
+      "delete": {
+        "description": "项目级批量删除（2026-11-01）：删该 project_root 下全部会话记录，磁盘文件不动。",
+        "operationId": "delete_project_history_api_v1_history_delete",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_root",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Project Root",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ProjectDeleteResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Project History"
+      },
       "get": {
         "description": "T6-11 转正：脱敏会话摘要（id/时间/state/项目名/标题/置顶，无原句明文，MUST-19）。",
         "operationId": "get_history_api_v1_history_get",

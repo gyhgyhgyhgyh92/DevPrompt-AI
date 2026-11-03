@@ -37,6 +37,7 @@ class FakeForgeService:
         self.rename_calls: list[tuple[str, str]] = []
         self.pin_calls: list[tuple[str, bool]] = []
         self.delete_calls: list[str] = []
+        self.delete_project_calls: list[str] = []
         self.turns: list[TurnRecord] = []
         self.optimize_calls: list[dict[str, Any]] = []
         self.settings_view: dict[str, Any] = {
@@ -157,6 +158,10 @@ class FakeForgeService:
 
     async def delete_session(self, user_id: str, session_id: str) -> None:
         self.delete_calls.append(session_id)
+
+    async def delete_project_sessions(self, user_id: str, project_root: str) -> int:
+        self.delete_project_calls.append(project_root)
+        return 2
 
     async def get_settings(self) -> dict[str, Any]:
         return dict(self.settings_view)
@@ -388,6 +393,16 @@ async def test_delete_history_passthrough(
     assert resp.status_code == 200
     assert resp.json()["data"] is None
     assert fake_service.delete_calls == ["s1"]
+
+
+async def test_delete_project_history_passthrough(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """项目级批量删除（2026-11-01）：query 透传 project_root，返回实际删除条数。"""
+    resp = await client.delete("/api/v1/history", params={"project_root": "/tmp/demo"})
+    assert resp.status_code == 200
+    assert resp.json()["data"] == {"deleted": 2}
+    assert fake_service.delete_project_calls == ["/tmp/demo"]
 
 
 async def test_settings_get_put_roundtrip(

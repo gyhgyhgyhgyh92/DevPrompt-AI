@@ -1,0 +1,90 @@
+/* 通用确认对话框（2026-11-01）：颜色/间距/圆角全部取 tokens.css 变量，禁硬编码色值。 */
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--color-overlay);
+}
+
+.confirm-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  inline-size: min(420px, 100%);
+  padding: var(--space-5);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: confirm-dialog-in 0.16s ease-out;
+}
+
+.confirm-dialog:focus {
+  outline: none;
+}
+
+.confirm-dialog__title {
+  margin: 0;
+  font-size: var(--text-title-md);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.confirm-dialog__desc {
+  margin: 0;
+  font-size: var(--text-body-sm);
+  line-height: var(--line-height-body);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.confirm-dialog__actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  margin-block-start: var(--space-1);
+}
+
+/* 危险动作按钮：红色确认，悬停加深（不发散成通用 button 修饰类） */
+.confirm-dialog__confirm {
+  padding: var(--space-2) var(--space-4);
+  font: var(--font-body-medium);
+  color: var(--color-text-inverse);
+  cursor: pointer;
+  background: var(--color-danger-500);
+  border: 1px solid var(--color-danger-500);
+  border-radius: var(--radius-sm);
+}
+
+.confirm-dialog__confirm:hover:not(:disabled) {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.confirm-dialog__confirm:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@keyframes confirm-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirm-dialog {
+    animation: none;
+  }
+}

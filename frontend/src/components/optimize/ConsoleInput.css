@@ -20,7 +20,10 @@
 
 .console-input__text {
   inline-size: 100%;
+  /* 自动增高上限 = 6 行 + 上下内边距（与 ConsoleInput.tsx 的 MAX_TEXT_ROWS 对应） */
+  max-block-size: calc(var(--line-height-body) * 6 + var(--space-4));
   padding: var(--space-2) var(--space-1);
+  overflow-y: auto;
   font: var(--font-body-regular);
   font-size: var(--text-body-md);
   line-height: var(--line-height-body);

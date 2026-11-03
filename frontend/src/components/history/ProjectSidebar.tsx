@@ -1,9 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router'
-import { deleteHistory, getHistory, getResult, patchHistory } from '../../api/endpoints'
+import {
+  deleteHistory,
+  deleteHistoryByProject,
+  getHistory,
+  getResult,
+  patchHistory,
+} from '../../api/endpoints'
 import type { HistoryItemPayload } from '../../api/types'
 import { useOptimizeStore } from '../../stores/useOptimizeStore'
 import { useHistoryStore } from '../../stores/useHistoryStore'
+import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { SessionMenu } from './SessionMenu'
 import './ProjectSidebar.css'
 
@@ -71,22 +79,51 @@ function CollapseIcon() {
   )
 }
 
+/** 项目组头删除图标（2026-11-01）：垃圾桶轮廓，与 SessionMenu 同形。 */
+function TrashIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path
+        d="M3 4h10M6.5 4V2.8h3V4M4.3 4l.6 8.6h6.2L11.7 4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 /** 条目标题回退：无 custom_title 且无原句（旧数据）时拼「项目名 · 状态」（spec 假设 3）。 */
 function itemTitle(item: HistoryItemPayload): string {
   return item.title !== '' ? item.title : `${item.project} · ${item.state}`
 }
 
-/** 按项目分组（保持排序后首现顺序），组序由首条目决定。 */
-function groupByProject(
-  items: readonly HistoryItemPayload[],
-): { project: string; items: HistoryItemPayload[] }[] {
-  const groups: { project: string; items: HistoryItemPayload[] }[] = []
+/** 待确认的删除目标：单条会话或整个项目分组。 */
+type PendingDelete =
+  { kind: 'session'; item: HistoryItemPayload } | { kind: 'project'; group: ProjectGroup }
+
+interface ProjectGroup {
+  /** 项目全路径；老数据为空串（该组不支持批量删除）。 */
+  projectRoot: string
+  /** 目录名（组头展示）。 */
+  project: string
+  items: HistoryItemPayload[]
+}
+
+/**
+ * 按项目**完整路径**分组（2026-11-01）：同名不同路径的目录不再合并，
+ * 项目级删除的范围才精确。老数据无 project_root 时回退目录名。
+ */
+function groupByProject(items: readonly HistoryItemPayload[]): ProjectGroup[] {
+  const groups = new Map<string, ProjectGroup>()
   for (const item of items) {
-    const found = groups.find((group) => group.project === item.project)
+    const key = item.project_root !== '' ? item.project_root : item.project
+    const found = groups.get(key)
     if (found) found.items.push(item)
-    else groups.push({ project: item.project, items: [item] })
+    else groups.set(key, { projectRoot: item.project_root, project: item.project, items: [item] })
   }
-  return groups
+  return [...groups.values()]
 }
 
 /**
@@ -99,9 +136,11 @@ function groupByProject(
 interface ProjectSidebarProps {
   /** 一键收纳（F-602）：收起整个侧边栏（由外壳 App 接管折叠态与恢复入口）。 */
   onCollapse: () => void
+  /** 选中/新建会话后的回调：窄屏据此收起抽屉（桌面态由外壳视作空操作）。 */
+  onSelect: () => void
 }
 
-export function ProjectSidebar({ onCollapse }: ProjectSidebarProps) {
+export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
   const navigate = useNavigate()
   const history = useHistoryStore((s) => s.history)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -110,6 +149,9 @@ export function ProjectSidebar({ onCollapse }: ProjectSidebarProps) {
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const [toast, setToast] = useState<string | null>(null)
+  // 删除确认（2026-11-01）：单条会话与整个项目共用同一个确认弹窗与请求中标志
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+  const [isDeleting, setDeleting] = useState(false)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -140,6 +182,7 @@ export function ProjectSidebar({ onCollapse }: ProjectSidebarProps) {
 
   /** 选中：先同步高亮（乐观反馈 <100ms），再异步载入结果到主区（失败 toast 不取消高亮）。 */
   function handleSelect(sessionId: string): void {
+    onSelect()
     setSelectedId(sessionId)
     setOpenMenuId(null)
     navigate('/')
@@ -149,6 +192,7 @@ export function ProjectSidebar({ onCollapse }: ProjectSidebarProps) {
   }
 
   function handleNewSession(): void {
+    onSelect()
     useOptimizeStore.getState().reset()
     setSelectedId(null)
     setOpenMenuId(null)
@@ -183,18 +227,51 @@ export function ProjectSidebar({ onCollapse }: ProjectSidebarProps) {
     }
   }
 
-  async function handleDelete(item: HistoryItemPayload): Promise<void> {
-    setOpenMenuId(null)
+  /** 单条会话删除：确认弹窗点「删除会话」后才发请求（2026-11-01 统一确认形态）。 */
+  async function deleteSession(item: HistoryItemPayload): Promise<void> {
+    await deleteHistory(item.session_id)
+    if (selectedId === item.session_id) {
+      useOptimizeStore.getState().reset()
+      setSelectedId(null)
+      navigate('/')
+    }
+    await refreshHistory()
+  }
+
+  /** 项目级删除：按 project_root 批量删该组会话记录，磁盘项目文件不动，返回删除条数。 */
+  async function deleteProject(group: ProjectGroup): Promise<number> {
+    const deleted = await deleteHistoryByProject(group.projectRoot)
+    // 删掉的正是主区打开的会话 → 复位，避免残留已删除会话的方案
+    const activeSessionId = useOptimizeStore.getState().sessionId
+    const hitActive =
+      activeSessionId !== null && group.items.some((entry) => entry.session_id === activeSessionId)
+    if (hitActive) {
+      useOptimizeStore.getState().reset()
+      setSelectedId(null)
+      navigate('/')
+    }
+    await refreshHistory()
+    return deleted
+  }
+
+  /** 确认弹窗统一入口：按目标类型分派；失败只提示不重试（MUST-15）。 */
+  async function handleConfirmDelete(): Promise<void> {
+    const target = pendingDelete
+    if (target === null) return
+    setDeleting(true)
     try {
-      await deleteHistory(item.session_id)
-      await refreshHistory()
-      if (selectedId === item.session_id) {
-        useOptimizeStore.getState().reset()
-        setSelectedId(null)
-        navigate('/')
+      if (target.kind === 'session') {
+        await deleteSession(target.item)
+        showToast('已删除')
+      } else {
+        const deleted = await deleteProject(target.group)
+        showToast(`已删除 ${deleted} 条会话`)
       }
     } catch {
-      showToast('删除失败')
+      showToast(target.kind === 'session' ? '删除失败' : '删除项目失败')
+    } finally {
+      setDeleting(false)
+      setPendingDelete(null)
     }
   }
 
@@ -282,7 +359,10 @@ export function ProjectSidebar({ onCollapse }: ProjectSidebarProps) {
             onPin={() => void handlePin(item)}
             onCopyPath={() => handleCopyPath(item)}
             onRename={() => startRename(item)}
-            onDelete={() => void handleDelete(item)}
+            onDelete={() => {
+              setOpenMenuId(null)
+              setPendingDelete({ kind: 'session', item })
+            }}
             onClose={() => setOpenMenuId(null)}
           />
         ) : null}
@@ -310,10 +390,24 @@ export function ProjectSidebar({ onCollapse }: ProjectSidebarProps) {
 
       <div className="project-sidebar__list">
         {groupByProject(sorted).map((group) => (
-          <section className="project-sidebar__group" key={group.project}>
-            <div className="project-sidebar__group-head">
+          <section className="project-sidebar__group" key={group.projectRoot || group.project}>
+            {/* title 用全路径：同名不同路径的项目靠悬停区分 */}
+            <div className="project-sidebar__group-head" title={group.projectRoot || undefined}>
               <FolderIcon />
-              <span>{group.project}</span>
+              <span className="project-sidebar__group-name">{group.project}</span>
+              {group.projectRoot !== '' ? (
+                <button
+                  type="button"
+                  className="project-sidebar__group-delete"
+                  aria-label={`删除项目 ${group.project}`}
+                  onClick={() => {
+                    setOpenMenuId(null)
+                    setPendingDelete({ kind: 'project', group })
+                  }}
+                >
+                  <TrashIcon />
+                </button>
+              ) : null}
             </div>
             <ul className="project-sidebar__items">{group.items.map(renderRow)}</ul>
           </section>
@@ -331,6 +425,25 @@ export function ProjectSidebar({ onCollapse }: ProjectSidebarProps) {
           {toast}
         </div>
       ) : null}
+
+      {/* Portal 到 body：窄屏抽屉的 transform 会成为 fixed 的包含块，弹窗会被裁在抽屉里 */}
+      {pendingDelete !== null
+        ? createPortal(
+            <ConfirmDialog
+              title={pendingDelete.kind === 'session' ? '删除会话' : '删除项目'}
+              description={
+                pendingDelete.kind === 'session'
+                  ? `将删除「${itemTitle(pendingDelete.item)}」这条会话记录及其历史轮次，不会删除本地项目文件。`
+                  : `将删除「${pendingDelete.group.project}」下全部 ${pendingDelete.group.items.length} 条会话记录（含置顶与历史轮次），不会删除本地项目文件。`
+              }
+              confirmLabel={pendingDelete.kind === 'session' ? '删除会话' : '删除项目'}
+              isBusy={isDeleting}
+              onConfirm={() => void handleConfirmDelete()}
+              onClose={() => setPendingDelete(null)}
+            />,
+            document.body,
+          )
+        : null}
     </aside>
   )
 }

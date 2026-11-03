@@ -129,6 +129,20 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
     expect(screen.queryByRole('button', { name: '本地' })).toBeNull()
   })
 
+  it('输入换行时按行数增高，最多 6 行（jsdom 无 scrollHeight，走 fallback 行数）', () => {
+    render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
+    const box = screen.getByRole('textbox', { name: '优化原句' })
+
+    expect(box.getAttribute('rows')).toBe('1')
+
+    fireEvent.change(box, { target: { value: '第一行\n第二行\n第三行' } })
+    expect(box.getAttribute('rows')).toBe('3')
+
+    const many = Array.from({ length: 9 }, (_, index) => `第 ${index} 行`).join('\n')
+    fireEvent.change(box, { target: { value: many } })
+    expect(box.getAttribute('rows')).toBe('6')
+  })
+
   it('无输入时发送按钮禁用（防重复/防误触，MUST-15）', () => {
     render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
 

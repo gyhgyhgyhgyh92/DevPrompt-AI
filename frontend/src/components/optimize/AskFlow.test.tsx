@@ -33,7 +33,7 @@ const QUESTIONS: UnknownItemPayload[] = [
 function renderFlow(overrides: Partial<Parameters<typeof AskFlow>[0]> = {}) {
   const onSubmitAnswers = vi.fn()
   const onEscape = vi.fn()
-  render(
+  const view = render(
     <AskFlow
       questions={QUESTIONS}
       cleared={[]}
@@ -45,7 +45,7 @@ function renderFlow(overrides: Partial<Parameters<typeof AskFlow>[0]> = {}) {
       {...overrides}
     />,
   )
-  return { onSubmitAnswers, onEscape }
+  return { onSubmitAnswers, onEscape, rerender: view.rerender }
 }
 
 describe('AskFlow 组合层', () => {
@@ -90,5 +90,27 @@ describe('AskFlow 组合层', () => {
     const { onEscape } = renderFlow()
     await userEvent.setup().keyboard('{Escape}')
     expect(onEscape).toHaveBeenCalled()
+  })
+
+  it('新一批问题到达时折叠态复位为展开', async () => {
+    const user = userEvent.setup()
+    const { rerender } = renderFlow()
+
+    await user.click(screen.getByRole('button', { name: /需要你确认 2 个问题/ }))
+    expect(document.querySelector('.ask-panel__body')).toBeNull()
+
+    rerender(
+      <AskFlow
+        questions={[{ ...QUESTIONS[0]!, key: 'renamed' }]}
+        cleared={[]}
+        status="ask"
+        isBusy={false}
+        onSubmitAnswers={vi.fn()}
+        onEscape={vi.fn()}
+        onGuardrail={vi.fn()}
+      />,
+    )
+
+    expect(document.querySelector('.ask-panel__body')).not.toBeNull()
   })
 })

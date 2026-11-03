@@ -31,6 +31,8 @@ def test_openapi_covers_eighteen_operations() -> None:
     下线，改走浏览器扩展 + native messaging），故再改为 **14/17**——BREAKING。
     2026-10-19 思考过程流式展示新增 `POST /optimize/stream`，改为 **15/18**（向后兼容，
     旧 `POST /optimize` 保留）。
+    2026-11-01 项目级批量删除在既有 `/history` 路径上新增 DELETE 方法：路径数不变（14），
+    操作数 16 → **17**。
     """
     doc = create_app().openapi()
     paths: dict[str, Any] = doc["paths"]
@@ -40,7 +42,8 @@ def test_openapi_covers_eighteen_operations() -> None:
         len([m for m in ops if m in {"get", "put", "post", "patch", "delete"}])
         for ops in paths.values()
     )
-    assert operations == 16
+    assert operations == 17
+    assert {"get", "delete"} <= set(paths["/api/v1/history"])
     assert "get" in paths["/api/v1/settings/models/catalog"]
     assert "post" in paths["/api/v1/settings/models/catalog/refresh"]
     assert set(paths["/api/v1/settings"]) >= {"get", "put"}
@@ -119,11 +122,12 @@ class TestContextWindowTierContract:
 
     def test_path_and_operation_count_unchanged(self) -> None:
         """档位契约改动**不新增路径**（2026-10-17）；2026-10-19 删除 browse 后为 14/17，
-        同日新增 /optimize/stream 后为 15/18。"""
+        同日新增 /optimize/stream 后为 15/18；2026-11-01 项目级批量删除挂在既有
+        `/history` 路径上，故仍为 14 路径 / 17 操作。"""
         doc = create_app().openapi()
         assert len(doc["paths"]) == 14
         operations = sum(
             len([k for k in v if k in {"get", "post", "put", "patch", "delete"}])
             for v in doc["paths"].values()
         )
-        assert operations == 16
+        assert operations == 17

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sqlite3
 from pathlib import Path
 
@@ -135,5 +136,38 @@ class SQLiteSessionStore:
             with self._connect() as conn:
                 cur = conn.execute("DELETE FROM forge_sessions WHERE session_id = ?", (session_id,))
                 return cur.rowcount > 0
+
+        return await asyncio.to_thread(_run)
+
+    async def delete_by_project(self, user_id: str, project_root: str) -> int:
+        """项目级批量删除：payload.project_root 归一化比对后一次 DELETE IN，返回删除条数。"""
+        if project_root.strip() == "":
+            return 0
+
+        # shortcut: project_root 只在 payload JSON 里、无索引列，故全表读出再匹配；
+        # 会话量上百后改为生成列（json_extract）+ 索引
+        def _run() -> int:
+            target = os.path.normcase(project_root)
+            with self._connect() as conn:
+                rows = conn.execute(
+                    "SELECT session_id, payload FROM forge_sessions WHERE user_id = ?",
+                    (user_id,),
+                ).fetchall()
+                ids: list[str] = []
+                for session_id, payload_raw in rows:
+                    try:
+                        payload = json.loads(payload_raw)
+                    except json.JSONDecodeError:
+                        continue
+                    if os.path.normcase(str(payload.get("project_root", ""))) == target:
+                        ids.append(session_id)
+                if not ids:
+                    return 0
+                placeholders = ", ".join("?" * len(ids))
+                cur = conn.execute(
+                    f"DELETE FROM forge_sessions WHERE session_id IN ({placeholders})",
+                    ids,
+                )
+                return cur.rowcount
 
         return await asyncio.to_thread(_run)

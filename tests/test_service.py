@@ -74,6 +74,16 @@ class FakeStore:
     async def delete(self, session_id: str) -> bool:
         return self.items.pop(session_id, None) is not None
 
+    async def delete_by_project(self, user_id: str, project_root: str) -> int:
+        targets = [
+            sid
+            for sid, s in self.items.items()
+            if str(s.data.get("project_root", "")) == project_root
+        ]
+        for sid in targets:
+            self.items.pop(sid, None)
+        return len(targets)
+
 
 class FakeDecider:
     """三方法全接（阶段五）：probe 可编程置信度，rank/score 带调用计数与异常注入。"""
@@ -241,6 +251,15 @@ def _service(
 def _isolated_rank_cache() -> None:
     """模块级 rank 缓存按用例隔离，避免跨用例污染调用计数断言。"""
     _RANK_CACHE.clear()
+
+
+async def test_delete_project_sessions_rejects_empty_project_root() -> None:
+    """空 project_root 视为缺参（1001）：否则会连「无路径」旧会话一起删。"""
+    svc, store = _service()
+    with pytest.raises(DevPromptError) as exc:
+        await svc.delete_project_sessions("local", "   ")
+    assert exc.value.code == 1001
+    assert store.items == {}
 
 
 async def test_optimize_full_flow_with_questions() -> None:
@@ -981,3 +1000,36 @@ async def test_rename_session_cas_conflict_twice_raises_6003() -> None:
     with pytest.raises(StateError) as ei:
         await svc.rename_session("local", snap.session_id, "t")
     assert ei.value.code == 6003
+
+
+async def test_resume_tolerates_legacy_ranking_with_pref() -> None:
+    """2026-10-31 体检回归：偏好记忆移除前落库的会话 ranking 仍带 pref 字段。
+
+    重建快照必须按字段白名单过滤，否则 RankingView(**data) 抛 TypeError，
+    历史会话在 GET /result 上整体 500（用户升级后旧会话全部打不开）。
+    """
+    svc, store = _service()
+    store.items["legacy-1"] = FlowSession(
+        session_id="legacy-1",
+        user_id="local",
+        state="DONE",
+        data={
+            "variants": [{"title": "方案A", "body": "b", "changes": [], "level": "A"}],
+            "ranking": {
+                "variant": "B",
+                "gap": 0.2,
+                "confidence": 0.8,
+                "marked": True,
+                "reason": "适配度领先",
+                "fit": 0.75,
+                "total": 0.75,
+                "pref": 0.6,  # 2026-10-21 已移除的字段，旧数据里仍在
+            },
+        },
+    )
+
+    snap = await svc.resume("local", "legacy-1", request_id="r-legacy")
+
+    assert snap.status == "done"
+    assert snap.ranking is not None
+    assert (snap.ranking.variant, snap.ranking.fit, snap.ranking.total) == ("B", 0.75, 0.75)

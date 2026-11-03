@@ -474,6 +474,12 @@ class HistoryUpdateRequest(BaseModel):
         return self
 
 
+class ProjectDeleteResponse(BaseModel):
+    """DELETE /history?project_root= 数据体：实际删除的会话条数（0 = 该项目无会话）。"""
+
+    deleted: int
+
+
 class ApiResponse(BaseModel, Generic[DataT]):
     """统一响应信封：code=0 成功；非 0 为架构文档 §3.3 错误码。"""
 

@@ -7,7 +7,11 @@ import {
   TurnSummaryListSchema,
   OptimizeRequestSchema,
 } from '../schemas/optimize'
-import { HistoryListSchema, HistoryUpdateRequestSchema } from '../schemas/preference'
+import {
+  HistoryListSchema,
+  HistoryUpdateRequestSchema,
+  ProjectDeleteSchema,
+} from '../schemas/preference'
 import {
   ModelCatalogRefreshRequestSchema,
   ModelCatalogResponseSchema,
@@ -40,6 +44,8 @@ export const ENDPOINTS = {
   followup: (flowId: string) => `${API_BASE_URL}/followup/${flowId}`,
   result: (flowId: string) => `${API_BASE_URL}/result/${flowId}`,
   history: `${API_BASE_URL}/history`,
+  historyProject: (projectRoot: string) =>
+    `${API_BASE_URL}/history?project_root=${encodeURIComponent(projectRoot)}`,
   sessionTurns: (sessionId: string) =>
     `${API_BASE_URL}/history/${encodeURIComponent(sessionId)}/turns`,
   turn: (turnId: string) => `${API_BASE_URL}/turns/${encodeURIComponent(turnId)}`,
@@ -209,6 +215,20 @@ export async function deleteHistory(sessionId: string, signal?: AbortSignal): Pr
     hasSideEffect: true,
     signal,
   })
+}
+
+/** DELETE /history?project_root=：项目级批量删除该组全部会话（有副作用，禁重试，MUST-15）。 */
+export async function deleteHistoryByProject(
+  projectRoot: string,
+  signal?: AbortSignal,
+): Promise<number> {
+  const data = await request(ENDPOINTS.historyProject(projectRoot), {
+    method: 'DELETE',
+    schema: ProjectDeleteSchema,
+    hasSideEffect: true,
+    signal,
+  })
+  return data.deleted
 }
 
 /** DELETE /preference/adoptions：清空服务端采纳历史（有副作用端点，禁重试，MUST-15）。 */
