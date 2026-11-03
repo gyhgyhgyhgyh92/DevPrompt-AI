@@ -530,7 +530,10 @@ describe('OptimizePage 三态容器', () => {
     const mock = stubApi([
       {
         match: '/result/sess-1',
-        payload: envelope(snapshotFixture({ state: 'CONFIRMING', status: 'ask' })),
+        // CONFIRMING = 刚提交过答复，故带 cleared（2026-11-04 阶段按路径渲染，没答过不出现这一步）
+        payload: envelope(
+          snapshotFixture({ state: 'CONFIRMING', status: 'ask', cleared: ['scope'] }),
+        ),
       },
     ])
 

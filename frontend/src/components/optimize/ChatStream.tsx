@@ -113,7 +113,17 @@ export function ChatStream({
     const timer = window.setTimeout(() => setIdle(true), IDLE_HINT_MS)
     return () => window.clearTimeout(timer)
   }, [isThinking, thinking.length])
-  const currentIndex = PHASES.findIndex((phase) => phase === state)
+  // 阶段按**实际走过的路径**渲染（2026-11-04）：没问过就不出现「等待确认 / 整理答复」，
+  // 单套方案按 MUST-28 跳过打分故不出现「评估推荐」，中止行只在真中止时出现。
+  const hadAsk = questions.length > 0 || cleared.length > 0
+  const willRank = ranking !== null || variants.length > 1
+  const visiblePhases = PHASES.filter((phase) => {
+    if (phase === 'ASKING' || phase === 'CONFIRMING') return hadAsk
+    if (phase === 'RANKING') return willRank
+    if (phase === 'ABORTED') return state === 'ABORTED'
+    return true
+  })
+  const currentIndex = visiblePhases.findIndex((phase) => phase === state)
   // 过程整组折叠（2026-11-04，对齐 CodeBuddy v2.81）：结束/等待答复后收成一行摘要，
   // 点击展开回看；进行中永远展开。status 每次变化若可折叠则复位为收起。
   const canCollapse = thinking.length > 0 && !isThinking && (status === 'done' || status === 'ask')
@@ -162,10 +172,15 @@ export function ChatStream({
 
         {showProcess ? (
           <ol className="chat-reply__phases" aria-label="执行过程">
-            {PHASES.map((phase, index) => {
+            {visiblePhases.map((phase, index) => {
               const isDone = index < currentIndex
               const isCurrent = phase === state
               const metaItem = PHASE_META[phase]
+              // 没有缺口时，研判这一步给出「无需补充」的结论文案，而不是暗示存在缺口
+              const hint =
+                phase === 'PROBING' && !hadAsk
+                  ? '七项取证完成，未发现需要确认的缺口'
+                  : metaItem.hint
               // 无阶段标签的旧数据归到当前阶段，避免过程凭空消失
               const logs = thinking.filter(
                 (item) => (item.phase === '' ? state : item.phase) === phase,
@@ -187,7 +202,7 @@ export function ChatStream({
                       {isDone ? '✓' : isCurrent ? '●' : '○'}
                     </span>
                     <span className="chat-reply__phase-label">{metaItem.label}</span>
-                    <span className="chat-reply__phase-hint">{metaItem.hint}</span>
+                    <span className="chat-reply__phase-hint">{hint}</span>
                     {isCurrent ? (
                       <span className="chat-reply__phase-tag">
                         {phase === 'DONE' ? '已完成' : phase === 'ABORTED' ? '已中止' : '进行中'}

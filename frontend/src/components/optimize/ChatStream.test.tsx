@@ -47,7 +47,19 @@ describe('ChatStream 结构与阶段', () => {
   })
 
   it('步骤用中文展示，并给出每一步在做什么', () => {
-    render(<ChatStream {...baseProps({ state: 'GENERATING', status: 'ask' })} />)
+    render(
+      <ChatStream
+        {...baseProps({
+          state: 'GENERATING',
+          status: 'ask',
+          cleared: ['scope'],
+          variants: [
+            { title: '保守版', body: 'body-A', level: 'A', changes: [] },
+            { title: '标准版', body: 'body-B', level: 'B', changes: [] },
+          ],
+        })}
+      />,
+    )
 
     const labels = Array.from(document.querySelectorAll('.chat-reply__phase-label')).map(
       (el) => el.textContent,
@@ -61,10 +73,40 @@ describe('ChatStream 结构与阶段', () => {
       '生成方案',
       '评估推荐',
       '已完成',
-      '已中止',
     ])
     expect(screen.getByText('一次调用产出 1~3 套方案')).toBeTruthy()
     expect(screen.getByText('进行中')).toBeTruthy()
+  })
+
+  it('无信息缺口时不渲染「等待确认 / 整理答复」，研判步骤给出无需补充的结论', () => {
+    render(<ChatStream {...baseProps({ state: 'GENERATING', status: null, isThinking: true })} />)
+
+    const labels = Array.from(document.querySelectorAll('.chat-reply__phase-label')).map(
+      (el) => el.textContent,
+    )
+    expect(labels).not.toContain('等待确认')
+    expect(labels).not.toContain('整理答复')
+    expect(labels).not.toContain('已中止')
+    expect(screen.getByText('七项取证完成，未发现需要确认的缺口')).toBeTruthy()
+  })
+
+  it('单套方案跳过打分时不渲染「评估推荐」', () => {
+    render(<ChatStream {...baseProps({ state: 'DONE', isThinking: true })} />)
+
+    const labels = Array.from(document.querySelectorAll('.chat-reply__phase-label')).map(
+      (el) => el.textContent,
+    )
+    expect(labels).toContain('生成方案')
+    expect(labels).not.toContain('评估推荐')
+  })
+
+  it('中止时才出现「已中止」这一步', () => {
+    render(<ChatStream {...baseProps({ state: 'ABORTED', status: 'aborted', isThinking: true })} />)
+
+    const labels = Array.from(document.querySelectorAll('.chat-reply__phase-label')).map(
+      (el) => el.textContent,
+    )
+    expect(labels).toContain('已中止')
   })
 
   it('每个阶段下方展示思考块与动作行，可展开命令与输出', async () => {
