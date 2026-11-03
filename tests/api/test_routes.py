@@ -616,7 +616,8 @@ async def test_error_response_uniform_shape(
 ) -> None:
     fake_service.fail_with = StateError("流程 ID 不存在", code=6003)
     resp = await client.post("/api/v1/optimize", json={"sentence": "改按钮", "project": "."})
-    assert resp.status_code == 500
+    # 6003 → 404（架构文档 §3.3 逐码表；2026-11-04 前一律 500）
+    assert resp.status_code == 404
     body = resp.json()
     assert body["code"] == 6003
     assert body["message"] == "流程 ID 不存在"
@@ -624,6 +625,33 @@ async def test_error_response_uniform_shape(
     serialized = json.dumps(body)
     assert "stack" not in serialized and "traceback" not in serialized
     assert "detail" not in body  # FastAPI 默认错误键已被统一渲染替换
+
+
+@pytest.mark.parametrize(
+    ("code", "status"),
+    [
+        (1001, 400),
+        (2001, 404),
+        (2003, 500),
+        (2005, 422),
+        (3004, 429),
+        (4002, 503),
+        (5011, 503),
+        (5014, 401),
+        (6001, 409),
+        (9001, 500),
+    ],
+)
+async def test_error_http_status_follows_spec_table(
+    client: httpx.AsyncClient, fake_service: FakeForgeService, code: int, status: int
+) -> None:
+    """HTTP 状态按架构文档 §3.3 逐码表映射，不再一律 500（2026-11-04）。"""
+    fake_service.fail_with = StateError("x", code=code)
+
+    resp = await client.post("/api/v1/optimize", json={"sentence": "改按钮", "project": "."})
+
+    assert resp.status_code == status
+    assert resp.json()["code"] == code
 
 
 async def _collect_sse(client: httpx.AsyncClient, url: str) -> list[dict[str, Any]]:
