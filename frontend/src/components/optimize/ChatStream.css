@@ -188,6 +188,32 @@
   list-style: none;
 }
 
+/* 过程整组折叠（2026-11-04，对齐 CodeBuddy v2.81）：结束后只留一行摘要 */
+.chat-reply__process-toggle {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-block-start: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-secondary);
+  text-align: start;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.chat-reply__process-toggle:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-code);
+}
+
+.chat-reply__process-caret {
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-muted);
+}
+
 .chat-reply__phase {
   display: block;
   padding-block-end: var(--space-2);
@@ -530,6 +556,16 @@
   padding-block-start: var(--space-2);
   border-block-start: 1px solid var(--color-border-subtle);
   color: var(--color-text-muted);
+}
+
+/* 失败态（2026-11-04）：标题带 Exit code 并用错误色，折叠时也能看出失败（对齐 CodeBuddy） */
+.trace-step--failed .trace-step__toggle,
+.trace-step--failed .trace-step__scope {
+  color: var(--color-danger-500);
+}
+
+.trace-step--failed .trace-step__body {
+  border-color: var(--color-danger-500);
 }
 
 .chat-reply__planning {

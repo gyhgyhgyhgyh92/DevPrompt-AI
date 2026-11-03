@@ -29,6 +29,7 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "decision.ask_args_invalid",
         "followup.task_kind",
         "followup.question_lint",
+        "followup.question_suppressed",
         "cache.hit",
         "cache.miss",
         "startup.repair",

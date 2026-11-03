@@ -49,6 +49,10 @@ interface OptimizeState {
   /** 思考流进行中（传输层状态，不是 FlowState，MUST-07 不新增状态机态）。 */
   isThinking: boolean
   beginThinking: () => void
+  /** 答复后重新研判（2026-11-03）：只清过程、开闸，不动 sessionId 与当前阶段（后端会推 phase）。 */
+  beginReprobe: () => void
+  /** 用后端帧里的 phase 同步当前阶段（回答后 CONFIRMING→GENERATING→RANKING 的推进来源）。 */
+  notePhase: (phase: string) => void
   appendThought: (text: string, phase?: string) => void
   appendAction: (action: ActionPayload, phase?: string) => void
   endThinking: () => void
@@ -120,6 +124,12 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
       currentTurnId: state.currentTurnId,
       isThinking: true,
     })),
+  // 答复后的过程流：保留 sessionId / 当前阶段 / 已答清单，只把过程区清空并开闸。
+  // 不能用 beginThinking——它会展开 initialState，把 state 打回 INIT、questions 清空，
+  // 于是阶段高亮错位、反问卡消失（2026-11-03 实测）。
+  beginReprobe: () => set({ thinking: [], isThinking: true, sseStatus: 'open' }),
+  notePhase: (phase) =>
+    set((state) => (phase === '' || phase === state.state ? state : { state: phase })),
   appendThought: (text, phase = '') =>
     set((state) => {
       if (!state.isThinking) return { thinking: state.thinking }

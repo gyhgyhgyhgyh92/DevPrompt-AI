@@ -9,7 +9,7 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -31,6 +31,7 @@ from devprompt_ai.domain.decision.followup import (
     GuardrailState,
     UnknownItem,
     UnknownOption,
+    answered_headers,
     build_unknowns,
     lint_questions,
 )
@@ -528,16 +529,22 @@ class ForgeService:
             raise
 
     async def ask_followup(
-        self, user_id: str, session_id: str, answers: dict[str, str], *, request_id: str
+        self,
+        user_id: str,
+        session_id: str,
+        answers: dict[str, str],
+        *,
+        request_id: str,
+        progress: ProgressSink | None = None,
     ) -> FlowSnapshot:
-        """F-204：批量答复 → 重新研判 → ask/guardrail/done。"""
+        """F-204：批量答复 → 重新研判 → ask/guardrail/done（progress 供流式端点推送过程）。"""
         session = await self._require(user_id, session_id, {FlowState.ASKING, FlowState.CONFIRMING})
         try:
             session.data.setdefault("clarifications", {}).update(answers)
             session.data["last_request_id"] = request_id
             session.data["rounds"] = int(session.data.get("rounds", 0)) + 1
             await transition(session, FlowState.CONFIRMING, self._sessions)
-            return await self._reprobe(session)
+            return await self._reprobe(session, progress=progress)
         except Exception:
             await self._abort_quietly(session)
             raise
@@ -1025,6 +1032,15 @@ class ForgeService:
         if issues:
             emit_warning("followup.question_lint", issues=issues, request_id=request_id)
 
+    def _suppress_ask(self, probe: FactProbeOutput, facts: Sequence[FactResult]) -> bool:
+        """信息充足即不再提问（2026-11-03）：执行类 + 七项取证全过时丢弃模型给的 questions。
+
+        判据刻意**不用** ``overall_confidence``：模型一旦发起工具调用，``fallback`` 会把该值
+        强制为 0.0，用它当闸门等于永不生效（自我印证「信息不足」）。
+        设计类（``task_kind='design'``）保留 MUST-26 的五类深挖，不抑制。
+        """
+        return probe.task_kind != "design" and bool(facts) and all(f.passed for f in facts)
+
     async def _probe_and_route(
         self,
         session: FlowSession,
@@ -1039,7 +1055,24 @@ class ForgeService:
             # AskUserQuestion 的 call_id：只落审计信息，不含原句（MUST-19）
             session.data["pending_tool_call"] = probe.ask_call_id
         session.data["probe_confidence"] = probe.overall_confidence
-        unknowns = build_unknowns(probe, facts, clarifications=session.data.get("clarifications"))
+        unknowns = build_unknowns(
+            probe,
+            facts,
+            clarifications=session.data.get("clarifications"),
+            answered_header_set=answered_headers(
+                session.data.get("clarifications", {}), session.data.get("unknowns", [])
+            ),
+        )
+        if unknowns and self._suppress_ask(probe, facts):
+            # 审计只记数量与原因码，不记问题原文（MUST-19）
+            emit(
+                "followup.question_suppressed",
+                reason="evidence_complete",
+                count=len(unknowns),
+                request_id=request_id,
+            )
+            session.data["suppressed_questions"] = len(unknowns)
+            unknowns = []
         session.data["unknowns"] = [dataclasses.asdict(u) for u in unknowns]
         facts_complete = (
             bool(facts)
@@ -1061,8 +1094,11 @@ class ForgeService:
             return self._snapshot(session, "ask")
         return await self._generate_and_finish(session, progress=progress)
 
-    async def _reprobe(self, session: FlowSession) -> FlowSnapshot:
+    async def _reprobe(
+        self, session: FlowSession, *, progress: ProgressSink | None = None
+    ) -> FlowSnapshot:
         """F-204：答复后重新研判（取证结果不变，clarifications 已更新）。"""
+        await _notify(session, progress, "正在根据你的答复重新研判…")
         facts = [FactResult(**f) for f in session.data.get("facts", [])]
         probe = await self._decider.probe_facts(
             session.data["sentence"],
@@ -1072,7 +1108,25 @@ class ForgeService:
         self._observe_probe(probe, str(session.data.get("last_request_id", "")))
         if probe.ask_call_id:
             session.data["pending_tool_call"] = probe.ask_call_id
-        unknowns = build_unknowns(probe, facts, clarifications=session.data.get("clarifications"))
+        unknowns = build_unknowns(
+            probe,
+            facts,
+            clarifications=session.data.get("clarifications"),
+            answered_header_set=answered_headers(
+                session.data.get("clarifications", {}), session.data.get("unknowns", [])
+            ),
+        )
+        if unknowns and self._suppress_ask(probe, facts):
+            emit(
+                "followup.question_suppressed",
+                reason="evidence_complete",
+                count=len(unknowns),
+                request_id=str(session.data.get("last_request_id", "")),
+            )
+            session.data["suppressed_questions"] = int(
+                session.data.get("suppressed_questions", 0)
+            ) + len(unknowns)
+            unknowns = []
         session.data["unknowns"] = [dataclasses.asdict(u) for u in unknowns]
         guard = GuardrailState(
             rounds=int(session.data.get("rounds", 0)),
@@ -1091,7 +1145,7 @@ class ForgeService:
             await transition(session, FlowState.ASKING, self._sessions)
             await self._finish_turn(session)
             return self._snapshot(session, "ask")
-        return await self._generate_and_finish(session)
+        return await self._generate_and_finish(session, progress=progress)
 
     async def _generate_and_finish(
         self, session: FlowSession, *, progress: ProgressSink | None = None

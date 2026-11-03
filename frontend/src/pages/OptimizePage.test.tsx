@@ -100,10 +100,52 @@ function gatedStream(
   }
 }
 
+/** 带阶段标签的可控流：回答反问后的 CONFIRMING→GENERATING 推进（2026-11-03）。 */
+function gatedPhasedStream(frames: readonly Record<string, unknown>[], payload: unknown) {
+  const encoder = new TextEncoder()
+  const chunks = [
+    ...frames.map((frame) => encoder.encode(`data: ${JSON.stringify(frame)}\n\n`)),
+    encoder.encode(
+      `data: ${JSON.stringify({ type: 'snapshot', data: (payload as { data?: unknown }).data })}\n\n`,
+    ),
+  ]
+  let release: () => void = () => undefined
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let step = 0
+  let sent = false
+  return {
+    release: () => release(),
+    response: {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      body: {
+        getReader: () => ({
+          read: async () => {
+            if (step < chunks.length - 1) {
+              const value = chunks[step]
+              step += 1
+              return { done: false, value }
+            }
+            if (sent) return { done: true, value: undefined }
+            await gate
+            sent = true
+            return { done: false, value: chunks[chunks.length - 1] }
+          },
+          releaseLock: () => undefined,
+        }),
+      },
+    },
+  }
+}
+
 function stubFetch(handler: FetchHandler) {
   const mock = vi.fn(async (input: string, init?: RequestInit) => {
     const payload = handler(input, init)
-    return input.includes('/optimize/stream') ? sseResponse(payload) : jsonResponse(payload)
+    const isStream = input.includes('/optimize/stream') || input.includes('/followup/')
+    return isStream ? sseResponse(payload) : jsonResponse(payload)
   })
   vi.stubGlobal('fetch', mock)
   return mock
@@ -336,7 +378,10 @@ describe('OptimizePage 三栏工作台', () => {
     gate.release()
 
     expect(await screen.findByText('缺目标定位')).toBeTruthy()
-    // 过程不因反问出现而消失
+    // 过程不因反问出现而消失：收进摘要行（2026-11-04 整组折叠），点开仍可回看
+    const toggle = document.querySelector('.chat-reply__process-toggle')
+    expect(toggle).not.toBeNull()
+    await user.click(toggle as HTMLElement)
     expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
   })
 })
@@ -386,6 +431,62 @@ describe('OptimizePage 三态容器', () => {
       expect(call?.[1]?.method).toBe('POST')
       expect(String(call?.[1]?.body)).toContain('"escape":true')
     })
+  })
+
+  it('回答反问后走流式端点：展示重新研判过程并推进阶段（2026-11-03）', async () => {
+    const user = userEvent.setup()
+    const asked = snapshotFixture({
+      questions: [
+        {
+          key: '红色的落地方式选哪种?',
+          reason: '需求存在需要确认的决策点',
+          best_guess: '',
+          ask: '红色的落地方式选哪种?',
+          header: '方案',
+          options: [
+            { label: '新增主题变量', description: '改变量层' },
+            { label: '复用现有变量', description: '最小改动' },
+          ],
+          multi_select: false,
+        },
+      ],
+      cleared: [],
+    })
+    const done = snapshotFixture({ status: 'done', state: 'DONE' })
+    useOptimizeStore.getState().applySnapshot(asked)
+
+    const stream = gatedPhasedStream(
+      [
+        { type: 'thought', text: '正在根据你的答复重新研判…', phase: 'CONFIRMING' },
+        {
+          type: 'action',
+          title: '重新研判',
+          detail: '七项取证 + 已答 1 项',
+          scope: 'PROBING',
+          phase: 'CONFIRMING',
+        },
+      ],
+      envelope(done),
+    )
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string) =>
+        String(input).includes('/followup/') ? stream.response : jsonResponse(envelope(null)),
+      ),
+    )
+
+    renderPage()
+    await user.click(screen.getByRole('button', { name: /新增主题变量/ }))
+    await user.click(screen.getByRole('button', { name: '提交' }))
+
+    // 过程帧到达：文字块可见，阶段高亮由 ASKING 推进到 CONFIRMING（整理答复）
+    expect(await screen.findByText('正在根据你的答复重新研判…')).toBeTruthy()
+    expect(document.querySelector('.chat-reply__phase--current')?.textContent).toContain('整理答复')
+
+    stream.release()
+
+    await waitFor(() => expect(useOptimizeStore.getState().status).toBe('done'))
+    expect(document.querySelector('.ask-panel')).toBeNull()
   })
 
   it('结果态在后端标记推荐时显示【推荐】与置信度', () => {

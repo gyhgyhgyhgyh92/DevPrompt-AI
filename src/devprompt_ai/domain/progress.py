@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Final, Protocol
+from typing import Final, Literal, Protocol
 
 #: 档位中文名（方案的差异是信息完整度，不是文风，MUST-28）。
 LEVEL_NAMES: Final[dict[str, str]] = {"A": "保守", "B": "标准", "C": "激进"}
@@ -33,6 +33,9 @@ class ActionInfo:
 
     output: str = ""
     """脱敏并截断后的命令输出（≤20 行、≤2000 字符）；空串表示无输出可展示。"""
+
+    status: Literal["ok", "failed"] = "ok"
+    """动作结果：failed = 命令以非允许退出码结束（2026-11-04，对齐 CodeBuddy 的失败态可见）。"""
 
 
 @dataclass(frozen=True, slots=True)

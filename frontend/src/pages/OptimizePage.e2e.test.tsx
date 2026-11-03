@@ -52,7 +52,9 @@ function sseResponse(payload: unknown) {
 function stubFetch(handler: FetchHandler) {
   const mock = vi.fn(async (input: string, init?: RequestInit) => {
     const payload = handler(input, init)
-    return input.includes('/optimize/stream') ? sseResponse(payload) : jsonResponse(payload)
+    // 2026-11-03：答复也走流式（/followup/{id}/stream），同样按 SSE 帧返回
+    const isStream = input.includes('/optimize/stream') || input.includes('/followup/')
+    return isStream ? sseResponse(payload) : jsonResponse(payload)
   })
   vi.stubGlobal('fetch', mock)
   return mock

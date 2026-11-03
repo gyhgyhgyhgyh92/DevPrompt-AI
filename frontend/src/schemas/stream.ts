@@ -11,6 +11,8 @@ export const ActionPayloadSchema = z.object({
   scope: z.string(),
   /** 脱敏并截断后的命令输出（≤20 行 / ≤2000 字符）；空串表示无输出可展示。 */
   output: z.string().default(''),
+  /** 动作结果；旧后端帧无此字段时按成功处理（2026-11-04）。 */
+  status: z.enum(['ok', 'failed']).default('ok'),
 })
 
 export const StreamEventSchema = z.discriminatedUnion('type', [
@@ -22,6 +24,7 @@ export const StreamEventSchema = z.discriminatedUnion('type', [
     detail: z.string(),
     scope: z.string(),
     output: z.string().default(''),
+    status: z.enum(['ok', 'failed']).default('ok'),
   }),
   z.object({ type: z.literal('snapshot'), data: FlowSnapshotSchema }),
   z.object({
@@ -52,5 +55,7 @@ export type ThinkingItem =
       detail: string
       scope: string
       output: string
+      /** 动作结果：failed = 命令非零退出，卡片按错误色渲染（2026-11-04；旧数据缺省按成功）。 */
+      status?: 'ok' | 'failed'
       phase: string
     }

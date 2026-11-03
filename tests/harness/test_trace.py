@@ -6,6 +6,11 @@ from typing import Any
 
 import pytest
 
+from devprompt_ai.common.process import (
+    ExecutableNotFoundError,
+    ProcessError,
+    ProcessTimeoutError,
+)
 from devprompt_ai.domain.progress import ActionInfo, ProgressEvent
 from devprompt_ai.harness.trace import TracingReader, TracingRunner, redact
 
@@ -196,3 +201,42 @@ class TestOutputCapture:
         await reader.read("D:/proj/src/a.ts")
 
         assert sink.actions()[0].output == "a\nb\nc"
+
+
+class TestFailureDegrade:
+    """失败降级（2026-11-04）：普通退出码降级为「该次取证不通过」，工具缺失/超时仍抛。"""
+
+    async def test_process_error_emits_failed_card_and_returns_empty(self) -> None:
+        sink = FakeSink()
+        tracer = TracingRunner(
+            FakeRunner(fail=ProcessError(["rg", "-n", "Foo"], 1, "D:/proj/src: no match")),
+            sink,
+            _ROOT,
+        )
+
+        assert await tracer.run(["rg", "-n", "Foo", "--route-key=symbol:."]) == ""
+
+        card = sink.actions()[0]
+        assert card.status == "failed"
+        assert card.scope == "Exit code 1"
+        assert card.title == "检索符号"
+        # stderr 先脱敏再进卡片：绝不出现盘符绝对路径（MUST-19）
+        assert "D:/" not in card.output
+        assert "no match" in card.output
+
+    async def test_executable_missing_still_raises(self) -> None:
+        """工具没装不属于「没匹配到」：降级会让用户只看到保守方案却查不到真因。"""
+        sink = FakeSink()
+        tracer = TracingRunner(FakeRunner(fail=ExecutableNotFoundError("rg")), sink, _ROOT)
+
+        with pytest.raises(ExecutableNotFoundError):
+            await tracer.run(["rg", "x"])
+        assert sink.events == []
+
+    async def test_timeout_still_raises(self) -> None:
+        sink = FakeSink()
+        tracer = TracingRunner(FakeRunner(fail=ProcessTimeoutError("timeout")), sink, _ROOT)
+
+        with pytest.raises(ProcessTimeoutError):
+            await tracer.run(["rg", "x"])
+        assert sink.events == []

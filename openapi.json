@@ -1847,7 +1847,7 @@
   "paths": {
     "/api/v1/followup/{flow_id}": {
       "post": {
-        "description": "三模式分发（互斥由契约校验保证）：批量答复 / 逃生 / 软护栏裁决（MUST-26）。",
+        "description": "答复 / 逃生 / 护栏裁决（一次性 JSON，保留给非流式调用方）。",
         "operationId": "post_followup_api_v1_followup__flow_id__post",
         "parameters": [
           {
@@ -1893,6 +1893,54 @@
           }
         },
         "summary": "Post Followup"
+      }
+    },
+    "/api/v1/followup/{flow_id}/stream": {
+      "post": {
+        "description": "流式版 /followup（SSE）：thought/action 帧推送重新研判与生成过程，终帧为 snapshot 或 error。有副作用端点：禁止客户端自动重试（MUST-15）。",
+        "operationId": "post_followup_stream_api_v1_followup__flow_id__stream_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FollowupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Followup Stream"
       }
     },
     "/api/v1/health": {

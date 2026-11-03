@@ -33,6 +33,8 @@ class ProcessError(RuntimeError):
     def __init__(self, args: list[str], code: int, stderr: str) -> None:
         super().__init__(f"命令失败 exit={code}: {' '.join(args)}\nstderr: {stderr[:500]}")
         self.code = code
+        #: 原始 stderr（截断 500 字）：观测层要把它脱敏后展示成失败卡片（2026-11-04）
+        self.stderr = stderr[:500]
 
 
 class ProcessTimeoutError(RuntimeError):

@@ -114,6 +114,18 @@ export function ChatStream({
     return () => window.clearTimeout(timer)
   }, [isThinking, thinking.length])
   const currentIndex = PHASES.findIndex((phase) => phase === state)
+  // 过程整组折叠（2026-11-04，对齐 CodeBuddy v2.81）：结束/等待答复后收成一行摘要，
+  // 点击展开回看；进行中永远展开。status 每次变化若可折叠则复位为收起。
+  const canCollapse = thinking.length > 0 && !isThinking && (status === 'done' || status === 'ask')
+  const [isProcessOpen, setProcessOpen] = useState(false)
+  useEffect(() => {
+    if (canCollapse) setProcessOpen(false)
+  }, [canCollapse])
+  const showProcess = !canCollapse || isProcessOpen
+  const actionCount = thinking.filter((item) => item.kind === 'action').length
+  const stepCount = PHASES.filter((phase) =>
+    thinking.some((item) => (item.phase === '' ? state : item.phase) === phase),
+  ).length
 
   return (
     <div className="chat-stream">
@@ -131,44 +143,63 @@ export function ChatStream({
           ) : null}
         </header>
 
-        <ol className="chat-reply__phases" aria-label="执行过程">
-          {PHASES.map((phase, index) => {
-            const isDone = index < currentIndex
-            const isCurrent = phase === state
-            const metaItem = PHASE_META[phase]
-            // 无阶段标签的旧数据归到当前阶段，避免过程凭空消失
-            const logs = thinking.filter(
-              (item) => (item.phase === '' ? state : item.phase) === phase,
-            )
-            return (
-              <li
-                key={phase}
-                className={
-                  isCurrent
-                    ? 'chat-reply__phase chat-reply__phase--current'
-                    : isDone
-                      ? 'chat-reply__phase chat-reply__phase--done'
-                      : 'chat-reply__phase'
-                }
-                aria-current={isCurrent ? 'step' : undefined}
-              >
-                <div className="chat-reply__phase-head">
-                  <span className="chat-reply__phase-mark" aria-hidden="true">
-                    {isDone ? '✓' : isCurrent ? '●' : '○'}
-                  </span>
-                  <span className="chat-reply__phase-label">{metaItem.label}</span>
-                  <span className="chat-reply__phase-hint">{metaItem.hint}</span>
-                  {isCurrent ? (
-                    <span className="chat-reply__phase-tag">
-                      {phase === 'DONE' ? '已完成' : phase === 'ABORTED' ? '已中止' : '进行中'}
+        {canCollapse ? (
+          <button
+            type="button"
+            className="chat-reply__process-toggle"
+            aria-expanded={isProcessOpen}
+            onClick={() => setProcessOpen((open) => !open)}
+          >
+            <span className="chat-reply__process-caret" aria-hidden="true">
+              {isProcessOpen ? '▾' : '▸'}
+            </span>
+            <span>
+              思考 {elapsedSeconds !== null ? `${elapsedSeconds}s` : '完成'} · {actionCount} 个动作
+              · {stepCount} 个步骤
+            </span>
+          </button>
+        ) : null}
+
+        {showProcess ? (
+          <ol className="chat-reply__phases" aria-label="执行过程">
+            {PHASES.map((phase, index) => {
+              const isDone = index < currentIndex
+              const isCurrent = phase === state
+              const metaItem = PHASE_META[phase]
+              // 无阶段标签的旧数据归到当前阶段，避免过程凭空消失
+              const logs = thinking.filter(
+                (item) => (item.phase === '' ? state : item.phase) === phase,
+              )
+              return (
+                <li
+                  key={phase}
+                  className={
+                    isCurrent
+                      ? 'chat-reply__phase chat-reply__phase--current'
+                      : isDone
+                        ? 'chat-reply__phase chat-reply__phase--done'
+                        : 'chat-reply__phase'
+                  }
+                  aria-current={isCurrent ? 'step' : undefined}
+                >
+                  <div className="chat-reply__phase-head">
+                    <span className="chat-reply__phase-mark" aria-hidden="true">
+                      {isDone ? '✓' : isCurrent ? '●' : '○'}
                     </span>
-                  ) : null}
-                </div>
-                <PhaseLog items={logs} />
-              </li>
-            )
-          })}
-        </ol>
+                    <span className="chat-reply__phase-label">{metaItem.label}</span>
+                    <span className="chat-reply__phase-hint">{metaItem.hint}</span>
+                    {isCurrent ? (
+                      <span className="chat-reply__phase-tag">
+                        {phase === 'DONE' ? '已完成' : phase === 'ABORTED' ? '已中止' : '进行中'}
+                      </span>
+                    ) : null}
+                  </div>
+                  <PhaseLog items={logs} />
+                </li>
+              )
+            })}
+          </ol>
+        ) : null}
 
         {isThinking && isIdle ? <p className="chat-reply__planning">正在规划下一步</p> : null}
 

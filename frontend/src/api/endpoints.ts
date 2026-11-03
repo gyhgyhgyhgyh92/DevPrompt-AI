@@ -19,7 +19,14 @@ import {
   SettingsUpdateSchema,
 } from '../schemas/settings'
 import { StreamEventSchema, type ActionPayload } from '../schemas/stream'
-import { API_BASE_URL, openEventStream, openPostStream, request, type SseHandlers } from './client'
+import {
+  API_BASE_URL,
+  openEventStream,
+  openPostStream,
+  request,
+  type PostStreamHandlers,
+  type SseHandlers,
+} from './client'
 import { businessError, contractError, type ApiError } from './errors'
 import type {
   FlowSnapshotResponse,
@@ -42,6 +49,7 @@ export const ENDPOINTS = {
   optimizeStream: `${API_BASE_URL}/optimize/stream`,
   progress: (flowId: string) => `${API_BASE_URL}/progress/${flowId}`,
   followup: (flowId: string) => `${API_BASE_URL}/followup/${flowId}`,
+  followupStream: (flowId: string) => `${API_BASE_URL}/followup/${flowId}/stream`,
   result: (flowId: string) => `${API_BASE_URL}/result/${flowId}`,
   history: `${API_BASE_URL}/history`,
   historyProject: (projectRoot: string) =>
@@ -94,6 +102,46 @@ export interface StreamOptimizeHandlers {
   onError: (error: ApiError) => void
 }
 
+/** SSE 帧 → 回调（optimize / followup 两个流式端点共用，2026-11-03 提取）。 */
+function streamEventHandlers(handlers: StreamOptimizeHandlers): PostStreamHandlers {
+  return {
+    onOpen: handlers.onOpen,
+    onEvent: (raw) => {
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        return
+      }
+      const result = StreamEventSchema.safeParse(parsed)
+      if (!result.success) return
+      const event = result.data
+      if (event.type === 'thought') {
+        handlers.onThought(event.text, event.phase)
+        return
+      }
+      if (event.type === 'action') {
+        handlers.onAction(
+          {
+            title: event.title,
+            detail: event.detail,
+            scope: event.scope,
+            output: event.output,
+            status: event.status,
+          },
+          event.phase,
+        )
+        return
+      }
+      if (event.type === 'snapshot') {
+        handlers.onSnapshot(event.data)
+        return
+      }
+      handlers.onError(businessError(event.code, event.message, event.request_id))
+    },
+  }
+}
+
 /**
  * POST /optimize/stream：思考过程流（有副作用端点，禁重试 MUST-15）。
  * 畸形帧直接丢弃——契约破坏重放只会复现，不重试。
@@ -106,41 +154,25 @@ export function streamOptimize(
   return openPostStream(
     ENDPOINTS.optimizeStream,
     parseBody(OptimizeRequestSchema, body),
-    {
-      onOpen: handlers.onOpen,
-      onEvent: (raw) => {
-        let parsed: unknown
-        try {
-          parsed = JSON.parse(raw)
-        } catch {
-          return
-        }
-        const result = StreamEventSchema.safeParse(parsed)
-        if (!result.success) return
-        const event = result.data
-        if (event.type === 'thought') {
-          handlers.onThought(event.text, event.phase)
-          return
-        }
-        if (event.type === 'action') {
-          handlers.onAction(
-            {
-              title: event.title,
-              detail: event.detail,
-              scope: event.scope,
-              output: event.output,
-            },
-            event.phase,
-          )
-          return
-        }
-        if (event.type === 'snapshot') {
-          handlers.onSnapshot(event.data)
-          return
-        }
-        handlers.onError(businessError(event.code, event.message, event.request_id))
-      },
-    },
+    streamEventHandlers(handlers),
+    signal,
+  )
+}
+
+/**
+ * POST /followup/{flow_id}/stream：答复后的重新研判与生成过程（有副作用，禁重试 MUST-15）。
+ * 与 /optimize/stream 共用帧格式；原 POST /followup 保留给非流式调用方（2026-11-03）。
+ */
+export function streamFollowup(
+  flowId: string,
+  body: FollowupRequest,
+  handlers: StreamOptimizeHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  return openPostStream(
+    ENDPOINTS.followupStream(flowId),
+    parseBody(FollowupRequestSchema, body),
+    streamEventHandlers(handlers),
     signal,
   )
 }

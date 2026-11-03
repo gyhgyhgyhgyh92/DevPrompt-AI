@@ -15,9 +15,29 @@ export interface paths {
         put?: never;
         /**
          * Post Followup
-         * @description 三模式分发（互斥由契约校验保证）：批量答复 / 逃生 / 软护栏裁决（MUST-26）。
+         * @description 答复 / 逃生 / 护栏裁决（一次性 JSON，保留给非流式调用方）。
          */
         post: operations["post_followup_api_v1_followup__flow_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/followup/{flow_id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Followup Stream
+         * @description 流式版 /followup（SSE）：thought/action 帧推送重新研判与生成过程，终帧为 snapshot 或 error。有副作用端点：禁止客户端自动重试（MUST-15）。
+         */
+        post: operations["post_followup_stream_api_v1_followup__flow_id__stream_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1282,6 +1302,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_FlowSnapshotResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_followup_stream_api_v1_followup__flow_id__stream_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                flow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FollowupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

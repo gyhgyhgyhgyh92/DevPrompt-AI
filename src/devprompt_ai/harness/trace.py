@@ -25,6 +25,11 @@ import re
 from collections.abc import Callable
 from typing import Final
 
+from devprompt_ai.common.process import (
+    ExecutableNotFoundError,
+    ProcessError,
+    ProcessTimeoutError,
+)
 from devprompt_ai.domain.progress import ActionInfo, ProgressEvent, ProgressSink, display_path
 from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader
 
@@ -115,11 +120,29 @@ class TracingRunner:
         allowed_exit_codes: frozenset[int] = frozenset({0}),
         cwd: str | None = None,
     ) -> str:
-        out = await self._inner.run(
-            args, timeout=timeout, allowed_exit_codes=allowed_exit_codes, cwd=cwd
-        )
         # 只改展示副本，args 本身绝不能动（否则改变真实 rg 行为）
         shown = [arg for arg in args if not arg.startswith(_ROUTE_KEY_PREFIX)]
+        try:
+            out = await self._inner.run(
+                args, timeout=timeout, allowed_exit_codes=allowed_exit_codes, cwd=cwd
+            )
+        except (ExecutableNotFoundError, ProcessTimeoutError):
+            # 工具没装 / 命令超时不是「这条命令没匹配到」：降级会让用户只拿到保守方案
+            # 却永远查不到真因，故原样抛出（2026-11-04 用户裁定降级范围的边界）。
+            raise
+        except ProcessError as exc:
+            # 非允许退出码（rg 未命中即 exit 1）→ 降级：先上报失败卡片，再返回空串，
+            # 调用方按「无匹配」处理，整轮流程不再因一次检索失败而中断（MUST-19：stderr 先脱敏）。
+            await self._emit(
+                ActionInfo(
+                    title=_title(args),
+                    detail=_clip(redact(" ".join(shown), self._root)),
+                    scope=f"Exit code {exc.code}",
+                    output=_output((exc.stderr or str(exc)).splitlines(), self._root),
+                    status="failed",
+                )
+            )
+            return ""
         lines = out.splitlines()
         hits = sum(1 for line in lines if line.strip())
         await self._emit(

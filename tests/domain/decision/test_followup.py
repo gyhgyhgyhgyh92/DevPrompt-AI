@@ -103,6 +103,27 @@ class TestBuildUnknowns:
     def test_blank_question_is_dropped(self) -> None:
         assert build_unknowns(_probe([_ask("   ")]), []) == []
 
+    def test_answered_question_matched_after_normalization(self) -> None:
+        """改写标点/空格不算新问题（2026-11-03）。"""
+        probe = _probe([_ask("红色的落地方式选哪种？"), _ask("要补测试吗?")])
+
+        items = build_unknowns(probe, [], clarifications={"红色的落地方式 选哪种?": "新增主题变量"})
+
+        assert [i.key for i in items] == ["要补测试吗?"]
+
+    def test_answered_header_skips_whole_topic(self) -> None:
+        """同 header 已答即整类跳过（模型改写措辞时的兜底层，2026-11-03）。"""
+        probe = _probe(
+            [
+                _ask("按钮悬停色要不要一起改?", header="状态覆盖"),
+                _ask("导出放哪?", header="范围"),
+            ]
+        )
+
+        items = build_unknowns(probe, [], answered_header_set={"状态覆盖"})
+
+        assert [i.key for i in items] == ["导出放哪?"]
+
 
 class TestLintQuestions:
     """形态合规检查：只报告不修改（用户 2026-10-20 裁定），且不含原文（MUST-19）。"""

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from devprompt_ai.domain.decision.port import AskQuestion, FactProbeOutput
 from devprompt_ai.domain.models import FactResult
@@ -25,6 +25,33 @@ _HEADER_LIMIT = 12
 _LABEL_MAX_CJK = 6
 _LABEL_MAX_WORDS = 5
 _OPTION_RANGE = (2, 4)
+
+
+def _normalize_question(text: str) -> str:
+    """问题归一（2026-11-03）：抹平空白/标点/全半角差异，只留字母数字与汉字。
+
+    模型改一个标点或换个空格就算「新问题」是重复追问的主因，故比对走归一化；
+    答案键仍是问题原文（契约不变）。
+    """
+    return "".join(ch for ch in text.casefold() if ch.isalnum())
+
+
+def answered_headers(
+    clarifications: Mapping[str, str], unknowns: Sequence[Mapping[str, Any]]
+) -> set[str]:
+    """已答题目对应的 header 集合（2026-11-03）。
+
+    ``unknowns`` 是上一轮落进 session.data 的未知项（含 header/ask）；其中 ``ask``
+    已在 ``clarifications`` 里的那些，其 header 视为「这件事已经问过了」。
+    """
+    answered = {_normalize_question(key) for key in clarifications}
+    headers: set[str] = set()
+    for item in unknowns:
+        ask = str(item.get("ask", ""))
+        header = str(item.get("header", "")).strip()
+        if header != "" and _normalize_question(ask) in answered:
+            headers.add(header)
+    return headers
 
 
 def _is_long_label(label: str) -> bool:
@@ -109,18 +136,23 @@ def build_unknowns(
     facts: Sequence[FactResult],
     *,
     clarifications: dict[str, str] | None = None,
+    answered_header_set: Collection[str] | None = None,
 ) -> list[UnknownItem]:
     """把工具调用解析出的问题转成未知项（2026-10-22 起答案键 = ``question`` 原文）。
 
-    对齐 CodeBuddy SDK：``answers[question] = label``，因此去重也按问题文本比对。
+    对齐 CodeBuddy SDK：``answers[question] = label``，因此答案键也按问题原文。
 
     - ``questions`` 为空 → 本轮不提问（模型没调工具，或参数畸形已在上层记录）
-    - 已答过的 question 文本直接跳过；重复文本只保留第一次出现
+    - 已答过的 question（**归一化后**比对）直接跳过；重复文本只保留第一次出现
+    - ``answered_header_set`` 里的 header 整体跳过：模型改写措辞时靠这一层兜住，
+      同一件事不会被追问第二次（2026-11-03；值由 :func:`answered_headers` 算出）
     - 截断到 :data:`MAX_QUESTIONS` 个；``facts`` 仅保留参数位（工具调用路径不再按事实键匹配）
 
-    shortcut: 问题文本比对——模型改写措辞即视为新问题，会重复问一次，靠软护栏兜底。
+    shortcut: header 级去重按「短标签相同即视为同一件事」，同标签下的**新**问题也会被
+    跳过；此时退化为保守假设 + 未确认项（规范 §5 的兜底分支），需要精确区分时由模型换 header。
     """
-    clar = clarifications or {}
+    clar = {_normalize_question(key) for key in (clarifications or {})}
+    answered = {_normalize_question(header) for header in (answered_header_set or ())}
     if not probe.questions:
         return []
 
@@ -129,16 +161,24 @@ def build_unknowns(
     seen: set[str] = set()
     for question in probe.questions:
         key = question.question.strip()
-        if key == "" or key in clar or key in seen:
+        header = question.header.strip()
+        normalized = _normalize_question(key)
+        if (
+            key == ""
+            or normalized == ""
+            or normalized in clar
+            or normalized in seen
+            or (header != "" and _normalize_question(header) in answered)
+        ):
             continue
-        seen.add(key)
+        seen.add(normalized)
         asked.append(
             UnknownItem(
                 key=key,
                 reason=default_reason,
                 best_guess="",
                 ask=key,
-                header=question.header.strip(),
+                header=header,
                 options=tuple(
                     UnknownOption(label=item.label.strip(), description=item.description.strip())
                     for item in question.options

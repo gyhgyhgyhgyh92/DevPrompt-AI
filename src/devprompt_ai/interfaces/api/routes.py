@@ -7,7 +7,7 @@ import contextlib
 import dataclasses
 import json
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, TypeVar
 
 from fastapi import APIRouter, Request
@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.errors import DevPromptError, StateError
 from devprompt_ai.domain.models import TurnRecord
-from devprompt_ai.domain.progress import ProgressEvent
+from devprompt_ai.domain.progress import ProgressEvent, ProgressSink
 from devprompt_ai.interfaces.api import health
 from devprompt_ai.interfaces.api.schemas import (
     ApiResponse,
@@ -135,51 +135,45 @@ async def post_optimize(
 _STREAM_PING_SECONDS: float = 15.0
 
 
-@router.post(
-    "/optimize/stream",
-    description=(
-        "流式版 /optimize（SSE）：thought 帧推送文字段落、action 帧推送工具动作卡片，"
-        "终帧为 snapshot 或 error。"
-        "有副作用端点：禁止客户端自动重试（MUST-15）。"
-    ),
-)
-async def post_optimize_stream(request: Request, req: OptimizeRequest) -> StreamingResponse:
-    """思考过程流式端点（MUST-10：本层只搬帧，文案与流程都在 service/domain）。
+class _QueueSink:
+    """ProgressEvent → SSE 帧（2026-11-03 从 /optimize/stream 抽出，optimize/followup 共用）。"""
 
-    用 POST 而非 EventSource：EventSource 只能 GET，而用户原句不能进 URL / 访问日志
-    （MUST-19），故由前端 fetch 读取响应流。
+    def __init__(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
+        self._queue = queue
+
+    async def emit(self, event: ProgressEvent) -> None:
+        if event.action is None:
+            self._queue.put_nowait({"type": "thought", "text": event.text, "phase": event.phase})
+            return
+        # detail 已在观测层脱敏（只含仓库相对路径），此处原样转发
+        self._queue.put_nowait(
+            {
+                "type": "action",
+                "phase": event.phase,
+                "title": event.action.title,
+                "detail": event.action.detail,
+                "scope": event.action.scope,
+                "output": event.action.output,
+                # 失败态（2026-11-04）：前端据此渲染错误色与 Exit code，折叠时也看得见
+                "status": event.action.status,
+            }
+        )
+
+
+def _stream_progress(
+    request_id: str, producer: Callable[[ProgressSink], Awaitable[FlowSnapshot]]
+) -> StreamingResponse:
+    """进度流外壳（MUST-10：本层只搬帧，文案与流程都在 service/domain）。
+
+    ``producer`` 拿到 sink 跑业务流程，本函数负责把帧泵出去：thought/action 即时推送、
+    ping 心跳保活、终帧 snapshot 或 error。用 POST 而非 EventSource：EventSource 只能 GET，
+    而用户原句不能进 URL / 访问日志（MUST-19），故由前端 fetch 读取响应流。
     """
-    request_id = _request_id(request)
     queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-
-    class _QueueSink:
-        async def emit(self, event: ProgressEvent) -> None:
-            if event.action is None:
-                queue.put_nowait({"type": "thought", "text": event.text, "phase": event.phase})
-                return
-            # detail 已在观测层脱敏（只含仓库相对路径），此处原样转发
-            queue.put_nowait(
-                {
-                    "type": "action",
-                    "phase": event.phase,
-                    "title": event.action.title,
-                    "detail": event.action.detail,
-                    "scope": event.action.scope,
-                    "output": event.action.output,
-                }
-            )
 
     async def _produce() -> None:
         try:
-            svc = await get_service()
-            snapshot = await svc.optimize(
-                _USER_ID,
-                req.project,
-                req.sentence,
-                request_id=request_id,
-                progress=_QueueSink(),
-                session_id=req.session_id,
-            )
+            snapshot = await producer(_QueueSink(queue))
             payload = _snapshot_payload(snapshot).model_dump(mode="json")
             queue.put_nowait({"type": "snapshot", "data": payload})
         except asyncio.CancelledError:
@@ -216,6 +210,32 @@ async def post_optimize_stream(request: Request, req: OptimizeRequest) -> Stream
     return StreamingResponse(_events(), media_type="text/event-stream")
 
 
+@router.post(
+    "/optimize/stream",
+    description=(
+        "流式版 /optimize（SSE）：thought 帧推送文字段落、action 帧推送工具动作卡片，"
+        "终帧为 snapshot 或 error。"
+        "有副作用端点：禁止客户端自动重试（MUST-15）。"
+    ),
+)
+async def post_optimize_stream(request: Request, req: OptimizeRequest) -> StreamingResponse:
+    """优化流程的思考过程流。"""
+    request_id = _request_id(request)
+
+    async def _produce(sink: ProgressSink) -> FlowSnapshot:
+        svc = await get_service()
+        return await svc.optimize(
+            _USER_ID,
+            req.project,
+            req.sentence,
+            request_id=request_id,
+            progress=sink,
+            session_id=req.session_id,
+        )
+
+    return _stream_progress(request_id, _produce)
+
+
 @router.get("/progress/{flow_id}")
 async def get_progress(request: Request, flow_id: str) -> StreamingResponse:
     """SSE 进度流：1s 轮询快照；DONE/ABORTED/ASKING/护栏推送后关闭；客户端断开即停。"""
@@ -250,24 +270,56 @@ async def get_progress(request: Request, flow_id: str) -> StreamingResponse:
     return StreamingResponse(_events(), media_type="text/event-stream")
 
 
+async def _run_followup(
+    svc: ForgeService,
+    flow_id: str,
+    req: FollowupRequest,
+    *,
+    request_id: str,
+    progress: ProgressSink | None = None,
+) -> FlowSnapshot:
+    """三模式分发（互斥由契约校验保证）：批量答复 / 逃生 / 软护栏裁决（MUST-26）。"""
+    if req.escape:
+        return await svc.escape(_USER_ID, flow_id, request_id=request_id)
+    if req.guardrail_action is not None:
+        return await svc.guardrail_confirm(
+            _USER_ID, flow_id, req.guardrail_action == "continue", request_id=request_id
+        )
+    return await svc.ask_followup(
+        _USER_ID, flow_id, req.answers or {}, request_id=request_id, progress=progress
+    )
+
+
 @router.post("/followup/{flow_id}")
 async def post_followup(
     request: Request, flow_id: str, req: FollowupRequest
 ) -> ApiResponse[FlowSnapshotResponse]:
-    """三模式分发（互斥由契约校验保证）：批量答复 / 逃生 / 软护栏裁决（MUST-26）。"""
+    """答复 / 逃生 / 护栏裁决（一次性 JSON，保留给非流式调用方）。"""
     request_id = _request_id(request)
     svc = await get_service()
-    if req.escape:
-        snapshot = await svc.escape(_USER_ID, flow_id, request_id=request_id)
-    elif req.guardrail_action is not None:
-        snapshot = await svc.guardrail_confirm(
-            _USER_ID, flow_id, req.guardrail_action == "continue", request_id=request_id
-        )
-    else:
-        snapshot = await svc.ask_followup(
-            _USER_ID, flow_id, req.answers or {}, request_id=request_id
-        )
+    snapshot = await _run_followup(svc, flow_id, req, request_id=request_id)
     return _ok(_snapshot_payload(snapshot), request_id)
+
+
+@router.post(
+    "/followup/{flow_id}/stream",
+    description=(
+        "流式版 /followup（SSE）：thought/action 帧推送重新研判与生成过程，"
+        "终帧为 snapshot 或 error。"
+        "有副作用端点：禁止客户端自动重试（MUST-15）。"
+    ),
+)
+async def post_followup_stream(
+    request: Request, flow_id: str, req: FollowupRequest
+) -> StreamingResponse:
+    """答复后的过程流式推送（2026-11-03）：此前只有一次性 JSON，回答后界面无过程可看。"""
+    request_id = _request_id(request)
+
+    async def _produce(sink: ProgressSink) -> FlowSnapshot:
+        svc = await get_service()
+        return await _run_followup(svc, flow_id, req, request_id=request_id, progress=sink)
+
+    return _stream_progress(request_id, _produce)
 
 
 @router.get("/result/{flow_id}")

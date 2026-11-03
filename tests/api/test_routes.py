@@ -11,6 +11,7 @@ import pytest
 
 from devprompt_ai.domain.errors import DevPromptError, StateError
 from devprompt_ai.domain.models import SessionSummary, TurnRecord
+from devprompt_ai.domain.progress import ActionInfo, ProgressEvent
 from devprompt_ai.interfaces.api import health, routes
 from devprompt_ai.interfaces.api.app import create_app
 from devprompt_ai.service import FlowSnapshot, RankingView, SnapshotStatus
@@ -94,8 +95,29 @@ class FakeForgeService:
         return self._next()
 
     async def ask_followup(
-        self, user_id: str, session_id: str, answers: dict[str, str], *, request_id: str
+        self,
+        user_id: str,
+        session_id: str,
+        answers: dict[str, str],
+        *,
+        request_id: str,
+        progress: Any = None,
     ) -> FlowSnapshot:
+        # 流式端点测试用：主动推一帧文字 + 一帧失败动作（2026-11-04）
+        if progress is not None:
+            await progress.emit(ProgressEvent(text="正在根据你的答复重新研判", phase="CONFIRMING"))
+            await progress.emit(
+                ProgressEvent(
+                    action=ActionInfo(
+                        title="检索符号",
+                        detail="rg -n Foo --glob src",
+                        scope="Exit code 1",
+                        output="src: no match",
+                        status="failed",
+                    ),
+                    phase="CONFIRMING",
+                )
+            )
         return self._next()
 
     async def escape(self, user_id: str, session_id: str, *, request_id: str) -> FlowSnapshot:
@@ -384,6 +406,49 @@ async def test_patch_history_empty_422(client: httpx.AsyncClient) -> None:
     """title/pinned 均缺省 → 422（model_validator 拦截空更新）。"""
     resp = await client.patch("/api/v1/history/s1", json={})
     assert resp.status_code == 422
+
+
+async def test_followup_stream_ends_with_snapshot_frame(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """流式答复端点（2026-11-03）：SSE 帧以 snapshot 收尾（此前只有一次性 JSON）。"""
+    resp = await client.post(
+        "/api/v1/followup/s1/stream", json={"answers": {"请确认 q": "a"}, "escape": False}
+    )
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+    assert '"type": "snapshot"' in resp.text
+
+
+async def test_followup_stream_frame_order_and_action_fields(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """帧顺序契约（2026-11-04）：thought → action → snapshot，snapshot 必须是最后一帧。
+
+    同时校验动作帧字段白名单与失败态（status/Exit code 由后端给出，前端只渲染）。
+    """
+    resp = await client.post(
+        "/api/v1/followup/s1/stream", json={"answers": {"请确认 q": "a"}, "escape": False}
+    )
+
+    frames = [
+        json.loads(line[len("data: ") :])
+        for line in resp.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    types = [frame["type"] for frame in frames]
+
+    assert types == ["thought", "action", "snapshot"]
+    assert types[-1] == "snapshot"
+    assert "snapshot" not in types[:-1]
+
+    action = frames[1]
+    assert action["status"] == "failed"
+    assert action["scope"] == "Exit code 1"
+    assert set(action) == {"type", "phase", "title", "detail", "scope", "output", "status"}
+    # 帧里不得出现绝对路径（MUST-19）
+    assert "D:/" not in json.dumps(action, ensure_ascii=False)
 
 
 async def test_delete_history_passthrough(

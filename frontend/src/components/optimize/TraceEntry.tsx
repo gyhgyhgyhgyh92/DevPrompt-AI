@@ -69,7 +69,13 @@ export function TraceAction({ item }: { item: ActionItem }) {
   const [isOpen, setOpen] = useState(false)
   const [isCopied, setCopied] = useState(false)
   const isRead = item.title === '读取文件'
-  const label = isRead ? `已读取 ${item.detail}` : '命令已执行'
+  const isFailed = item.status === 'failed'
+  // 失败时 scope 就是「Exit code N」：标题里直接带出退出码，折叠也能看出失败（对齐 CodeBuddy）
+  const label = isRead
+    ? `已读取 ${item.detail}`
+    : isFailed
+      ? `命令失败 · ${item.scope}`
+      : '命令已执行'
   const command = isRead ? '' : item.detail
   const hasBody = command !== '' || item.output !== ''
 
@@ -81,7 +87,7 @@ export function TraceAction({ item }: { item: ActionItem }) {
   }
 
   return (
-    <div className="trace-step">
+    <div className={isFailed ? 'trace-step trace-step--failed' : 'trace-step'}>
       <div className="trace-step__head">
         <button
           type="button"

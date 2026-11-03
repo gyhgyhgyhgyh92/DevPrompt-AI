@@ -6,7 +6,7 @@ import {
   getResult,
   getSessionTurns,
   getTurn,
-  postFollowup,
+  streamFollowup,
   streamOptimize,
 } from '../api/endpoints'
 import { ChatStream } from '../components/optimize/ChatStream'
@@ -152,17 +152,56 @@ export function OptimizePage() {
     return () => clearInterval(timer)
   }, [startedAt, status])
 
+  /**
+   * 答复 / 逃生 / 护栏裁决：走流式端点（2026-11-03）。
+   *
+   * 此前用非流式 POST /followup：回答后界面停在上一次快照的 ASKING，看不到重新研判、
+   * 生成、评估过程。改流式后服务端逐帧推 thought/action，前端按 phase 同步阶段高亮。
+   */
   async function runFollowup(body: FollowupRequest): Promise<void> {
     const activeSessionId = useOptimizeStore.getState().sessionId
     if (!activeSessionId) return
+    const store = useOptimizeStore.getState()
+    store.beginReprobe()
     setIsBusy(true)
     setErrorMessage(null)
+
+    const controller = new AbortController()
+    streamRef.current = controller
     try {
-      const snapshot = await postFollowup(activeSessionId, body)
-      useOptimizeStore.getState().applySnapshot(snapshot)
+      await streamFollowup(
+        activeSessionId,
+        body,
+        {
+          onThought: (text, phase) => {
+            const live = useOptimizeStore.getState()
+            live.notePhase(phase)
+            live.appendThought(text, phase)
+          },
+          onAction: (action, phase) => {
+            const live = useOptimizeStore.getState()
+            live.notePhase(phase)
+            live.appendAction(action, phase)
+          },
+          onSnapshot: (snapshot) => {
+            useOptimizeStore.getState().applySnapshot(snapshot)
+            void getSessionTurns(snapshot.session_id)
+              .then((items) => {
+                const live = useOptimizeStore.getState()
+                live.setTurns(items)
+                live.setCurrentTurnId(items.at(-1)?.turn_id ?? null)
+              })
+              .catch(() => undefined)
+          },
+          onError: (error) => setErrorMessage(toMessage(error)),
+        },
+        controller.signal,
+      )
     } catch (error) {
-      setErrorMessage(toMessage(error))
+      if (!controller.signal.aborted) setErrorMessage(toMessage(error))
     } finally {
+      streamRef.current = null
+      useOptimizeStore.getState().endThinking()
       setIsBusy(false)
     }
   }

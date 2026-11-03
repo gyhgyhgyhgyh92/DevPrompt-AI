@@ -81,7 +81,7 @@ describe('ChatStream 结构与阶段', () => {
       },
       { id: 't2', kind: 'text', text: '七项取证完成', phase: 'PROBING' },
     ]
-    render(<ChatStream {...baseProps({ thinking, state: 'DONE' })} />)
+    render(<ChatStream {...baseProps({ thinking, state: 'DONE', isThinking: true })} />)
 
     // 思考文字在灰底块内，动作渲染为「命令已执行」
     expect(screen.getByText('符号表就绪，共 12 个符号')).toBeTruthy()
@@ -108,7 +108,7 @@ describe('ChatStream 结构与阶段', () => {
         phase: 'PROBING',
       },
     ]
-    render(<ChatStream {...baseProps({ thinking, state: 'DONE' })} />)
+    render(<ChatStream {...baseProps({ thinking, state: 'DONE', isThinking: true })} />)
 
     expect(screen.getByText('已读取 src/ui/Button.tsx')).toBeTruthy()
     await userEvent.setup().click(screen.getByRole('button', { name: /已读取/ }))
@@ -127,7 +127,7 @@ describe('ChatStream 结构与阶段', () => {
         phase: 'RETRIEVING',
       },
     ]
-    render(<ChatStream {...baseProps({ thinking, state: 'DONE' })} />)
+    render(<ChatStream {...baseProps({ thinking, state: 'DONE', isThinking: true })} />)
 
     await userEvent.setup().click(screen.getByRole('button', { name: /命令已执行/ }))
     expect(document.querySelectorAll('.trace-step__code--output')).toHaveLength(0)
@@ -148,7 +148,7 @@ describe('ChatStream 结构与阶段', () => {
 
   it('无阶段标签的旧事件归到当前阶段，不会丢失', () => {
     const thinking: ThinkingItem[] = [{ id: 't1', kind: 'text', text: '旧格式过程', phase: '' }]
-    render(<ChatStream {...baseProps({ thinking, state: 'DONE' })} />)
+    render(<ChatStream {...baseProps({ thinking, state: 'DONE', isThinking: true })} />)
 
     expect(screen.getByText('旧格式过程')).toBeTruthy()
   })
@@ -212,5 +212,66 @@ describe('ChatStream 结果与反问', () => {
   it('错误文案可见', () => {
     render(<ChatStream {...baseProps({ errorMessage: '网络连接失败' })} />)
     expect(screen.getByText('网络连接失败')).toBeTruthy()
+  })
+
+  it('结束后过程整组收成摘要行，点击展开回看（2026-11-04）', async () => {
+    const user = userEvent.setup()
+    const thinking: ThinkingItem[] = [
+      { id: 't1', kind: 'text', text: '符号表就绪', phase: 'RETRIEVING' },
+      {
+        id: 'a1',
+        kind: 'action',
+        title: '检索符号',
+        detail: 'rg -n Foo',
+        scope: '命中 2 行',
+        output: 'src/a.ts:1:Foo',
+        status: 'ok',
+        phase: 'RETRIEVING',
+      },
+    ]
+    render(<ChatStream {...baseProps({ thinking, state: 'DONE', elapsedSeconds: 12 })} />)
+
+    // 收起：阶段列表与过程都不渲染，只留一行摘要
+    expect(document.querySelector('.chat-reply__phases')).toBeNull()
+    expect(screen.queryByText('符号表就绪')).toBeNull()
+    expect(screen.getByText(/思考 12s · 1 个动作 · 1 个步骤/)).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: /思考 12s/ }))
+
+    expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
+    expect(screen.getByText('符号表就绪')).toBeTruthy()
+  })
+
+  it('进行中不折叠过程，也没有摘要行', () => {
+    const thinking: ThinkingItem[] = [
+      { id: 't1', kind: 'text', text: '符号表就绪', phase: 'RETRIEVING' },
+    ]
+    render(
+      <ChatStream {...baseProps({ thinking, state: 'PROBING', status: null, isThinking: true })} />,
+    )
+
+    expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
+    expect(document.querySelector('.chat-reply__process-toggle')).toBeNull()
+  })
+
+  it('失败动作按错误色渲染并带出退出码（2026-11-04）', () => {
+    const thinking: ThinkingItem[] = [
+      {
+        id: 'a1',
+        kind: 'action',
+        title: '检索符号',
+        detail: 'rg -n Foo --glob src',
+        scope: 'Exit code 1',
+        output: 'rg: no such file',
+        status: 'failed',
+        phase: 'RETRIEVING',
+      },
+    ]
+    render(
+      <ChatStream {...baseProps({ thinking, state: 'PROBING', status: null, isThinking: true })} />,
+    )
+
+    expect(screen.getByText('命令失败 · Exit code 1')).toBeTruthy()
+    expect(document.querySelector('.trace-step--failed')).not.toBeNull()
   })
 })

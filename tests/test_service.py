@@ -9,6 +9,7 @@ import pytest
 
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.decision.port import (
+    AskOption,
     AskQuestion,
     FactJudgment,
     FactProbeOutput,
@@ -27,7 +28,7 @@ from devprompt_ai.domain.models import (
     TurnRecord,
     TurnStore,
 )
-from devprompt_ai.domain.progress import ActionInfo, ProgressEvent
+from devprompt_ai.domain.progress import ActionInfo, ProgressEvent, ProgressSink
 from devprompt_ai.domain.ranking.recommend import REASON_SMALL_GAP
 from devprompt_ai.memory.turn_store import SQLiteTurnStore
 from devprompt_ai.service import _RANK_CACHE, FlowSnapshot, ForgeService
@@ -720,7 +721,7 @@ async def test_failed_ask_followup_aborts_session() -> None:
     snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
     assert snap.status == "ask"
 
-    async def _boom(session: FlowSession) -> FlowSnapshot:
+    async def _boom(session: FlowSession, *, progress: ProgressSink | None = None) -> FlowSnapshot:
         raise RuntimeError("reprobe down")
 
     svc._reprobe = _boom  # type: ignore[method-assign]
@@ -729,6 +730,58 @@ async def test_failed_ask_followup_aborts_session() -> None:
             "local", snap.session_id, {"请确认 test_file_exists": "x"}, request_id="r2"
         )
     assert store.items[snap.session_id].state == "ABORTED"
+
+
+def test_suppress_ask_requires_execution_and_complete_evidence() -> None:
+    """信息充足闸门（2026-11-03）：执行类 + 七项取证全过才抑制；设计类保留深挖。"""
+    svc, _ = _service()
+    ask = AskQuestion(
+        key="",
+        question="红色的落地方式选哪种?",
+        header="方案",
+        options=[AskOption(label="新增主题变量", description="改设计变量层")],
+    )
+    execution = FactProbeOutput(
+        judgments=[], overall_confidence=0.0, questions=[ask], task_kind="execution"
+    )
+    design = execution.model_copy(update={"task_kind": "design"})
+    passed = FactResult(key="target_file_exists", passed=True, evidence="x")
+    failed = FactResult(key="symbol_in_file", passed=False, evidence="y")
+
+    assert svc._suppress_ask(execution, [passed]) is True
+    assert svc._suppress_ask(execution, [passed, failed]) is False
+    assert svc._suppress_ask(execution, []) is False
+    assert svc._suppress_ask(design, [passed]) is False
+
+
+async def test_ask_suppressed_when_evidence_complete() -> None:
+    """模型仍想提问、但取证已全过且是执行类：不打断流程，记 suppressed 计数（MUST-19 不记原文）。"""
+
+    class _AskAnyway(FakeDecider):
+        async def probe_facts(self, sentence, facts, *, answered=None):  # type: ignore[no-untyped-def]
+            probe = await super().probe_facts(sentence, facts, answered=answered)
+            return probe.model_copy(
+                update={
+                    "questions": [
+                        AskQuestion(
+                            key="",
+                            question="红色的落地方式选哪种?",
+                            header="方案",
+                            options=[AskOption(label="新增主题变量", description="改变量层")],
+                        )
+                    ]
+                }
+            )
+
+    svc, store = _service(
+        decider=_AskAnyway([0.9] * 7),
+        existing={"src/ui/button.tsx", "src/ui/button.test.tsx"},
+    )
+    snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+
+    assert snap.status == "done"
+    assert store.items[snap.session_id].data["suppressed_questions"] == 1
+    assert store.items[snap.session_id].data["unknowns"] == []
 
 
 async def test_update_settings_carries_provider(
