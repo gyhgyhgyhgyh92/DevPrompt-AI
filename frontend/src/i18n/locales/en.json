@@ -1,4 +1,17 @@
 {
+  "common": {
+    "close": "Close"
+  },
+  "settings": {
+    "modal": { "title": "Settings" },
+    "nav": { "label": "Settings sections" },
+    "load_failed": "Failed to load settings",
+    "tab": {
+      "model-service": "Model service",
+      "appearance": "Appearance",
+      "security": "Flow & security"
+    }
+  },
   "errors": {
     "1001": "Missing required parameters, please check your input",
     "1002": "Invalid parameter type",

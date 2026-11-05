@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getSettings } from '../../api/endpoints'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { AppearancePanel } from './AppearancePanel'
@@ -14,23 +15,19 @@ export interface SettingsModalProps {
 
 type TabKey = 'model-service' | 'appearance' | 'security'
 
-interface TabItem {
-  key: TabKey
-  icon: string
-  label: string
+const TAB_KEYS = ['model-service', 'appearance', 'security'] as const
+const TAB_ICONS: Record<(typeof TAB_KEYS)[number], string> = {
+  'model-service': '⚙',
+  appearance: '◐',
+  security: '⚑',
 }
-
-const TABS: readonly TabItem[] = [
-  { key: 'model-service', icon: '⚙', label: '模型服务' },
-  { key: 'appearance', icon: '◐', label: '通用外观' },
-  { key: 'security', icon: '⚑', label: '流程与安全' },
-]
 
 /**
  * 设置中心模态（F-604）：左侧四项导航 + 右侧内容区；
  * Esc/✕ 关闭，打开时焦点入面板、关闭归还触发按钮（无障碍惯例，非状态逻辑）。
  */
 export function SettingsModal(props: SettingsModalProps) {
+  const { t } = useTranslation()
   const setSettings = useSettingsStore((state) => state.setSettings)
   const [activeTab, setActiveTab] = useState<TabKey>('model-service')
   const [loadError, setLoadError] = useState('')
@@ -68,7 +65,7 @@ export function SettingsModal(props: SettingsModalProps) {
         if (!cancelled) setSettings(next)
       })
       .catch((error: unknown) => {
-        if (!cancelled) setLoadError(errorMessage(error, '设置加载失败'))
+        if (!cancelled) setLoadError(errorMessage(error, t('settings.load_failed')))
       })
     return () => {
       cancelled = true
@@ -84,36 +81,36 @@ export function SettingsModal(props: SettingsModalProps) {
         data-tab={activeTab}
         role="dialog"
         aria-modal="true"
-        aria-label="设置"
+        aria-label={t('settings.modal.title')}
         ref={panelRef}
         tabIndex={-1}
       >
         <header className="settings-modal__header">
-          <h2 className="settings-modal__title">设置</h2>
+          <h2 className="settings-modal__title">{t('settings.modal.title')}</h2>
           <button
             type="button"
             className="settings-close"
-            aria-label="关闭"
+            aria-label={t('common.close')}
             onClick={props.onClose}
           >
             ✕
           </button>
         </header>
         <div className="settings-modal__body">
-          <nav className="settings-nav" aria-label="设置分组">
-            {TABS.map((tab) => (
+          <nav className="settings-nav" aria-label={t('settings.nav.label')}>
+            {TAB_KEYS.map((key) => (
               <button
-                key={tab.key}
+                key={key}
                 type="button"
-                aria-current={activeTab === tab.key ? 'page' : undefined}
+                aria-current={activeTab === key ? 'page' : undefined}
                 className={
-                  activeTab === tab.key
+                  activeTab === key
                     ? 'settings-nav__item settings-nav__item--active'
                     : 'settings-nav__item'
                 }
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => setActiveTab(key)}
               >
-                {tab.icon} {tab.label}
+                {TAB_ICONS[key]} {t(`settings.tab.${key}`)}
               </button>
             ))}
           </nav>

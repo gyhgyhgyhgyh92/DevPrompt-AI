@@ -1,4 +1,17 @@
 {
+  "common": {
+    "close": "关闭"
+  },
+  "settings": {
+    "modal": { "title": "设置" },
+    "nav": { "label": "设置分组" },
+    "load_failed": "设置加载失败",
+    "tab": {
+      "model-service": "模型服务",
+      "appearance": "通用外观",
+      "security": "流程与安全"
+    }
+  },
   "errors": {
     "1001": "缺少必填参数，请检查输入",
     "1002": "参数类型有误",
