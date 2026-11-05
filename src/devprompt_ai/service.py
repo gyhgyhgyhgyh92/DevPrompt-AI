@@ -2230,6 +2230,8 @@ class ForgeService:
         if not turn_id:
             return
         try:
+            # 入账必须在落库前：usage.llm_tokens 取自会话累计器，晚一步就恒为 0。
+            self._account_usage(session)
             await self._turns.finish(
                 turn_id,
                 state=session.state,

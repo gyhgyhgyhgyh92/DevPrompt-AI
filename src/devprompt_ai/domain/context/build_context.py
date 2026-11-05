@@ -30,6 +30,16 @@ _DIGEST_CHAR_LIMIT: Final = 80
 _REPLY_SUMMARY_LIMIT: Final = 260
 #: 动作序列在摘要里的条数上限（2026-11-05）：够回看「做过哪几步」，又不撑大摘要。
 _SUMMARY_STEPS_LIMIT: Final = 24
+#: 六维快照可落库的键（白名单）：只允许这 7 个数值维度，防止任意键混入 summary_json。
+_SENSORIUM_KEYS: Final = (
+    "momentum",
+    "pressure",
+    "coverage",
+    "complexity",
+    "familiarity",
+    "stability",
+    "score",
+)
 
 
 def estimate_tokens(text: str) -> int:
@@ -233,6 +243,9 @@ def summary_from_turn(data: dict[str, Any]) -> dict[str, Any]:
 
     只留三字段 + 决策/否决：`target / conclusion / open / decision / rejected`。
     不含原句与绝对路径（MUST-19）——`target` 只取符号名。
+
+    另附三块**观测数据**（2026-11-05）：`level / claims / sensorium`，全为数值，
+    供离线统计声明率与六维分布用；上下文装配只按字段取用既有键，不进 prompt。
     """
     target_data = data.get("target")
     target = str(target_data.get("name", "")) if isinstance(target_data, dict) else ""
@@ -265,6 +278,26 @@ def summary_from_turn(data: dict[str, Any]) -> dict[str, Any]:
     # 动作序列（2026-11-05 形态层）：历史轮可回看「这一步在做什么」。
     # 随摘要一起落进 summary_json——**不新增表列**（零 DDL 迁移、零旧库兼容风险）。
     steps = [item for item in data.get("agent_steps", []) if isinstance(item, dict)]
+
+    # 六维快照（2026-11-05）：纯数值，白名单取键，不含原句与绝对路径（MUST-19）。
+    sensorium_raw = data.get("sensorium")
+    sensorium: dict[str, float] = {}
+    if isinstance(sensorium_raw, dict):
+        for key in _SENSORIUM_KEYS:
+            value = sensorium_raw.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                sensorium[key] = float(value)
+
+    # 断言对账（2026-11-05）：只取计数与布尔标记，uncovered 文本不进库。
+    claim_raw = data.get("claim_report")
+    claims: dict[str, Any] = {}
+    if isinstance(claim_raw, dict):
+        claims = {
+            "total": int(claim_raw.get("total", 0)),
+            "covered": int(claim_raw.get("covered", 0)),
+            "undeclared": bool(claim_raw.get("undeclared", False)),
+        }
+
     return {
         "target": target,
         "conclusion": _clip(conclusion, _SUMMARY_CHAR_LIMIT),
@@ -276,4 +309,9 @@ def summary_from_turn(data: dict[str, Any]) -> dict[str, Any]:
         # 用回答正文补足——否则下一轮回看历史只知道「答过」，不知道「答了什么」。
         "reply": _clip(reply, _REPLY_SUMMARY_LIMIT),
         "steps": steps[:_SUMMARY_STEPS_LIMIT],
+        # 观测数据（2026-11-05）：六维快照与断言对账随摘要落库，供离线统计阈值用；
+        # 上下文装配只按字段取用既有键，故不影响 prompt 与 API 响应。
+        "level": str(data.get("level", "")),
+        "claims": claims,
+        "sensorium": sensorium,
     }
