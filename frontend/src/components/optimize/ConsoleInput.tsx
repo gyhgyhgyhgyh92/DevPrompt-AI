@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { putSettings, scanProject } from '../../api/endpoints'
 import { nativePickErrorText, pickFolderViaNative } from '../../api/nativeFolder'
 import { useSettingsStore } from '../../stores/useSettingsStore'
@@ -7,7 +8,7 @@ import { ModelPicker, type ModelTuning } from './ModelPicker'
 import './ConsoleInput.css'
 
 /** 启动页主视觉固定文案（逐字，spec Task 3）：作为输入区占位展示，用户输入时隐藏。 */
-const PROMPT_HINT = '帮你优化每一段提示词，从理清需求到上线-端到端交付生产级结果'
+const PROMPT_HINT_KEY = 'console.prompt_hint'
 
 /** 输入自适应高度区间（1~6 行），超出由 textarea 内部滚动（上限见 ConsoleInput.css）。 */
 const MIN_TEXT_ROWS = 1
@@ -63,6 +64,7 @@ export function ConsoleInput({
   disabled = false,
   onSubmit,
 }: ConsoleInputProps) {
+  const { t } = useTranslation()
   // 订阅 settings 单字段（selector 内禁返回新引用：`?? []` 会触发无限重渲染，MUST-16）
   const settings = useSettingsStore((s) => s.settings)
   const setSettings = useSettingsStore((s) => s.setSettings)
@@ -118,7 +120,7 @@ export function ConsoleInput({
       setSettings(next)
       setProjectError(null)
     } catch {
-      setProjectError('参数保存失败，请稍后重试')
+      setProjectError(t('console.save_failed'))
     }
   }
 
@@ -130,7 +132,7 @@ export function ConsoleInput({
       setSettings(next)
       setProjectError(null)
     } catch {
-      setProjectError('模型切换失败，请稍后重试')
+      setProjectError(t('console.switch_failed'))
     } finally {
       setSwitchingModel(false)
     }
@@ -148,7 +150,7 @@ export function ConsoleInput({
       setProjectError(null)
     } catch (error) {
       // 按错误码查文案（2001 路径不存在 / 2004 工具失败 / 其余降级），不再一律说「路径不存在」
-      setProjectError(errorMessage(error, '项目路径不存在或无法扫描'))
+      setProjectError(errorMessage(error, t('console.scan_failed')))
     }
   }
 
@@ -185,11 +187,11 @@ export function ConsoleInput({
       >
         <textarea
           ref={textRef}
-          aria-label="优化原句"
+          aria-label={t('console.aria_sentence')}
           className="console-input__text"
           value={sentence}
           rows={textRows(sentence)}
-          placeholder={PROMPT_HINT}
+          placeholder={t(PROMPT_HINT_KEY)}
           disabled={disabled}
           onChange={(event) => setSentence(event.currentTarget.value)}
         />
@@ -206,7 +208,7 @@ export function ConsoleInput({
           <button
             type="submit"
             className="console-input__send"
-            aria-label="发送"
+            aria-label={t('console.aria_send')}
             disabled={isDisabled}
           >
             <span aria-hidden="true">↑</span>
@@ -217,7 +219,7 @@ export function ConsoleInput({
           <button
             type="button"
             className="console-input__folder-toggle"
-            aria-label="选择文件夹（本地）"
+            aria-label={t('console.aria_pick_folder')}
             title={project.trim() !== '' ? project : undefined}
             onClick={() => void handlePickFolder()}
             disabled={isPickingFolder}
@@ -225,10 +227,10 @@ export function ConsoleInput({
             <FolderIcon />
             <span>
               {isPickingFolder
-                ? '正在打开…'
+                ? t('console.opening')
                 : project.trim() !== ''
                   ? baseName(project)
-                  : '选择文件夹（本地）'}
+                  : t('console.pick_folder')}
             </span>
           </button>
         </div>

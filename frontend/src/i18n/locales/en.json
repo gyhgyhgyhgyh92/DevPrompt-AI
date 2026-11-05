@@ -6,6 +6,17 @@
   "optimize": {
     "stop_generation": "Stop generating"
   },
+  "console": {
+    "prompt_hint": "Polish every prompt end-to-end — from clarifying needs to shipping production results",
+    "save_failed": "Failed to save settings, please retry later",
+    "switch_failed": "Failed to switch model, please retry later",
+    "scan_failed": "Project path does not exist or cannot be scanned",
+    "aria_sentence": "Requirement sentence",
+    "aria_send": "Send",
+    "aria_pick_folder": "Choose folder (local)",
+    "opening": "Opening…",
+    "pick_folder": "Choose folder (local)"
+  },
   "chat": {
     "aria_reply": "AI reply",
     "elapsed": "Elapsed {{seconds}}s",
