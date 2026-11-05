@@ -37,13 +37,13 @@ def test_openapi_covers_eighteen_operations() -> None:
     """
     doc = create_app().openapi()
     paths: dict[str, Any] = doc["paths"]
-    assert len(paths) == 15
+    assert len(paths) == 16
     assert all(p.startswith("/api/v1/") for p in paths)
     operations = sum(
         len([m for m in ops if m in {"get", "put", "post", "patch", "delete"}])
         for ops in paths.values()
     )
-    assert operations == 18
+    assert operations == 19
     assert {"get", "delete"} <= set(paths["/api/v1/history"])
     assert "post" in paths["/api/v1/followup/{flow_id}/stream"]
     assert "get" in paths["/api/v1/settings/models/catalog"]
@@ -128,9 +128,9 @@ class TestContextWindowTierContract:
         `/history` 路径上（14/17）；2026-11-03 新增 /followup/{flow_id}/stream 后
         为 **15 路径 / 18 操作**。"""
         doc = create_app().openapi()
-        assert len(doc["paths"]) == 15
+        assert len(doc["paths"]) == 16
         operations = sum(
             len([k for k in v if k in {"get", "post", "put", "patch", "delete"}])
             for v in doc["paths"].values()
         )
-        assert operations == 18
+        assert operations == 19

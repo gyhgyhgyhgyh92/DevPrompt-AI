@@ -68,7 +68,9 @@ class FakeStore:
         self.items[session.session_id] = session
         return True
 
-    async def list_recent(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
+    async def list_recent(
+        self, user_id: str, *, limit: int = 50, offset: int = 0
+    ) -> list[SessionSummary]:
         return []
 
     async def delete(self, session_id: str) -> bool:
@@ -142,6 +144,10 @@ class FakeGenerator:
         return MultiVariantDraft(
             variants=[VariantDraft(title="t", body="b", changes=["x"], level=lv) for lv in levels]
         )
+
+    async def answer(self, ctx: GenerationContext) -> str:
+        add_llm_tokens(self.llm_tokens_per_call)
+        return "回答"
 
 
 class FakeRunner:

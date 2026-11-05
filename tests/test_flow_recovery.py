@@ -85,7 +85,9 @@ class FakeStore:
         self.items[session.session_id] = session
         return True
 
-    async def list_recent(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
+    async def list_recent(
+        self, user_id: str, *, limit: int = 50, offset: int = 0
+    ) -> list[SessionSummary]:
         return []
 
     async def delete(self, session_id: str) -> bool:
@@ -170,6 +172,9 @@ class FixedGenerator:
                 for idx, level in enumerate(levels)
             ]
         )
+
+    async def answer(self, ctx: GenerationContext) -> str:
+        return "回答"
 
 
 class FakeRunner:

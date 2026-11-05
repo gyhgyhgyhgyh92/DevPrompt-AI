@@ -2,8 +2,8 @@
 
 from fakes import FakeCommandRunner, FakeFileReader
 
-from devprompt_ai.domain.models import CodeLocation, FactKey
-from devprompt_ai.domain.retrieval.facts import verify_facts
+from devprompt_ai.domain.models import CodeLocation, FactKey, FactResult
+from devprompt_ai.domain.retrieval.facts import is_evidence_complete, verify_facts
 
 _LOC_TRUE = CodeLocation(
     symbol_name="SubmitButton",
@@ -108,3 +108,62 @@ async def test_no_unknown_verdict_and_evidence_present() -> None:
         "file_type_matches",
         "test_file_exists",
     }
+
+
+async def test_backend_file_marks_style_facts_not_applicable() -> None:
+    """非前端文件：token / testid / 状态样式三项不适用，其余四项照常判定。"""
+    loc = CodeLocation(
+        symbol_name="normalize_fit",
+        path="src/app/score.py",
+        definition_line=12,
+        test_paths=["src/app/score_test.py"],
+    )
+    reader = FakeFileReader(
+        {"src/app/score.py": "def normalize_fit(value):\n    return value"},
+        existing={"src/app/score.py", "src/app/score_test.py"},
+    )
+    runner = FakeCommandRunner(
+        {("rg", "symbol:src/app/score.py"): "src/app/score.py:12:def normalize_fit"}
+    )
+
+    results = await verify_facts(loc, "把打分归一化改一下", runner, reader)
+
+    by_key = {r.key: r for r in results}
+    frontend_keys: tuple[FactKey, ...] = (
+        "target_file_exists",
+        "symbol_in_file",
+        "file_type_matches",
+        "test_file_exists",
+    )
+    style_keys: tuple[FactKey, ...] = ("token_defined", "has_data_testid", "has_state_styles")
+    for key in frontend_keys:
+        assert by_key[key].applicable is True, key
+    for key in style_keys:
+        assert by_key[key].applicable is False, key
+    assert is_evidence_complete(results) is True, "适用项全过即完备"
+    assert all(r.evidence != "" for r in results)
+
+
+async def test_frontend_file_keeps_all_facts_applicable() -> None:
+    """前端文件保持改造前行为：七项全部适用。"""
+    reader = FakeFileReader(
+        {"src/ui/Button.tsx": _FILE},
+        existing={"src/ui/Button.tsx", "src/ui/Button.test.tsx"},
+    )
+    runner = FakeCommandRunner(_routes(token_defined=True))
+
+    results = await verify_facts(_LOC_TRUE, "把提交按钮改为 primary-500", runner, reader)
+
+    assert all(r.applicable for r in results)
+
+
+def test_is_evidence_complete_ignores_not_applicable_failures() -> None:
+    facts = [
+        FactResult("target_file_exists", True, "file=a.py"),
+        FactResult("symbol_in_file", True, "a.py:1:x"),
+        FactResult("token_defined", False, "未找到", applicable=False),
+    ]
+
+    assert is_evidence_complete(facts) is True
+    assert is_evidence_complete([]) is False
+    assert is_evidence_complete([FactResult("symbol_in_file", False, "")]) is False

@@ -10,7 +10,7 @@ import httpx
 import pytest
 
 from devprompt_ai.domain.errors import DevPromptError, StateError
-from devprompt_ai.domain.models import SessionSummary, TurnRecord
+from devprompt_ai.domain.models import Page, SessionSummary, TurnRecord
 from devprompt_ai.domain.progress import ActionInfo, ProgressEvent
 from devprompt_ai.interfaces.api import health, routes
 from devprompt_ai.interfaces.api.app import create_app
@@ -90,8 +90,11 @@ class FakeForgeService:
         request_id: str,
         progress: Any = None,
         session_id: str | None = None,
+        base_turn_id: str = "",
     ) -> FlowSnapshot:
-        self.optimize_calls.append({"session_id": session_id, "sentence": sentence})
+        self.optimize_calls.append(
+            {"session_id": session_id, "sentence": sentence, "base_turn_id": base_turn_id}
+        )
         return self._next()
 
     async def ask_followup(
@@ -150,21 +153,35 @@ class FakeForgeService:
         merged.update(values)
         return merged
 
-    async def list_history(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
-        return [
-            SessionSummary(
-                session_id="s1",
-                state="DONE",
-                project="demo",
-                updated_at="2026-10-12T00:00:00Z",
-                title="示例标题",
-                pinned=True,
-                project_root="/tmp/demo",
-            )
-        ]
+    async def list_history(
+        self, user_id: str, *, limit: int = 50, offset: int = 0
+    ) -> Page[SessionSummary]:
+        return Page(
+            items=(
+                SessionSummary(
+                    session_id="s1",
+                    state="DONE",
+                    project="demo",
+                    updated_at="2026-10-12T00:00:00Z",
+                    title="示例标题",
+                    pinned=True,
+                    project_root="/tmp/demo",
+                ),
+            ),
+            has_more=False,
+            limit=limit,
+            offset=offset,
+        )
 
-    async def list_turns(self, user_id: str, session_id: str) -> list[TurnRecord]:
-        return list(self.turns)
+    async def list_turns(
+        self, user_id: str, session_id: str, *, limit: int = 20, offset: int = 0
+    ) -> Page[TurnRecord]:
+        return Page(
+            items=tuple(self.turns),
+            has_more=False,
+            limit=limit,
+            offset=offset,
+        )
 
     async def load_turn(self, user_id: str, turn_id: str) -> TurnRecord:
         for turn in self.turns:
@@ -367,8 +384,8 @@ async def test_get_history_returns_summaries(
     """T6-11/T1.4：GET /history 仅 id/时间/state/名/路径/标题/置顶（无原句明文，MUST-19）。"""
     resp = await client.get("/api/v1/history")
     assert resp.status_code == 200
-    items = resp.json()["data"]
-    assert items == [
+    data = resp.json()["data"]
+    assert data["items"] == [
         {
             "session_id": "s1",
             "state": "DONE",
@@ -379,7 +396,8 @@ async def test_get_history_returns_summaries(
             "project_root": "/tmp/demo",
         }
     ]
-    assert "sentence" not in items[0]
+    assert data["has_more"] is False
+    assert "sentence" not in data["items"][0]
 
 
 async def test_patch_history_rename_and_pin_passthrough(
@@ -552,11 +570,13 @@ async def test_session_turns_are_summaries_only(
 
     assert resp.status_code == 200
     data = resp.json()["data"]
-    assert [turn["turn_id"] for turn in data] == ["t1"]
-    assert data[0]["target"] == "Button"
-    assert data[0]["open_items"] == ["对比度"]
-    assert "input" not in data[0]
-    assert "variants" not in data[0]
+    items = data["items"]
+    assert [turn["turn_id"] for turn in items] == ["t1"]
+    assert items[0]["target"] == "Button"
+    assert items[0]["open_items"] == ["对比度"]
+    assert "input" not in items[0]
+    assert "variants" not in items[0]
+    assert data["has_more"] is False
 
 
 async def test_turn_detail_carries_body(

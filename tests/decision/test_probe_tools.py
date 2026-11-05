@@ -51,7 +51,8 @@ async def test_tool_call_becomes_questions(monkeypatch: pytest.MonkeyPatch) -> N
     assert [q.question for q in result.questions] == ["改动范围?"]
     assert result.questions[0].options[0].label == "只改一处"
     assert result.ask_call_id == "call-1"
-    assert result.overall_confidence == 0.0  # 工具调用那一轮没有 judgments
+    assert result.overall_confidence is None
+    assert result.confidence_source == "no_data"  # 工具调用那一轮没有 judgments
 
 
 async def test_invalid_arguments_become_no_question(monkeypatch: pytest.MonkeyPatch) -> None:

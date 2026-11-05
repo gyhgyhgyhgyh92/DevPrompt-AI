@@ -52,7 +52,9 @@ class FakeStore:
         self.items[session.session_id] = session
         return True
 
-    async def list_recent(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
+    async def list_recent(
+        self, user_id: str, *, limit: int = 50, offset: int = 0
+    ) -> list[SessionSummary]:
         out: list[SessionSummary] = []
         for s in self.items.values():
             if s.user_id != user_id:
@@ -159,6 +161,9 @@ class FakeGenerator:
         return MultiVariantDraft(
             variants=[VariantDraft(title="t", body="b", changes=["x"], level=lv) for lv in levels]
         )
+
+    async def answer(self, ctx):  # type: ignore[no-untyped-def]
+        return "回答"
 
 
 class FakeRunner:
@@ -396,6 +401,48 @@ async def test_second_turn_offers_single_variant(tmp_path: Any) -> None:
     assert second.ranking is None
 
 
+async def test_base_turn_id_continues_from_that_turn(tmp_path: Any) -> None:
+    """以历史轮为基线新开一轮：历史轮一条不少，基线轮的方案作为起点。"""
+    turns = SQLiteTurnStore(str(tmp_path / "turns.db"))
+    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, turns=turns)
+
+    first = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+    base_id = str(first.current_turn_id)
+
+    continued = await svc.optimize(
+        "local",
+        ".",
+        "把提交按钮改成 primary-600",
+        request_id="r2",
+        session_id=first.session_id,
+        base_turn_id=base_id,
+    )
+
+    assert continued.state in {"DONE", "ASKING"}
+    # 历史轮一条不少（turn 表 append-only，MUST-32）
+    stored = await turns.list_for_session(first.session_id)
+    assert len(stored) == 2
+    assert stored[0].turn_id == base_id
+
+
+async def test_base_turn_id_of_other_session_raises_6003(tmp_path: Any) -> None:
+    """基线轮不属于本用户 → 归属校验拒绝（6003）。"""
+    turns = SQLiteTurnStore(str(tmp_path / "turns.db"))
+    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, turns=turns)
+
+    first = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+
+    with pytest.raises(StateError):
+        await svc.optimize(
+            "local",
+            ".",
+            "再改一次",
+            request_id="r2",
+            session_id=first.session_id,
+            base_turn_id="turn-does-not-exist",
+        )
+
+
 async def test_direction_conflict_reopens_three_variants(tmp_path: Any) -> None:
     """用户表达方向性分歧时，第二轮重新展开三套。"""
     turns = SQLiteTurnStore(str(tmp_path / "turns.db"))
@@ -624,7 +671,7 @@ async def test_list_history_returns_summaries() -> None:
     """GET /history 转正：会话摘要脱敏（title 为原句截断，MUST-19 修订后允许）。"""
     svc, _ = _service()
     await svc.optimize("local", "/tmp/demo-proj", "改提交按钮", request_id="r1")
-    items = await svc.list_history("local")
+    items = (await svc.list_history("local")).items
     assert len(items) == 1
     assert items[0].state in {"ASKING", "DONE"}
     assert items[0].project == "/tmp/demo-proj"  # FakeStore 摘要直传；真实 store 取 basename
@@ -980,7 +1027,7 @@ async def test_rename_session_sets_custom_title() -> None:
     snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
     await svc.rename_session("local", snap.session_id, "  我的新标题  ")
     assert store.items[snap.session_id].data["custom_title"] == "我的新标题"  # strip
-    items = await svc.list_history("local")
+    items = (await svc.list_history("local")).items
     assert items[0].title == "我的新标题"
 
 
@@ -997,7 +1044,7 @@ async def test_pin_session_sets_flag_and_orders_first() -> None:
     first = await svc.optimize("local", ".", "第一个会话", request_id="r1")
     await svc.optimize("local", ".", "第二个会话", request_id="r2")
     await svc.pin_session("local", first.session_id, True)
-    items = await svc.list_history("local")
+    items = (await svc.list_history("local")).items
     assert store.items[first.session_id].data["pinned"] is True
     assert items[0].session_id == first.session_id
     assert items[0].pinned is True
@@ -1029,7 +1076,7 @@ async def test_delete_session_removes() -> None:
     snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
     await svc.delete_session("local", snap.session_id)
     assert snap.session_id not in store.items
-    assert await svc.list_history("local") == []
+    assert (await svc.list_history("local")).items == ()
 
 
 async def test_rename_session_retries_cas_once() -> None:
@@ -1086,3 +1133,24 @@ async def test_resume_tolerates_legacy_ranking_with_pref() -> None:
     assert snap.status == "done"
     assert snap.ranking is not None
     assert (snap.ranking.variant, snap.ranking.fit, snap.ranking.total) == ("B", 0.75, 0.75)
+
+
+async def test_snapshot_carries_current_turn_id(tmp_path: Any) -> None:
+    """多轮归属（2026-11-04）：快照带本轮 turn id，前端据此决定谁进历史列表、谁进对话区。"""
+    turns = SQLiteTurnStore(str(tmp_path / "turns.db"))
+    svc, _ = _service(turns=turns)
+
+    snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+
+    records = (await svc.list_turns("local", snap.session_id)).items
+    assert len(records) == 1
+    assert snap.current_turn_id == records[0].turn_id
+
+
+async def test_snapshot_current_turn_id_none_without_turn_store() -> None:
+    """无 turn 存储时归属为 None：前端保留原行为，不会误判。"""
+    svc, _ = _service()
+
+    snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+
+    assert snap.current_turn_id is None

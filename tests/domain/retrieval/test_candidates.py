@@ -18,6 +18,32 @@ def _sym(name: str, path: str, kind: str = "function") -> Symbol:
     return Symbol(name=name, path=path, line=1, kind=cast(SymbolKind, kind))
 
 
+def test_candidates_carry_symbol_signature() -> None:
+    """签名必须原样带到候选上——它就是排序阶段要的判别性上下文。"""
+    syms = [
+        Symbol(
+            name="SubmitButton",
+            path="src/ui/button.tsx",
+            line=1,
+            kind="function",
+            signature="(props: ButtonProps)",
+        )
+    ]
+
+    result = build_candidates("把提交按钮 SubmitButton 的颜色改掉", syms)
+
+    assert result.candidates[0].signature == "(props: ButtonProps)"
+
+
+def test_candidates_without_signature_keep_empty() -> None:
+    """没有签名的符号 → 候选签名为空（老版 ctags 降级路径）。"""
+    syms = [_sym("SubmitButton", "src/ui/button.tsx")]
+
+    result = build_candidates("把提交按钮 SubmitButton 的颜色改掉", syms)
+
+    assert result.candidates[0].signature == ""
+
+
 def test_exact_symbol_match_ranks_first() -> None:
     syms = [_sym("SubmitButton", "src/ui/button.tsx"), _sym("UserList", "src/user/list.tsx")]
     result = build_candidates("把提交按钮 SubmitButton 的颜色改掉", syms)

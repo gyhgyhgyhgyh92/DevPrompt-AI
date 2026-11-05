@@ -52,9 +52,9 @@ async def test_create_load_save_cas_cycle(store) -> None:  # type: ignore[no-unt
     assert loaded.version == 1
     again = await store.load("it-case-1")
     assert again is not None
-    await transition(again, FlowState.RETRIEVING, store)
+    await transition(again, FlowState.AGENTIC, store)
     final = await store.load("it-case-1")
-    assert final is not None and final.state == "RETRIEVING"
+    assert final is not None and final.state == "AGENTIC"
 
 
 async def test_load_missing_returns_none(store) -> None:  # type: ignore[no-untyped-def]

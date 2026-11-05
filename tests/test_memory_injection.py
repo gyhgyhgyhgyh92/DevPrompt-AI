@@ -117,6 +117,10 @@ async def test_l2_project_notes_off_flow_completes() -> None:
             "conservative",
             "history_block",
             "memory_block",
+            # 2026-11-04 多轮继承：上一轮方案正文（迭代轮引用，首轮为空串）
+            "previous_variants",
+            # 2026-11-05 推荐依据：回答「为什么选 B」时必须看到判定结果
+            "ranking_summary",
         }
         assert dumped["clarifications"] == {}
         assert "note" not in dumped["memory_block"]
