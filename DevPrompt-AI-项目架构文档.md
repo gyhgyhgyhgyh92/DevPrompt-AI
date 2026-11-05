@@ -308,14 +308,14 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 
 | 类型 | 规则 | 示例 |
 |---|---|---|
-| Python 模块 | `snake_case` | `preference_store.py` |
+| Python 模块 | `snake_case` | `session_store.py` |
 | Python 测试 | `test_<模块>.py` | `test_ranking.py` |
 | Python 模板 | `snake_case` 存放于 `templates/` | `variant_b.py` |
 | 前端组件 | `PascalCase.tsx` | `PromptCard.tsx` |
 | 前端页面 | `PascalCase.tsx` | `OptimizePage.tsx` |
 | 前端 Hook | `useXxx.ts` | `useOptimizeStore.ts` |
 | 前端类型 | `PascalCase.ts` 或小写分组 | `optimize.ts` |
-| 前端 Store | `useXxxStore.ts` | `usePreferenceStore.ts` |
+| 前端 Store | `useXxxStore.ts` | `useSettingsStore.ts` |
 | 配置文件 | `lowercase` 或 `kebab-case` | `pyproject.toml`、`.env.example` |
 
 **禁止**：文件名含中文、空格、特殊字符；同一目录下混用 `kebab-case` 与 `snake_case`。
@@ -839,7 +839,7 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 - 每个读写操作在 `asyncio.to_thread` 中独立开连接（`sqlite3.connect(db_path, timeout=5)`），用完即关
 - 首次使用执行 `PRAGMA journal_mode=WAL` + `busy_timeout=5000`，并经 `memory/schema.py` 幂等建表
 - L1 Session 走自定义 `SQLiteSessionStore`（`memory/session_store.py`，经 `SessionStore` Protocol 注入——SDK 自带 Session 实现面向对话历史，语义不匹配）
-- L3 偏好向量走 `memory/preference_store.py` 封装，不向上层暴露连接对象或游标
+- L2 项目笔记走 `memory/project_note_store.py` 封装，不向上层暴露连接对象或游标（L3 偏好向量已于 2026-10-21 整层移除，见 F-503）
 - 写操作 CAS：`UPDATE ... WHERE session_id=? AND version=?`，0 行更新即版本冲突（6001，MUST-11）
 
 **迁移策略**：
@@ -1140,7 +1140,6 @@ src/devprompt_ai/
 | `domain/retrieval/ports.py` | `FileReader.exists(path) -> bool` | `harness/process.py` | 文件存在性检查 |
 | `domain/decision/port.py` | `rank_components` / `probe_facts` / `score_prompts` | `decision/fallback.py` | 决策层三能力 |
 | `domain/generate/ports.py` | `generate(prompt) -> str` | `harness/llm.py` | LLM 单次调用 |
-| `domain/ranking/ports.py` | `get_preference` / `save_preference` | `memory/preference_store.py` | 偏好向量读写 |
 | `domain/model_catalog/ports.py` | `ModelCatalogFetcher.fetch(base_url, api_key, timeout)` | `harness/models_client.py` | 拉厂商 `/models` 模型清单（2026-10-17） |
 
 **注入位置**：`ForgeService.__init__` 接收全部 Protocol 实例，默认取生产实现，测试时注入 mock。
@@ -1344,8 +1343,7 @@ styles    types      utils     utils     utils
 | 三套方案内容 | 全局 | 多组件需读取 |
 | 评分明细 | 全局 | 评分组件需读取 |
 | SSE 连接状态 | 全局（`useOptimizeStore`） | 跨页面共享 |
-| 偏好向量 | 全局（`usePreferenceStore`） | 两个页面都要读 |
-| 历史采纳记录 | 全局（`usePreferenceStore`） | 与偏好同属 usePreferenceStore，跨页面共享 |
+| 历史会话列表 | 全局（`useHistoryStore`） | 两页共享（2026-10-21 起承接原 usePreferenceStore 的持久职责） |
 | 输入框内容 | **局部** | 只有输入组件关心 |
 | 折叠展开状态 | **局部** | 每张卡片独立 |
 | 评分明细是否展开 | **局部** | 每张卡片独立 |
@@ -1439,7 +1437,7 @@ const { variants, ranking } = useOptimizeStore(
 | Store | 负责 | 生命周期 |
 |---|---|---|
 | `useOptimizeStore` | 单次优化流程的全部状态 | 流程开始时创建，`reset()` 时清空 |
-| `usePreferenceStore` | 偏好向量与历史采纳记录 | 应用级，跨页面持久 |
+| `useSettingsStore` | 外观与流程参数（localStorage 持久化 + 后端 settings 视图） | 应用级，跨页面持久 |
 
 **不拆第三个 store 的理由**：SSE 状态属于优化流程，不独立；表单草稿属于组件局部，不进 store。
 
@@ -1449,13 +1447,13 @@ const { variants, ranking } = useOptimizeStore(
 
 ```typescript
 // 允许：在 hook 中组合两个 store
-export function useAdoptVariant() {
-  const variants = useOptimizeStore((s) => s.variants)
-  const applyPreference = usePreferenceStore((s) => s.applyAdoption)
+export function useProjectLauncher() {
+  const project = useOptimizeStore((s) => s.project)
+  const setAppearance = useSettingsStore((s) => s.setAppearance)
 
-  return async (variantKey: VariantKey) => {
-    await adoptApi.submit({ variantKey, flowId: ... })
-    applyPreference(variantKey)   // 更新偏好向量
+  return (projectPath: string) => {
+    setAppearance({ ...useSettingsStore.getState().appearance })   // 仅示例：跨 store 组合写法
+    return projectPath
   }
 }
 ```
@@ -1468,7 +1466,6 @@ export function useAdoptVariant() {
 
 | 数据 | 持久化 | 位置 | 原因 |
 |---|---|---|---|
-| 偏好向量 | ✅ 持久 | 后端 SQLite（L3） | 用户长期习惯，不应丢 |
 | 历史记录 | ✅ 持久 | 后端 SQLite | 有查阅价值 |
 | 当前流程阶段 | ⚠️ 部分 | 后端 L1 Session | 服务端持久，页面刷新后从后端恢复 |
 | 三套方案内容 | ⚠️ 部分 | 后端 L1 Session | 同上 |
