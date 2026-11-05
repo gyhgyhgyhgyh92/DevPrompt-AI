@@ -189,6 +189,14 @@ class TestGuardrail:
         rich = AppConfig(_env_file=None, followup_cost_budget=1000.0)  # type: ignore[call-arg]
         assert GuardrailState(rounds=0, cost_tokens=1000).should_trigger(rich) is True
 
+    def test_cost_budget_enabled_by_default(self) -> None:
+        """2026-11-05：成本护栏随默认配置启用（此前默认 0 = 禁用）。"""
+        cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
+        assert cfg.followup_cost_budget > 0
+        budget = int(cfg.followup_cost_budget)
+        assert GuardrailState(rounds=0, cost_tokens=budget).should_trigger(cfg) is True
+        assert GuardrailState(rounds=0, cost_tokens=budget - 1).should_trigger(cfg) is False
+
     def test_reset(self) -> None:
         state = GuardrailState(rounds=10)
         state.reset()

@@ -334,7 +334,7 @@ class ProcessSettings(BaseModel):
     """F-604 流程参数视图（app_settings 表持久化）。"""
 
     followup_soft_round_guard: int = 10
-    followup_cost_budget: float = 0.0
+    followup_cost_budget: float = 30_000.0
     telemetry: bool = True
 
 
