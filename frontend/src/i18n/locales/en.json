@@ -1,6 +1,42 @@
 {
   "common": {
-    "close": "Close"
+    "close": "Close",
+    "request_failed": "Request failed"
+  },
+  "optimize": {
+    "stop_generation": "Stop generating"
+  },
+  "chat": {
+    "aria_reply": "AI reply",
+    "elapsed": "Elapsed {{seconds}}s",
+    "done": "done",
+    "thinking_meta": "Thinking {{seconds}} · {{actions}} actions · {{steps}} steps",
+    "phases": "Execution timeline",
+    "probe_complete": "All seven fact checks passed; no open questions found",
+    "tag_done": "Done",
+    "tag_aborted": "Aborted",
+    "tag_running": "Running",
+    "planning": "Planning next step…",
+    "phase": {
+      "INIT": { "label": "Initialize", "hint": "Create session and turn, verify parameters" },
+      "RETRIEVING": { "label": "Retrieve code", "hint": "Scan symbol table, cap candidates at 25" },
+      "PROBING": { "label": "Probe facts", "hint": "Seven fact checks, judge if info suffices" },
+      "ASKING": { "label": "Awaiting answers", "hint": "Information gaps found, waiting for you" },
+      "CONFIRMING": {
+        "label": "Integrating answers",
+        "hint": "Re-probing to see if gaps are filled"
+      },
+      "GENERATING": { "label": "Generating plans", "hint": "One call produces 1–3 variants" },
+      "RANKING": {
+        "label": "Scoring variants",
+        "hint": "Rank by fit score and mark recommendation"
+      },
+      "DONE": { "label": "Completed", "hint": "Result produced" },
+      "ABORTED": {
+        "label": "Aborted",
+        "hint": "Abnormal or connection lost; session closed safely"
+      }
+    }
   },
   "settings": {
     "modal": { "title": "Settings" },

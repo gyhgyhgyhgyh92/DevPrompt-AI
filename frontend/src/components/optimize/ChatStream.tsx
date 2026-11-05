@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import type {
   DeliveryGatePayload,
@@ -27,17 +28,17 @@ const PHASES = [
   'ABORTED',
 ] as const
 
-/** 状态的中文名与「这一步在做什么」（2026-10-20：前端全中文，过程可读）。 */
-const PHASE_META: Record<(typeof PHASES)[number], { label: string; hint: string }> = {
-  INIT: { label: '初始化', hint: '建立会话与轮次，核对参数' },
-  RETRIEVING: { label: '检索代码', hint: '扫描符号表，候选压到 25 条' },
-  PROBING: { label: '研判信息', hint: '七项取证，判断信息是否足够' },
-  ASKING: { label: '等待确认', hint: '存在信息缺口，等你回答' },
-  CONFIRMING: { label: '整理答复', hint: '重新研判，缺口是否补齐' },
-  GENERATING: { label: '生成方案', hint: '一次调用产出 1~3 套方案' },
-  RANKING: { label: '评估推荐', hint: '按适配度与偏好打分、标推荐' },
-  DONE: { label: '已完成', hint: '结果已产出' },
-  ABORTED: { label: '已中止', hint: '异常或连接断开，会话已安全关闭' },
+/** 状态的展示键与「这一步在做什么」说明键（文案在语言包，2026-11-06 多语言）。 */
+const PHASE_META: Record<(typeof PHASES)[number], { labelKey: string; hintKey: string }> = {
+  INIT: { labelKey: 'chat.phase.INIT.label', hintKey: 'chat.phase.INIT.hint' },
+  RETRIEVING: { labelKey: 'chat.phase.RETRIEVING.label', hintKey: 'chat.phase.RETRIEVING.hint' },
+  PROBING: { labelKey: 'chat.phase.PROBING.label', hintKey: 'chat.phase.PROBING.hint' },
+  ASKING: { labelKey: 'chat.phase.ASKING.label', hintKey: 'chat.phase.ASKING.hint' },
+  CONFIRMING: { labelKey: 'chat.phase.CONFIRMING.label', hintKey: 'chat.phase.CONFIRMING.hint' },
+  GENERATING: { labelKey: 'chat.phase.GENERATING.label', hintKey: 'chat.phase.GENERATING.hint' },
+  RANKING: { labelKey: 'chat.phase.RANKING.label', hintKey: 'chat.phase.RANKING.hint' },
+  DONE: { labelKey: 'chat.phase.DONE.label', hintKey: 'chat.phase.DONE.hint' },
+  ABORTED: { labelKey: 'chat.phase.ABORTED.label', hintKey: 'chat.phase.ABORTED.hint' },
 }
 
 interface PhaseLogProps {
@@ -111,6 +112,7 @@ export function ChatStream({
   onEscape,
   onGuardrail,
 }: ChatStreamProps) {
+  const { t } = useTranslation()
   const isResult = status === 'done' || status === 'aborted'
   // 思考静默 1.5s 后提示「正在规划下一步」：新事件到达即消失（纯前端状态）
   const [isIdle, setIdle] = useState(false)
@@ -156,10 +158,12 @@ export function ChatStream({
       ) : null}
 
       <AssistantBlock
-        ariaLabel="AI 回复"
+        ariaLabel={t('chat.aria_reply')}
         header={
           elapsedSeconds !== null ? (
-            <span className="chat-reply__elapsed">耗时 {elapsedSeconds}s</span>
+            <span className="chat-reply__elapsed">
+              {t('chat.elapsed', { seconds: elapsedSeconds })}
+            </span>
           ) : null
         }
         processToggle={
@@ -174,24 +178,25 @@ export function ChatStream({
                 {isProcessOpen ? '▾' : '▸'}
               </span>
               <span>
-                思考 {elapsedSeconds !== null ? `${elapsedSeconds}s` : '完成'} · {actionCount}{' '}
-                个动作 · {stepCount} 个步骤
+                {t('chat.thinking_meta', {
+                  seconds: elapsedSeconds !== null ? `${elapsedSeconds}s` : t('chat.done'),
+                  actions: actionCount,
+                  steps: stepCount,
+                })}
               </span>
             </button>
           ) : null
         }
         timeline={
           showProcess ? (
-            <ol className="chat-reply__phases" aria-label="执行过程">
+            <ol className="chat-reply__phases" aria-label={t('chat.phases')}>
               {visiblePhases.map((phase, index) => {
                 const isDone = index < currentIndex
                 const isCurrent = phase === state
                 const metaItem = PHASE_META[phase]
                 // 没有缺口时，研判这一步给出「无需补充」的结论文案，而不是暗示存在缺口
                 const hint =
-                  phase === 'PROBING' && !hadAsk
-                    ? '七项取证完成，未发现需要确认的缺口'
-                    : metaItem.hint
+                  phase === 'PROBING' && !hadAsk ? t('chat.probe_complete') : t(metaItem.hintKey)
                 // 无阶段标签的旧数据归到当前阶段，避免过程凭空消失
                 const logs = thinking.filter(
                   (item) => (item.phase === '' ? state : item.phase) === phase,
@@ -212,11 +217,15 @@ export function ChatStream({
                       <span className="chat-reply__phase-mark" aria-hidden="true">
                         {isDone ? '✓' : isCurrent ? '●' : '○'}
                       </span>
-                      <span className="chat-reply__phase-label">{metaItem.label}</span>
+                      <span className="chat-reply__phase-label">{t(metaItem.labelKey)}</span>
                       <span className="chat-reply__phase-hint">{hint}</span>
                       {isCurrent ? (
                         <span className="chat-reply__phase-tag">
-                          {phase === 'DONE' ? '已完成' : phase === 'ABORTED' ? '已中止' : '进行中'}
+                          {phase === 'DONE'
+                            ? t('chat.tag_done')
+                            : phase === 'ABORTED'
+                              ? t('chat.tag_aborted')
+                              : t('chat.tag_running')}
                         </span>
                       ) : null}
                     </div>
@@ -228,7 +237,7 @@ export function ChatStream({
           ) : null
         }
         planning={
-          isThinking && isIdle ? <p className="chat-reply__planning">正在规划下一步</p> : null
+          isThinking && isIdle ? <p className="chat-reply__planning">{t('chat.planning')}</p> : null
         }
         gate={isThinking ? null : deliveryGate}
         variants={isThinking ? [] : variants}

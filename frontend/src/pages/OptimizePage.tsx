@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
 import type { FollowupRequest } from '../api/types'
 import {
@@ -18,6 +19,7 @@ import { ChatStream } from '../components/optimize/ChatStream'
 import { ConsoleInput } from '../components/optimize/ConsoleInput'
 import { TurnList } from '../components/optimize/TurnList'
 import { errorMessage } from '../components/settings/errorMessage'
+import { i18n } from '../i18n'
 import { useSSE } from '../hooks/useSSE'
 import { useOptimizeStore } from '../stores/useOptimizeStore'
 import { useHistoryStore } from '../stores/useHistoryStore'
@@ -36,11 +38,12 @@ function resolveFlowView(status: string | null): Exclude<FlowView, 'thinking'> {
 
 /** 错误文案走统一降级链（按 code 查表 → 后端 message → fallback，N-7）。 */
 function toMessage(error: unknown): string {
-  return errorMessage(error, '请求失败')
+  return errorMessage(error, i18n.t('common.request_failed'))
 }
 
 /** 优化主页（设计文档 §1.1 对话流：无会话时居中输入卡片，有会话时图五对话流）。 */
 export function OptimizePage() {
+  const { t } = useTranslation()
   const {
     sessionId,
     state,
@@ -444,7 +447,7 @@ export function OptimizePage() {
                   }
                 }}
               >
-                停止生成
+                {t('optimize.stop_generation')}
               </button>
             ) : null}
           </div>
