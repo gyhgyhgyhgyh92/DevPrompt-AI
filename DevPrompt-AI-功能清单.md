@@ -360,9 +360,16 @@ INIT → RETRIEVING → PROBING → [ASKING ↔ CONFIRMING] → GENERATING → R
 
 **行为**：`i18next` + `react-i18next`（版本经 npm registry 核实：i18next 26.7.2 / react-i18next 17.1.13），
 资源同步 import（无异步加载）；App 顶层 effect 联动 `changeLanguage` 即时生效；文案键按模块分组
-（`settings.*` / `errors.*` / …），错误码表改「码→键」映射、文案进语言包。**分批抽取**：错误码与
-设置中心外壳已迁，其余模块待续（键一致性由 `src/i18n/keys.test.ts` 守卫：两语言键集一致、无空文案、
-错误码全覆盖）。**限制**：后端生成的文本（进度流、披露文案、claim 摘要）仍为中文，不随 locale 切换。
+（`app.*` / `settings.*` / `chat.*` / `errors.*` / …），错误码表改「码→键」映射、文案进语言包。
+**前端已全量抽取**（键一致性由 `src/i18n/keys.test.ts` 守卫：两语言键集一致、无空文案、错误码全覆盖）。
+
+**后端双语（同日扩展）**：会话语言经 `Accept-Language` 由 routes 解析 → `optimize(locale=…)` →
+`session.data["locale"]`，已覆盖进度流全部文案（`domain/progress.py`）、交付门披露与降级理由
+（`domain/delivery/gate.py`）与手填目标的澄清文案；文案表在 `common/i18n.py`，缺键返回键名。
+
+**限制（必须随结论一起读）**：①A/B/C 方案模板与 25 家 provider 描述仍为中文（模板双语需结构等价
+对照测试，尚未做）；②Zod 校验 message 仍中文（动态 schema 未重构）；③英文文案为本轮直译，
+未经母语者复核。
 
 **验收**：切换 locale 后已抽取文案即时变更且刷新保持；键集一致性测试通过。
 

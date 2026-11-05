@@ -1,6 +1,6 @@
 # DevPrompt AI · Agent 宪法
 
-> 版本 v1.21 · 2026-11-06（新增：U-2 C 档锚点后端校验、U-7 套数降级、Windows --reload 拒绝、多语言启动、偏好残留清理；MUST-25 第三段下游效果评测业主裁定**不做**；BREAKING：U-2/U-7 改变对外可见档位与套数行为，批准人=项目所有者）
+> 版本 v1.22 · 2026-11-06（前端多语言清零、后端文案层与 Accept-Language 贯通、成本护栏阈值改结构推导 50000；BREAKING：响应文案随 Accept-Language 变化、ProcessSettings 护栏默认值 30000→50000，批准人=项目所有者）
 > **本文件是 AI 在本项目执行任何任务时必须加载并遵守的最高规则。**
 > 规则冲突时，本文件 > 其他文档 > 一般工程惯例。
 > 详细说明见 `DevPrompt-AI-技术栈文档.md`、`DevPrompt-AI-功能清单.md`、`DevPrompt-AI-项目架构文档.md`。
@@ -765,6 +765,7 @@ GET /api/v1/history/{session_id}/turns?limit=20&offset=0
 | 版本 | 日期 | 内容 | 批准人 |
 |---|---|---|---|
 | v1.4 | 2026-10-15 | 裁定方案甲：MUST-25 第二段排序准确率门禁（≥80%）降为参考指标，W3 出口以「LLM 决策 + ripgrep 精确取证」为准 | 项目所有者 |
+| v1.22 | 2026-11-06 | **前端 i18n 清零 + 后端双语贯通 + 护栏阈值结构化**：①前端剩余 78 处引号内文案全部迁入语言包（组件/设置三面板/api 层错误兜底/App 外壳），仅剩一条 Zod 校验 message 按计划不抽；`NOT_INSTALLED_HINT` 常量改 `notInstalledHint()` 函数（常量会在模块加载时锁定首次语言）；②新增 `common/i18n.py`（`Locale` / `resolve_locale` / `tr` / `MESSAGES`，扁平键、缺键返回键名），进度流 14 个文案函数与 `level_label` 增可选 locale，交付门 RED/YELLOW 披露与五类原因全部双语；③`Accept-Language` 贯通：routes 解析 → `optimize(locale=…)` → `session.data["locale"]`（历史轮沿用），前端普通请求与 SSE 各加一个头，契约零改动；④`FOLLOWUP_COST_BUDGET` 由 30000 改为**结构推导 50000**（10 轮 × 单轮 5k 上界），消除「阈值仅依 3 条样本」的悬空风险 | 项目所有者 |
 | v1.21 | 2026-11-06 | **U-2/U-7 行为变更 + 多语言启动 + 偏好残留清理**：①业主裁定 U-7：方案套数不符按实际套数输出并披露（`generate_variants` 档位契约由完全相等放宽为请求的非空子集，`DeliveryInput` 新增 `expected_variant_count`）；②业主裁定 U-2：C 档锚点后端校验（新增 `domain/generate/anchors.py` 纯函数，交付前经 FileReader 逐锚点核验，明确无效 → 交付门 RED 自动降 B/撤推荐/披露 + `evidence.anchor_invalid`，判不清保守不降档）；③Windows `--reload` 由警告改为拒绝启动（退出码 2）；④多语言启动：引入 i18next/react-i18next（MUST-04 第 5 级论证 + npm registry 版本核实），错误码文案进语言包，`appearance.locale` 唯一真源，全量抽取分批进行（错误码与设置中心外壳已迁，键一致性由 `i18n/keys.test.ts` 守卫）；⑤偏好残留清理（侧边栏坏链路入口、悬空声明、空 hook 与孤立函数）；⑥MUST-25 第三段（下游效果评测）业主裁定**不做**；⑦U-1/U-3/U-4/U-5 不做、U-6 暂不建远端（README 已记 MUST-22 无技术强制力）、撤销边界保持现状 | 项目所有者 |
 | v1.20 | 2026-11-05 | **W3 风险零成本收口**：①新增 `scripts/analyze_signature_impact.py`（零 LLM 调用）从历史排序实测明细算出边界——排序天花板 **95%**（`expected_in_candidates`）、候选歧义率 27%、**签名可挽回上界 1 条**（58% → 59%）、41 条错误签名帮不上（报告 `eval/agent/report-signature-impact-2026-11-05.md`）；②据此裁定：**签名改造保留**（零额外 LLM 调用、零额外进程、W1 已证召回未退化、回退成本为零），「签名是否提升排序准确率」**不再是待决项**，A/B 实测降级为「有额度时的可选补充」，不阻塞任何门禁（MUST-25 第二段自 2026-10-15 起是参考指标）；③**六维接线判定与护栏阈值标定改走零成本路径**：观测落库口径修好后，日后每次真实使用都会产出六维快照与 `usage.llm_tokens`，`scripts/measure_sensorium.py` 随时可算，样本随真实使用自然积累到门槛后重判，不再依赖专项评测额度 | 项目所有者 |
 | v1.19 | 2026-11-05 | **观测落库 + 成本护栏启用**：①六维快照与断言对账随 `summary_json` 落库（`level`/`claims`/`sensorium` 三块；零 DDL、纯数值、不含原句与绝对路径），新增 `scripts/measure_sensorium.py` 统计六维分布/分离度/声明率/token 分布并给出接线判定与护栏上限建议；②修 `usage` 落库口径根因（`_finish_turn` 早于 `_snapshot` → `usage_json.llm_tokens` 恒为 0，改为落库前先入账）；③`FOLLOWUP_COST_BUDGET` 由 0（禁用）启用为 **30000 token**（≈8~9 个完整轮；实测单轮 p50 3.4k），定位为「成本异常时的兜底闸」，不替代 10 轮轮次护栏；④六维**保持 shadow 不接线**（有效样本 3 < 门槛 20，且无 ABORTED 轮次）；⑤`claim_strict` 保持灰度关闭，补齐声明率统计口径（首批样本无 C 档轮，声明率待算）；⑥**W3 排序 A/B 再次无有效数据**：供应商 402 余额耗尽，两次尝试（并发/独占）均中止不写报告，充值后按 `doc-阶段/2026-11-05-W3排序实测-中止记录.md` §四独占重跑 | 项目所有者 |
