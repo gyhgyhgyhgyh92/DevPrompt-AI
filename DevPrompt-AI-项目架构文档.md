@@ -1047,18 +1047,34 @@ src/devprompt_ai/
 │   │   ├── symbols.py         符号表构建
 │   │   ├── candidates.py      候选检索
 │   │   ├── locate.py          全文定位
-│   │   └── facts.py           事实取证
+│   │   └── facts.py           事实取证（七项 + 适用性判定 + is_evidence_complete）
+│   ├── agent/                  外环监督与状态感知（2026-11-05）
+│   │   ├── ports.py            ActionPlanner 协议（下一步动作）
+│   │   ├── action.py           动作枚举 + 步骤记录 + 循环预算（纯数据）
+│   │   ├── convergence.py      三判据收敛检测（纯函数，命中即止）
+│   │   ├── anchor.py           本轮目标锚点（抽取/追加合并/渲染，纯函数，内部状态）
+│   │   ├── sensorium.py        六维状态感知（纯函数；shadow 模式，只观测不熔断）
+│   │   └── memory.py           跨轮继承契约 TurnMemory（纯数据 + 序列化）
 │   ├── decision/
 │   │   ├── port.py            DecisionPort 协议
 │   │   ├── probes.py          事实探针问题定义
 │   │   └── followup.py        自适应反问编排（具体未知驱动 + 软护栏裁决）
+│   ├── delivery/
+│   │   ├── __init__.py        包声明
+│   │   └── gate.py            交付证据门（GREEN/YELLOW/RED 三态，纯函数；只读证据不产出证据）
 │   ├── generate/
 │   │   ├── ports.py           Protocol 定义（LLM 调用）
 │   │   ├── variants.py        三套方案编排
+│   │   ├── claims.py          断言对账（claims → 事实覆盖；未声明记 0 并标 undeclared）
 │   │   └── templates/         A/B/C 模板（a_conservative↔A 保守 / b_standard↔B 标准 / c_thorough↔C 激进）
 │   │       ├── a_conservative.py
 │   │       ├── b_standard.py
-│   │       └── c_thorough.py
+│   │       ├── c_thorough.py
+│   │       └── reply.py           纯回答模板（只出文字，不产方案）
+│   ├── hooks/                  外环监督契约（2026-11-05：5 阶段 + 三态 verdict）
+│   │   ├── types.py            HookPhase / HookContext / HookResult / Hook 协议
+│   │   ├── pipeline.py         HookPipeline（halt 短路 / correct 合并 / 超时视为 allow）
+│   │   └── builtin.py          内置 hook 实现
 │   └── ranking/
 │       ├── ports.py            Protocol 定义（偏好读写）
 │       ├── ~~preference.py~~    偏好向量（2026-10-21 移除）
@@ -1174,7 +1190,10 @@ frontend/
     │   │   ├── nativeFolder.ts     原生文件夹选择器桥（2026-10-19：页面 postMessage → 扩展 content script → service worker → native host → 系统对话框）
     │   │   ├── ChatStream.tsx       对话流（用户气泡 → 回复块：步骤时间轴（每步下方挂过程）+ 方案正文；2026-10-20 移除目标定位/取证/操作栏）
     │   │   ├── TraceEntry.tsx       思考过程条目（2026-10-22：灰底思考块 + 动作行 + 可展开命令/输出）
-    │   │   ├── TurnList.tsx         多轮全文流（2026-10-20：进入即并发拉取每轮正文，用户气泡右 / 助手块左）
+    │   │   ├── TurnList.tsx         多轮全文流（2026-10-20：进入即并发拉取每轮正文，用户气泡右 / 助手块左；2026-11-05 去掉 20 轮硬顶改分页增量加载，正文进 store 常驻）
+    │   │   ├── TurnActions.tsx     轮级操作条（2026-11-05：「以此轮继续」+「撤销到此轮」danger 二次确认）
+    │   │   ├── DeliveryGateCard.tsx 交付证据门卡片（2026-11-05：色阶用后端 tone、文案用后端 disclosure，前端零判定）
+    │   │   ├── AssistantBlock.tsx  助手块同构渲染器（2026-11-05：历史轮与当前轮共用，时间轴/门禁/方案/回答，缺什么省什么不伪造）
     │   │   ├── AskPanel.tsx         反问面板（2026-10-20 v2：内联于对话流、自适应高度、超 60vh 中部滚动、头尾固定；2026-11-01 头部改折叠栏，收起只留一行摘要）
     │   │   ├── AskFlow.tsx          反问组合层（持有作答草稿，拼装 AskDialog + FollowupForm，2026-10-20）
         │   │   ├── PromptCard.tsx

@@ -489,6 +489,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 
 **2026-10-16 批次增量：零新依赖。** AI 对标优化（Batch 0~7）全部使用标准库与既有依赖实现：
 
+
 | 能力 | 实现方式 | 为何不引依赖 |
 |---|---|---|
 | 跨平台子进程编排 | `scripts/runner.py`，标准库 `subprocess` + `shutil.which` | 逻辑不足 200 行；`concurrently` 之类为 Node 生态，与 uv + pnpm 双包管理无关 |
@@ -503,6 +504,28 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | 配置归一化 | 纯函数 + `json` | 逻辑不足百行，迁移库的规则反而更难对齐 |
 
 **2026-09-17 模型管理迁移增量：零新依赖。** 参数定义、安全校验、归一化全部用标准库与既有依赖实现。
+
+**2026-11-05 内核重构增量：零新依赖。**
+
+| 能力 | 实现方式 | 为何不引依赖 |
+|---|---|---|
+| 本轮目标锚点 | `domain/agent/anchor.py`，标准库 `re` + `dataclass` | 纯字符串抽取，无需 NLP 库 |
+| 六维状态感知 | `domain/agent/sensorium.py`，标准库 `math` / `collections.Counter` | 输入全是会话内已有字段，无需遥测 SDK |
+| 交付证据门 | `domain/delivery/gate.py`，纯判定函数 | 三态规则数十行，引规则引擎属过度设计 |
+| 外环监督三态 | `domain/hooks/`，沿用既有 `asyncio.wait_for` 隔离模式 | 无需新的 hook 框架 |
+| 缓存命中观测 | 读 `usage.prompt_tokens_details.cached_tokens` | SDK 已返回，无需自行计算或估算 |
+
+**候选签名的外部依赖**：universal-ctags 6.1.0 支持 `--fields=+{signature}`（实测可用），
+给出函数参数列表作为排序的判别性上下文。**老版 ctags 不认该字段会直接失败** → harness 侧捕获后
+去掉该字段重试一次（降级为「候选不带签名」，即改造前行为），不引入任何新依赖。
+
+**缓存观测的范围限制**：仅 OpenAI 兼容端点返回 `prompt_tokens_details.cached_tokens`；
+Anthropic / Gemini 原生适配器不返回该字段，此时记 `None`——**不虚报 0**（0 与「无缓存」含义不同）。
+
+**本次不做前缀缓存分层**：本项目的 `chat_structured` 是**独立单轮调用**，只有 system + user 两条消息——
+system 本身已稳定、天然命中，user 每次都变、无法缓存。参照实现（天枢 99.3% 命中）依赖「多轮工具循环
+每轮重发完整对话历史」，本项目无此形态，做 frozen/delta 分层只增复杂度、无收益。
+
 
 ## 6.3 外部工具（系统级依赖）
 

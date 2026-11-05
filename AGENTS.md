@@ -188,13 +188,23 @@ harness/ + memory/ + decision/（基础设施层）
 ### MUST-09 · 检索顺序不可颠倒
 
 ```
-ripgrep 先压到 ≤25 条候选（仅符号名 + 路径，不含代码正文） → 决策层再排序
+ripgrep 先压到 ≤25 条候选（符号名 + 路径 + ≤1 行签名，不含代码正文） → 决策层再排序
 ```
 
 **禁止**：
 - ❌ 先把候选喂给决策层再检索（超 32k state 上限，且准确率反而下降）
 - ❌ 候选集超过 25 条（超限截断而非报错）
 - ❌ 候选集携带代码正文（state 必须压缩）
+
+**候选签名（2026-11-05 修订，BREAKING）**：候选可附 **≤1 行 / ≤120 字符**的函数签名
+（ctags 的 `{signature}` 字段），供决策层区分同名同路径候选。**函数体仍然禁止携带**——
+硬边界从「不带代码正文」收窄为「不带函数体」，签名是判别性上下文的最小充分集。
+
+理由：W3 实测归因明确指出排序准确率（58%）受限于「候选仅含名称与路径，缺判别性上下文」；
+签名由 ctags 免费产出，零额外 LLM 调用、零额外进程。
+
+兼容措施：老版 ctags 不认 `{signature}` 会直接失败 → harness 侧捕获后**去掉该字段重试一次**
+（降级为改造前行为）；签名缺失时 `Symbol.signature` 为空串，排序证据块自动省略。
 
 **执行标准**：state 提交前预校验长度，超限截断并记 `state.truncated` 日志。
 
@@ -429,6 +439,21 @@ ripgrep 先压到 ≤25 条候选（仅符号名 + 路径，不含代码正文�
 
 **已裁定**：2026-10-11 选定**方案甲**（决策层转正 LLM、重排 W3–W4）；本项自 2026-10-15 起降为**参考指标**，阶段七据此收口 ✅。
 
+### 第三段 · 下游效果评测（2026-11-05 **立项，脚本待实现**）
+
+前两段都是**中间指标**：候选召回与排序只说明「工具找到了谁」，不说明「用它的提示词让 Agent 产出更好」。
+核心价值主张「提升下游 Agent 准确性、减少幻觉」至今**没有任何下游验证**。
+
+| 指标 | 通过线 | 依赖 |
+|---|---|---|
+| 目标命中率（下游 Agent 实际改动落在预期范围内） | ≥ 80% | 需真实 Agent 执行环境 |
+
+样本量：≥ 20 条（单条 ≥5%，可区分 70% 与 85%）。对照口径：同一批原句，一组直接给 Agent、
+一组给本工具产出的提示词，比对结果。
+
+**状态**：仅立项，评测脚本与报告**尚未实现**（列入第二阶段）。在实现并跑出数据前，
+对外表述**不得**声称「提升下游 Agent 准确性」已被验证。
+
 ### MUST-26 · 反问由具体未知驱动，无预设轮数上限（v1.1 BREAKING）
 
 ```
@@ -523,6 +548,22 @@ d = 最高分 − 次高分
 
 **附**：阶段三「三套必须在同一次调用中生成」仅在**可输出档位 ≥ 2** 时成立；仅 A 档时不适用。
 
+**取证完备度按「适用项」判定（2026-11-05 BREAKING）**：
+
+七项事实中 `token_defined` / `has_data_testid` / `has_state_styles` 只在**前端/样式目标文件**
+（`.tsx/.jsx/.vue/.css/.scss/.less`）下才有意义。`FactResult.applicable` 标记该事实在当前目标文件下
+是否适用，**默认 `True`**（旧数据反序列化零变化）。**完备 = 适用项全部通过**，不是七项全过。
+
+```
+is_evidence_complete(facts) = any(applicable) and all(passed for applicable)
+```
+
+理由：旧口径下后端项目（`.py` 等）三项恒 `False`，`facts_complete` 永远 `False`，
+C 档永远不可达——产品核心卖点（带行号与 token 出处、可被 rg 反向验证）对多数项目形同虚设。
+
+**影响面**：`FactResult` 增字段（additive）；`service` 的 `facts_complete` 与 `_suppress_ask` 改用新判定；
+非前端项目的档位上限从 B 变为可达 C。
+
 ### MUST-29 · CI 门禁
 
 | 检查 | 阻断条件 |
@@ -535,6 +576,66 @@ d = 最高分 − 次高分
 | 契约冒烟测试 | 后端 schema 与前端类型不一致 |
 
 **禁止**：使用 `--no-verify` 跳过钩子，或在 CI 未过时合并。
+
+### MUST-30 · 交付必须过证据门（2026-11-05 新增）
+
+交付（`_act_deliver`）必须经过 `domain/delivery/gate.py` 的三态判定，判定位置唯一：
+
+| 状态 | 条件 | 后果 |
+|---|---|---|
+| RED | 未定位目标 / 适用事实全部未过 / C 档但断言未声明 | 不标 C、不标推荐，**必须给披露文案** |
+| YELLOW | 断言覆盖率不足 / 单套方案 / 推荐置信度不足 | 保留原档位，不标推荐或附原因 |
+| GREEN | 适用事实全过且断言覆盖率达标 | 允许标 C 与推荐（仍受 MUST-27 双阈值约束） |
+
+```
+最终 marked = ranking.marked and gate.can_mark_recommend   ← service 层只做组合
+```
+
+**门禁不得阻断交付**：RED 时方案照常返回，只是降质量标记并披露原因——与 MUST-27
+「不标记必须给具体原因，不得静默」一致；阻断会让零基础用户拿不到任何东西。
+
+**门禁只读证据，不产出证据**：不重新取证、不调用 LLM、不改方案正文（只改本轮可输出档位，
+与 `_audit_claims` 同一规则）。
+
+**断言未声明**：模型一条引用都没声明时 `coverage` 记 `0` 并标 `undeclared`（不再视为完全覆盖——
+「不声明」是断言对账唯一可被绕过的口子）。是否据此降档由 `claim_strict` 灰度开关控制，
+**默认关闭**（只披露，不降档），由项目所有者在真实会话观察声明率后决定是否收紧。
+
+### MUST-31 · 列表端点统一分页契约（2026-11-05 新增）
+
+```
+GET /api/v1/history?limit=50&offset=0
+GET /api/v1/history/{session_id}/turns?limit=20&offset=0
+→ { items: [...], has_more: bool, limit: int, offset: int }
+```
+
+- **裸数组一律禁止**：裸数组无法表达「还有更多」，前端只能硬顶（20 轮 / 50 会话）。
+- `has_more` 而非 `total`：存储层按「取 limit+1 条」探测，**不额外做 COUNT 查询**。
+- 轮次分页的 `offset` **从最新一轮往回数**（前端「加载更早」语义），返回仍按 `turn_index` 升序。
+- 四个字段一律必填（带默认值会在 OpenAPI 里变成可选，前端类型随之变松）。
+- 契约冻结走 `scripts/export-openapi.py` → `pnpm gen:contract` → `node scripts/check-contract.mjs` 三闸。
+
+### MUST-32 · turn 真源与撤销（2026-11-05 修订：显式撤销可物理删除）
+
+- `forge_turns` 一行一轮、`(session_id, turn_index)` 唯一索引即乐观锁（MUST-11）。
+- 「以此轮继续」= 以某一轮为基线**新开一轮**（`OptimizeRequest.base_turn_id`），不删任何数据。
+- **撤销 = 物理删除**（2026-11-05 所有者裁定）：「撤销到第 N 轮」保留 1..N、删除 N+1..M，
+  会话回到第 N 轮完成时的状态。它是**显式用户操作**，完整链路缺一不可：
+  前端二次确认（文案明示不可恢复）→ service 校验（终态 DONE/ABORTED + 轮归属）→
+  `turns.delete_after` → emit `session.rolled_back`（记 kept/deleted 计数，不记原句，MUST-19）。
+  任何绕过 service 的删除路径都违反本条。
+- 已知边界（如实披露，不做静默弥补）：L2 project_notes 不随撤销回退（项目级长期沉淀、无轮次归属，
+  强删会误删其他会话的记忆）；turn_anchor 不回退（跨轮追加演进的派生数据）；
+  目标定位不继承（turn 表未存定位结构，下一轮重新检索）。
+
+### MUST-33 · 门禁的色阶与文案由后端承载（2026-11-05 新增）
+
+交付证据门（MUST-30）的**语义色阶与披露文案一律由后端领域层给出**：
+`DeliveryVerdict.tone`（ok / warn / error）+ `disclosure`。
+
+- 前端只按 `tone` 选样式、只展示 `disclosure`；**不得把 status 映射成语义，不得出现任何阈值**
+  （MUST-08 在新增 UI 上的落地）。
+- 历史轮的交付门与动作序列随摘要落库（`summary.steps`），前端渲染即零请求。
 
 ---
 
@@ -666,6 +767,9 @@ d = 最高分 − 次高分
 | 版本 | 日期 | 内容 | 批准人 |
 |---|---|---|---|
 | v1.4 | 2026-10-15 | 裁定方案甲：MUST-25 第二段排序准确率门禁（≥80%）降为参考指标，W3 出口以「LLM 决策 + ripgrep 精确取证」为准 | 项目所有者 |
+| v1.18 | 2026-11-05 | **形态层收尾 + 撤销语义裁定**：①MUST-32 修订（所有者裁定）：撤销=物理删除其后轮次，完整链路=前端二次确认→service 终态/归属校验→`delete_after`→`session.rolled_back` 留痕；已知边界如实披露（notes/anchor 不回退、定位不继承）；②对话流全量同构：新增 `AssistantBlock` 单一渲染器，历史轮与当前轮共用（动作序列/门禁卡片/方案卡/回答正文），前端不伪造未落库内容；③轮级操作条加「撤销到此轮」（danger 样式 + 二次确认）；④中断后延时拉 `GET /result` 校对状态，不伪造 aborted；⑤W3 排序评测 A/B 双跑（带/无签名各 100 例，同模型同环境），对照脚本 `eval/recall/measure_ranking_ab.py` | 项目所有者 |
+| v1.17 | 2026-11-05 | **BREAKING · 遗留收敛 + 形态层第一部分**：①MUST-09 修订：候选可附 ≤1 行 / ≤120 字符签名（**仍禁函数体**），老版 ctags 自动降级重试；②新增 MUST-31 列表端点统一分页契约（裸数组 → `{items, has_more, limit, offset}`）；③新增 MUST-32 turn append-only，「回滚/继续」= 以基线轮新开一轮（`base_turn_id`）；④新增 MUST-33 门禁色阶与文案由后端承载（`DeliveryVerdict.tone`）；⑤断言对账：空声明 `coverage` 记 0 + `undeclared` 标记，是否降档由 `claim_strict` 灰度控制（默认关闭）；⑥跨轮澄清改为**继承**（按 target 判定，换目标自动作废并留痕）；⑦mypy 38 → 0（只改调用侧标注与 mock，未动协议定义）。**W1 召回率重跑 95/100 未退化；W3 因供应商余额不足未产出**（见 `eval/recall/report-ranking-2026-11-05-aborted.md`） | 项目所有者 |
+| v1.16 | 2026-11-05 | **BREAKING · 内核重构第一阶段**：①MUST-28 档位完备度改为「**适用项全过**」（`FactResult.applicable`，默认 True 保证旧数据零变化）——非前端项目从 B 上限变为可达 C；②新增 **MUST-30 交付证据门**（GREEN/YELLOW/RED，**只降质量标记不阻断交付**；新增 `domain/delivery/gate.py` 与快照可选字段 `delivery_gate`）；③断言对账加固：`ClaimReport.undeclared` + 空声明 `coverage` 记 0（原记 1.0，模型只要不声明即可绕过对账），是否降档由 `claim_strict` 灰度控制（默认关闭）；④外环监督：hook 由 3 阶段扩到 5 阶段（`pre_turn`/`post_tool` 新增）+ `allow/correct/halt` 三态，超时与异常一律视为 allow；⑤新增 `domain/agent/sensorium.py` 六维状态感知（**shadow 模式**：只落库与发事件，不参与熔断）；⑥新增 `domain/agent/anchor.py` 本轮目标锚点（纯内部状态，用户不可见、无确认门）；⑦缓存命中观测（读 `usage.prompt_tokens_details.cached_tokens`，缺失记 None 不虚报）。**本次不含**：Plan 先行 / Ask-Craft-Plan 三模式 / 桌面端 / 前缀缓存分层（经调研判定无收益） | 项目所有者 |
 | v1.15 | 2026-10-22 | 思考过程改为参考截图形态：灰底思考块 + 动作行（已读取 / 命令已执行）+ 可展开命令与输出（≤20 行 / 2KB，脱敏）+ 静默 1.5s「正在规划下一步」；阶段结构保留 | 项目所有者 |
 | v1.14 | 2026-10-22 | 工具参数新增**非官方扩展字段** `taskKind`（可选，缺省 execution）：解决工具调用轮次拿不到任务类型、模糊句原因文案失真的偏差 | 项目所有者 |
 | v1.13 | 2026-10-22 | 提问改为 **AskUserQuestion 工具调用**（对齐 CodeBuddy SDK）：模型发 tool_call → 宿主拦截 → `answers[question] = label` 回填；新增 `harness/ask_tool.py` 与 `chat_with_tools`；不支持 tools 的 provider 降级为不提问 | 项目所有者 |
