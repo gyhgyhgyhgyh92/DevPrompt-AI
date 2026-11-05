@@ -359,7 +359,8 @@ class LLMGenerator:
 
         契约：levels 由调用方按 resolve_level 推导（A→["A"]、B→["A","B"]、C→["A","B","C"]，
         见 domain/generate/variants.expand_levels；escape/护栏保守路径请求 ["A"]）；
-        输出档位集合必须与请求一致，返回按 A<B<C 单调排序（MUST-28 不越级输出）。
+        输出档位允许为请求的非空子集（U-7：套数不足按实际套数交付，交付门披露），
+        超出请求范围或非法前缀集仍拒绝（MUST-28 不越级输出），返回按 A<B<C 单调排序。
         单次 chat_structured 调用（timeout 缺省即 cfg.llm_timeout；纠偏重试内聚）。
         """
         level_set = frozenset(levels)
@@ -376,9 +377,12 @@ class LLMGenerator:
             _build_multi_user(ctx, levels),
         )
         got = frozenset(v.level for v in draft.variants)
-        if got != level_set:
+        # U-7（2026-11-06 业主裁定）：套数不足不再整单失败——接受请求档位的非空子集，
+        # 交付门按实际套数披露（MUST-30 只降标记不阻断）；非法前缀集（如 {A,C}）
+        # 仍被 MultiVariantDraft 结构层拒绝，走 4003 纠偏重试。
+        if not got <= level_set:
             raise GenerationError(
-                "三套输出档位与请求不符",
+                "三套输出档位超出请求范围",
                 code=4003,
                 context={"requested": sorted(level_set), "got": sorted(got)},
             )

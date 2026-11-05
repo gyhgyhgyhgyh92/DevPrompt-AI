@@ -1815,6 +1815,8 @@ class ForgeService:
             preferred=_preferred_level(session),
         )
         await _notify(session, progress, generation_text(levels))
+        # U-7：记下期望套数，交付门据实际产出披露「本次仅 N 套」（模型可只给子集）。
+        session.data["expected_variant_count"] = len(levels)
         multi = await self._generator.generate_variants(ctx, levels)
         self._account_llm_usage(session, last_usage())
         # slots dataclass 无 __dict__，序列化必须走 model_dump（计划 §6.2 注意事项）
@@ -1988,6 +1990,7 @@ class ForgeService:
             undeclared = self._cfg.claim_strict
         ranking_data = session.data.get("ranking")
         reason = str(ranking_data.get("reason", "")) if isinstance(ranking_data, dict) else ""
+        expected = session.data.get("expected_variant_count")
         return evaluate_delivery(
             DeliveryInput(
                 has_target=bool(session.data.get("target")),
@@ -1995,6 +1998,9 @@ class ForgeService:
                 claim_coverage=coverage,
                 claims_undeclared=undeclared,
                 variant_count=variant_count,
+                expected_variant_count=int(expected)
+                if isinstance(expected, (int, float))
+                else None,
                 recommend_marked=marked,
                 recommend_reason=reason,
             )

@@ -221,9 +221,11 @@ async def test_generate_variants_sorts_levels_monotonic(
     assert [v.level for v in out.variants] == ["A", "B", "C"]
 
 
-async def test_generate_variants_rejects_level_set_mismatch(
+async def test_generate_variants_accepts_subset_of_requested(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """U-7：套数不足不再整单失败——返回请求档位的非空子集即放行，交付门披露。"""
+
     async def fake_chat(
         cfg: AppConfig,
         output_type: type[MultiVariantDraft],
@@ -233,6 +235,28 @@ async def test_generate_variants_rejects_level_set_mismatch(
         timeout: float = 10.0,
     ) -> MultiVariantDraft:
         return MultiVariantDraft(variants=[_draft("A"), _draft("B")])  # 请求了 C 却少给
+
+    monkeypatch.setattr(llm_mod, "chat_structured", fake_chat)
+    out = await LLMGenerator(_cfg()).generate_variants(_ctx(), ["A", "B", "C"])
+    assert [v.level for v in out.variants] == ["A", "B"]
+
+
+async def test_generate_variants_rejects_illegal_prefix_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """非法前缀集（如 {A,C}）仍拒绝：结构层校验失败 → 纠偏重试后 4003。"""
+
+    async def fake_chat(
+        cfg: AppConfig,
+        output_type: type[MultiVariantDraft],
+        system: str,
+        user: str,
+        *,
+        timeout: float = 10.0,
+    ) -> MultiVariantDraft:
+        # MultiVariantDraft 的 model_validator 拒绝 {A,C}；chat_structured 纠偏重试
+        # 仍失败的最终形态就是 GenerationError(4003)，这里直接给出该终态。
+        raise GenerationError("档位集合不是合法可输出档位前缀集（MUST-28）", code=4003)
 
     monkeypatch.setattr(llm_mod, "chat_structured", fake_chat)
     with pytest.raises(GenerationError):

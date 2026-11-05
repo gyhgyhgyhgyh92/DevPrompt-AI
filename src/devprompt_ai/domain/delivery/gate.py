@@ -38,6 +38,8 @@ class DeliveryInput:
     claim_coverage: float | None = None
     claims_undeclared: bool = False
     variant_count: int = 0
+    #: 本轮请求的期望套数（U-7）；实际不足时 YELLOW 披露，None 表示不核对
+    expected_variant_count: int | None = None
     #: `decide_mark` 的结论；None 表示未打分（单套方案）
     recommend_marked: bool | None = None
     recommend_reason: str = ""
@@ -89,6 +91,8 @@ def evaluate_delivery(data: DeliveryInput) -> DeliveryVerdict:
     yellow: list[str] = []
     if data.claim_coverage is not None and data.claim_coverage < CLAIM_COVERAGE_MIN:
         yellow.append(f"断言覆盖率 {data.claim_coverage:.0%}，低于 {CLAIM_COVERAGE_MIN:.0%}")
+    if data.expected_variant_count is not None and data.variant_count < data.expected_variant_count:
+        yellow.append(f"本次仅 {data.variant_count} 套（模型未给出全部档位）")
     if data.variant_count < 2:
         yellow.append("仅一套方案，未做推荐比较")
     if data.recommend_marked is False:

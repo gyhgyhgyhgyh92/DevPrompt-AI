@@ -120,6 +120,38 @@ def test_yellow_when_single_variant() -> None:
     assert "仅一套方案" in verdict.disclosure
 
 
+def test_yellow_when_fewer_variants_than_expected() -> None:
+    """U-7：请求 3 套实际 2 套 → YELLOW 披露但不阻断，仍可标 C。"""
+    verdict = evaluate_delivery(
+        DeliveryInput(
+            has_target=True,
+            facts=_green_facts(),
+            claim_coverage=1.0,
+            variant_count=2,
+            expected_variant_count=3,
+        )
+    )
+
+    assert verdict.status == "YELLOW"
+    assert "本次仅 2 套" in verdict.disclosure
+    assert verdict.can_mark_c is True
+
+
+def test_no_shortfall_disclosure_when_count_matches() -> None:
+    verdict = evaluate_delivery(
+        DeliveryInput(
+            has_target=True,
+            facts=_green_facts(),
+            claim_coverage=1.0,
+            variant_count=3,
+            expected_variant_count=3,
+        )
+    )
+
+    assert verdict.status == "GREEN"
+    assert "本次仅" not in verdict.disclosure
+
+
 def test_yellow_when_recommendation_confidence_insufficient() -> None:
     verdict = evaluate_delivery(
         DeliveryInput(
