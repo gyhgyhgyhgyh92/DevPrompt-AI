@@ -96,10 +96,10 @@ class AppConfig(BaseSettings):
 
     followup_soft_round_guard: int = 10
     #: 单流程 LLM token 总数上限；0 = 禁用（MUST-26 成本软护栏）。
-    #: 2026-11-05 启用为 30000：实测单轮完整流程约 3.5k token，30k 约合 8~9 轮，
-    #: 定位是「成本异常时的兜底闸」，不替代轮次护栏（10 轮）。
-    #: 标定样本仅 3 条（`eval/agent/report-sensorium-2026-11-05.md`），样本补足后复核。
-    followup_cost_budget: float = 30_000.0
+    #: 结构推导（2026-11-06）：轮次护栏 10 × 单轮 token 上界 5000 = 50000。
+    #: 单轮上界取首批真实样本 p95（3.6k）向上取整——护栏是「成本异常时的兜底闸」，
+    #: 不替代轮次护栏；正常 8~10 轮的累计消耗仍在阈值内，只有单轮异常膨胀才会先撞线。
+    followup_cost_budget: float = 50_000.0
     #: 断言对账严格模式（2026-11-05）：C 档要求模型至少声明一条引用，
     #: 一条都没声明时降为 B。默认关闭——先观察真实会话的声明率，再决定是否收紧。
     claim_strict: bool = False

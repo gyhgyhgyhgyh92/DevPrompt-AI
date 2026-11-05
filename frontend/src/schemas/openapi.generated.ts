@@ -1046,7 +1046,7 @@ export interface components {
         ProcessSettings: {
             /**
              * Followup Cost Budget
-             * @default 30000
+             * @default 50000
              */
             followup_cost_budget: number;
             /**
