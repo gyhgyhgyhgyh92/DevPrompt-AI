@@ -91,7 +91,9 @@ class SQLiteSessionStore:
 
         return await asyncio.to_thread(_run)
 
-    async def list_recent(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
+    async def list_recent(
+        self, user_id: str, *, limit: int = 50, offset: int = 0
+    ) -> list[SessionSummary]:
         """GET /history 数据源：pinned 优先 + updated_at 倒序；脱敏——payload 仅取路径/名/标题。"""
 
         def _run() -> list[SessionSummary]:
@@ -125,7 +127,7 @@ class SQLiteSessionStore:
             # 全部取出后 Python 排序再截取：置顶优先 + updated_at 倒序。
             # 会话量小（本地工具），避免 SQL 排序先行截断导致置顶项被 limit 丢出。
             out.sort(key=lambda s: (s.pinned, s.updated_at), reverse=True)
-            return out[:limit]
+            return out[offset : offset + limit]
 
         return await asyncio.to_thread(_run)
 

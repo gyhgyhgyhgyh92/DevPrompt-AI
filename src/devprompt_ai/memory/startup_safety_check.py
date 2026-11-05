@@ -26,6 +26,8 @@ from devprompt_ai.domain.startup_report import (
     record_report,
 )
 from devprompt_ai.memory.schema import (
+    ORPHAN_SESSIONS_SQL,
+    ORPHAN_TURNS_SQL,
     PROJECT_NOTES_DDL,
     QUARANTINE_DDL,
     SESSIONS_DDL,
@@ -91,6 +93,29 @@ def _isolate_broken_rows(conn: sqlite3.Connection) -> tuple[int, list[str]]:
     return quarantined, issues
 
 
+#: 孤儿判定阈值（分钟）：远大于单轮最长耗时，避免误杀正在跑的 turn。
+ORPHAN_TURN_MINUTES = 30
+
+
+def _abort_orphan_turns(
+    conn: sqlite3.Connection, older_than_minutes: int = ORPHAN_TURN_MINUTES
+) -> int:
+    """把崩溃遗留的未完成 turn 与会话收尾，返回受影响会话数。
+
+    只处理「超过阈值仍停在 INIT / AGENTIC」的行：进程在 agentic 循环里被强杀时
+    turn 停在 AGENTIC、会话也停在 AGENTIC，此后 start_turn 会一直拒绝（6001）。
+    多实例部署需改为按实例心跳判定（当前单机单用户不适用）。
+    """
+    cutoff = f"-{max(1, older_than_minutes)} minutes"
+    try:
+        conn.execute(ORPHAN_TURNS_SQL, (cutoff,))
+        cursor = conn.execute(ORPHAN_SESSIONS_SQL, (cutoff,))
+    except sqlite3.Error:
+        # 自愈失败不阻断启动：留给下一次启动重试
+        return 0
+    return cursor.rowcount if cursor.rowcount > 0 else 0
+
+
 def run_startup_safety_check(db_path: str) -> StartupRepairReport:
     """执行一次启动自愈并记录报告。**永不抛异常**——体检失败不应阻止服务启动。
 
@@ -147,6 +172,10 @@ def run_startup_safety_check(db_path: str) -> StartupRepairReport:
                     repaired.append(table)
             except sqlite3.DatabaseError as exc:
                 issues.append(f"{table}: 补建失败（{type(exc).__name__}）")
+        orphan_sessions = _abort_orphan_turns(conn)
+        if orphan_sessions:
+            # 计数入 repaired（只报数量，不含行内容，MUST-19）
+            repaired.append(f"orphan_session:{orphan_sessions}")
         conn.commit()
     except sqlite3.Error as exc:
         issues.append(f"自愈过程异常：{type(exc).__name__}")

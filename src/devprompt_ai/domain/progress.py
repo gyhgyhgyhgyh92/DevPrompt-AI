@@ -97,12 +97,19 @@ def facts_text(passed: int, total: int) -> str:
     return f"事实核对完成：{total} 项中 {passed} 项通过。"
 
 
-def level_text(level: str, confidence: float) -> str:
-    return f"研判完成，整体置信度 {confidence:.2f}，可输出 {level_label(level)} 档。"
+def level_text(level: str, confidence: float | None) -> str:
+    """研判结论提示。confidence 为 None 表示模型未给判断——不是「置信度 0」。"""
+    shown = "未评估" if confidence is None else f"{confidence:.2f}"
+    return f"研判完成，整体置信度 {shown}，可输出 {level_label(level)} 档。"
 
 
 def clarification_text(count: int) -> str:
     return f"研判出 {count} 处信息缺口，先和你确认再继续。"
+
+
+def answering_text() -> str:
+    """纯回答动作的进度文案（2026-11-05）。"""
+    return "正在回答你的追问。"
 
 
 def generation_text(levels: Sequence[str]) -> str:

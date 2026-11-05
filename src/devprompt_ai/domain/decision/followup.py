@@ -172,11 +172,20 @@ def build_unknowns(
         ):
             continue
         seen.add(normalized)
+        best_guess = question.best_guess.strip()
+        if not best_guess:
+            # MUST-26：每问必须给当前最佳推断。模型没给时回退到取证证据，但必须过滤
+            # 「未找到」——那是 `_ev()` 的字面占位，把它当推断展示等于告诉用户
+            # 「最佳推断是：没找到」，比留空更误导（2026-11-05 真实冒烟发现）。
+            ordered = [f.evidence for f in facts if not f.passed] + [
+                f.evidence for f in facts if f.passed
+            ]
+            best_guess = next((e for e in ordered if e and e.strip() != "未找到"), "")
         asked.append(
             UnknownItem(
                 key=key,
                 reason=default_reason,
-                best_guess="",
+                best_guess=best_guess,
                 ask=key,
                 header=header,
                 options=tuple(

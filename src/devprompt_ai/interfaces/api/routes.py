@@ -10,7 +10,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, TypeVar
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse
 
 from devprompt_ai.config import AppConfig
@@ -22,6 +22,7 @@ from devprompt_ai.interfaces.api.schemas import (
     ApiResponse,
     AskOptionPayload,
     CostDetailPayload,
+    DeliveryGatePayload,
     FactPayload,
     FlowSnapshotResponse,
     FollowupRequest,
@@ -31,8 +32,11 @@ from devprompt_ai.interfaces.api.schemas import (
     ModelCatalogRefreshRequest,
     ModelCatalogResponse,
     OptimizeRequest,
+    PagedHistoryItem,
+    PagedTurnSummary,
     ProjectDeleteResponse,
     RankingViewPayload,
+    RollbackRequest,
     ScanResponse,
     SettingsResponse,
     SettingsUpdate,
@@ -78,6 +82,20 @@ def _snapshot_payload(snapshot: FlowSnapshot) -> FlowSnapshotResponse:
     target = snapshot.target
     return FlowSnapshotResponse(
         session_id=snapshot.session_id,
+        evidence_stale=snapshot.evidence_stale,
+        reply_text=snapshot.reply_text,
+        delivery_gate=(
+            DeliveryGatePayload(
+                status=snapshot.delivery_gate.status,
+                tone=snapshot.delivery_gate.tone,
+                reasons=list(snapshot.delivery_gate.reasons),
+                can_mark_c=snapshot.delivery_gate.can_mark_c,
+                can_mark_recommend=snapshot.delivery_gate.can_mark_recommend,
+                disclosure=snapshot.delivery_gate.disclosure,
+            )
+            if snapshot.delivery_gate is not None
+            else None
+        ),
         status=snapshot.status,
         state=snapshot.state,
         questions=[
@@ -106,6 +124,10 @@ def _snapshot_payload(snapshot: FlowSnapshot) -> FlowSnapshotResponse:
         ],
         cost=CostDetailPayload(**dataclasses.asdict(snapshot.cost)) if snapshot.cost else None,
         message=snapshot.message,
+        current_turn_id=snapshot.current_turn_id,
+        agent_step=snapshot.agent_step,
+        agent_action=snapshot.agent_action,
+        agent_elapsed_ms=snapshot.agent_elapsed_ms,
     )
 
 
@@ -126,7 +148,12 @@ async def post_optimize(
     request_id = _request_id(request)
     svc = await get_service()
     snapshot = await svc.optimize(
-        _USER_ID, req.project, req.sentence, request_id=request_id, session_id=req.session_id
+        _USER_ID,
+        req.project,
+        req.sentence,
+        request_id=request_id,
+        session_id=req.session_id,
+        base_turn_id=req.base_turn_id,
     )
     return _ok(_snapshot_payload(snapshot), request_id)
 
@@ -238,7 +265,11 @@ async def post_optimize_stream(request: Request, req: OptimizeRequest) -> Stream
 
 @router.get("/progress/{flow_id}")
 async def get_progress(request: Request, flow_id: str) -> StreamingResponse:
-    """SSE 进度流：1s 轮询快照；DONE/ABORTED/ASKING/护栏推送后关闭；客户端断开即停。"""
+    """SSE 进度流：1s 轮询快照；DONE/ABORTED/ASKING/护栏推送后关闭；客户端断开即停。
+
+    星型拓扑（2026-11-04）：AGENTIC 期间快照 status 为 "running"，**不在关闭集合内**，
+    因此 agentic 循环可以持续推送进度而不是中途断流。
+    """
     request_id = _request_id(request)
 
     async def _events() -> AsyncIterator[str]:
@@ -348,13 +379,35 @@ def _turn_summary_payload(turn: TurnRecord) -> TurnSummaryPayload:
 
 @router.get("/history/{session_id}/turns")
 async def get_session_turns(
-    request: Request, session_id: str
-) -> ApiResponse[list[TurnSummaryPayload]]:
-    """会话的轮次摘要（升序）；不含原句与方案正文。"""
+    request: Request,
+    session_id: str,
+    limit: int = Query(20, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> ApiResponse[PagedTurnSummary]:
+    """会话的轮次摘要（升序）；不含原句与方案正文。
+
+    分页：``offset`` 从最新一轮往回数（前端「加载更早」）。
+    """
     request_id = _request_id(request)
     svc = await get_service()
-    turns = await svc.list_turns(_USER_ID, session_id)
-    return _ok([_turn_summary_payload(turn) for turn in turns], request_id)
+    page = await svc.list_turns(_USER_ID, session_id, limit=limit, offset=offset)
+    return _ok(
+        PagedTurnSummary(
+            items=[_turn_summary_payload(turn) for turn in page.items],
+            has_more=page.has_more,
+            limit=page.limit,
+            offset=page.offset,
+        ),
+        request_id,
+    )
+
+
+def _steps_of(turn: TurnRecord) -> list[dict[str, Any]]:
+    """本轮动作序列（随摘要落库，见 ``build_context.summary_from_turn``）。"""
+    raw = turn.summary.get("steps") if isinstance(turn.summary, dict) else None
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
 
 
 @router.get("/turns/{turn_id}")
@@ -373,30 +426,43 @@ async def get_turn(request: Request, turn_id: str) -> ApiResponse[TurnDetailPayl
             input=turn.input,
             variants=[VariantPayload(**item) for item in turn.output],
             facts=[FactPayload(**item) for item in turn.facts],
+            steps=_steps_of(turn),
         ),
         request_id,
     )
 
 
 @router.get("/history")
-async def get_history(request: Request) -> ApiResponse[list[HistoryItemPayload]]:
-    """T6-11 转正：脱敏会话摘要（id/时间/state/项目名/标题/置顶，无原句明文，MUST-19）。"""
+async def get_history(
+    request: Request,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> ApiResponse[PagedHistoryItem]:
+    """T6-11 转正：脱敏会话摘要（id/时间/state/项目名/标题/置顶，无原句明文，MUST-19）。
+
+    分页：置顶优先 + updated_at 倒序后，从第 ``offset`` 条起取 ``limit`` 条。
+    """
     request_id = _request_id(request)
     svc = await get_service()
-    items = await svc.list_history(_USER_ID)
+    page = await svc.list_history(_USER_ID, limit=limit, offset=offset)
     return _ok(
-        [
-            HistoryItemPayload(
-                session_id=i.session_id,
-                state=i.state,
-                project=i.project,
-                updated_at=i.updated_at,
-                title=i.title,
-                pinned=i.pinned,
-                project_root=i.project_root,
-            )
-            for i in items
-        ],
+        PagedHistoryItem(
+            items=[
+                HistoryItemPayload(
+                    session_id=i.session_id,
+                    state=i.state,
+                    project=i.project,
+                    updated_at=i.updated_at,
+                    title=i.title,
+                    pinned=i.pinned,
+                    project_root=i.project_root,
+                )
+                for i in page.items
+            ],
+            has_more=page.has_more,
+            limit=page.limit,
+            offset=page.offset,
+        ),
         request_id,
     )
 
@@ -414,6 +480,20 @@ async def patch_history(
     if "pinned" in payload:
         await svc.pin_session(_USER_ID, session_id, payload["pinned"])
     return _ok(None, request_id)
+
+
+@router.post("/history/{session_id}/rollback")
+async def rollback_session(
+    request: Request, session_id: str, req: RollbackRequest
+) -> ApiResponse[FlowSnapshotResponse]:
+    """撤销到某一轮（2026-11-05）：物理删除其后轮次，会话回到该轮完成时的状态。
+
+    显式破坏性操作（MUST-32 修订）：删除不可恢复，前端必须二次确认后才能调用。
+    """
+    request_id = _request_id(request)
+    svc = await get_service()
+    snapshot = await svc.rollback_to_turn(_USER_ID, session_id, req.turn_id, request_id=request_id)
+    return _ok(_snapshot_payload(snapshot), request_id)
 
 
 @router.delete("/history/{session_id}")

@@ -25,6 +25,11 @@ from typing import Any, Final
 #: 单条摘要的字符上限（三字段合计），避免个别轮次吃掉整层预算。
 _SUMMARY_CHAR_LIMIT: Final = 120
 _DIGEST_CHAR_LIMIT: Final = 80
+#: 纯回答轮的摘要上限（2026-11-05）：比普通轮长，否则「接着刚才说的」接不上。
+#: 普通轮仍用 120——回答轮的正文本身就是这轮的全部产出。
+_REPLY_SUMMARY_LIMIT: Final = 260
+#: 动作序列在摘要里的条数上限（2026-11-05）：够回看「做过哪几步」，又不撑大摘要。
+_SUMMARY_STEPS_LIMIT: Final = 24
 
 
 def estimate_tokens(text: str) -> int:
@@ -51,16 +56,22 @@ class TurnSummary:
     open_items: tuple[str, ...] = ()
     decision: str = ""
     rejected: tuple[str, ...] = ()
+    #: 纯回答轮的正文摘要（2026-11-05）：本轮没有方案，结论会退化成「待补充信息」
+    reply: str = ""
 
     def render(self, *, include_open: bool = True, include_decision: bool = True) -> str:
         parts = [f"第{self.turn_index + 1}轮｜目标 {self.target or '未定位'}｜{self.conclusion}"]
+        if self.reply:
+            parts.append(f"回答 {self.reply}")
         if include_decision and self.decision:
             parts.append(f"选定 {self.decision}")
         if include_decision and self.rejected:
             parts.append(f"已否决 {'、'.join(self.rejected)}")
         if include_open and self.open_items:
             parts.append(f"待确认 {'；'.join(self.open_items)}")
-        return _clip("；".join(parts), _SUMMARY_CHAR_LIMIT)
+        # 回答轮给更长的上限：正文本身就是这一轮的全部产出，截到 120 会答不上追问
+        limit = _REPLY_SUMMARY_LIMIT if self.reply else _SUMMARY_CHAR_LIMIT
+        return _clip("；".join(parts), limit)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,9 +82,13 @@ class TurnInput:
     facts: tuple[str, ...] = ()
     clarifications: dict[str, str] = field(default_factory=dict)
     target: str = ""
+    #: 本轮目标锚点渲染块（2026-11-05）。放首行：历史被压成 80 字摘要后，
+    #: 目标是唯一不能跟着漂的东西。缺省空串保证旧调用方零改动。
+    anchor: str = ""
 
     def render(self) -> str:
-        lines = [f"本轮需求：{self.sentence}"]
+        lines = [self.anchor] if self.anchor else []
+        lines.append(f"本轮需求：{self.sentence}")
         if self.target:
             lines.append(f"本轮目标：{self.target}")
         if self.facts:
@@ -246,6 +261,10 @@ def summary_from_turn(data: dict[str, Any]) -> dict[str, Any]:
     unknowns = [item for item in data.get("unknowns", []) if isinstance(item, dict)]
     open_items = [str(item.get("ask", "")) for item in unknowns if item.get("ask")][:3]
 
+    reply = str(data.get("reply_text", "")).strip()
+    # 动作序列（2026-11-05 形态层）：历史轮可回看「这一步在做什么」。
+    # 随摘要一起落进 summary_json——**不新增表列**（零 DDL 迁移、零旧库兼容风险）。
+    steps = [item for item in data.get("agent_steps", []) if isinstance(item, dict)]
     return {
         "target": target,
         "conclusion": _clip(conclusion, _SUMMARY_CHAR_LIMIT),
@@ -253,4 +272,8 @@ def summary_from_turn(data: dict[str, Any]) -> dict[str, Any]:
         "open": open_items,
         "decision": decision,
         "rejected": rejected[:2],
+        # 纯回答轮（2026-11-05）：本轮没有方案，conclusion 会退化成「待补充信息」，
+        # 用回答正文补足——否则下一轮回看历史只知道「答过」，不知道「答了什么」。
+        "reply": _clip(reply, _REPLY_SUMMARY_LIMIT),
+        "steps": steps[:_SUMMARY_STEPS_LIMIT],
     }

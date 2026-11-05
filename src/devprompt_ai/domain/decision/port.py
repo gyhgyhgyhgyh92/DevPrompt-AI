@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Literal, Protocol, runtime_checkable
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from devprompt_ai.domain.models import Candidate, FactResult
 
@@ -53,11 +53,16 @@ class AskQuestion(BaseModel):
     header: str = ""
     options: list[AskOption] = Field(default_factory=list)
     multi_select: bool = False
+    #: 当前最佳推断（MUST-26：每问必须给出）。为空时由 build_unknowns 回退到同 key 的取证证据。
+    best_guess: str = ""
 
 
 class FactProbeOutput(BaseModel):
     judgments: list[FactJudgment]
-    overall_confidence: float = Field(ge=0.0, le=1.0)
+    #: 模型自报置信度。None = 模型未给判断（与「判断为 0」是两件事，2026-11-04）。
+    overall_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    #: 置信度来源。缺省由 whether overall_confidence is None 推断，避免旧输出被迫改造。
+    confidence_source: Literal["measured", "no_data"] | None = None
     #: 模型决定「问不问、问几个」；空表示当前信息已够，直接生成（不机械追问）。
     questions: list[AskQuestion] = Field(default_factory=list)
     #: AskUserQuestion 的 call_id（来自 function_call，仅用于审计/追踪）
@@ -65,6 +70,37 @@ class FactProbeOutput(BaseModel):
     #: 决策层自判的任务类型：design = 原句模糊需深挖 5 类；execution = 范围已知走闸门。
     #: 缺省 execution 保证旧 mock / 旧输出零改动。
     task_kind: Literal["design", "execution"] = "execution"
+
+    @model_validator(mode="after")
+    def _infer_confidence_source(self) -> FactProbeOutput:
+        """缺省来源按「有没有值」推断；显式给 measured 却没有值视为契约破坏。"""
+        if self.confidence_source is None:
+            self.confidence_source = (
+                "measured" if self.overall_confidence is not None else "no_data"
+            )
+        if self.confidence_source == "measured" and self.overall_confidence is None:
+            raise ValueError("confidence_source=measured 时 overall_confidence 不得为 None")
+        return self
+
+
+class NextActionOutput(BaseModel):
+    """Agentic 循环的下一步动作（F-201 扩展）。
+
+    ``action`` 用字面量而非 import AgentAction：决策层不该知道 agent 包的内部枚举，
+    由 service 在分发时做一次转换。
+    """
+
+    action: Literal["retrieve", "probe", "ask", "generate", "rank", "deliver", "abort", "reply"]
+    reason: str = ""
+    #: 本次决策的实测置信度；模型未给判断时为 None（与 FactProbeOutput 同一约定）。
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    confidence_source: Literal["measured", "no_data"] = "measured"
+
+    @model_validator(mode="after")
+    def _measured_requires_value(self) -> NextActionOutput:
+        if self.confidence_source == "measured" and self.confidence is None:
+            raise ValueError("confidence_source=measured 时 confidence 不得为 None")
+        return self
 
 
 class VariantScore(BaseModel):

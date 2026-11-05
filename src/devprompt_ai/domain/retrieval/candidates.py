@@ -531,6 +531,7 @@ def build_candidates(sentence: str, symbols: list[Symbol]) -> CandidateResult:
             line=sym.line,
             score=score,
             source="symbol" if name_hits > 0 else "path",
+            signature=sym.signature,
         )
         for score, name_hits, _exact, sym in scored[:MAX_CANDIDATES]
     ]

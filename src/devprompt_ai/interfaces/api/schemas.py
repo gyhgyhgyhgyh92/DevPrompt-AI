@@ -6,7 +6,7 @@ ApiResponse 泛型化：data 体类型进 OpenAPI，供前端类型生成精确�
 
 from __future__ import annotations
 
-from typing import Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -19,10 +19,22 @@ class OptimizeRequest(BaseModel):
     ``session_id`` 非空表示在同一会话开启新一轮（多轮，2026-10-20）；为空则新建会话。
     """
 
-    sentence: str
+    #: 原句。**可留空**：留空表示「沿用上一轮目标」——不带新原句的追问入口
+    #: （后端 service.optimize 已有该语义，此前被前端 min(1) 校验挡住）。
+    sentence: str = ""
     #: 第二轮起可留空——后端沿用该会话既有的 project_root
     project: str = ""
     session_id: str | None = None
+    #: 以某一历史轮为基线新开一轮（2026-11-05「回滚/继续」语义）。
+    #: 非空时以该轮的取证与方案作为本轮起点；历史轮一条不少（turn 表 append-only）。
+    base_turn_id: str = ""
+
+    @model_validator(mode="after")
+    def _need_sentence_or_base(self) -> OptimizeRequest:
+        """原句与基线轮至少给一个——否则没有任何可优化的上下文。"""
+        if not self.sentence.strip() and not self.base_turn_id.strip():
+            raise ValueError("sentence 与 base_turn_id 至少给一个")
+        return self
 
 
 class FollowupRequest(BaseModel):
@@ -38,6 +50,12 @@ class FollowupRequest(BaseModel):
         if sum(modes) != 1:
             raise ValueError("answers / escape / guardrail_action 三模式互斥，且必须提供其一")
         return self
+
+
+class RollbackRequest(BaseModel):
+    """撤销请求（POST /history/{session_id}/rollback）：撤销到 turn_id 这一轮完成时。"""
+
+    turn_id: str
 
 
 class TurnSummaryPayload(BaseModel):
@@ -58,6 +76,21 @@ class TurnDetailPayload(TurnSummaryPayload):
     input: str = ""
     variants: list[VariantPayload] = Field(default_factory=list)
     facts: list[FactPayload] = Field(default_factory=list)
+    #: 本轮动作序列（2026-11-05 形态层）：历史轮可回看「这一步在做什么」。
+    steps: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class PagedTurnSummary(BaseModel):
+    """分页轮次摘要（2026-11-05，BREAKING）：列表端点统一返回形态。
+
+    裸数组无法表达「还有更多」，前端只能硬顶（20 轮）。
+    四个字段一律必填——带默认值会在 OpenAPI 里变成可选，前端类型随之变松。
+    """
+
+    items: list[TurnSummaryPayload]
+    has_more: bool
+    limit: int
+    offset: int
 
 
 class AskOptionPayload(BaseModel):
@@ -113,11 +146,29 @@ class SymbolPayload(BaseModel):
 
 
 class FactPayload(BaseModel):
-    """取证事实只读透出（F-104 七项判定结果）。"""
+    """取证事实只读透出（F-104 七项判定结果）。
+
+    ``applicable`` 不进契约：它是内部档位判定依据，前端不需要按项目类型分支渲染。
+    """
 
     key: str
     passed: bool
     evidence: str
+
+
+class DeliveryGatePayload(BaseModel):
+    """交付证据门结果（2026-11-05，additive）：只披露质量标记，不阻断交付。
+
+    ``tone`` 由**后端领域层**给出（ok / warn / error），前端只按它选样式，
+    不得自行把 status 映射成语义（MUST-08 / MUST-33）。
+    """
+
+    status: str = ""
+    tone: str = "ok"
+    reasons: list[str] = Field(default_factory=list)
+    can_mark_c: bool = True
+    can_mark_recommend: bool = True
+    disclosure: str = ""
 
 
 class CostDetailPayload(BaseModel):
@@ -149,6 +200,19 @@ class FlowSnapshotResponse(BaseModel):
     facts: list[FactPayload] = Field(default_factory=list)
     cost: CostDetailPayload | None = None  # F-805 成本明细（additive，无新增契约路径）
     message: str = ""
+    #: 本轮归属（2026-11-04，additive）：前端据此决定该轮进历史列表还是当前对话区。
+    current_turn_id: str | None = None
+    #: agentic 进度（2026-11-04，additive）：已执行动作数 / 最近动作名 / 已耗时毫秒。
+    #: 仅在 status == "running"（AGENTIC 循环进行中）时有值，供时间线渲染。
+    agent_step: int | None = None
+    agent_action: str | None = None
+    agent_elapsed_ms: int | None = None
+    #: 交付时证据已过期（2026-11-05，additive）：周期内代码被改，方案基于旧证据。
+    evidence_stale: bool = False
+    #: 纯回答轮的正文（2026-11-05，additive）：本轮只回答、不产出方案。
+    reply_text: str = ""
+    #: 交付证据门（2026-11-05，additive）：缺省 None 表示本轮未过门（如反问中/进行中）。
+    delivery_gate: DeliveryGatePayload | None = None
 
 
 class HealthCheckItem(BaseModel):
@@ -459,6 +523,19 @@ class HistoryItemPayload(BaseModel):
     title: str = ""
     pinned: bool = False
     project_root: str = ""
+
+
+class PagedHistoryItem(BaseModel):
+    """分页会话摘要（2026-11-05，BREAKING）：裸数组 → 包装对象。
+
+    裸数组无法表达「还有更多」，前端只能硬顶（50 会话）。
+    四个字段一律必填——带默认值会在 OpenAPI 里变成可选，前端类型随之变松。
+    """
+
+    items: list[HistoryItemPayload]
+    has_more: bool
+    limit: int
+    offset: int
 
 
 class HistoryUpdateRequest(BaseModel):

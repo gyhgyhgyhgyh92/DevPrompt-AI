@@ -63,10 +63,15 @@ class LocalFileReader:
 
 @dataclass(frozen=True, slots=True)
 class SymbolTableResult:
-    """F-101 对外返回：符号表 + 本次是否缓存命中。"""
+    """F-101 对外返回：符号表 + 本次是否缓存命中 + 代码快照指纹。
+
+    ``cache_key`` 是 root + 全量 mtime 的摘要（``symbols.cache_key``）。多轮继承用它
+    判定取证是否过期：指纹变了说明代码改过，继承的 facts 不能再当证据（2026-11-04）。
+    """
 
     symbols: list[Symbol]
     cache_hit: bool
+    cache_key: str = ""
 
 
 def _to_rel(path: str, root: str) -> str:
@@ -124,14 +129,25 @@ class SymbolTableProvider:
             and (now - self._cached_at) < self._ttl
         ):
             logger.info("cache.hit", extra={"what": "symbol_table", "root": root})
-            return SymbolTableResult(symbols=self._cache_symbols or [], cache_hit=True)
+            return SymbolTableResult(
+                symbols=self._cache_symbols or [], cache_hit=True, cache_key=key
+            )
 
         args = build_ctags_args(root)
         self.calls_args.append(args)
-        raw = await self._runner.run(args, timeout=30.0)
+        try:
+            raw = await self._runner.run(args, timeout=30.0)
+        except Exception:
+            # 老版 ctags 不认 `--fields=+n+{signature}` 会直接失败（未知字段名）。
+            # 去掉签名重试一次：签名只是排序的增强信息，不该让整个符号表不可用。
+            # shortcut: 仅在带签名参数失败时降级；代价是排序少了签名（退化为改造前行为）。
+            # 升级路径：若 ctags 支持探测命令，可先探测再决定是否带签名，省一次重试。
+            args = build_ctags_args(root, with_signature=False)
+            self.calls_args.append(args)
+            raw = await self._runner.run(args, timeout=30.0)
         symbols = [replace(s, path=_to_rel(s.path, root)) for s in parse_ctags_output(raw)]
         self._cache_key = key
         self._cache_symbols = symbols
         self._cached_at = now
         logger.info("cache.miss", extra={"what": "symbol_table", "root": root})
-        return SymbolTableResult(symbols=symbols, cache_hit=False)
+        return SymbolTableResult(symbols=symbols, cache_hit=False, cache_key=key)

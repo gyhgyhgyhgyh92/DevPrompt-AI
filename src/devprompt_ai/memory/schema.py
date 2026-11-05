@@ -33,6 +33,32 @@ CREATE TABLE IF NOT EXISTS forge_turns (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_turns_session_index ON forge_turns (session_id, turn_index);
 """
 
+# 启动自愈（2026-11-04）：把崩溃遗留的未完成 turn 收尾。
+# 只处理「超过阈值仍停在活跃态」的行——运行中的 turn 不能被误杀；
+# AGENTIC 是星型拓扑的决策态，进程崩溃时会停在它上面（不含 ASKING/CONFIRMING，
+# 那两态是等用户，不是执行中）。
+ORPHAN_TURNS_SQL = """
+UPDATE forge_turns
+   SET state = 'ABORTED'
+ WHERE state IN ('INIT', 'AGENTIC')
+   AND created_at < strftime('%Y-%m-%dT%H:%M:%fZ','now', ?)
+"""
+
+#: 对应会话一并收尾：版本号自增，避免下一次 CAS 撞上旧 version。
+ORPHAN_SESSIONS_SQL = """
+UPDATE forge_sessions
+   SET state = 'ABORTED',
+       version = version + 1,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ WHERE state IN ('INIT', 'AGENTIC', 'RETRIEVING', 'PROBING', 'GENERATING', 'RANKING')
+   AND session_id IN (
+     SELECT session_id FROM forge_turns
+      WHERE state = 'ABORTED'
+        AND created_at < strftime('%Y-%m-%dT%H:%M:%fZ','now', ?)
+   )
+"""
+
+
 # L2 项目记忆（2026-10-20）：结构化真源，替代 git notes 的自由文本 blob。
 # 检索式注入：score = confidence × 90 天半衰期 × key 匹配度；命中回写 hit_count/last_hit_at
 # （判断记忆是否真的被用到的唯一客观信号）。superseded_by 指向覆盖它的新 key，不物理删除。

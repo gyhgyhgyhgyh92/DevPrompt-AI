@@ -24,6 +24,7 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "recommendation.skipped",
         "state.truncated",
         "followup.guardrail",
+        "followup.clarifications_invalidated",
         "followup.escaped",
         "decision.tools_unsupported",
         "decision.ask_args_invalid",
@@ -36,12 +37,27 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "settings.updated",
         "model_catalog.refreshed",
         "model_catalog.refresh_failed",
+        "agent.step",
+        "agent.hook_halt",
+        "agent.sensorium",
+        "agent.loop_terminated",
+        "evidence.reused",
+        "evidence.stale_reprobe",
+        "evidence.claim_uncovered",
+        "evidence.claim_undeclared",
+        "delivery.gate",
+        "session.rolled_back",
+        "followup.expect_unmet",
+        "hook.failed",
+        "hook.ran",
+        "evidence.stale_on_deliver",
     }
 )
-"""SHOULD-08 固定事件名全集（十三名；made/skipped 同族计一项）。emit 之外的诊断日志用普通logging。
+"""SHOULD-08 固定事件名全集（made/skipped 同族计一项）。emit 之外的诊断日志用普通 logging。
 
 2026-10-15 移除「决策层切换」事件：决策层统一为单一 LLM 实现（无降级切换），该事件已无发射点。
 2026-10-17 新增模型目录两事件：刷新成功（含模型条数）/ 刷新失败（回落旧快照）。
+2026-11-04 星型拓扑新增两事件：每步动作（action/index/duration_ms）与循环终止（reason）。
 """
 
 _telemetry_enabled = True

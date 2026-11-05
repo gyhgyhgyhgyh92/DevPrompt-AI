@@ -7,24 +7,29 @@ create_decider 保留函数名与签名（调用方零改动），恒返回 LLMF
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from devprompt_ai.common.text import estimate_tokens
 from devprompt_ai.config import AppConfig
 from devprompt_ai.decision.prompts import (
     FACTS_SYSTEM,
     FACTS_USER,
+    NEXT_ACTION_SYSTEM,
+    NEXT_ACTION_USER,
     RANK_SYSTEM,
     RANK_USER,
     SCORE_SYSTEM,
     SCORE_USER,
     facts_evidence,
+    plan_evidence,
     rank_evidence,
     score_evidence,
 )
+from devprompt_ai.domain.agent.action import AgentStep
 from devprompt_ai.domain.decision.port import (
     DecisionPort,
     FactProbeOutput,
+    NextActionOutput,
     RankComponentsOutput,
     ScorePromptsOutput,
 )
@@ -68,6 +73,16 @@ def _fit_state(text: str, limit: int) -> str:
     return text[:lo]
 
 
+def _candidate_line(index: int, candidate: Candidate) -> str:
+    """候选行：名称 + 路径 + 签名（签名非空才附）。
+
+    签名是排序阶段唯一缺失的判别性上下文（W3 实测：仅名称与路径时 top-1 命中 58%）。
+    只带签名、不带函数体（MUST-09 硬边界不变）。
+    """
+    base = f"{index}. {candidate.name}  ({candidate.path})"
+    return f"{base}  {candidate.signature}" if candidate.signature else base
+
+
 class LLMFallbackDecider:
     """三类能力同构：单次调用 + 结构化输出。"""
 
@@ -77,7 +92,7 @@ class LLMFallbackDecider:
     async def rank_components(
         self, sentence: str, candidates: list[Candidate]
     ) -> RankComponentsOutput:
-        listing = "\n".join(f"{i}. {c.name}  ({c.path})" for i, c in enumerate(candidates))
+        listing = "\n".join(_candidate_line(i, c) for i, c in enumerate(candidates))
         # timeout 缺省即 cfg.llm_timeout（F-604 默认 60s；25 候选大 prompt 10s 必超时——实测）
         user = _fit_state(
             RANK_USER.format(evidence=rank_evidence(sentence, listing)),
@@ -127,13 +142,17 @@ class LLMFallbackDecider:
                 emit_warning("decision.ask_args_invalid", call_id=result.tool_call.call_id)
                 return FactProbeOutput(
                     judgments=[],
-                    overall_confidence=0.0,
+                    overall_confidence=None,
+                    confidence_source="no_data",
                     questions=[],
                     ask_call_id=result.tool_call.call_id,
                 )
+            # 2026-11-04：模型走工具调用时并未给出置信度——True 是「未给判断」而非「判断为 0」。
+            # 此前强制 0.0 让下游把它当低置信，等价于「问了问题就永远升不到 C 档」。
             return FactProbeOutput(
                 judgments=[],
-                overall_confidence=0.0,
+                overall_confidence=None,
+                confidence_source="no_data",
                 questions=ask.questions,
                 task_kind=ask.task_kind,
                 ask_call_id=result.tool_call.call_id,
@@ -157,6 +176,50 @@ class LLMFallbackDecider:
             self._cfg,
             ScorePromptsOutput,
             SCORE_SYSTEM,
+            user,
+        )
+
+    async def next_action(
+        self,
+        *,
+        sentence: str,
+        facts: Sequence[FactResult],
+        steps: Sequence[AgentStep],
+        variant_count: int,
+        clarifications: Mapping[str, str],
+        correction: str = "",
+    ) -> NextActionOutput:
+        """Agentic 调度：给定已发生的事实与动作序列，决定下一步做什么。
+
+        与前三类能力的区别：它消费的是「本轮已走到哪」，不是「这组输入怎么判」。
+        同样单次调用 + 结构化输出，不加调用轮次。
+        """
+        fact_listing = "\n".join(
+            f"- {f.key}: {'真' if f.passed else '假'}（证据：{f.evidence}）" for f in facts
+        )
+        step_listing = "\n".join(
+            f"{s.index + 1}. {s.action.value} → {s.outcome.value}"
+            + (f"（{s.note}）" if s.note else "")
+            for s in steps
+        )
+        clarification_listing = "\n".join(f"- {q}：{a}" for q, a in clarifications.items())
+        user = _fit_state(
+            NEXT_ACTION_USER.format(
+                evidence=plan_evidence(
+                    sentence,
+                    fact_listing,
+                    step_listing,
+                    variant_count,
+                    clarification_listing,
+                    correction,
+                )
+            ),
+            self._cfg.max_state_tokens,
+        )
+        return await chat_structured(
+            self._cfg,
+            NextActionOutput,
+            NEXT_ACTION_SYSTEM,
             user,
         )
 

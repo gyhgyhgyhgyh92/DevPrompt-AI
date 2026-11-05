@@ -12,9 +12,11 @@ from devprompt_ai.domain.prompt_guard import (
     build_evidence_block,
 )
 
-RANK_SYSTEM = f"""你是代码检索排序裁判。给定用户需求与候选符号列表（仅名称与路径），
-判断哪些候选最可能是用户想要修改的目标。只输出 JSON。
+RANK_SYSTEM = f"""你是代码检索排序裁判。给定用户需求与候选符号列表
+（名称、路径，部分候选附函数签名），判断哪些候选最可能是用户想要修改的目标。只输出 JSON。
 注意：这是排序任务，不是检索任务；候选集之外不存在答案。
+候选附带的签名是判别依据：同名同路径时用参数的语义（类型、命名）区分用途，
+优先选签名与用户需求描述对得上的那个。
 
 {TASK_NOT_EXECUTE}"""
 
@@ -87,6 +89,41 @@ SCORE_USER = """请输出 JSON：
 {evidence}"""
 
 
+NEXT_ACTION_SYSTEM = f"""你是编码助手的调度裁判。给定用户需求、七项取证结果、已执行的动作序列，
+决定本轮下一步该做哪一个动作。只输出 JSON。
+
+## 可选动作
+- retrieve：检索并定位目标符号（尚未定位时用）
+- probe：研判取证结果，判断信息是否足够
+- ask：向用户提出已确认的未决问题（必须已 probe，且确有未决项）
+- generate：生成提示词方案
+- rank：对已生成的多套方案打分（必须已 generate，且套数 ≥2）
+- deliver：交付并结束本轮（方案已生成且可收尾）
+- abort：放弃本轮（需求无法完成或信息严重不足）
+- reply：直接用文字回答，不生成也不修改方案。仅当用户在做**讨论性追问**时使用
+  （例如「为什么选 B」「这两套的风险差异」「刚才那条为什么这么写」）。
+
+## 调度规则
+- 不要重复已做过的动作，除非新取证结果让重做有意义；连续重复会被判为原地打转并强制终止。
+- 七项取证全过且无未决项 → 直接 generate。
+- 已生成方案且套数 ≥2 → rank 或 deliver；仅 1 套 → 直接 deliver。
+- 已交付过就不要再来一次。
+- **reply 的使用边界**：本轮尚无任何方案（已生成 0 套）时不得用 reply——首轮要产出方案，
+  不是聊天。需要产出或**修改**方案时必须用 generate；reply 只解释、不产出。
+
+{TASK_NOT_EXECUTE}"""
+
+NEXT_ACTION_USER = """请输出 JSON：
+{{"action": "retrieve|probe|ask|generate|rank|deliver|abort|reply",
+ "reason": "一句话说明为什么选它",
+ "confidence": 0到1的小数,
+ "confidence_source": "measured 或 no_data"}}
+
+注意：若你没有足够依据判断，把 confidence_source 填 "no_data" 且不要编造 confidence。
+
+{evidence}"""
+
+
 def rank_evidence(sentence: str, candidates: str) -> str:
     """排序任务的证据块（M-5）。"""
     return build_evidence_block({"用户需求": sentence, "候选符号": candidates})
@@ -100,3 +137,24 @@ def facts_evidence(sentence: str, facts: str) -> str:
 def score_evidence(context: str, variants: str) -> str:
     """打分任务的证据块（M-5）。"""
     return build_evidence_block({"项目上下文": context, "待评方案": variants})
+
+
+def plan_evidence(
+    sentence: str,
+    facts: str,
+    steps: str,
+    variant_count: int,
+    clarifications: str,
+    correction: str = "",
+) -> str:
+    """调度任务的证据块（M-5）。``correction`` 非空时追加外环纠偏提示。"""
+    payload = {
+        "用户需求": sentence,
+        "取证结果": facts,
+        "已执行动作": steps or "（尚未执行任何动作）",
+        "已生成方案套数": str(variant_count),
+        "已确认问答": clarifications or "（无）",
+    }
+    if correction:
+        payload["系统纠偏"] = correction
+    return build_evidence_block(payload)

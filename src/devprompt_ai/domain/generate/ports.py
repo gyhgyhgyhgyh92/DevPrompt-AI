@@ -29,6 +29,37 @@ class GenerationContext(BaseModel):
     history_block: str = ""
     #: L2 记忆 + 偏好投影（build_context 装配）
     memory_block: str = ""
+    #: 上一轮三套方案正文（2026-11-04 多轮继承，≤2000 字符）：
+    #: 「B 档第 2 条改成 X」这类迭代指令没有它就无法定位到具体哪一条。
+    previous_variants: str = ""
+    #: 上一轮推荐判定摘要（2026-11-05）：marked / reason / gap / 各档分数。
+    #: 回答「为什么选 B」必须有它，否则模型只能如实说「上下文里没有依据」。
+    ranking_summary: str = ""
+
+
+ClaimKind: TypeAlias = Literal["file", "symbol", "token", "line"]
+
+
+class Claim(BaseModel):
+    """方案正文里的一条可核对断言（2026-11-04 证据账本）。
+
+    模型在生成同一次调用里逐条声明「我引用了什么」，生成后由 ``match_claims``
+    对取证结果核账——C 档承诺「行号 + token 出处」（MUST-28），这是兑现它的机器校验。
+    """
+
+    kind: ClaimKind
+    #: 文件相对路径 / 符号名 / 样式 token / "路径:行号"，必须与正文原文一致
+    target: str
+    note: str = ""
+
+
+class ReplyOutput(BaseModel):
+    """纯回答输出（2026-11-05）：只有正文，没有 title/changes/claims/level。
+
+    与 ``VariantDraft`` 分开定义，是为了让「回答」在类型层就不可能被当成方案落库。
+    """
+
+    text: str = Field(min_length=1)
 
 
 class VariantDraft(BaseModel):
@@ -38,6 +69,8 @@ class VariantDraft(BaseModel):
     body: str
     changes: list[str] = Field(default_factory=list)
     level: Literal["A", "B", "C"]
+    #: 正文引用的逐条断言；缺省空表示模型未声明（旧 mock / 非 C 档），不参与判定。
+    claims: list[Claim] = Field(default_factory=list)
 
 
 class MultiVariantDraft(BaseModel):
@@ -67,6 +100,14 @@ class MultiVariantDraft(BaseModel):
 @runtime_checkable
 class GeneratePort(Protocol):
     async def generate_single(self, ctx: GenerationContext) -> VariantDraft: ...
+
+    async def answer(self, ctx: GenerationContext) -> str:
+        """纯回答（2026-11-05）：只产出文字，不产生方案。
+
+        与 ``generate_single`` 共用 ``GenerationContext``——回答「为什么选 B」需要
+        ``previous_variants`` 与 ``history_block``，这两个字段已存在，不新增类型。
+        """
+        ...
 
     async def generate_variants(
         self, ctx: GenerationContext, levels: list[Level]

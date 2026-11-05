@@ -96,6 +96,9 @@ class AppConfig(BaseSettings):
 
     followup_soft_round_guard: int = 10
     followup_cost_budget: float = 0.0  # 单流程 LLM token 总数上限；0 = 禁用（MUST-26 软护栏）
+    #: 断言对账严格模式（2026-11-05）：C 档要求模型至少声明一条引用，
+    #: 一条都没声明时降为 B。默认关闭——先观察真实会话的声明率，再决定是否收紧。
+    claim_strict: bool = False
     telemetry: bool = True  # F-604 遥测开关（T6-11）：关闭后固定事件不落盘
 
     # SQLite 单文件（L1/L3；用户主目录 ~ 由 expanduser 解析，展开归 4B init_schema）

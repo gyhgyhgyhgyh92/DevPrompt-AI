@@ -11,6 +11,8 @@ from devprompt_ai.domain.models import FlowSession, SessionStore
 
 class FlowState(str, Enum):
     INIT = "INIT"
+    #: 决策态：每完成一个动作回到这里，由 DecisionPort.next_action 决定下一步。
+    AGENTIC = "AGENTIC"
     RETRIEVING = "RETRIEVING"
     PROBING = "PROBING"
     ASKING = "ASKING"
@@ -21,19 +23,53 @@ class FlowState(str, Enum):
     ABORTED = "ABORTED"
 
 
-# GENERATING→RANKING 为阶段五推荐接入预留；阶段四单套走 GENERATING→DONE。
-# RETRIEVING→ASKING：F-102 候选 <3 条（manual_required）直达反问。
+# 星型拓扑（2026-11-04）：AGENTIC 是唯一枢纽，执行态完成后一律回到它，
+# 再由它决定下一个动作。保留两条既有快速路径，它们不经过决策态：
+#   GENERATING→RANKING（阶段五推荐接入）、GENERATING→DONE（阶段四单套交付）。
+# DONE / ABORTED 出边为空：一轮结束由 start_turn 重置容器，不经转移边。
 TRANSITIONS: dict[FlowState, frozenset[FlowState]] = {
-    FlowState.INIT: frozenset({FlowState.RETRIEVING, FlowState.ABORTED}),
-    FlowState.RETRIEVING: frozenset({FlowState.PROBING, FlowState.ASKING, FlowState.ABORTED}),
-    FlowState.PROBING: frozenset({FlowState.ASKING, FlowState.GENERATING, FlowState.ABORTED}),
-    FlowState.ASKING: frozenset({FlowState.CONFIRMING, FlowState.GENERATING, FlowState.ABORTED}),
-    FlowState.CONFIRMING: frozenset({FlowState.ASKING, FlowState.GENERATING, FlowState.ABORTED}),
-    FlowState.GENERATING: frozenset({FlowState.RANKING, FlowState.DONE, FlowState.ABORTED}),
-    FlowState.RANKING: frozenset({FlowState.DONE, FlowState.ABORTED}),
+    FlowState.INIT: frozenset({FlowState.AGENTIC, FlowState.ABORTED}),
+    FlowState.AGENTIC: frozenset(
+        {
+            FlowState.RETRIEVING,
+            FlowState.PROBING,
+            FlowState.ASKING,
+            FlowState.CONFIRMING,
+            FlowState.GENERATING,
+            FlowState.RANKING,
+            FlowState.DONE,
+            FlowState.ABORTED,
+        }
+    ),
+    FlowState.RETRIEVING: frozenset({FlowState.AGENTIC, FlowState.ABORTED}),
+    FlowState.PROBING: frozenset({FlowState.AGENTIC, FlowState.ABORTED}),
+    FlowState.ASKING: frozenset({FlowState.AGENTIC, FlowState.ABORTED}),
+    FlowState.CONFIRMING: frozenset({FlowState.AGENTIC, FlowState.ABORTED}),
+    FlowState.GENERATING: frozenset(
+        {
+            FlowState.AGENTIC,
+            FlowState.RANKING,
+            FlowState.DONE,
+            FlowState.ABORTED,
+        }
+    ),
+    FlowState.RANKING: frozenset({FlowState.AGENTIC, FlowState.DONE, FlowState.ABORTED}),
     FlowState.DONE: frozenset(),
     FlowState.ABORTED: frozenset(),
 }
+
+#: 活跃态：进程在这些状态下崩溃会留下需要启动自愈的孤儿 turn。
+#: ASKING / CONFIRMING 是「等用户」而不是「执行中」，不计入崩溃孤儿。
+ACTIVE_STATES: frozenset[FlowState] = frozenset(
+    {
+        FlowState.INIT,
+        FlowState.AGENTIC,
+        FlowState.RETRIEVING,
+        FlowState.PROBING,
+        FlowState.GENERATING,
+        FlowState.RANKING,
+    }
+)
 
 
 def new_session_id() -> str:
@@ -61,6 +97,19 @@ async def transition(session: FlowSession, target: FlowState, store: SessionStor
         )
 
 
+async def hop(session: FlowSession, target: FlowState, store: SessionStore) -> None:
+    """经 AGENTIC 中转进入执行态（星型拓扑下的唯一合法路径）。
+
+    已在 AGENTIC 时直接转；目标就是 AGENTIC 时只做回巢，避免自环。
+    两次 CAS 之间失败会让 session 停在 AGENTIC——那是合法检查点，不是半成品。
+    """
+    if FlowState(session.state) is not FlowState.AGENTIC:
+        await transition(session, FlowState.AGENTIC, store)
+    if target is FlowState.AGENTIC:
+        return
+    await transition(session, target, store)
+
+
 async def load_or_create(
     store: SessionStore, user_id: str, session_id: str | None = None
 ) -> FlowSession:
@@ -81,6 +130,9 @@ async def start_turn(store: SessionStore, user_id: str, session_id: str | None) 
     DONE / ABORTED 是**上一轮 turn** 的终态，session 只是容器——容器重开一轮不需要
     状态转移边，否则就得给 DONE 加出边，连带 SSE 关闭条件、`resume` 的已结束判定、
     权限白名单、前端 done 视图四处假设同时失效。
+
+    星型拓扑（2026-11-04）下 AGENTIC 属活跃态：撞上它说明上一轮仍在决策/执行，
+    与撞上其他活跃态一样拒绝重开；进程崩溃留下的 AGENTIC 由启动自愈置为 ABORTED。
     """
     if session_id is None:
         return await load_or_create(store, user_id)

@@ -54,7 +54,7 @@ from devprompt_ai.harness.ask_tool import ASK_TOOL_DEFINITION, ASK_TOOL_NAME
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
-_last_usage: ContextVar[dict[str, int] | None] = ContextVar("last_usage", default=None)
+_last_usage: ContextVar[dict[str, int | None] | None] = ContextVar("last_usage", default=None)
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
@@ -76,9 +76,34 @@ def _extract_json(text: str) -> str:
     return text
 
 
-def last_usage() -> dict[str, int] | None:
-    """F-805 成本监控起建：返回最近一次结构化调用的 token 用量。"""
+def last_usage() -> dict[str, int | None] | None:
+    """F-805 成本监控起建：返回最近一次结构化调用的 token 用量。
+
+    ``cached_tokens`` 为 None 表示供应商未返回缓存命中信息——**不虚报 0**。
+    """
     return _last_usage.get()
+
+
+def _cached_tokens(usage: object) -> int | None:
+    """读取供应商返回的缓存命中 token；无该字段返回 None。
+
+    兼容两种形态：SDK 对象（``usage.prompt_tokens_details.cached_tokens``）与
+    原生适配器返回的 dict。
+    """
+    details = getattr(usage, "prompt_tokens_details", None)
+    if details is None and isinstance(usage, dict):
+        details = usage.get("prompt_tokens_details")
+    if details is None:
+        return None
+    value = getattr(details, "cached_tokens", None)
+    if value is None and isinstance(details, dict):
+        value = details.get("cached_tokens")
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _record_usage(usage: object | None) -> None:
@@ -87,7 +112,7 @@ def _record_usage(usage: object | None) -> None:
         _last_usage.set(None)
         return
     total_tokens = int(getattr(usage, "total_tokens", 0) or 0)
-    _last_usage.set({"total_tokens": total_tokens})
+    _last_usage.set({"total_tokens": total_tokens, "cached_tokens": _cached_tokens(usage)})
     add_llm_tokens(total_tokens)
 
 
@@ -279,13 +304,20 @@ def _build_multi_user(ctx: GenerationContext, levels: list[Level]) -> str:
             # 多轮（2026-10-20）：历史结论与记忆由 build_context 装配，缺省为空不出现
             "历史轮次": ctx.history_block or "（首轮，无历史）",
             "项目记忆": ctx.memory_block or "（无）",
+            # 多轮（2026-11-04）：上一轮方案正文，供「在已有方案上改」的轮次引用
+            "上一轮方案": ctx.previous_variants or "（无，本轮从零生成）",
         }
     )
     return (
         f"请求档位（逐一输出，顺序 A→B→C）：{sorted(levels)}\n"
         f"{evidence}\n"
         '请输出 JSON：{"variants": [{"title": "...", "body": "...", '
-        '"changes": ["..."], "level": "A"}]}，variants 数组长度与档位必须与请求档位一致。'
+        '"changes": ["..."], "level": "A", '
+        '"claims": [{"kind": "file|symbol|token|line", "target": "..."}]}]}，'
+        "variants 数组长度与档位必须与请求档位一致。\n"
+        "claims 规则：正文里每一处文件路径、符号名、行号、样式 token 引用都要逐条声明，"
+        "target 必须与正文原文完全一致；kind=line 时写成「路径:行号」。"
+        "没有引用就给空数组，禁止编造。"
     )
 
 
@@ -305,6 +337,20 @@ class LLMGenerator:
         draft = await chat_structured(self._cfg, VariantDraft, tpl.system, tpl.build_user(ctx))
         validate_variant(draft)
         return draft
+
+    async def answer(self, ctx: GenerationContext) -> str:
+        """纯回答（2026-11-05）：一次结构化调用，只取正文。
+
+        与 generate_single 的唯一差别是输出模型——``ReplyOutput`` 没有
+        title/changes/level/claims 字段，从类型上就不可能是方案。
+        """
+        from devprompt_ai.domain.generate.ports import ReplyOutput
+        from devprompt_ai.domain.generate.templates import reply as reply_tpl
+
+        out = await chat_structured(
+            self._cfg, ReplyOutput, reply_tpl.SYSTEM, reply_tpl.build_user(ctx)
+        )
+        return out.text
 
     async def generate_variants(
         self, ctx: GenerationContext, levels: list[Level]

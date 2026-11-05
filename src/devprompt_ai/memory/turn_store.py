@@ -137,16 +137,31 @@ class SQLiteTurnStore:
 
         await asyncio.to_thread(_run)
 
-    async def list_for_session(self, session_id: str) -> list[TurnRecord]:
+    async def list_for_session(
+        self, session_id: str, *, limit: int | None = None, offset: int = 0
+    ) -> list[TurnRecord]:
+        """按 turn_index 升序返回该会话轮次。
+
+        分页：``limit=None`` 取全部；给定 limit 时**从最新一轮往回数** offset 条、
+        取 limit 条，返回仍按升序（前端「加载更早」用这个方向）。
+        """
+
         def _run() -> list[TurnRecord]:
             with self._connect() as conn:
                 conn.executescript(TURNS_DDL)
+                if limit is None:
+                    rows = conn.execute(
+                        f"SELECT {_COLUMNS} FROM forge_turns WHERE session_id = ? "  # noqa: S608
+                        "ORDER BY turn_index ASC",
+                        (session_id,),
+                    ).fetchall()
+                    return [_row_to_turn(row) for row in rows]
                 rows = conn.execute(
                     f"SELECT {_COLUMNS} FROM forge_turns WHERE session_id = ? "  # noqa: S608
-                    "ORDER BY turn_index ASC",
-                    (session_id,),
+                    "ORDER BY turn_index DESC LIMIT ? OFFSET ?",
+                    (session_id, limit, offset),
                 ).fetchall()
-            return [_row_to_turn(row) for row in rows]
+                return [_row_to_turn(row) for row in reversed(rows)]
 
         return await asyncio.to_thread(_run)
 
@@ -159,5 +174,23 @@ class SQLiteTurnStore:
                     (turn_id,),
                 ).fetchone()
             return _row_to_turn(row) if row is not None else None
+
+        return await asyncio.to_thread(_run)
+
+    async def delete_after(self, session_id: str, turn_index: int) -> int:
+        """物理删除 turn_index 之后的所有轮次，返回删除行数（2026-11-05 撤销）。
+
+        「撤销到第 N 轮」= 保留 1..N、删除 N+1..M，会话回到第 N 轮完成时的状态。
+        MUST-32 修订：turn 表不再是绝对不可删——**撤销是显式用户操作**，删除必须
+        经 service 层校验（终态 + 归属）并 emit 留痕事件，存储层不做任何策略判断。
+        """
+
+        def _run() -> int:
+            with self._connect() as conn:
+                cur = conn.execute(
+                    "DELETE FROM forge_turns WHERE session_id = ? AND turn_index > ?",
+                    (session_id, turn_index),
+                )
+                return cur.rowcount
 
         return await asyncio.to_thread(_run)

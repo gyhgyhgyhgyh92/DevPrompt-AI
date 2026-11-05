@@ -19,6 +19,23 @@ from devprompt_ai.common.hashing import sha256_hex
 from devprompt_ai.common.process import ProcessError
 from devprompt_ai.common.secrets import mask_secret
 from devprompt_ai.config import MODEL_KEY_MAP, AppConfig
+from devprompt_ai.domain.agent.action import (
+    AgentAction,
+    AgentBudget,
+    AgentStep,
+    StepOutcome,
+)
+from devprompt_ai.domain.agent.anchor import (
+    anchor_from_payload,
+    anchor_to_payload,
+    extract_anchor,
+    merge_followup,
+    render_anchor,
+)
+from devprompt_ai.domain.agent.convergence import evaluate_convergence
+from devprompt_ai.domain.agent.memory import MAX_INHERITED_VARIANTS, TurnMemory
+from devprompt_ai.domain.agent.ports import ActionPlanner
+from devprompt_ai.domain.agent.sensorium import SensoriumInput, compute_sensorium
 from devprompt_ai.domain.context import (
     ContextBudget,
     ContextPayload,
@@ -36,14 +53,24 @@ from devprompt_ai.domain.decision.followup import (
     lint_questions,
 )
 from devprompt_ai.domain.decision.port import DecisionPort, FactProbeOutput, VariantScore
+from devprompt_ai.domain.delivery import DeliveryInput, DeliveryVerdict, evaluate_delivery
 from devprompt_ai.domain.errors import (
     CatalogFetchError,
     ConfigurationError,
     DevPromptError,
     StateError,
 )
-from devprompt_ai.domain.generate.ports import GeneratePort, GenerationContext, VariantDraft
+from devprompt_ai.domain.generate.claims import CLAIM_COVERAGE_MIN, ClaimReport
+from devprompt_ai.domain.generate.ports import (
+    GeneratePort,
+    GenerationContext,
+    Level,
+    VariantDraft,
+)
 from devprompt_ai.domain.generate.variants import plan_levels, resolve_level
+from devprompt_ai.domain.hooks.builtin import FactsSummaryHook, summarize_facts
+from devprompt_ai.domain.hooks.pipeline import HookPipeline
+from devprompt_ai.domain.hooks.types import HookContext
 from devprompt_ai.domain.model_catalog import (
     ModelCatalogFetcher,
     ModelCatalogItem,
@@ -61,6 +88,7 @@ from devprompt_ai.domain.models import (
     Candidate,
     FactResult,
     FlowSession,
+    Page,
     ProjectNoteStore,
     SessionStore,
     SessionSummary,
@@ -71,6 +99,7 @@ from devprompt_ai.domain.models import (
 from devprompt_ai.domain.progress import (
     ProgressEvent,
     ProgressSink,
+    answering_text,
     candidates_text,
     clarification_text,
     facts_text,
@@ -87,9 +116,10 @@ from devprompt_ai.domain.progress import (
 from devprompt_ai.domain.ranking.recommend import decide_mark
 from devprompt_ai.domain.ranking.score import normalize_fit, weighted_total
 from devprompt_ai.domain.retrieval.candidates import MAX_CANDIDATES, build_candidates
-from devprompt_ai.domain.retrieval.facts import verify_facts
+from devprompt_ai.domain.retrieval.facts import is_evidence_complete, verify_facts
 from devprompt_ai.domain.retrieval.locate import locate_symbol
 from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader
+from devprompt_ai.harness.guardrails import validate_claims
 from devprompt_ai.harness.llm import LLMGenerator, last_usage
 from devprompt_ai.harness.process import LocalCommandRunner, LocalFileReader, SymbolTableProvider
 from devprompt_ai.harness.trace import TracingReader, TracingRunner
@@ -103,20 +133,74 @@ from devprompt_ai.memory.settings_store import (
 )
 from devprompt_ai.memory.turn_store import TurnConflictError
 from devprompt_ai.observability.logging import emit, emit_error, emit_warning, set_telemetry
-from devprompt_ai.state import FlowState, start_turn, transition
+from devprompt_ai.state import FlowState, hop, start_turn, transition
 
 logger = logging.getLogger("devprompt.flow")
 
 Preference = dict[str, float]
-SnapshotStatus = Literal["ask", "done", "guardrail"]
+SnapshotStatus = Literal["ask", "done", "guardrail", "running", "aborted"]
+
+#: 上一轮方案正文的注入上限（字符）。三套全文可能上万字，只带可定位的骨架。
+PREVIOUS_VARIANTS_LIMIT: int = 2000
+
+
+def _render_previous_variants(variants: Sequence[VariantDraft]) -> str:
+    """把上一轮方案压成一段供迭代轮引用；超限截断并标注省略号，不静默丢弃。"""
+    if not variants:
+        return ""
+    text = "\n\n".join(f"【{v.level} 档】{v.title}\n{v.body}" for v in variants)
+    if len(text) <= PREVIOUS_VARIANTS_LIMIT:
+        return text
+    return text[: PREVIOUS_VARIANTS_LIMIT - 1] + "…"
+
+
+def _render_ranking(ranking: object, details: object = None) -> str:
+    """把推荐判定压成一段可解释文本（2026-11-05）。
+
+    除被选中档位的明细外，还带各档 fit/total（2026-11-05 补）——否则模型能解释
+    「为什么选 B」，却答不出「C 差多少」，落选原因仍然说不清。
+    """
+    if not isinstance(ranking, dict) or not ranking.get("variant"):
+        return ""
+
+    def _num(source: object, key: str) -> str:
+        if not isinstance(source, dict):
+            return "未知"
+        value = source.get(key)
+        if isinstance(value, int | float):
+            return f"{float(value):.2f}"
+        return "未知"
+
+    parts = [
+        f"推荐档位 {ranking['variant']}",
+        f"是否标记推荐 {'是' if ranking.get('marked') else '否'}",
+        f"与次优差距 {_num(ranking, 'gap')}",
+        f"置信度 {_num(ranking, 'confidence')}",
+        f"适配度 {_num(ranking, 'fit')}",
+        f"综合分 {_num(ranking, 'total')}",
+    ]
+    reason = str(ranking.get("reason", "")).strip()
+    if reason:
+        parts.append(f"判定理由 {reason}")
+    if isinstance(details, dict) and details:
+        rows = [
+            f"{level} 适配度 {_num(details[level], 'fit')} 综合分 {_num(details[level], 'total')}"
+            for level in sorted(details)
+        ]
+        if rows:
+            parts.append("各档明细 " + "、".join(rows))
+    return "；".join(parts)
+
 
 _RANK_CACHE_TTL_SECONDS: float = 30.0 * 60.0
 """组件排序缓存 TTL（MUST-14：决策结果 30 分钟；SHOULD-04 惰性淘汰）。"""
 
-_RANK_CACHE: dict[tuple[str, str, str], tuple[float, list[int]]] = {}
+_RANK_CACHE: dict[tuple[str, str, str, str], tuple[float, list[int]]] = {}
 """rank_components 结果缓存（模块级，MUST-14）。
 
-键 = (项目绝对路径, 原句 sha256, 阈值配置 hash)——键不含原句明文；
+键 = (项目绝对路径, 原句 sha256, 阈值配置 hash, 候选集摘要)——键不含原句明文。
+第四段是 2026-11-04 补的：此前只有前三段，代码改动导致候选集变化后 30 分钟内
+仍会命中旧 order，唯一保护是越界检查（只防越界，防不了错位）。
 值 = (过期时刻 monotonic, 候选索引顺序)。禁存原句与决策原始响应。
 """
 
@@ -165,6 +249,21 @@ class CostBreakdown:
     llm_source: str
 
 
+@dataclass(frozen=True, slots=True)
+class DeliveryGateView:
+    """交付门结果（2026-11-05）：前端据此渲染门状态与披露文案。
+
+    ``tone`` 由领域层给出（ok / warn / error），前端只按它选样式（MUST-33）。
+    """
+
+    status: str
+    tone: str = "ok"
+    reasons: tuple[str, ...] = ()
+    can_mark_c: bool = True
+    can_mark_recommend: bool = True
+    disclosure: str = ""
+
+
 @dataclass(slots=True)
 class FlowSnapshot:
     """表现层快照：CLI/Web 只渲染它（MUST-10）。"""
@@ -180,6 +279,24 @@ class FlowSnapshot:
     facts: list[FactResult] = field(default_factory=list)  # 取证事实只读透出
     cost: CostBreakdown | None = None  # F-805：token 用量明细（LLM）
     message: str = ""
+    current_turn_id: str | None = None
+    #: agentic 进度（2026-11-04，additive）：本轮已执行动作数与最近一个动作名。
+    #: 循环期间 status 为 "running"，前端据此渲染时间线而不是干等进度条。
+    agent_step: int | None = None
+    agent_action: str | None = None
+    agent_elapsed_ms: int | None = None
+    #: 交付时证据已过期（2026-11-05）：agentic 跳过 RETRIEVING 直接交付，
+    #: 期间代码被改动。只披露不阻断——让用户知道方案基于旧证据。
+    evidence_stale: bool = False
+    #: 纯回答轮的正文（2026-11-05）：与 message 区分——message 是系统提示文案。
+    reply_text: str = ""
+    #: 交付证据门结果（2026-11-05）：只披露质量标记，不阻断交付。
+    delivery_gate: DeliveryGateView | None = None
+    """本轮归属（2026-11-04）：前端据此决定该轮进历史列表还是当前对话区。
+
+    此前前端用「轮次列表末位」推断当前轮，导致新一轮提交瞬间把上一轮从历史里过滤掉
+    （现象：第二轮开始时第一轮正文消失）。归属改由服务端给出，构造见 ``_begin_turn``。
+    """
 
 
 #: 用户表达方向性分歧的信号词（启发式，不调 LLM）：命中则本轮重新给三套。
@@ -194,6 +311,25 @@ _DIRECTION_CONFLICT_WORDS: tuple[str, ...] = (
     "保守一点",
     "别用刚才",
 )
+
+
+def _gate_view(raw: object) -> DeliveryGateView | None:
+    """把 ``session.data["delivery_gate"]`` 还原成快照视图；畸形数据按「无门」处理。"""
+    if not isinstance(raw, dict):
+        return None
+    raw_reasons = raw.get("reasons")
+    return DeliveryGateView(
+        status=str(raw.get("status", "")),
+        tone=str(raw.get("tone", "ok")),
+        reasons=(
+            tuple(str(item) for item in raw_reasons)
+            if isinstance(raw_reasons, (list, tuple))
+            else ()
+        ),
+        can_mark_c=bool(raw.get("can_mark_c", True)),
+        can_mark_recommend=bool(raw.get("can_mark_recommend", True)),
+        disclosure=str(raw.get("disclosure", "")),
+    )
 
 
 def _preferred_level(session: FlowSession) -> Literal["A", "B", "C"] | None:
@@ -270,6 +406,23 @@ class ForgeService:
         self._symbols_provider = symbols_provider
         self._catalog_fetcher = catalog_fetcher
         self._symbols_override = symbols_override
+        #: agentic 调度端口：decider 未实现 next_action 时（旧 mock / 测试桩）为 None，
+        #: run_agent_loop 随即退化为固定流程，既有调用方零改动。
+        self._planner: ActionPlanner | None = (
+            decider if isinstance(decider, ActionPlanner) else None
+        )
+        #: 横切 hook 管线（2026-11-04）：当前只挂取证摘要。它在生成与打分两处
+        #: 被重复计算，是唯一「接入即有收益」的插入点；其余横切点保持内联，
+        #: 避免为架构一致性付出回归风险。
+        self._hooks = HookPipeline(
+            [FactsSummaryHook()],
+            on_result=lambda run: emit(
+                "hook.ran",
+                hook=run.name,
+                outcome=run.outcome,
+                duration_ms=run.duration_ms,
+            ),
+        )
 
     # ------------------------------------------------------------------
     # 模型目录（2026-10-17 动态模型目录）
@@ -436,11 +589,13 @@ class ForgeService:
         request_id: str,
         progress: ProgressSink | None = None,
         session_id: str | None = None,
+        base_turn_id: str = "",
     ) -> FlowSnapshot:
         """F-001：创建/恢复会话，执行阶段一至二（检索+探针），路由 ask/done。
 
         ``progress`` 为可选的思考过程出口（流式端点传入）；缺省 None 时旧调用方零改动。
         ``session_id`` 非空表示**在同一会话开启新一轮**（多轮，2026-10-20）。
+        ``base_turn_id`` 非空表示**以某一历史轮为基线**新开一轮（2026-11-05）。
         """
         session = await start_turn(self._sessions, user_id, session_id)
         try:
@@ -454,13 +609,30 @@ class ForgeService:
                 records = await self._turns.list_for_session(session.session_id)
                 if records and isinstance(records[-1].summary, dict):
                     previous_summary = records[-1].summary
-            # 轮次序号跨轮累积（session.data 会被本轮整体重置，故先取出再写回）
+            # 轮次序号跨轮累积（session.data 会被重建，故先取出再写回）
             previous_index = int(session.data.get("turn_index", -1))
+            # 多轮继承（2026-11-04）：不再整体丢弃，方案正文/澄清/取证经 TurnMemory 带入。
+            # 原句为空时沿用上一轮目标——这就是「不带新原句的追问」入口。
+            inherited = TurnMemory.from_payload(session.data.get("turn_memory"))
+            memory = inherited.inherit_for_next_turn(sentence)
+            if base_turn_id:
+                memory = await self._inherit_from_base_turn(user_id, memory, base_turn_id)
+            if not memory.sentence:
+                raise DevPromptError("原句不能为空（当前会话也没有可沿用的目标）", code=1001)
+            # 目标锚点（2026-11-05）：已有则追加合并（不重写 objective），无则按本轮原句新建。
+            # 旧会话没有这个键，等价于「没有可继承的锚点」，不影响既有流程。
+            next_index = previous_index + 1
+            previous_anchor = anchor_from_payload(session.data.get("turn_anchor"))
+            anchor = (
+                extract_anchor(memory.sentence, next_index)
+                if previous_anchor is None
+                else merge_followup(previous_anchor, memory.sentence, turn_index=next_index)
+            )
             session.data = {
-                "sentence": sentence,
+                "sentence": memory.sentence,
                 "project_root": project_root,
                 "last_request_id": request_id,
-                "clarifications": {},
+                "clarifications": dict(memory.clarifications),
                 "rounds": 0,
                 "cost_tokens": 0,  # 总 token（护栏判定用，MUST-26 成本预算）
                 "cost_llm_tokens": 0,  # F-805：LLM 实际用量
@@ -468,58 +640,30 @@ class ForgeService:
                 "turn_index": previous_index,
                 "preferred_level": str(previous_summary.get("decision", "")),
                 "prev_facts_complete": previous_summary.get("facts_complete"),
+                "turn_memory": memory.to_payload(),
+                "turn_anchor": anchor_to_payload(anchor),
             }
+            # 继承的方案与取证直接进本轮 data：agentic 循环据此判断能否跳过检索
+            if memory.variants:
+                session.data["variants"] = [v.model_dump() for v in memory.variants]
+            if memory.facts:
+                session.data["facts"] = [
+                    {"key": f.key, "passed": f.passed, "evidence": f.evidence} for f in memory.facts
+                ]
+                session.data["facts_mtime_digest"] = memory.facts_mtime_digest
+            if memory.target is not None:
+                session.data["target"] = dict(memory.target)
             await self._begin_turn(session)
-            await transition(session, FlowState.RETRIEVING, self._sessions)
-            emit("flow.started", flow_id=session.session_id, request_id=request_id)
-            await _notify(session, progress, retrieval_text())
-
-            symbols = self._symbols_override
-            if symbols is None:
-                table = await self._symbols_provider.get(project_root)
-                symbols = table.symbols
-            await _notify(session, progress, symbols_text(len(symbols)))
-            result = build_candidates(sentence, symbols)
-            await _notify(
-                session, progress, candidates_text(result.total_matched, len(result.candidates))
-            )
-            session.data["candidates"] = [
-                {"name": c.name, "path": c.path, "score": c.score, "source": c.source}
-                for c in result.candidates
-            ]
-
-            if result.manual_required:
-                # slots dataclass 无 __dict__，序列化必须走 asdict（计划 §6.2 注意事项）
-                item = UnknownItem(
-                    key="manual_target",
-                    reason=f"候选不足（{result.total_matched} 条）",
-                    best_guess="",
-                    ask="请指明目标符号名与文件路径（格式：符号@路径）",
+            if self._planner is None:
+                # 旧调用方 / 测试桩未实现 next_action：保持线性编排（零回归）
+                return await self._optimize_linear(
+                    session,
+                    sentence,
+                    project_root,
+                    request_id=request_id,
+                    progress=progress,
                 )
-                session.data["unknowns"] = [dataclasses.asdict(item)]
-                session.data["level"] = "A"
-                await _notify(session, progress, manual_required_text(result.total_matched))
-                await transition(session, FlowState.ASKING, self._sessions)
-                await self._finish_turn(session)
-                return self._snapshot(session, "ask")
-
-            top = await self._rank_top(session, result.candidates)
-            symbol = Symbol(name=top.name, path=top.path, line=top.line, kind="function")
-            runner, reader = self._traced(progress, project_root, lambda: session.state)
-            location = await locate_symbol(symbol, runner, reader, root=project_root)
-            await _notify(
-                session, progress, target_text(top.name, top.path, location.definition_line)
-            )
-            facts = await verify_facts(location, sentence, runner, reader, root=project_root)
-            await _notify(
-                session, progress, facts_text(sum(1 for f in facts if f.passed), len(facts))
-            )
-            session.data["facts"] = [
-                {"key": f.key, "passed": f.passed, "evidence": f.evidence} for f in facts
-            ]
-            session.data["target"] = {"name": top.name, "path": top.path, "line": top.line}
-            await transition(session, FlowState.PROBING, self._sessions)
-            return await self._probe_and_route(session, request_id=request_id, progress=progress)
+            return await self.run_agent_loop(session, request_id=request_id, progress=progress)
         except asyncio.CancelledError:
             # 客户端断流：CancelledError 属 BaseException，下面的 except Exception 抓不到
             await self._abort_quietly(session)
@@ -527,6 +671,27 @@ class ForgeService:
         except Exception:
             await self._abort_quietly(session)
             raise
+
+    async def _inherit_from_base_turn(
+        self, user_id: str, memory: TurnMemory, base_turn_id: str
+    ) -> TurnMemory:
+        """以某一历史轮为基线：取该轮的取证与方案作为本轮起点。
+
+        **历史轮一条不少**（turn 表 append-only，MUST-32）：所谓「回滚」= 以旧轮为基线新开一轮，
+        不删历史。取证的 mtime 指纹没有落库，故继承的取证因「缺指纹即失效」判 stale，
+        本轮会重新取证；方案正文与澄清作为上下文起点沿用。
+        """
+        record = await self.load_turn(user_id, base_turn_id)
+        facts = tuple(FactResult(**item) for item in record.facts if isinstance(item, dict))
+        variants = tuple(VariantDraft(**item) for item in record.output if isinstance(item, dict))
+        return TurnMemory(
+            sentence=memory.sentence,
+            facts=facts,
+            facts_mtime_digest="",
+            variants=variants[:MAX_INHERITED_VARIANTS],
+            clarifications=dict(memory.clarifications),
+            target=memory.target,
+        )
 
     async def ask_followup(
         self,
@@ -543,7 +708,7 @@ class ForgeService:
             session.data.setdefault("clarifications", {}).update(answers)
             session.data["last_request_id"] = request_id
             session.data["rounds"] = int(session.data.get("rounds", 0)) + 1
-            await transition(session, FlowState.CONFIRMING, self._sessions)
+            await hop(session, FlowState.CONFIRMING, self._sessions)
             return await self._reprobe(session, progress=progress)
         except Exception:
             await self._abort_quietly(session)
@@ -554,16 +719,34 @@ class ForgeService:
 
         4H 偏差：计划称「service 无需改动」，但 CLI 层不得直读会话存储（只消费快照），
         故以最小只读方法提供恢复路径。
+
+        星型拓扑（2026-11-04）：覆盖除 ABORTED 外的全部状态。SSE 的 1s 轮询也走本方法，
+        agentic 循环期间必须能读到 running 快照——否则进度流会在执行中段被当成错误断流。
+        ABORTED 刻意不在集合内：routes 靠它的异常上下文输出扩展 status "aborted"。
         """
         session = await self._require(
-            user_id, session_id, {FlowState.ASKING, FlowState.CONFIRMING, FlowState.DONE}
+            user_id,
+            session_id,
+            {
+                FlowState.INIT,
+                FlowState.AGENTIC,
+                FlowState.RETRIEVING,
+                FlowState.PROBING,
+                FlowState.ASKING,
+                FlowState.CONFIRMING,
+                FlowState.GENERATING,
+                FlowState.RANKING,
+                FlowState.DONE,
+            },
         )
         state = FlowState(session.state)
         if state is FlowState.DONE:
             return self._snapshot(session, "done")
         if state is FlowState.CONFIRMING and session.data.get("guardrail"):
             return self._snapshot(session, "guardrail")
-        return self._snapshot(session, "ask")
+        if state is FlowState.ASKING:
+            return self._snapshot(session, "ask")
+        return self._snapshot(session, "running")
 
     async def escape(self, user_id: str, session_id: str, *, request_id: str) -> FlowSnapshot:
         """MUST-26 ②：用户逃生「直接生成」→ 保守版。
@@ -593,7 +776,7 @@ class ForgeService:
         try:
             if proceed:
                 session.data["rounds"] = 0
-                await transition(session, FlowState.ASKING, self._sessions)
+                await hop(session, FlowState.ASKING, self._sessions)
                 await self._finish_turn(session)
                 return self._snapshot(session, "ask")
             session.data["level"] = "A"
@@ -603,6 +786,372 @@ class ForgeService:
             await self._abort_quietly(session)
             raise
 
+    # ------------------------------------------------------------------
+    # Agentic 循环（2026-11-04 星型拓扑）
+    # ------------------------------------------------------------------
+
+    async def _act_retrieve(
+        self,
+        session: FlowSession,
+        sentence: str,
+        project_root: str,
+        *,
+        request_id: str,
+        progress: ProgressSink | None = None,
+    ) -> bool:
+        """检索 → 排序 → 定位 → 取证，写入 candidates / target / facts。
+
+        返回 False 表示候选不足已转 ASKING，调用方直接返回快照即可。
+        """
+        await hop(session, FlowState.RETRIEVING, self._sessions)
+        emit("flow.started", flow_id=session.session_id, request_id=request_id)
+
+        symbols = self._symbols_override
+        digest = ""
+        if symbols is None:
+            table = await self._symbols_provider.get(project_root)
+            symbols = table.symbols
+            digest = table.cache_key
+
+        # 多轮复用（2026-11-04）：已有取证且指纹未变 → 跳过 ripgrep 与定位。
+        # 指纹（符号表缓存键 = root + 全量 mtime 摘要）变了就重取，避免拿旧行号当证据。
+        existing_facts = session.data.get("facts") or []
+        existing_digest = str(session.data.get("facts_mtime_digest", ""))
+        if existing_facts and existing_digest:
+            if existing_digest != digest:
+                emit("evidence.stale_reprobe", request_id=request_id)
+            elif session.data.get("target"):
+                emit("evidence.reused", count=len(existing_facts), request_id=request_id)
+                passed = sum(1 for f in existing_facts if f.get("passed"))
+                await _notify(session, progress, facts_text(passed, len(existing_facts)))
+                return True
+
+        await _notify(session, progress, retrieval_text())
+        await _notify(session, progress, symbols_text(len(symbols)))
+        result = build_candidates(sentence, symbols)
+        await _notify(
+            session, progress, candidates_text(result.total_matched, len(result.candidates))
+        )
+        session.data["candidates"] = [
+            {"name": c.name, "path": c.path, "score": c.score, "source": c.source}
+            for c in result.candidates
+        ]
+
+        if result.manual_required:
+            # slots dataclass 无 __dict__，序列化必须走 asdict（计划 §6.2 注意事项）
+            item = UnknownItem(
+                key="manual_target",
+                reason=f"候选不足（{result.total_matched} 条）",
+                best_guess="",
+                ask="请指明目标符号名与文件路径（格式：符号@路径）",
+            )
+            session.data["unknowns"] = [dataclasses.asdict(item)]
+            session.data["level"] = "A"
+            await _notify(session, progress, manual_required_text(result.total_matched))
+            await hop(session, FlowState.ASKING, self._sessions)
+            await self._finish_turn(session)
+            return False
+
+        top = await self._rank_top(session, result.candidates)
+        symbol = Symbol(name=top.name, path=top.path, line=top.line, kind="function")
+        runner, reader = self._traced(progress, project_root, lambda: session.state)
+        location = await locate_symbol(symbol, runner, reader, root=project_root)
+        await _notify(session, progress, target_text(top.name, top.path, location.definition_line))
+        facts = await verify_facts(location, sentence, runner, reader, root=project_root)
+        # 只统计适用项：对后端项目报「3/7 通过」是误导，真实分母是 4
+        applicable = [f for f in facts if f.applicable]
+        await _notify(
+            session,
+            progress,
+            facts_text(sum(1 for f in applicable if f.passed), len(applicable)),
+        )
+        session.data["facts"] = [
+            {
+                "key": f.key,
+                "passed": f.passed,
+                "evidence": f.evidence,
+                "applicable": f.applicable,
+            }
+            for f in facts
+        ]
+        session.data["target"] = {"name": top.name, "path": top.path, "line": top.line}
+        self._validate_inherited_clarifications(session, request_id)
+        session.data["facts_mtime_digest"] = digest
+        await self._refresh_facts_summary(session)
+        return True
+
+    async def _check_evidence_freshness(
+        self, session: FlowSession, *, request_id: str, stage: str
+    ) -> None:
+        """生成/交付前校验证据新鲜度（2026-11-05 真实冒烟发现）。
+
+        stale 检查原本只在 ``_act_retrieve`` 里，而 agentic 允许跳过 RETRIEVING
+        直接生成或交付——改了代码却基于旧证据产出，且全程无声。这里只做标记与
+        披露，不强制重取证：重取会打断流程、成本也高；宁可标注过期，不可静默过期。
+
+        :param stage: ``generate`` 或 ``deliver``，进事件字段便于归因是哪一步发现的
+        """
+        digest_before = str(session.data.get("facts_mtime_digest", ""))
+        if not digest_before or not session.data.get("facts"):
+            return
+        table = await self._symbols_provider.get(str(session.data.get("project_root", "")))
+        if table.cache_key == digest_before:
+            return
+        session.data["evidence_stale"] = True
+        emit(
+            "evidence.stale_on_deliver",
+            request_id=request_id,
+            stage=stage,
+            digest_before=digest_before,
+            digest_now=table.cache_key,
+        )
+
+    async def _refresh_facts_summary(self, session: FlowSession) -> None:
+        """after_retrieval hook：摘要算一次写进会话，生成与打分直接读。
+
+        失败或跳过时不影响主流程：调用方仍会回退到 ``_summarize_facts`` 现算。
+        """
+        merged = await self._hooks.run(
+            "after_retrieval",
+            HookContext(
+                phase="after_retrieval",
+                session_state=session.state,
+                data=session.data,
+            ),
+        )
+        if merged:
+            session.data.update(merged)
+
+    async def _optimize_linear(
+        self,
+        session: FlowSession,
+        sentence: str,
+        project_root: str,
+        *,
+        request_id: str,
+        progress: ProgressSink | None = None,
+    ) -> FlowSnapshot:
+        """固定流水线（无 planner 时的回落路径）：检索 → 研判 → 生成 → 打分 → 交付。"""
+        ok = await self._act_retrieve(
+            session, sentence, project_root, request_id=request_id, progress=progress
+        )
+        if not ok:
+            return self._snapshot(session, "ask")
+        await hop(session, FlowState.PROBING, self._sessions)
+        return await self._probe_and_route(session, request_id=request_id, progress=progress)
+
+    async def run_agent_loop(
+        self, session: FlowSession, *, request_id: str, progress: ProgressSink | None = None
+    ) -> FlowSnapshot:
+        """AGENTIC 循环：取动作 → 执行 → 记录步骤 → 收敛检测 → 回到决策。
+
+        终止四条路径：模型主动 deliver/abort、需要用户答复（转 ASKING）、
+        收敛熔断（L3 且已有 L2 警告）、步数预算耗尽。
+        """
+        planner = self._planner
+        if planner is None:
+            raise DevPromptError("agentic 调度端口未装配，无法进入循环", code=9001, context={})
+
+        await hop(session, FlowState.AGENTIC, self._sessions)
+        steps: list[AgentStep] = []
+        budget = AgentBudget()
+        warned = False
+
+        while True:
+            decision = await planner.next_action(
+                sentence=str(session.data.get("sentence", "")),
+                facts=[FactResult(**f) for f in session.data.get("facts", [])],
+                steps=tuple(steps),
+                variant_count=len(session.data.get("variants", []) or []),
+                clarifications=dict(session.data.get("clarifications", {})),
+                correction=str(session.data.get("hook_correction", "")),
+            )
+            action = AgentAction(decision.action)
+            started = time.monotonic()
+            terminal = await self._execute_action(
+                action, session, request_id=request_id, progress=progress
+            )
+            duration_ms = int((time.monotonic() - started) * 1000)
+            steps.append(
+                AgentStep(
+                    index=len(steps),
+                    action=action,
+                    outcome=StepOutcome.OK,
+                    duration_ms=duration_ms,
+                    facts_passed=sum(1 for f in session.data.get("facts", []) if f.get("passed")),
+                    decided_by_evidence=decision.confidence_source == "measured",
+                    note=decision.reason[:120],
+                )
+            )
+            self._persist_steps(session, steps)
+            emit(
+                "agent.step",
+                action=action.value,
+                index=len(steps),
+                duration_ms=duration_ms,
+                request_id=request_id,
+            )
+            self._record_sensorium(session, steps, budget, request_id)
+            if terminal is not None:
+                return terminal
+            # 外环监督（2026-11-05）：每完成一步先过 post_tool，再回巢。
+            # hook 只能建议，终止由这里决定——领域层不碰状态机（MUST-07）。
+            hook_outcome = await self._hooks.run_phase(
+                "post_tool",
+                HookContext(
+                    phase="post_tool",
+                    session_state=session.state,
+                    data=session.data,
+                ),
+            )
+            if hook_outcome.data:
+                session.data.update(hook_outcome.data)
+            if hook_outcome.verdict == "halt":
+                emit(
+                    "agent.hook_halt",
+                    reason=hook_outcome.reason,
+                    action=action.value,
+                    request_id=request_id,
+                )
+                await self._act_abort(session, reason=hook_outcome.reason or "hook_halt")
+                return self._snapshot(session, "aborted")
+            if hook_outcome.verdict == "correct":
+                session.data["hook_correction"] = hook_outcome.reason
+            elif session.data.get("hook_correction"):
+                # 纠偏只作用于紧接的下一轮决策，用过即清，避免长期污染 prompt
+                session.data.pop("hook_correction", None)
+            # 回巢：执行态只能经 AGENTIC 再进下一个执行态（星型拓扑不变量）
+            await hop(session, FlowState.AGENTIC, self._sessions)
+            if budget.is_exhausted(steps):
+                await self._act_abort(session, reason="budget_exhausted")
+                return self._snapshot(session, "aborted")
+            verdict = evaluate_convergence(steps, warned_at_l2=warned)
+            if verdict.should_abort:
+                await self._act_abort(session, reason=verdict.reason)
+                return self._snapshot(session, "aborted")
+            if verdict.level >= 2:
+                warned = True
+                await _notify(session, progress, verdict.reason)
+
+    async def _execute_action(
+        self,
+        action: AgentAction,
+        session: FlowSession,
+        *,
+        request_id: str,
+        progress: ProgressSink | None = None,
+    ) -> FlowSnapshot | None:
+        """执行一个动作。返回非 None 表示本轮就地结束（等用户 / 交付 / 放弃）。"""
+        if action is AgentAction.RETRIEVE:
+            # 已定位且取证新鲜时 _act_retrieve 内部直接复用，不会重跑 ripgrep
+            ok = await self._act_retrieve(
+                session,
+                str(session.data.get("sentence", "")),
+                str(session.data.get("project_root", "")),
+                request_id=request_id,
+                progress=progress,
+            )
+            return None if ok else self._snapshot(session, "ask")
+
+        if action in (AgentAction.PROBE, AgentAction.ASK):
+            has_unknowns = await self._act_probe(session, request_id=request_id, progress=progress)
+            if action is AgentAction.ASK and has_unknowns:
+                await hop(session, FlowState.ASKING, self._sessions)
+                await self._finish_turn(session)
+                return self._snapshot(session, "ask")
+            return None  # probe 只研判，问不问由下一步决定
+
+        if action is AgentAction.GENERATE:
+            # agentic 允许跳过 RETRIEVING/PROBE 直接生成：先查证据新鲜度（改了代码
+            # 仍用旧证据会产出错误行号），再补研判（档位/追问/推荐全依赖它）。
+            await self._check_evidence_freshness(session, request_id=request_id, stage="generate")
+            if "facts_complete" not in session.data:
+                await self._act_probe(session, request_id=request_id, progress=progress)
+            await self._act_generate(session, progress=progress)
+            return None
+
+        if action is AgentAction.RANK:
+            variants = [VariantDraft(**item) for item in session.data.get("variants", [])]
+            if len(variants) < 2:
+                return None  # MUST-28：单套不打分，也不计算 d
+            await self._act_rank(session, variants, progress=progress)
+            return None
+
+        if action is AgentAction.REPLY:
+            # 回答里也可能引用行号，过期同样要披露
+            await self._check_evidence_freshness(session, request_id=request_id, stage="reply")
+            return await self._act_reply(session, progress=progress)
+
+        if action is AgentAction.DELIVER:
+            await self._check_evidence_freshness(session, request_id=request_id, stage="deliver")
+            return await self._act_deliver(session, progress=progress)
+
+        await self._act_abort(session, reason="模型放弃本轮")
+        return self._snapshot(session, "aborted")
+
+    def _persist_steps(self, session: FlowSession, steps: list[AgentStep]) -> None:
+        """把动作序列写进 session.data（随 payload 落库，供快照与排障读取）。"""
+        session.data["agent_steps"] = [
+            {
+                "index": step.index,
+                "action": step.action.value,
+                "outcome": step.outcome.value,
+                "duration_ms": step.duration_ms,
+                "facts_passed": step.facts_passed,
+                "note": step.note,
+            }
+            for step in steps
+        ]
+
+    def _record_sensorium(
+        self,
+        session: FlowSession,
+        steps: Sequence[AgentStep],
+        budget: AgentBudget,
+        request_id: str,
+    ) -> None:
+        """六维状态观测（shadow）：只落库与发事件，**不参与熔断判定**。
+
+        关闭态不存在——它本来就是观测层，参与决策前不需要开关；等真实数据证明
+        六维与熔断结果一致，再由 `convergence` 主动消费。
+        """
+        claim_report = session.data.get("claim_report")
+        coverage = (
+            float(claim_report["coverage"])
+            if isinstance(claim_report, dict) and "coverage" in claim_report
+            else None
+        )
+        snapshot = compute_sensorium(
+            SensoriumInput(
+                steps=tuple(steps),
+                max_steps=budget.max_steps,
+                cost_tokens=int(session.data.get("cost_tokens", 0)),
+                cost_budget=int(self._cfg.followup_cost_budget),
+                claim_coverage=coverage,
+                notes_hit=int(session.data.get("notes_hit", 0)),
+                turn_index=int(session.data.get("turn_index", 0)),
+            )
+        )
+        session.data["sensorium"] = snapshot.as_payload()
+        emit("agent.sensorium", score=snapshot.score, request_id=request_id)
+
+    @staticmethod
+    def _account_llm_usage(session: FlowSession, usage: dict[str, int | None] | None) -> None:
+        """累加本轮 token 用量；缓存命中单独记账。
+
+        供应商未返回缓存命中信息时**不写该键**——0 与「没有缓存」含义不同，不虚报。
+        """
+        if not usage:
+            return
+        session.data["cost_tokens"] = int(session.data.get("cost_tokens", 0)) + int(
+            usage.get("total_tokens") or 0
+        )
+        cached = usage.get("cached_tokens")
+        if cached is not None:
+            session.data["cost_cached_tokens"] = int(
+                session.data.get("cost_cached_tokens", 0)
+            ) + int(cached)
+
     async def _abort_quietly(self, session: FlowSession) -> None:
         """失败兜底（6G 遗留①）：异常路径置 ABORTED，避免死会话（如 PROBING）残留污染历史。"""
         try:
@@ -610,16 +1159,38 @@ class ForgeService:
         except Exception:
             logger.exception("state.abort_failed", extra={"session_id": session.session_id})
 
-    async def list_history(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
-        """GET /history 转正（T6-11）：脱敏会话摘要（无原句明文，MUST-19）。"""
-        return await self._sessions.list_recent(user_id, limit)
+    async def list_history(
+        self, user_id: str, *, limit: int = 50, offset: int = 0
+    ) -> Page[SessionSummary]:
+        """GET /history 转正（T6-11）：脱敏会话摘要（无原句明文，MUST-19）。
 
-    async def list_turns(self, user_id: str, session_id: str) -> list[TurnRecord]:
-        """会话的轮次摘要（按 turn_index 升序）；归属不符抛 6003。"""
+        分页：取 ``limit+1`` 条探测是否还有下一页，不额外做 COUNT 查询。
+        """
+        rows = await self._sessions.list_recent(user_id, limit=limit + 1, offset=offset)
+        return Page(
+            items=tuple(rows[:limit]),
+            has_more=len(rows) > limit,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def list_turns(
+        self, user_id: str, session_id: str, *, limit: int = 20, offset: int = 0
+    ) -> Page[TurnRecord]:
+        """会话的轮次（按 turn_index 升序）；归属不符抛 6003。
+
+        分页：``offset`` 从最新一轮往回数（前端「加载更早」）。
+        """
         await self._load_owned(user_id, session_id)
         if self._turns is None:
-            return []
-        return await self._turns.list_for_session(session_id)
+            return Page(items=(), has_more=False, limit=limit, offset=offset)
+        rows = await self._turns.list_for_session(session_id, limit=limit + 1, offset=offset)
+        return Page(
+            items=tuple(rows[:limit]),
+            has_more=len(rows) > limit,
+            limit=limit,
+            offset=offset,
+        )
 
     async def load_turn(self, user_id: str, turn_id: str) -> TurnRecord:
         """单轮全文（懒加载用）；不存在或非本人抛 6003。"""
@@ -1035,26 +1606,87 @@ class ForgeService:
     def _suppress_ask(self, probe: FactProbeOutput, facts: Sequence[FactResult]) -> bool:
         """信息充足即不再提问（2026-11-03）：执行类 + 七项取证全过时丢弃模型给的 questions。
 
-        判据刻意**不用** ``overall_confidence``：模型一旦发起工具调用，``fallback`` 会把该值
-        强制为 0.0，用它当闸门等于永不生效（自我印证「信息不足」）。
-        设计类（``task_kind='design'``）保留 MUST-26 的五类深挖，不抑制。
+        判据只看取证结果：``overall_confidence`` 在工具调用路径上是 no_data（2026-11-04，
+        此前被强制成 0.0），拿它当闸门等于永不生效。设计类（``task_kind='design'``）
+        保留 MUST-26 的五类深挖，不抑制。
         """
-        return probe.task_kind != "design" and bool(facts) and all(f.passed for f in facts)
+        return probe.task_kind != "design" and is_evidence_complete(facts)
 
-    async def _probe_and_route(
+    def _track_ask_adoption(self, session: FlowSession, unknowns: Sequence[UnknownItem]) -> None:
+        """追问采纳测量（2026-11-04）：统计本轮问出的未知项与既往重复的比例。
+
+        - 只存 key 的 hash，不存问题原文（MUST-19）；
+        - 首轮（rounds == 0）不计算重复率，避免把首问当成未采纳；
+        - 同一问题在追问轮被重复问出 → ``followup.expect_unmet``，据此评估提问纪律。
+        """
+        if not unknowns:
+            return
+        previous: list[str] = list(session.data.get("asked_keys", []) or [])
+        current = [sha256_hex(u.key)[:16] for u in unknowns]
+        repeated = len(set(current) & set(previous))
+        rounds = int(session.data.get("rounds", 0))
+        if repeated > 0 and rounds > 0:
+            emit(
+                "followup.expect_unmet",
+                repeated=repeated,
+                total=len(current),
+                request_id=session.data.get("last_request_id", ""),
+            )
+        # 累计去重并限长：只留最近 20 个，防止长会话无界增长
+        session.data["asked_keys"] = list(dict.fromkeys(current + previous))[:20]
+
+    def _validate_inherited_clarifications(self, session: FlowSession, request_id: str) -> None:
+        """跨轮澄清的归属校验：目标变了就作废上一轮的答案。
+
+        上一轮答的「改列表页」只对同一个目标成立；目标换掉后继续沿用，会把
+        无关约束带进本轮 prompt（答案直接进生成上下文），反而污染输出。
+        作废时只记澄清键的 hash，不记问题原文（MUST-19）。
+        """
+        clarifications = session.data.get("clarifications") or {}
+        if not clarifications:
+            return
+        previous = session.data.get("turn_memory")
+        previous_target = previous.get("target") if isinstance(previous, dict) else None
+        current = session.data.get("target")
+        if not isinstance(previous_target, dict) or not isinstance(current, dict):
+            return
+        same = previous_target.get("name") == current.get("name") and previous_target.get(
+            "path"
+        ) == current.get("path")
+        if same:
+            return
+        session.data["clarifications"] = {}
+        session.data["clarifications_invalidated"] = len(clarifications)
+        emit(
+            "followup.clarifications_invalidated",
+            count=len(clarifications),
+            keys=[sha256_hex(str(key))[:16] for key in clarifications],
+            request_id=request_id,
+        )
+
+    async def _act_probe(
         self,
         session: FlowSession,
         *,
         request_id: str,
         progress: ProgressSink | None = None,
-    ) -> FlowSnapshot:
+        answered: dict[str, str] | None = None,
+    ) -> bool:
+        """研判取证结果，写入 unknowns / facts_complete / level，返回「是否有未决问题」。
+
+        只做研判、不做路由：转不转 ASKING 由调用方决定——agentic 循环据此回 AGENTIC，
+        线性路径直接进 ASKING。两条路径共用这一份研判逻辑（MUST-10 单一实现）。
+        """
         facts = [FactResult(**f) for f in session.data.get("facts", [])]
-        probe = await self._decider.probe_facts(session.data["sentence"], facts)
+        probe = await self._decider.probe_facts(session.data["sentence"], facts, answered=answered)
         self._observe_probe(probe, request_id)
         if probe.ask_call_id:
             # AskUserQuestion 的 call_id：只落审计信息，不含原句（MUST-19）
             session.data["pending_tool_call"] = probe.ask_call_id
-        session.data["probe_confidence"] = probe.overall_confidence
+        confidence = probe.overall_confidence
+        measured = probe.confidence_source == "measured" and confidence is not None
+        session.data["probe_confidence"] = confidence
+        session.data["confidence_source"] = probe.confidence_source
         unknowns = build_unknowns(
             probe,
             facts,
@@ -1074,10 +1706,13 @@ class ForgeService:
             session.data["suppressed_questions"] = len(unknowns)
             unknowns = []
         session.data["unknowns"] = [dataclasses.asdict(u) for u in unknowns]
-        facts_complete = (
-            bool(facts)
-            and all(f.passed for f in facts)
-            and probe.overall_confidence >= self._cfg.fact_probe_threshold
+        self._track_ask_adoption(session, unknowns)
+        # 2026-11-04：模型未给判断（no_data）不再等同于「置信度 0」。
+        # 七项全过且无待答问题时按完备处理；确有未决项仍停在低档（那是真的未知）。
+        evidence_ok = is_evidence_complete(facts)
+        facts_complete = evidence_ok and (
+            (measured and confidence is not None and confidence >= self._cfg.fact_probe_threshold)
+            or (not measured and not unknowns)
         )
         has_symbol = bool(session.data.get("target"))
         session.data["facts_complete"] = facts_complete
@@ -1085,11 +1720,22 @@ class ForgeService:
         await _notify(
             session,
             progress,
-            level_text(str(session.data["level"]), float(probe.overall_confidence)),
+            level_text(str(session.data["level"]), confidence),
         )
         if unknowns:
             await _notify(session, progress, clarification_text(len(unknowns)))
-            await transition(session, FlowState.ASKING, self._sessions)
+        return bool(unknowns)
+
+    async def _probe_and_route(
+        self,
+        session: FlowSession,
+        *,
+        request_id: str,
+        progress: ProgressSink | None = None,
+    ) -> FlowSnapshot:
+        has_unknowns = await self._act_probe(session, request_id=request_id, progress=progress)
+        if has_unknowns:
+            await hop(session, FlowState.ASKING, self._sessions)
             await self._finish_turn(session)
             return self._snapshot(session, "ask")
         return await self._generate_and_finish(session, progress=progress)
@@ -1099,35 +1745,13 @@ class ForgeService:
     ) -> FlowSnapshot:
         """F-204：答复后重新研判（取证结果不变，clarifications 已更新）。"""
         await _notify(session, progress, "正在根据你的答复重新研判…")
-        facts = [FactResult(**f) for f in session.data.get("facts", [])]
-        probe = await self._decider.probe_facts(
-            session.data["sentence"],
-            facts,
+        request_id = str(session.data.get("last_request_id", ""))
+        has_unknowns = await self._act_probe(
+            session,
+            request_id=request_id,
+            progress=progress,
             answered=dict(session.data.get("clarifications", {})),
         )
-        self._observe_probe(probe, str(session.data.get("last_request_id", "")))
-        if probe.ask_call_id:
-            session.data["pending_tool_call"] = probe.ask_call_id
-        unknowns = build_unknowns(
-            probe,
-            facts,
-            clarifications=session.data.get("clarifications"),
-            answered_header_set=answered_headers(
-                session.data.get("clarifications", {}), session.data.get("unknowns", [])
-            ),
-        )
-        if unknowns and self._suppress_ask(probe, facts):
-            emit(
-                "followup.question_suppressed",
-                reason="evidence_complete",
-                count=len(unknowns),
-                request_id=str(session.data.get("last_request_id", "")),
-            )
-            session.data["suppressed_questions"] = int(
-                session.data.get("suppressed_questions", 0)
-            ) + len(unknowns)
-            unknowns = []
-        session.data["unknowns"] = [dataclasses.asdict(u) for u in unknowns]
         guard = GuardrailState(
             rounds=int(session.data.get("rounds", 0)),
             cost_tokens=int(session.data.get("cost_tokens", 0)),
@@ -1137,36 +1761,54 @@ class ForgeService:
                 "followup.guardrail",
                 rounds=guard.rounds,
                 cost_tokens=guard.cost_tokens,
-                request_id=session.data.get("last_request_id", ""),
+                request_id=request_id,
             )
             await self._finish_turn(session)
             return self._snapshot(session, "guardrail")  # 停在 CONFIRMING 等裁决（6002 语义）
-        if unknowns:
-            await transition(session, FlowState.ASKING, self._sessions)
+        if has_unknowns:
+            await hop(session, FlowState.ASKING, self._sessions)
             await self._finish_turn(session)
             return self._snapshot(session, "ask")
         return await self._generate_and_finish(session, progress=progress)
 
-    async def _generate_and_finish(
-        self, session: FlowSession, *, progress: ProgressSink | None = None
-    ) -> FlowSnapshot:
-        """GENERATING→(RANKING)→DONE：三套同调生成 + 加权推荐（5F，BREAKING）。
+    async def _generation_context(
+        self, session: FlowSession, *, level: Level | None = None
+    ) -> GenerationContext:
+        """装配生成/回答共用的上下文（2026-11-05 抽出，避免两处漂移）。
 
-        状态机：≥2 套（B/C 档）经 RANKING 打分与判定后 DONE；仅 1 套（A 档
-        escape/保守路径）按 MUST-28 跳过打分与推荐（不计算 d），直接 GENERATING→DONE。
+        回答「为什么选 B」所依赖的 ``previous_variants`` 与 ``history_block``
+        与生成完全同源，因此不另建上下文类型。
         """
-        await transition(session, FlowState.GENERATING, self._sessions)
         context_payload = await self._assemble_context(session)
-        ctx = GenerationContext(
+        return GenerationContext(
             sentence=session.data["sentence"],
             project_root=session.data["project_root"],
-            level=session.data.get("level", "A"),
+            level=level or session.data.get("level", "A"),
             facts_summary=session.data.get("facts_summary", _summarize_facts(session)),
             clarifications=session.data.get("clarifications", {}),
             conservative=bool(session.data.get("conservative", False)),
             history_block=context_payload.history_block,
             memory_block=context_payload.memory_block,
+            # 迭代轮要让模型看到上一轮原文，否则「把 B 档第 2 条改成 X」无法定位
+            previous_variants=_render_previous_variants(
+                TurnMemory.from_payload(session.data.get("turn_memory")).variants
+            ),
+            # 上一轮推荐判定：回答「为什么选 B」的唯一依据来源
+            ranking_summary=_render_ranking(
+                session.data.get("ranking"), session.data.get("ranking_details")
+            ),
         )
+
+    async def _act_generate(
+        self, session: FlowSession, *, progress: ProgressSink | None = None
+    ) -> list[VariantDraft]:
+        """生成方案并写入 ``session.data["variants"]``。
+
+        只做生成，不做交付判定——是否打分、是否收尾由调用方决定
+        （线性路径串联，agentic 循环由模型选下一步）。
+        """
+        await hop(session, FlowState.GENERATING, self._sessions)
+        ctx = await self._generation_context(session)
         levels = plan_levels(
             ctx.level,
             max_versions=3 if self._should_offer_three(session) else 1,
@@ -1174,14 +1816,117 @@ class ForgeService:
         )
         await _notify(session, progress, generation_text(levels))
         multi = await self._generator.generate_variants(ctx, levels)
-        usage = last_usage()
-        if usage:
-            session.data["cost_tokens"] = (
-                int(session.data.get("cost_tokens", 0)) + usage["total_tokens"]
-            )
+        self._account_llm_usage(session, last_usage())
         # slots dataclass 无 __dict__，序列化必须走 model_dump（计划 §6.2 注意事项）
         session.data["variants"] = [v.model_dump() for v in multi.variants]
-        if len(multi.variants) < 2:
+        self._audit_claims(session, multi.variants)
+        return list(multi.variants)
+
+    def _audit_claims(self, session: FlowSession, variants: Sequence[VariantDraft]) -> None:
+        """C 档断言对账（2026-11-04）：覆盖率不足则降档并留痕，不重新生成。
+
+        只改本轮可输出档位，不改各套自身的 level 字段——那等于篡改模型原文。
+        缺口经 ``claim_report.summary`` 如实披露（MUST-27 的诚实原则）。
+        """
+        facts = [FactResult(**f) for f in session.data.get("facts", [])]
+        reports = [validate_claims(v, facts) for v in variants]
+        total = sum(r.total for r in reports)
+        covered = sum(r.covered for r in reports)
+        uncovered = tuple(item for r in reports for item in r.uncovered)
+        report = ClaimReport(
+            total=total,
+            covered=covered,
+            uncovered=uncovered,
+            coverage=(covered / total) if total else 0.0,
+            undeclared=(total == 0),
+        )
+        session.data["claim_report"] = {
+            "total": report.total,
+            "covered": report.covered,
+            "uncovered": list(report.uncovered),
+            "coverage": report.coverage,
+            "undeclared": report.undeclared,
+            "summary": report.render(),
+        }
+        if session.data.get("level") != "C":
+            return
+        if report.undeclared:
+            # 一条引用都没声明：默认只披露（灰度），claim_strict 打开后才降档。
+            # 不声明不等于没有引用，这是对账唯一可被绕过的口子。
+            if not self._cfg.claim_strict:
+                return
+            session.data["level"] = "B"
+            emit(
+                "evidence.claim_undeclared",
+                request_id=session.data.get("last_request_id", ""),
+            )
+            return
+        if report.coverage >= CLAIM_COVERAGE_MIN:
+            return
+        session.data["level"] = "B"
+        emit(
+            "evidence.claim_uncovered",
+            total=report.total,
+            covered=report.covered,
+            request_id=session.data.get("last_request_id", ""),
+        )
+
+    async def _act_rank(
+        self,
+        session: FlowSession,
+        variants: list[VariantDraft],
+        *,
+        progress: ProgressSink | None = None,
+    ) -> RankingView | None:
+        """对多套方案打分并写入 ``session.data["ranking"]``。"""
+        await transition(session, FlowState.RANKING, self._sessions)
+        await _notify(session, progress, scoring_text())
+        ranking = await self._rank_and_mark(session, variants)
+        session.data["ranking"] = dataclasses.asdict(ranking) if ranking is not None else None
+        if ranking is not None:
+            await _notify(
+                session,
+                progress,
+                recommendation_text(ranking.marked, ranking.variant, ranking.gap, ranking.reason),
+            )
+        return ranking
+
+    async def _act_reply(
+        self, session: FlowSession, *, progress: ProgressSink | None = None
+    ) -> FlowSnapshot:
+        """纯回答（2026-11-05）：只产出文字，不写 variants、不改档位与取证。
+
+        与 ``_act_deliver`` 的区别：deliver 交付方案并结算推荐，reply 只回答，
+        因此不触发 ``recommendation.skipped`` 这类方案侧事件。
+        """
+        await hop(session, FlowState.GENERATING, self._sessions)
+        ctx = await self._generation_context(session)
+        await _notify(session, progress, answering_text())
+        text = await self._generator.answer(ctx)
+        self._account_llm_usage(session, last_usage())
+        session.data["reply_text"] = text
+        if FlowState(session.state) is not FlowState.DONE:
+            await transition(session, FlowState.DONE, self._sessions)
+        self._emit_completed(
+            session, variants=len(session.data.get("variants", []) or []), marked=None
+        )
+        await self._finish_turn(session)
+        return self._snapshot(session, "done")
+
+    async def _act_deliver(
+        self, session: FlowSession, *, progress: ProgressSink | None = None
+    ) -> FlowSnapshot:
+        """交付：过证据门 → 转 DONE 并回填产出。单套按 MUST-28 跳过推荐判定。
+
+        门禁只降质量标记（C 档 / 推荐），**不阻断交付**：RED 时方案照常返回，
+        只是不标推荐并附披露文案（MUST-27：不标记必须给具体原因）。
+        """
+        variants = list(session.data.get("variants", []) or [])
+        ranking_data = session.data.get("ranking")
+        marked: bool | None = None
+        if isinstance(ranking_data, dict) and "marked" in ranking_data:
+            marked = bool(ranking_data["marked"])
+        if len(variants) < 2:
             # MUST-28：单套（仅 A 档）跳过打分与推荐，ranking=None，不计算 d
             emit(
                 "recommendation.skipped",
@@ -1191,28 +1936,89 @@ class ForgeService:
                 request_id=session.data.get("last_request_id", ""),
             )
             await _notify(session, progress, single_variant_text())
-            await transition(session, FlowState.DONE, self._sessions)
-            self._emit_completed(session, variants=len(multi.variants), marked=None)
-            await self._finish_turn(session)
-            return self._snapshot(session, "done")
-        await transition(session, FlowState.RANKING, self._sessions)
-        await _notify(session, progress, scoring_text())
-        ranking = await self._rank_and_mark(session, multi.variants)
-        session.data["ranking"] = dataclasses.asdict(ranking) if ranking is not None else None
-        if ranking is not None:
-            await _notify(
-                session,
-                progress,
-                recommendation_text(ranking.marked, ranking.variant, ranking.gap, ranking.reason),
+
+        verdict = self._evaluate_delivery_gate(session, len(variants), marked)
+        session.data["delivery_gate"] = {
+            "status": verdict.status,
+            "tone": verdict.tone,
+            "reasons": list(verdict.reasons),
+            "can_mark_c": verdict.can_mark_c,
+            "can_mark_recommend": verdict.can_mark_recommend,
+            "disclosure": verdict.disclosure,
+        }
+        if not verdict.can_mark_c and session.data.get("level") == "C":
+            # 与 _audit_claims 同一规则：只改本轮可输出档位，不动方案正文
+            session.data["level"] = "B"
+        if verdict.can_mark_recommend is False and marked:
+            marked = False
+            if isinstance(ranking_data, dict):
+                ranking_data["marked"] = False
+                ranking_data["reason"] = verdict.disclosure
+        if verdict.disclosure:
+            emit(
+                "delivery.gate",
+                status=verdict.status,
+                reason="；".join(verdict.reasons),
+                request_id=session.data.get("last_request_id", ""),
             )
-        await transition(session, FlowState.DONE, self._sessions)
-        self._emit_completed(
-            session,
-            variants=len(multi.variants),
-            marked=ranking.marked if ranking is not None else None,
-        )
+            await _notify(session, progress, verdict.disclosure)
+
+        if FlowState(session.state) is not FlowState.DONE:
+            await transition(session, FlowState.DONE, self._sessions)
+        self._emit_completed(session, variants=len(variants), marked=marked)
         await self._finish_turn(session)
         return self._snapshot(session, "done")
+
+    def _evaluate_delivery_gate(
+        self, session: FlowSession, variant_count: int, marked: bool | None
+    ) -> DeliveryVerdict:
+        """把会话里的证据字段喂给领域判定（这里只做取值与类型归一，不做判定）。"""
+        facts = [FactResult(**item) for item in session.data.get("facts", [])]
+        claim_report = session.data.get("claim_report")
+        coverage: float | None = None
+        undeclared = False
+        if isinstance(claim_report, dict):
+            raw = claim_report.get("coverage")
+            coverage = float(raw) if isinstance(raw, (int, float)) else None
+            undeclared = bool(claim_report.get("undeclared", False))
+        if undeclared:
+            # 未声明时 coverage 恒 0，与「声明了但没取证」是两件事：
+            # 灰度关闭（claim_strict=False）时整条不参与门禁，保持改造前行为。
+            coverage = None
+            undeclared = self._cfg.claim_strict
+        ranking_data = session.data.get("ranking")
+        reason = str(ranking_data.get("reason", "")) if isinstance(ranking_data, dict) else ""
+        return evaluate_delivery(
+            DeliveryInput(
+                has_target=bool(session.data.get("target")),
+                facts=facts,
+                claim_coverage=coverage,
+                claims_undeclared=undeclared,
+                variant_count=variant_count,
+                recommend_marked=marked,
+                recommend_reason=reason,
+            )
+        )
+
+    async def _act_abort(self, session: FlowSession, *, reason: str) -> None:
+        """放弃本轮：转 ABORTED 并回填产出。已终态时不再转移。"""
+        emit(
+            "agent.loop_terminated",
+            reason=reason,
+            request_id=session.data.get("last_request_id", ""),
+        )
+        if FlowState(session.state) not in (FlowState.DONE, FlowState.ABORTED):
+            await transition(session, FlowState.ABORTED, self._sessions)
+        await self._finish_turn(session)
+
+    async def _generate_and_finish(
+        self, session: FlowSession, *, progress: ProgressSink | None = None
+    ) -> FlowSnapshot:
+        """线性路径：GENERATING→(RANKING)→DONE，与 agentic 循环共用同一批动作方法。"""
+        variants = await self._act_generate(session, progress=progress)
+        if len(variants) >= 2:
+            await self._act_rank(session, variants, progress=progress)
+        return await self._act_deliver(session, progress=progress)
 
     def _should_offer_three(self, session: FlowSession) -> bool:
         """三套只在「方向未定」时给（2026-10-20）：首轮 / 信息不完备 / 用户表达分歧。"""
@@ -1247,9 +2053,11 @@ class ForgeService:
                         open_items=tuple(str(item) for item in summary.get("open", []) or []),
                         decision=str(summary.get("decision", "")),
                         rejected=tuple(str(item) for item in summary.get("rejected", []) or []),
+                        reply=str(summary.get("reply", "")),
                     )
                 )
         target_data = session.data.get("target")
+        anchor = anchor_from_payload(session.data.get("turn_anchor"))
         current = TurnInput(
             sentence=str(session.data.get("sentence", "")),
             facts=tuple(
@@ -1259,6 +2067,7 @@ class ForgeService:
             ),
             clarifications=dict(session.data.get("clarifications", {})),
             target=str(target_data.get("name", "")) if isinstance(target_data, dict) else "",
+            anchor=render_anchor(anchor) if anchor is not None else "",
         )
         notes: list[str] = []
         if self._notes is not None:
@@ -1268,6 +2077,8 @@ class ForgeService:
                 target_key=normalize_key(current.target, target_path) if current.target else "",
             )
             notes = [note.render() for note in found]
+            # 供六维状态感知的「熟悉度」维度读取（shadow 观测，不影响行为）
+            session.data["notes_hit"] = len(notes)
         return build_context(
             summaries,
             current,
@@ -1307,8 +2118,112 @@ class ForgeService:
         session.data["turn_index"] = index
         session.data["current_turn_id"] = turn_id
 
+    async def rollback_to_turn(
+        self, user_id: str, session_id: str, turn_id: str, *, request_id: str = ""
+    ) -> FlowSnapshot:
+        """撤销到第 N 轮：物理删除其后轮次，会话回到第 N 轮完成时的状态（2026-11-05）。
+
+        语义（用户裁定）：**保留 1..N、删除 N+1..M**——「回到这一轮结束时的样子」，
+        而非「回到这一轮开始前」。历史轮从 append-only 变为「显式撤销可删」（MUST-32 修订）。
+
+        三条已知边界（如实披露，不做静默弥补）：
+        - 仅终态（DONE/ABORTED）可撤销：进行中的轮次正在被写，删了会产生半行；
+        - L2 project_notes 不回退：项目级长期沉淀、无轮次归属，强删会误删其他会话的记忆；
+        - 目标定位不继承：turn 表未存定位结构（summary 只有符号名），下一轮重新检索。
+        """
+        session = await self._load_owned(user_id, session_id)
+        if FlowState(session.state) not in (FlowState.DONE, FlowState.ABORTED):
+            raise DevPromptError("会话进行中，暂不能撤销", code=6001)
+
+        record = await self.load_turn(user_id, turn_id)
+        if record.session_id != session_id:
+            raise DevPromptError("轮次不属于该会话", code=1001)
+
+        deleted = (
+            0
+            if self._turns is None
+            else await self._turns.delete_after(session_id, record.turn_index)
+        )
+
+        # 以第 N 轮产出重建会话数据：等同「该轮刚结束、下一轮还没开始」。
+        # target 不从 summary 重建（那里只有符号名没有 path）——宁可下轮多一次检索。
+        facts = tuple(FactResult(**item) for item in record.facts if isinstance(item, dict))
+        variants = tuple(VariantDraft(**item) for item in record.output if isinstance(item, dict))
+        memory = TurnMemory(
+            sentence=record.input,
+            facts=facts,
+            variants=variants[:MAX_INHERITED_VARIANTS],
+            clarifications=dict(record.clarifications),
+        )
+        previous_summary = dict(record.summary) if isinstance(record.summary, dict) else {}
+        session.data = {
+            "sentence": record.input,
+            "project_root": str(session.data.get("project_root", "")),
+            "turn_index": record.turn_index,
+            "turn_memory": memory.to_payload(),
+            # turn_anchor 是跨轮追加演进的派生数据，不随撤销回退（被删轮次的 scope 残留）。
+            "turn_anchor": session.data.get("turn_anchor"),
+            "preferred_level": str(previous_summary.get("decision", "")),
+            "prev_facts_complete": previous_summary.get("facts_complete"),
+            "cost_tokens": 0,
+            "cost_llm_tokens": 0,
+            "rounds": 0,
+        }
+        if memory.variants:
+            session.data["variants"] = [v.model_dump() for v in memory.variants]
+        if memory.facts:
+            session.data["facts"] = [
+                {"key": f.key, "passed": f.passed, "evidence": f.evidence} for f in memory.facts
+            ]
+        await self._sessions.save(session)
+        emit(
+            "session.rolled_back",
+            session_id=session_id,
+            kept_turns=record.turn_index + 1,
+            deleted_turns=deleted,
+            request_id=request_id,
+        )
+        return self._snapshot(session, "done")
+
+    def _remember_turn(self, session: FlowSession) -> None:
+        """把本轮可继承状态写入 ``session.data["turn_memory"]``（下一轮的起点）。
+
+        只带方案正文、取证结论与代码指纹；不带原句以外的过程数据（步骤、候选、成本）。
+        """
+        facts: list[FactResult] = []
+        for item in session.data.get("facts", []):
+            if isinstance(item, dict):
+                try:
+                    facts.append(FactResult(**item))
+                except TypeError:
+                    continue
+        variants: list[VariantDraft] = []
+        for item in session.data.get("variants", []):
+            if isinstance(item, dict):
+                try:
+                    variants.append(VariantDraft(**item))
+                except (TypeError, ValueError):
+                    continue
+        target_data = session.data.get("target")
+        memory = TurnMemory(
+            sentence=str(session.data.get("sentence", "")),
+            facts=tuple(facts),
+            facts_mtime_digest=str(session.data.get("facts_mtime_digest", "")),
+            variants=tuple(variants),
+            clarifications=dict(session.data.get("clarifications", {})),
+            target=dict(target_data) if isinstance(target_data, dict) else None,
+        )
+        session.data["turn_memory"] = memory.to_payload()
+
     async def _finish_turn(self, session: FlowSession) -> None:
         """回填本轮产出（DONE / ASK 各一次）；失败只警告，不阻断流程。"""
+        # 继承状态必须先落库：它在 session.data 里，不 save 就只活在内存
+        self._remember_turn(session)
+        try:
+            if not await self._sessions.save(session):
+                logger.warning("turn.memory_conflict", extra={"session_id": session.session_id})
+        except Exception:  # noqa: BLE001 - 继承状态落库失败不阻断本轮收尾
+            logger.warning("turn.memory_save_failed", exc_info=True)
         if self._turns is None:
             return
         turn_id = str(session.data.get("current_turn_id", ""))
@@ -1382,6 +2297,11 @@ class ForgeService:
             )
             return None
         top_fit, top_total = details[rec.variant]
+        # 逐档明细（2026-11-05）：回答「为什么没选 C」需要各档实际分数，
+        # 而 RankingView 只装得下被选中的那一档。
+        session.data["ranking_details"] = {
+            level: {"fit": fit, "total": total} for level, (fit, total) in details.items()
+        }
         emit(
             "recommendation.made" if rec.marked else "recommendation.skipped",
             gap=rec.gap,
@@ -1410,7 +2330,12 @@ class ForgeService:
         sentence = str(session.data["sentence"])
         project_root = str(session.data["project_root"])
         request_id = session.data.get("last_request_id", "")
-        key = (project_root, sha256_hex(sentence), _threshold_hash(self._cfg))
+        key = (
+            project_root,
+            sha256_hex(sentence),
+            _threshold_hash(self._cfg),
+            _candidates_hash(candidates),
+        )
         now = time.monotonic()
         cached = _RANK_CACHE.get(key)
         if cached is not None:
@@ -1467,6 +2392,10 @@ class ForgeService:
             else None
         )
         facts = [FactResult(**f) for f in session.data.get("facts", [])]
+        turn_id = session.data.get("current_turn_id")
+        agent_steps = session.data.get("agent_steps") or []
+        last_step = agent_steps[-1] if agent_steps else None
+        started_at = float(session.data.get("started_at", 0.0))
         return FlowSnapshot(
             session_id=session.session_id,
             status=status,
@@ -1482,6 +2411,17 @@ class ForgeService:
             target=target,
             facts=facts,
             cost=cost,
+            current_turn_id=str(turn_id) if turn_id else None,
+            agent_step=len(agent_steps) if agent_steps else None,
+            agent_action=str(last_step.get("action")) if isinstance(last_step, dict) else None,
+            agent_elapsed_ms=(
+                int((time.time() - started_at) * 1000)
+                if started_at and status == "running"
+                else None
+            ),
+            evidence_stale=bool(session.data.get("evidence_stale")),
+            reply_text=str(session.data.get("reply_text", "")),
+            delivery_gate=_gate_view(session.data.get("delivery_gate")),
         )
 
     async def _load_owned(self, user_id: str, session_id: str) -> FlowSession:
@@ -1511,12 +2451,17 @@ class ForgeService:
 
 
 def _summarize_facts(session: FlowSession) -> str:
-    parts = [
-        f"{f['key']}={'真' if f['passed'] else '假'}（{f['evidence'][:80]}）"
-        for f in session.data.get("facts", [])
-    ]
-    target = session.data.get("target", {})
-    return f"目标：{target.get('name', '')}@{target.get('path', '')}；" + "；".join(parts)
+    """兜底路径：hook 未跑（旧测试桩 / 跳过）时现算，逻辑与 after_retrieval hook 共用。"""
+    return summarize_facts(session.data)
+
+
+def _candidates_hash(candidates: Sequence[Candidate]) -> str:
+    """候选集摘要（MUST-14 第四段键）：代码改动导致候选变化时旧排序必须失效。
+
+    候选已被 MUST-09 压到 ≤25 条，O(n) 无性能成本；只用名称+路径，不含代码正文。
+    """
+    payload = "\n".join(f"{c.name}@{c.path}" for c in candidates)
+    return sha256_hex(payload)[:16]
 
 
 def _threshold_hash(cfg: AppConfig) -> str:

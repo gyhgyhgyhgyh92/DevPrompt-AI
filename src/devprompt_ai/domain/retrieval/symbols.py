@@ -42,6 +42,25 @@ EXCLUDED_DIRS: tuple[str, ...] = (
     ".logs",
 )
 
+#: 签名最大字符数：让排序证据块可控（MUST-09 state 压缩精神）。
+#: 25 条候选 × 120 字符 ≈ 3KB，相对 max_state_tokens=30000 可接受。
+SIGNATURE_LIMIT: int = 120
+
+
+def _clean_signature(raw: object) -> str:
+    """规范化 ctags 的 ``signature`` 字段：取首行 → 折叠空白 → 截断。
+
+    ctags 给的是参数列表（可能跨多行、含嵌套括号）。只取首行并压空白，
+    保证它对决策层是**一行可读**的判别信息，且体积可控（MUST-09 state 压缩）。
+    """
+    if not isinstance(raw, str):
+        return ""
+    text = raw.strip()
+    if not text:
+        return ""
+    first = text.splitlines()[0].strip()
+    return " ".join(first.split())[:SIGNATURE_LIMIT]
+
 
 def parse_ctags_output(raw: str) -> list[Symbol]:
     """解析 ctags --output-format=json 的逐行 JSON 输出；脏行与非 tag 行跳过。"""
@@ -69,6 +88,7 @@ def parse_ctags_output(raw: str) -> list[Symbol]:
                 path=str(path).replace("\\", "/").lstrip("./"),
                 line=raw_line,
                 kind=kind,
+                signature=_clean_signature(obj.get("signature")),
             )
         )
     return symbols
@@ -79,18 +99,22 @@ def cache_key(project_root: str, mtimes: list[tuple[str, int]]) -> str:
     return sha256_hex(f"{project_root}\n{sorted(mtimes)}")[:16]
 
 
-def build_ctags_args(project_root: str) -> list[str]:
+def build_ctags_args(project_root: str, *, with_signature: bool = True) -> list[str]:
     """组装 ctags 命令：JSON 输出 + 行号 + 排除目录（纯函数便于测试断言）。
 
     --map-TypeScript=+.tsx：本机 ctags 6.1.0 默认不映射 .tsx（实测零 tag），React/TSX 是主场景；
     --languages=-Markdown：md 标题会混入符号表污染候选名额，保持符号表 = 纯代码符号。
+
+    --fields=+n+{signature}：签名（仅参数列表）是排序阶段唯一缺失的判别性上下文
+    （W3 实测归因：候选仅含名称与路径，58% 排序准确率）。**仍不含函数体**（MUST-09 硬边界）。
+    老版 ctags 不认 ``{signature}`` 会直接失败——调用方负责去掉该字段重试一次。
     """
     args = [
         "ctags",
         "-f",
         "-",
         "--output-format=json",
-        "--fields=+n",
+        "--fields=+n+{signature}" if with_signature else "--fields=+n",
         "--map-TypeScript=+.tsx",
         "--languages=-Markdown",
         "-R",
