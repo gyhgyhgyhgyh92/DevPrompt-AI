@@ -101,6 +101,8 @@ function snapshotFixture(overrides: Partial<FlowSnapshotResponse> = {}): FlowSna
     state: 'ASKING',
     status: 'ask',
     message: '',
+    evidence_stale: false,
+    reply_text: '',
     questions: [],
     cleared: [],
     variants: [],

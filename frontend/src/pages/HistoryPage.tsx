@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { deleteHistory, getHistory, getResult, patchHistory } from '../api/endpoints'
+import {
+  HISTORY_PAGE_SIZE,
+  deleteHistory,
+  getHistory,
+  getResult,
+  patchHistory,
+} from '../api/endpoints'
 import type { HistoryItemPayload } from '../api/types'
 import { SessionMenu } from '../components/history/SessionMenu'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
@@ -44,7 +50,9 @@ const TOAST_DURATION_MS = 2000
 export function HistoryPage() {
   const navigate = useNavigate()
   const history = useHistoryStore((s) => s.history)
+  const hasMore = useHistoryStore((s) => s.hasMore)
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [loadFailed, setLoadFailed] = useState(false)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
@@ -59,8 +67,8 @@ export function HistoryPage() {
     setIsLoading(true)
     setLoadFailed(false)
     try {
-      const items = await getHistory()
-      useHistoryStore.getState().setHistory(items)
+      const page = await getHistory({ limit: HISTORY_PAGE_SIZE })
+      useHistoryStore.getState().setHistory(page.items, page.has_more)
     } catch {
       // 加载失败保留空态 + 显式失败提示，不自动重试（MUST-15）
       setLoadFailed(true)
@@ -87,8 +95,28 @@ export function HistoryPage() {
   }
 
   async function refreshHistory(): Promise<void> {
-    const items = await getHistory().catch(() => null)
-    if (items !== null) useHistoryStore.getState().setHistory(items)
+    const page = await getHistory({ limit: HISTORY_PAGE_SIZE }).catch(() => null)
+    if (page !== null) {
+      useHistoryStore.getState().setHistory(page.items, page.has_more)
+    }
+  }
+
+  /** 加载更早的会话（分页增量合并，取代 50 条硬顶）。 */
+  async function loadMoreHistory(): Promise<void> {
+    const store = useHistoryStore.getState()
+    if (!store.hasMore) return
+    setIsLoadingMore(true)
+    try {
+      const page = await getHistory({
+        limit: HISTORY_PAGE_SIZE,
+        offset: store.history.length,
+      })
+      store.appendHistory(page.items, page.has_more)
+    } catch {
+      // 失败保持原列表，用户可再次点击（不自动重试，MUST-15）
+    } finally {
+      setIsLoadingMore(false)
+    }
   }
 
   /** 打开会话：载入结果到主区并回工作台（服务端为权威，MUST-07）。 */
@@ -262,6 +290,16 @@ export function HistoryPage() {
                 )
               })}
             </ul>
+            {hasMore ? (
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={() => void loadMoreHistory()}
+                disabled={isLoadingMore}
+              >
+                {isLoadingMore ? '正在加载…' : '加载更多会话'}
+              </button>
+            ) : null}
             {sorted.length === 0 ? <p className="context-panel__empty">暂无历史记录</p> : null}
           </>
         ) : null}

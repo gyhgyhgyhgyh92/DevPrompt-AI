@@ -3,13 +3,14 @@ import { EmptyDataSchema, HealthResponseSchema, ScanResponseSchema } from '../sc
 import {
   FlowSnapshotSchema,
   FollowupRequestSchema,
+  PagedTurnSummarySchema,
+  RollbackRequestSchema,
   TurnDetailSchema,
-  TurnSummaryListSchema,
   OptimizeRequestSchema,
 } from '../schemas/optimize'
 import {
-  HistoryListSchema,
   HistoryUpdateRequestSchema,
+  PagedHistoryItemSchema,
   ProjectDeleteSchema,
 } from '../schemas/preference'
 import {
@@ -32,15 +33,34 @@ import type {
   FlowSnapshotResponse,
   FollowupRequest,
   HealthResponse,
-  HistoryItemPayload,
   HistoryUpdateRequest,
   OptimizeRequest,
+  PagedHistoryItem,
+  PagedTurnSummary,
   ScanResponse,
   SettingsResponse,
   SettingsUpdate,
   TurnDetailPayload,
-  TurnSummaryPayload,
 } from './types'
+
+/** 分页参数（契约：limit / offset，2026-11-05）。 */
+export interface PageParams {
+  limit?: number
+  offset?: number
+}
+
+/** 分页条数：轮次摘要一页 20 条、会话摘要一页 50 条（与后端端点默认值一致）。 */
+export const TURNS_PAGE_SIZE = 20
+export const HISTORY_PAGE_SIZE = 50
+
+/** 分页查询串：缺省不传，避免 URL 里出现无意义的默认值。 */
+function pageQuery(params?: PageParams): string {
+  if (!params) return ''
+  const parts: string[] = []
+  if (params.limit !== undefined) parts.push(`limit=${params.limit}`)
+  if (params.offset !== undefined) parts.push(`offset=${params.offset}`)
+  return parts.length > 0 ? `?${parts.join('&')}` : ''
+}
 
 /** 端点清单（与仓库根 openapi.json 的 paths 一一对应；新增端点必须先冻结契约）。 */
 export const ENDPOINTS = {
@@ -51,12 +71,14 @@ export const ENDPOINTS = {
   followup: (flowId: string) => `${API_BASE_URL}/followup/${flowId}`,
   followupStream: (flowId: string) => `${API_BASE_URL}/followup/${flowId}/stream`,
   result: (flowId: string) => `${API_BASE_URL}/result/${flowId}`,
-  history: `${API_BASE_URL}/history`,
+  history: (params?: PageParams) => `${API_BASE_URL}/history${pageQuery(params)}`,
   historyProject: (projectRoot: string) =>
     `${API_BASE_URL}/history?project_root=${encodeURIComponent(projectRoot)}`,
-  sessionTurns: (sessionId: string) =>
-    `${API_BASE_URL}/history/${encodeURIComponent(sessionId)}/turns`,
+  sessionTurns: (sessionId: string, params?: PageParams) =>
+    `${API_BASE_URL}/history/${encodeURIComponent(sessionId)}/turns${pageQuery(params)}`,
   turn: (turnId: string) => `${API_BASE_URL}/turns/${encodeURIComponent(turnId)}`,
+  sessionRollback: (sessionId: string) =>
+    `${API_BASE_URL}/history/${encodeURIComponent(sessionId)}/rollback`,
   historyItem: (sessionId: string) => `${API_BASE_URL}/history/${encodeURIComponent(sessionId)}`,
   projectScan: (project: string) =>
     `${API_BASE_URL}/project/scan?project=${encodeURIComponent(project)}`,
@@ -202,19 +224,24 @@ export function getResult(flowId: string, signal?: AbortSignal): Promise<FlowSna
   return request(ENDPOINTS.result(flowId), { method: 'GET', schema: FlowSnapshotSchema, signal })
 }
 
-/** POST /feedback：有副作用端点（禁重试，MUST-15）；契约 data 恒为 null。 */
-export function getHistory(signal?: AbortSignal): Promise<HistoryItemPayload[]> {
-  return request(ENDPOINTS.history, { method: 'GET', schema: HistoryListSchema, signal })
+/** GET /history：会话摘要分页（置顶优先 + 更新时间倒序）。 */
+export function getHistory(params?: PageParams, signal?: AbortSignal): Promise<PagedHistoryItem> {
+  return request(ENDPOINTS.history(params), {
+    method: 'GET',
+    schema: PagedHistoryItemSchema,
+    signal,
+  })
 }
 
-/** GET /history/{session_id}/turns：会话的轮次摘要（升序，不含正文）。 */
+/** GET /history/{session_id}/turns：会话的轮次摘要分页（升序，不含正文）。 */
 export function getSessionTurns(
   sessionId: string,
+  params?: PageParams,
   signal?: AbortSignal,
-): Promise<TurnSummaryPayload[]> {
-  return request(ENDPOINTS.sessionTurns(sessionId), {
+): Promise<PagedTurnSummary> {
+  return request(ENDPOINTS.sessionTurns(sessionId, params), {
     method: 'GET',
-    schema: TurnSummaryListSchema,
+    schema: PagedTurnSummarySchema,
     signal,
   })
 }
@@ -222,6 +249,21 @@ export function getSessionTurns(
 /** GET /turns/{turn_id}：单轮全文（历史轮次展开时懒加载）。 */
 export function getTurn(turnId: string, signal?: AbortSignal): Promise<TurnDetailPayload> {
   return request(ENDPOINTS.turn(turnId), { method: 'GET', schema: TurnDetailSchema, signal })
+}
+
+/** POST /history/{session_id}/rollback：撤销到某一轮（物理删除其后轮次，破坏性操作）。 */
+export function rollbackSession(
+  sessionId: string,
+  turnId: string,
+  signal?: AbortSignal,
+): Promise<FlowSnapshotResponse> {
+  const body = RollbackRequestSchema.parse({ turn_id: turnId })
+  return request(ENDPOINTS.sessionRollback(sessionId), {
+    method: 'POST',
+    body: JSON.stringify(body),
+    schema: FlowSnapshotSchema,
+    signal,
+  })
 }
 
 /** PATCH /history/{session_id}：重命名 / 置顶（有副作用端点，禁重试，MUST-15）；契约 data 恒为 null。 */

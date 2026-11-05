@@ -91,6 +91,88 @@
   color: var(--color-text-muted);
 }
 
+/* 「加载更早的轮次」按钮（2026-11-05 分页增量加载，取代 20 轮硬顶） */
+.thread__more {
+  align-self: center;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border-subtle, currentColor);
+  border-radius: var(--radius-md, 6px);
+  cursor: pointer;
+}
+
+.thread__more:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* 轮级操作条（2026-11-05 形态层）：以基线轮继续 */
+.turn-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
+.turn-actions__btn {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border-subtle, currentColor);
+  border-radius: var(--radius-md, 6px);
+  cursor: pointer;
+}
+
+.turn-actions__btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* 破坏性操作（撤销）：与普通操作拉开视觉差距，但仍克制（不用大面积红底） */
+.turn-actions__btn--danger {
+  color: var(--color-danger, #b91c1c);
+  border-color: var(--color-danger, currentColor);
+}
+
+/* 交付证据门卡片（2026-11-05）：色阶由后端 tone 决定，前端只选样式 */
+.delivery-gate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  font-size: var(--text-body-xs);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-subtle, currentColor);
+  border-radius: var(--radius-md, 6px);
+}
+
+.delivery-gate__status {
+  font-weight: 600;
+}
+
+.delivery-gate__text {
+  margin: 0;
+}
+
+/* 历史轮的动作序列（2026-11-05）：可回看这一步在做什么 */
+.turn-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+}
+
+.turn-steps__item {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-subtle, currentColor);
+  border-radius: var(--radius-md, 6px);
+}
+
 .thread__turn {
   display: flex;
   flex-direction: column;
@@ -591,4 +673,28 @@
   .chat-reply__planning {
     animation: none;
   }
+}
+
+/* 纯回答气泡（2026-11-05）：只承载文字，与方案卡片明确区分 */
+.chat-reply__answer {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-left: 3px solid var(--accent, #0ea5e9);
+  background: rgba(14, 165, 233, 0.06);
+  border-radius: 6px;
+}
+
+.chat-reply__answer-label {
+  display: inline-block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+.chat-reply__answer-text {
+  margin: 0;
+  line-height: 1.7;
+  white-space: pre-wrap;
 }

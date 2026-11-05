@@ -16,6 +16,7 @@ function baseProps(overrides: Partial<Props> = {}): Props {
     thinking: [],
     isThinking: false,
     message: '',
+    replyText: '',
     questions: [],
     cleared: [],
     variants: [
@@ -27,6 +28,7 @@ function baseProps(overrides: Partial<Props> = {}): Props {
       },
     ],
     ranking: null,
+    deliveryGate: null,
     elapsedSeconds: null,
     errorMessage: null,
     isBusy: false,

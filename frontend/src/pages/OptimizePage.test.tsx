@@ -190,6 +190,8 @@ function snapshotFixture(overrides: Partial<FlowSnapshotResponse> = {}): FlowSna
     state: 'ASKING',
     status: 'ask',
     message: '',
+    evidence_stale: false,
+    reply_text: '',
     questions: [],
     cleared: [],
     variants: [],
@@ -558,5 +560,79 @@ describe('OptimizePage 三态容器', () => {
 
     expect(screen.queryByRole('complementary', { name: '会话侧栏' })).toBeNull()
     expect(await screen.findByRole('textbox', { name: '优化原句' })).toBeTruthy()
+  })
+})
+
+describe('多轮归属（2026-11-04）', () => {
+  const firstTurn = {
+    turn_id: 't1',
+    turn_index: 0,
+    state: 'DONE',
+    target: 'Button',
+    conclusion: '第一轮结论：复用令牌',
+    open_items: [],
+    created_at: '',
+  }
+  const firstDetail = {
+    ...firstTurn,
+    input: '把提交按钮改成 primary-500',
+    variants: [{ title: '保守版', body: '第一轮方案正文', level: 'A', changes: [] }],
+  }
+
+  function stubTwoTurns(secondSnapshot: unknown) {
+    const gate = gatedStream(['正在检索相关代码'], [], secondSnapshot)
+    const mock = vi.fn(async (input: string) => {
+      const url = String(input)
+      if (url.includes('/optimize/stream')) return gate.response
+      if (url.includes('/history/sess-1/turns')) return jsonResponse(envelope([firstTurn]))
+      if (url.includes('/turns/t1')) return jsonResponse(envelope(firstDetail))
+      if (url.includes('/result/sess-1')) {
+        return jsonResponse(
+          envelope(snapshotFixture({ status: 'done', state: 'DONE', current_turn_id: 't1' })),
+        )
+      }
+      if (url.includes('/history')) return jsonResponse(envelope([]))
+      return jsonResponse(envelope(null))
+    })
+    vi.stubGlobal('fetch', mock)
+    return { gate, mock }
+  }
+
+  it('第二轮生成期间第一轮结论仍在，终态后两轮各只渲染一次', async () => {
+    const user = userEvent.setup()
+    // 种入「第一轮已完成」的状态（含归属）
+    useOptimizeStore
+      .getState()
+      .applySnapshot(snapshotFixture({ status: 'done', state: 'DONE', current_turn_id: 't1' }))
+    useOptimizeStore.getState().setTurns([firstTurn])
+    useOptimizeStore.getState().setCurrentTurnId('t1')
+
+    const { gate } = stubTwoTurns(
+      envelope(
+        snapshotFixture({
+          status: 'done',
+          state: 'DONE',
+          current_turn_id: 't2',
+          variants: [{ title: '第二轮方案', body: '第二轮方案正文', level: 'B', changes: [] }],
+        }),
+      ),
+    )
+
+    renderPage()
+    const input = await screen.findByRole('textbox', { name: '优化原句' })
+    await user.type(input, '再加一个禁用态')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    // 生成窗口内：第一轮必须仍是历史轮（此前会被当作「当前轮」过滤掉 → 正文消失）
+    expect(await screen.findByText('第一轮结论：复用令牌')).toBeTruthy()
+    expect(document.querySelectorAll('.thread__turn')).toHaveLength(1)
+
+    gate.release()
+
+    await waitFor(() => expect(screen.getByText('第二轮方案正文')).toBeTruthy())
+    // 终态：第一轮留在历史，第二轮只由 ChatStream 渲染，两轮都不重复
+    expect(screen.getByText('第一轮结论：复用令牌')).toBeTruthy()
+    expect(document.querySelectorAll('.thread__turn')).toHaveLength(1)
+    expect(useOptimizeStore.getState().currentTurnId).toBe('t2')
   })
 })

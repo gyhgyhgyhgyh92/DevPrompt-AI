@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router'
 import {
+  HISTORY_PAGE_SIZE,
   deleteHistory,
   deleteHistoryByProject,
   getHistory,
@@ -143,6 +144,7 @@ interface ProjectSidebarProps {
 export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
   const navigate = useNavigate()
   const history = useHistoryStore((s) => s.history)
+  const hasMore = useHistoryStore((s) => s.hasMore)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
@@ -152,11 +154,12 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
   // 删除确认（2026-11-01）：单条会话与整个项目共用同一个确认弹窗与请求中标志
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [isDeleting, setDeleting] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    getHistory()
-      .then((items) => useHistoryStore.getState().setHistory(items))
+    getHistory({ limit: HISTORY_PAGE_SIZE })
+      .then((page) => useHistoryStore.getState().setHistory(page.items, page.has_more))
       .catch(() => {
         // 列表加载失败保持空态，不重试（MUST-15）
       })
@@ -176,8 +179,26 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
   }
 
   async function refreshHistory(): Promise<void> {
-    const items = await getHistory().catch(() => null)
-    if (items !== null) useHistoryStore.getState().setHistory(items)
+    const page = await getHistory({ limit: HISTORY_PAGE_SIZE }).catch(() => null)
+    if (page !== null) useHistoryStore.getState().setHistory(page.items, page.has_more)
+  }
+
+  /** 加载更早的会话（分页增量合并，取代 50 条硬顶）。 */
+  async function loadMoreHistory(): Promise<void> {
+    const store = useHistoryStore.getState()
+    if (!store.hasMore) return
+    setIsLoadingMore(true)
+    try {
+      const page = await getHistory({
+        limit: HISTORY_PAGE_SIZE,
+        offset: store.history.length,
+      })
+      store.appendHistory(page.items, page.has_more)
+    } catch {
+      // 失败保持原列表，用户可再次点击（不自动重试，MUST-15）
+    } finally {
+      setIsLoadingMore(false)
+    }
   }
 
   /** 选中：先同步高亮（乐观反馈 <100ms），再异步载入结果到主区（失败 toast 不取消高亮）。 */
@@ -412,6 +433,16 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
             <ul className="project-sidebar__items">{group.items.map(renderRow)}</ul>
           </section>
         ))}
+        {hasMore ? (
+          <button
+            type="button"
+            className="button button--ghost project-sidebar__more"
+            onClick={() => void loadMoreHistory()}
+            disabled={isLoadingMore}
+          >
+            {isLoadingMore ? '正在加载…' : '加载更多会话'}
+          </button>
+        ) : null}
         {history.length === 0 ? <p className="project-sidebar__empty">暂无历史会话</p> : null}
       </div>
 

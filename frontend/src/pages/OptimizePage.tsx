@@ -1,14 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { FollowupRequest } from '../api/types'
 import {
+  HISTORY_PAGE_SIZE,
+  TURNS_PAGE_SIZE,
   getHistory,
   getResult,
   getSessionTurns,
   getTurn,
+  rollbackSession,
   streamFollowup,
   streamOptimize,
 } from '../api/endpoints'
+import { AgentTimeline } from '../components/optimize/AgentTimeline'
+import { EvidenceStaleNotice } from '../components/optimize/EvidenceStaleNotice'
 import { ChatStream } from '../components/optimize/ChatStream'
 import { ConsoleInput } from '../components/optimize/ConsoleInput'
 import { TurnList } from '../components/optimize/TurnList'
@@ -49,7 +54,14 @@ export function OptimizePage() {
     thinking,
     isThinking,
     turns,
+    hasMoreTurns,
     currentTurnId,
+    agentStep,
+    agentAction,
+    agentElapsedMs,
+    evidenceStale,
+    replyText,
+    deliveryGate,
   } = useOptimizeStore(
     useShallow((s) => ({
       sessionId: s.sessionId,
@@ -62,7 +74,14 @@ export function OptimizePage() {
       ranking: s.ranking,
       isSubmitting: s.isSubmitting,
       turns: s.turns,
+      hasMoreTurns: s.hasMoreTurns,
       currentTurnId: s.currentTurnId,
+      agentStep: s.agentStep,
+      agentAction: s.agentAction,
+      agentElapsedMs: s.agentElapsedMs,
+      evidenceStale: s.evidenceStale,
+      replyText: s.replyText,
+      deliveryGate: s.deliveryGate,
       thinking: s.thinking,
       isThinking: s.isThinking,
     })),
@@ -112,15 +131,44 @@ export function OptimizePage() {
       return undefined
     }
     let cancelled = false
-    void getSessionTurns(sessionId)
-      .then((items) => {
-        if (!cancelled) setTurns(items)
+    void getSessionTurns(sessionId, { limit: TURNS_PAGE_SIZE })
+      .then((page) => {
+        if (cancelled) return
+        setTurns(page.items, page.has_more)
+        // 归属兜底（2026-11-04）：刷新/切会话时「谁进历史列表、谁是当前轮」要有确定值，
+        // 否则 TurnList 与 ChatStream 会把最后一轮各渲染一次。仅当当前没有归属、或归属不在
+        // 本会话列表里（切了会话），且不在流式思考中（否则会顶掉刚提交新轮时置的 null）。
+        const store = useOptimizeStore.getState()
+        if (store.isThinking) return
+        const belongs = page.items.some((item) => item.turn_id === store.currentTurnId)
+        if (!belongs && page.items.length > 0) {
+          store.setCurrentTurnId(page.items.at(-1)?.turn_id ?? null)
+        }
       })
       .catch(() => undefined)
     return () => {
       cancelled = true
     }
   }, [sessionId, setTurns])
+
+  // 「加载更早的轮次」：服务端按 offset 从最新往回数，取回后与已有摘要合并
+  const [loadingEarlier, setLoadingEarlier] = useState(false)
+  const loadEarlierTurns = useCallback(async () => {
+    const store = useOptimizeStore.getState()
+    if (store.sessionId === null || !store.hasMoreTurns) return
+    setLoadingEarlier(true)
+    try {
+      const page = await getSessionTurns(store.sessionId, {
+        limit: TURNS_PAGE_SIZE,
+        offset: store.turns.length,
+      })
+      store.appendTurns(page.items, page.has_more)
+    } catch {
+      // 加载失败保持原样：用户可再次点击重试（不自动重试，MUST-15）
+    } finally {
+      setLoadingEarlier(false)
+    }
+  }, [])
 
   // 卸载即中止在途流（MUST-15：不重连；后端据此把会话置 ABORTED）
   useEffect(() => () => streamRef.current?.abort(), [])
@@ -185,12 +233,19 @@ export function OptimizePage() {
           },
           onSnapshot: (snapshot) => {
             useOptimizeStore.getState().applySnapshot(snapshot)
-            void getSessionTurns(snapshot.session_id)
-              .then((items) => {
+            void getSessionTurns(snapshot.session_id, { limit: TURNS_PAGE_SIZE })
+              .then((page) => {
                 const live = useOptimizeStore.getState()
-                live.setTurns(items)
-                live.setCurrentTurnId(items.at(-1)?.turn_id ?? null)
+                live.setTurns(page.items, page.has_more)
+                // 归属优先用快照给出的本轮 id（2026-11-04）：列表可能还没包含这一轮，
+                // 若退回「末位推断」会把刚产出的这一轮又标成历史轮。
+                live.setCurrentTurnId(
+                  snapshot.current_turn_id ?? page.items.at(-1)?.turn_id ?? null,
+                )
               })
+              .catch(() => undefined)
+            void getHistory({ limit: HISTORY_PAGE_SIZE })
+              .then((page) => useHistoryStore.getState().setHistory(page.items, page.has_more))
               .catch(() => undefined)
           },
           onError: (error) => setErrorMessage(toMessage(error)),
@@ -206,11 +261,38 @@ export function OptimizePage() {
     }
   }
 
+  /** 撤销到某一轮（物理删除其后轮次）：以服务端快照为准重建本地镜像，列表全量重拉。 */
+  async function handleRollbackTo(turnId: string): Promise<void> {
+    const activeSessionId = useOptimizeStore.getState().sessionId
+    if (!activeSessionId) return
+    setIsBusy(true)
+    setErrorMessage(null)
+    try {
+      const snapshot = await rollbackSession(activeSessionId, turnId)
+      useOptimizeStore.getState().applySnapshot(snapshot)
+      // 撤销后没有「当前轮」：历史列表全量展示（最新一轮就是基线轮本身）
+      useOptimizeStore.getState().setCurrentTurnId(null)
+      const page = await getSessionTurns(activeSessionId, { limit: TURNS_PAGE_SIZE })
+      useOptimizeStore.getState().setTurns(page.items, page.has_more)
+      void getHistory({ limit: HISTORY_PAGE_SIZE })
+        .then((page) => useHistoryStore.getState().setHistory(page.items, page.has_more))
+        .catch(() => undefined)
+    } catch (error) {
+      setErrorMessage(toMessage(error))
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
   /**
    * 提交走流式端点：点击即切思考视图，thought 帧按序累积，终态快照切反问/结果视图。
    * 有副作用端点禁重试（MUST-15），中止由 AbortController 收口。
    */
-  async function handleOptimizeSubmit(nextSentence: string, nextProject: string): Promise<void> {
+  async function handleOptimizeSubmit(
+    nextSentence: string,
+    nextProject: string,
+    baseTurnId = '',
+  ): Promise<void> {
     const store = useOptimizeStore.getState()
     store.setSubmitting(true)
     store.beginThinking()
@@ -226,21 +308,30 @@ export function OptimizePage() {
     const activeSessionId = useOptimizeStore.getState().sessionId
     try {
       await streamOptimize(
-        { sentence: nextSentence, project: nextProject, session_id: activeSessionId ?? undefined },
+        {
+          sentence: nextSentence,
+          project: nextProject,
+          session_id: activeSessionId ?? undefined,
+          // 「以此轮继续」：以该历史轮为基线新开一轮（历史轮一条不少）；空串 = 不指定基线
+          base_turn_id: baseTurnId,
+        },
         {
           onThought: (text, phase) => useOptimizeStore.getState().appendThought(text, phase),
           onAction: (action, phase) => useOptimizeStore.getState().appendAction(action, phase),
           onSnapshot: (snapshot) => {
             useOptimizeStore.getState().applySnapshot(snapshot)
-            void getSessionTurns(snapshot.session_id)
-              .then((items) => {
+            void getSessionTurns(snapshot.session_id, { limit: TURNS_PAGE_SIZE })
+              .then((page) => {
                 const store = useOptimizeStore.getState()
-                store.setTurns(items)
-                store.setCurrentTurnId(items.at(-1)?.turn_id ?? null)
+                store.setTurns(page.items, page.has_more)
+                // 同上：优先用快照给出的本轮 id，避免把刚产出的这一轮标成历史轮
+                store.setCurrentTurnId(
+                  snapshot.current_turn_id ?? page.items.at(-1)?.turn_id ?? null,
+                )
               })
               .catch(() => undefined)
-            void getHistory()
-              .then((items) => useHistoryStore.getState().setHistory(items))
+            void getHistory({ limit: HISTORY_PAGE_SIZE })
+              .then((page) => useHistoryStore.getState().setHistory(page.items, page.has_more))
               .catch(() => undefined)
           },
           onError: (error) => setErrorMessage(toMessage(error)),
@@ -286,7 +377,19 @@ export function OptimizePage() {
                   : turns.filter((turn) => turn.turn_id !== currentTurnId)
               }
               loadTurn={getTurn}
+              hasMore={hasMoreTurns}
+              onLoadEarlier={() => void loadEarlierTurns()}
+              loadingEarlier={loadingEarlier}
+              onContinueFrom={(turnId) => {
+                // 以该历史轮为基线新开一轮：原句留空（后端沿用上一轮目标），历史轮一条不少
+                void handleOptimizeSubmit('', project, turnId)
+              }}
+              onRollbackTo={(turnId) => void handleRollbackTo(turnId)}
             />
+            {/* agentic 循环进度：仅在 running 快照期间出现，让用户看到这一步在做什么 */}
+            <AgentTimeline step={agentStep} action={agentAction} elapsedMs={agentElapsedMs} />
+            {/* 交付时证据已过期：代码被改过，方案引用的行号可能失效（只披露不阻断） */}
+            <EvidenceStaleNotice stale={evidenceStale} />
             <ChatStream
               state={state}
               status={status}
@@ -294,10 +397,12 @@ export function OptimizePage() {
               thinking={thinking}
               isThinking={isThinking}
               message={message}
+              replyText={replyText}
               questions={questions}
               cleared={cleared}
               variants={variants}
               ranking={ranking}
+              deliveryGate={deliveryGate}
               elapsedSeconds={elapsedSeconds}
               errorMessage={errorMessage}
               isBusy={isBusy || isSubmitting}
@@ -308,19 +413,41 @@ export function OptimizePage() {
               }
             />
           </div>
-          {/* 多轮：输入区常驻，提交即在同一会话追加一轮（思考中不展示，避免误触） */}
-          {isThinking ? null : (
-            <div className="optimize-page__composer">
-              <ConsoleInput
-                isSubmitting={isSubmitting || isBusy}
-                initialProject={project}
-                projectOptional
-                onSubmit={(nextSentence, nextProject) => {
-                  void handleOptimizeSubmit(nextSentence, nextProject)
+          {/* 多轮：输入区常驻，提交即在同一会话追加一轮。
+              思考中不再整块隐藏（2026-11-05 形态层）：改为禁用输入 + 显式「停止生成」，
+              用户可随时中断当前轮（后端 CancelledError → ABORTED）。 */}
+          <div className="optimize-page__composer">
+            <ConsoleInput
+              isSubmitting={isSubmitting || isBusy}
+              initialProject={project}
+              projectOptional
+              disabled={isThinking}
+              onSubmit={(nextSentence, nextProject) => {
+                void handleOptimizeSubmit(nextSentence, nextProject)
+              }}
+            />
+            {isThinking ? (
+              <button
+                type="button"
+                className="button button--ghost optimize-page__stop"
+                onClick={() => {
+                  streamRef.current?.abort()
+                  // 中断后以服务端为准校对（验收⑤）：后端 CancelledError → ABORTED；
+                  // 若取消尚未到达后端（仍 running），快照刷新会把界面拉回真实状态，不伪造。
+                  const sid = useOptimizeStore.getState().sessionId
+                  if (sid) {
+                    window.setTimeout(() => {
+                      void getResult(sid)
+                        .then((snapshot) => useOptimizeStore.getState().applySnapshot(snapshot))
+                        .catch(() => undefined)
+                    }, 800)
+                  }
                 }}
-              />
-            </div>
-          )}
+              >
+                停止生成
+              </button>
+            ) : null}
+          </div>
         </>
       )}
     </div>

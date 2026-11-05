@@ -30,15 +30,27 @@ function stubFetch(
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     const { status = 200, data } = handler(url, init)
+    // 列表端点 2026-11-05 起返回分页包装对象；桩里统一把裸数组包起来，
+    // 免得每个用例都手写四项分页字段。
+    const payload =
+      isHistoryList(url) && Array.isArray(data)
+        ? { items: data, has_more: false, limit: 50, offset: 0 }
+        : data
     return {
       status,
       headers: { get: () => null },
-      json: async () => envelope(data),
+      json: async () => envelope(payload),
     }
   })
 }
 
-const listPayload = [item()]
+/** 分页列表载荷（2026-11-05：裸数组 → 包装对象）。 */
+const listPayload = { items: [item()], has_more: false, limit: 50, offset: 0 }
+
+/** 列表端点判定：分页后 URL 带查询串（?limit=…），单条写入不带。 */
+function isHistoryList(url: string): boolean {
+  return url.endsWith('/history') || url.includes('/history?')
+}
 
 afterEach(() => {
   cleanup()
@@ -51,7 +63,7 @@ describe('HistoryPage 历史列表', () => {
   it('渲染 GET /history 列表（时间/state/项目名）', async () => {
     vi.stubGlobal(
       'fetch',
-      stubFetch((url) => (url.endsWith('/history') ? { data: listPayload } : { data: null })),
+      stubFetch((url) => (isHistoryList(url) ? { data: listPayload } : { data: null })),
     )
 
     render(
@@ -69,7 +81,7 @@ describe('HistoryPage 历史列表', () => {
   it('列表为空时渲染空态文案', async () => {
     vi.stubGlobal(
       'fetch',
-      stubFetch((url) => ({ data: url.endsWith('/history') ? [] : null })),
+      stubFetch((url) => ({ data: isHistoryList(url) ? [] : null })),
     )
 
     render(
@@ -99,7 +111,7 @@ describe('HistoryPage 历史列表', () => {
 
     vi.stubGlobal(
       'fetch',
-      stubFetch((url) => ({ data: url.endsWith('/history') ? listPayload : null })),
+      stubFetch((url) => ({ data: isHistoryList(url) ? listPayload : null })),
     )
     fireEvent.click(screen.getByRole('button', { name: '重新加载' }))
     expect(await screen.findByText('加个导出按钮')).toBeTruthy()
@@ -109,7 +121,7 @@ describe('HistoryPage 历史列表', () => {
     vi.stubGlobal(
       'fetch',
       stubFetch((url) => ({
-        data: url.endsWith('/history')
+        data: isHistoryList(url)
           ? [
               item({ session_id: 'a', title: '未置顶条目', updated_at: '2026-10-13T08:00:00Z' }),
               item({ session_id: 'b', title: '置顶条目', pinned: true }),
@@ -142,7 +154,7 @@ describe('HistoryPage 历史列表', () => {
           return { data: null }
         }
         return {
-          data: url.endsWith('/history') ? [item({ pinned })] : null,
+          data: isHistoryList(url) ? [item({ pinned })] : null,
         }
       }),
     )
@@ -179,7 +191,7 @@ describe('HistoryPage 历史列表', () => {
           title = '导出 CSV'
           return { data: null }
         }
-        return { data: url.endsWith('/history') ? [item({ title })] : null }
+        return { data: isHistoryList(url) ? [item({ title })] : null }
       }),
     )
 
@@ -216,7 +228,7 @@ describe('HistoryPage 历史列表', () => {
           exists = false
           return { data: null }
         }
-        return { data: url.endsWith('/history') && exists ? [item()] : [] }
+        return { data: isHistoryList(url) && exists ? [item()] : [] }
       }),
     )
     // 主区正打开该会话
@@ -258,7 +270,10 @@ describe('HistoryPage 历史列表', () => {
       return {
         status: 200,
         headers: { get: () => null },
-        json: async () => envelope(url.endsWith('/history') ? [item()] : null),
+        json: async () =>
+          envelope(
+            isHistoryList(url) ? { items: [item()], has_more: false, limit: 50, offset: 0 } : null,
+          ),
       }
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -290,7 +305,7 @@ describe('HistoryPage 历史列表', () => {
             data: { session_id: 'sess-1', state: 'DONE', status: 'done', message: '' },
           }
         }
-        return { data: url.endsWith('/history') ? [item()] : null }
+        return { data: isHistoryList(url) ? [item()] : null }
       }),
     )
 

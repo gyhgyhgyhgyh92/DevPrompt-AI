@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import type {
+  DeliveryGatePayload,
   FlowSnapshotResponse,
   RankingViewPayload,
+  TurnDetailPayload,
   TurnSummaryPayload,
   UnknownItemPayload,
   VariantPayload,
@@ -40,10 +42,27 @@ interface OptimizeState {
   isSubmitting: boolean
   /** 当前会话的轮次摘要（升序）；多轮历史渲染用，正文按需懒加载。 */
   turns: readonly TurnSummaryPayload[]
-  setTurns: (turns: readonly TurnSummaryPayload[]) => void
+  /** 是否还有更早的轮次（分页：服务端按 has_more 告知，前端不猜）。 */
+  hasMoreTurns: boolean
+  setTurns: (turns: readonly TurnSummaryPayload[], hasMore?: boolean) => void
+  /** 追加更早的一页（分页增量合并）；重复项按 turn_id 去重后仍按 turn_index 升序。 */
+  appendTurns: (items: readonly TurnSummaryPayload[], hasMore: boolean) => void
+  /** 历史轮正文常驻（2026-11-05 形态层）：切页面/折叠都不再丢，展开零请求。 */
+  turnBodies: Readonly<Record<string, TurnDetailPayload>>
+  setTurnBody: (turnId: string, detail: TurnDetailPayload) => void
   /** 当前展示轮次（最新一轮在 ChatStream 里渲染，历史列表据此排除它）。 */
   currentTurnId: string | null
   setCurrentTurnId: (turnId: string | null) => void
+  /** agentic 进度镜像（2026-11-04）：仅 status === 'running' 时非空。 */
+  agentStep: number | null
+  agentAction: string | null
+  agentElapsedMs: number | null
+  /** 交付时证据已过期（2026-11-05）：期间代码被改，方案基于旧证据。 */
+  evidenceStale: boolean
+  /** 纯回答轮正文（2026-11-05）：本轮只回答、不产出方案。 */
+  replyText: string
+  /** 交付证据门（当前轮，2026-11-05 形态层）：null 表示未过门（进行中 / 反问中）。 */
+  deliveryGate: DeliveryGatePayload | null
   /** 思考过程时间线（文字段与动作卡片按到达顺序排列）。 */
   thinking: readonly ThinkingItem[]
   /** 思考流进行中（传输层状态，不是 FlowState，MUST-07 不新增状态机态）。 */
@@ -80,7 +99,15 @@ const initialState: Pick<
   | 'sseStatus'
   | 'isSubmitting'
   | 'turns'
+  | 'hasMoreTurns'
+  | 'turnBodies'
   | 'currentTurnId'
+  | 'agentStep'
+  | 'agentAction'
+  | 'agentElapsedMs'
+  | 'evidenceStale'
+  | 'replyText'
+  | 'deliveryGate'
   | 'thinking'
   | 'isThinking'
 > = {
@@ -97,7 +124,15 @@ const initialState: Pick<
   sseStatus: 'idle',
   isSubmitting: false,
   turns: [],
+  hasMoreTurns: false,
+  turnBodies: {},
   currentTurnId: null,
+  agentStep: null,
+  agentAction: null,
+  agentElapsedMs: null,
+  evidenceStale: false,
+  replyText: '',
+  deliveryGate: null,
   thinking: [],
   isThinking: false,
 }
@@ -113,15 +148,30 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
   ...initialState,
   // 新一轮提交：清掉上一轮快照与 sessionId——否则旧会话的 SSE 仍在心跳，
   // 会把上一轮快照推回来并提前结束思考。
-  setTurns: (turns) => set({ turns }),
+  setTurns: (turns, hasMore = false) => set({ turns, hasMoreTurns: hasMore }),
+  appendTurns: (items, hasMore) =>
+    set((state) => {
+      const seen = new Set(state.turns.map((turn) => turn.turn_id))
+      const merged = [...state.turns, ...items.filter((turn) => !seen.has(turn.turn_id))]
+      merged.sort((a, b) => a.turn_index - b.turn_index)
+      return { turns: merged, hasMoreTurns: hasMore }
+    }),
   setCurrentTurnId: (turnId) => set({ currentTurnId: turnId }),
+  // 历史轮正文常驻：写入即缓存，重复展开零请求（正文不再随组件卸载丢失）
+  setTurnBody: (turnId, detail) =>
+    set((state) => ({ turnBodies: { ...state.turnBodies, [turnId]: detail } })),
   // 多轮：新一轮不清容器（session 与历史轮次保留），只重置本轮快照与思考区
+  // 提交新一轮（2026-11-04）：清空本轮快照的同时**释放「当前轮」指向**（置 null）。
+  // 若保留上一轮 id，TurnList 会把它当作「当前轮」过滤掉，而 ChatStream 的方案已被清空，
+  // 于是上一轮正文在生成窗口内消失（用户报障：第二轮开始后第一轮结果直接不见）。
+  // 置 null 后历史轮全部留在 TurnList，等终态快照的 current_turn_id 再推进。
   beginThinking: () =>
     set((state) => ({
       ...initialState,
       sessionId: state.sessionId,
       turns: state.turns,
-      currentTurnId: state.currentTurnId,
+      hasMoreTurns: state.hasMoreTurns,
+      currentTurnId: null,
       isThinking: true,
     })),
   // 答复后的过程流：保留 sessionId / 当前阶段 / 已答清单，只把过程区清空并开闸。
@@ -157,7 +207,7 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
     ),
   endThinking: () => set({ isThinking: false }),
   applySnapshot: (snapshot) =>
-    set({
+    set((state) => ({
       sessionId: snapshot.session_id,
       state: snapshot.state,
       status: snapshot.status,
@@ -168,9 +218,21 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
       ranking: snapshot.ranking ?? null,
       target: snapshot.target ?? null,
       facts: snapshot.facts ?? [],
+      // 归属以服务端为准（2026-11-04）；老后端/测试夹具无该字段时保留现值，不误清
+      currentTurnId: snapshot.current_turn_id ?? state.currentTurnId,
+      // agentic 进度（2026-11-04）：仅 running 快照带值；其余状态清零避免时间线残留
+      agentStep: snapshot.status === 'running' ? (snapshot.agent_step ?? null) : null,
+      agentAction: snapshot.status === 'running' ? (snapshot.agent_action ?? null) : null,
+      agentElapsedMs: snapshot.status === 'running' ? (snapshot.agent_elapsed_ms ?? null) : null,
+      // 证据过期标记与 status 无关：终态也要保留，否则交付后就看不到了
+      evidenceStale: snapshot.evidence_stale ?? false,
+      // 纯回答轮正文：仅在快照带值时有内容，其余轮为空串（避免上一轮回答串到这一轮）
+      replyText: snapshot.reply_text ?? '',
+      // 交付证据门：null = 本轮未过门（进行中 / 反问中）
+      deliveryGate: snapshot.delivery_gate ?? null,
       // 终态快照即思考结束：无论流何时关闭，都不留「思考中」
       isThinking: false,
-    }),
+    })),
   applySseMessage: (raw) => {
     let parsed: unknown
     try {

@@ -50,6 +50,8 @@ function snapshot(): FlowSnapshotResponse {
     state: 'DONE',
     status: 'done',
     message: '',
+    evidence_stale: false,
+    reply_text: '',
     questions: [],
     cleared: [],
     variants: [],
@@ -62,7 +64,10 @@ function defaultHandler(items: readonly HistoryItemPayload[]): Handler {
   return (input, method) => {
     if (input.includes('/api/v1/result/')) return snapshot()
     if (input.includes('/api/v1/preference')) return vectorFixture
-    if (input.includes('/api/v1/history')) return method === 'GET' ? items : null
+    if (input.includes('/api/v1/history')) {
+      // 列表端点 2026-11-05 起返回分页包装对象（裸数组 → {items, has_more, limit, offset}）
+      return method === 'GET' ? { items: [...items], has_more: false, limit: 50, offset: 0 } : null
+    }
     return null
   }
 }
@@ -376,7 +381,7 @@ describe('ProjectSidebar 项目级删除（2026-11-01）', () => {
     return (input, method) => {
       if (input.includes('/api/v1/history')) {
         if (method === 'DELETE') return { deleted }
-        return items
+        return { items: [...items], has_more: false, limit: 50, offset: 0 }
       }
       return defaultHandler(items)(input, method)
     }

@@ -34,7 +34,13 @@ export const HistoryUpdateRequestSchema = z.object({
 })
 
 /** GET /history 数据体（契约 ApiResponse[list[HistoryItemPayload]] 的 data）。 */
-export const HistoryListSchema = z.array(HistoryItemSchema)
+/** 分页会话摘要（契约 PagedHistoryItem，2026-11-05）：裸数组 → 包装对象。 */
+export const PagedHistoryItemSchema = z.object({
+  has_more: z.boolean(),
+  items: z.array(HistoryItemSchema),
+  limit: z.number(),
+  offset: z.number(),
+})
 
 /** DELETE /history?project_root= 数据体（契约 ProjectDeleteResponse；实际删除的会话条数）。 */
 export const ProjectDeleteSchema = z.object({

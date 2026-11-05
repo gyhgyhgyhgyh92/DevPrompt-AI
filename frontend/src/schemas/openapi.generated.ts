@@ -71,6 +71,8 @@ export interface paths {
         /**
          * Get History
          * @description T6-11 转正：脱敏会话摘要（id/时间/state/项目名/标题/置顶，无原句明文，MUST-19）。
+         *
+         *     分页：置顶优先 + updated_at 倒序后，从第 ``offset`` 条起取 ``limit`` 条。
          */
         get: operations["get_history_api_v1_history_get"];
         put?: never;
@@ -109,6 +111,28 @@ export interface paths {
         patch: operations["patch_history_api_v1_history__session_id__patch"];
         trace?: never;
     };
+    "/api/v1/history/{session_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rollback Session
+         * @description 撤销到某一轮（2026-11-05）：物理删除其后轮次，会话回到该轮完成时的状态。
+         *
+         *     显式破坏性操作（MUST-32 修订）：删除不可恢复，前端必须二次确认后才能调用。
+         */
+        post: operations["rollback_session_api_v1_history__session_id__rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/history/{session_id}/turns": {
         parameters: {
             query?: never;
@@ -119,6 +143,8 @@ export interface paths {
         /**
          * Get Session Turns
          * @description 会话的轮次摘要（升序）；不含原句与方案正文。
+         *
+         *     分页：``offset`` 从最新一轮往回数（前端「加载更早」）。
          */
         get: operations["get_session_turns_api_v1_history__session_id__turns_get"];
         put?: never;
@@ -179,6 +205,9 @@ export interface paths {
         /**
          * Get Progress
          * @description SSE 进度流：1s 轮询快照；DONE/ABORTED/ASKING/护栏推送后关闭；客户端断开即停。
+         *
+         *     星型拓扑（2026-11-04）：AGENTIC 期间快照 status 为 "running"，**不在关闭集合内**，
+         *     因此 agentic 循环可以持续推送进度而不是中途断流。
          */
         get: operations["get_progress_api_v1_progress__flow_id__get"];
         put?: never;
@@ -391,6 +420,44 @@ export interface components {
              */
             request_id: string;
         };
+        /** ApiResponse[PagedHistoryItem] */
+        ApiResponse_PagedHistoryItem_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["PagedHistoryItem"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
+        /** ApiResponse[PagedTurnSummary] */
+        ApiResponse_PagedTurnSummary_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["PagedTurnSummary"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
         /** ApiResponse[ProjectDeleteResponse] */
         ApiResponse_ProjectDeleteResponse_: {
             /**
@@ -467,46 +534,6 @@ export interface components {
              */
             request_id: string;
         };
-        /** ApiResponse[list[HistoryItemPayload]] */
-        ApiResponse_list_HistoryItemPayload__: {
-            /**
-             * Code
-             * @default 0
-             */
-            code: number;
-            /** Data */
-            data?: components["schemas"]["HistoryItemPayload"][] | null;
-            /**
-             * Message
-             * @default ok
-             */
-            message: string;
-            /**
-             * Request Id
-             * @default
-             */
-            request_id: string;
-        };
-        /** ApiResponse[list[TurnSummaryPayload]] */
-        ApiResponse_list_TurnSummaryPayload__: {
-            /**
-             * Code
-             * @default 0
-             */
-            code: number;
-            /** Data */
-            data?: components["schemas"]["TurnSummaryPayload"][] | null;
-            /**
-             * Message
-             * @default ok
-             */
-            message: string;
-            /**
-             * Request Id
-             * @default
-             */
-            request_id: string;
-        };
         /**
          * AskOptionPayload
          * @description 反问选项（对齐 CodeBuddy SDK AskUserQuestion 的 options[]）。
@@ -539,8 +566,46 @@ export interface components {
             total_tokens: number;
         };
         /**
+         * DeliveryGatePayload
+         * @description 交付证据门结果（2026-11-05，additive）：只披露质量标记，不阻断交付。
+         *
+         *     ``tone`` 由**后端领域层**给出（ok / warn / error），前端只按它选样式，
+         *     不得自行把 status 映射成语义（MUST-08 / MUST-33）。
+         */
+        DeliveryGatePayload: {
+            /**
+             * Can Mark C
+             * @default true
+             */
+            can_mark_c: boolean;
+            /**
+             * Can Mark Recommend
+             * @default true
+             */
+            can_mark_recommend: boolean;
+            /**
+             * Disclosure
+             * @default
+             */
+            disclosure: string;
+            /** Reasons */
+            reasons?: string[];
+            /**
+             * Status
+             * @default
+             */
+            status: string;
+            /**
+             * Tone
+             * @default ok
+             */
+            tone: string;
+        };
+        /**
          * FactPayload
          * @description 取证事实只读透出（F-104 七项判定结果）。
+         *
+         *     ``applicable`` 不进契约：它是内部档位判定依据，前端不需要按项目类型分支渲染。
          */
         FactPayload: {
             /** Evidence */
@@ -557,9 +622,23 @@ export interface components {
          *     v2（BREAKING）：variant 单数字段 → variants 列表 + ranking 推荐视图。
          */
         FlowSnapshotResponse: {
+            /** Agent Action */
+            agent_action?: string | null;
+            /** Agent Elapsed Ms */
+            agent_elapsed_ms?: number | null;
+            /** Agent Step */
+            agent_step?: number | null;
             /** Cleared */
             cleared?: string[];
             cost?: components["schemas"]["CostDetailPayload"] | null;
+            /** Current Turn Id */
+            current_turn_id?: string | null;
+            delivery_gate?: components["schemas"]["DeliveryGatePayload"] | null;
+            /**
+             * Evidence Stale
+             * @default false
+             */
+            evidence_stale: boolean;
             /** Facts */
             facts?: components["schemas"]["FactPayload"][];
             /**
@@ -570,6 +649,11 @@ export interface components {
             /** Questions */
             questions?: components["schemas"]["UnknownItemPayload"][];
             ranking?: components["schemas"]["RankingViewPayload"] | null;
+            /**
+             * Reply Text
+             * @default
+             */
+            reply_text: string;
             /** Session Id */
             session_id: string;
             /** State */
@@ -904,14 +988,56 @@ export interface components {
          */
         OptimizeRequest: {
             /**
+             * Base Turn Id
+             * @default
+             */
+            base_turn_id: string;
+            /**
              * Project
              * @default
              */
             project: string;
-            /** Sentence */
+            /**
+             * Sentence
+             * @default
+             */
             sentence: string;
             /** Session Id */
             session_id?: string | null;
+        };
+        /**
+         * PagedHistoryItem
+         * @description 分页会话摘要（2026-11-05，BREAKING）：裸数组 → 包装对象。
+         *
+         *     裸数组无法表达「还有更多」，前端只能硬顶（50 会话）。
+         *     四个字段一律必填——带默认值会在 OpenAPI 里变成可选，前端类型随之变松。
+         */
+        PagedHistoryItem: {
+            /** Has More */
+            has_more: boolean;
+            /** Items */
+            items: components["schemas"]["HistoryItemPayload"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /**
+         * PagedTurnSummary
+         * @description 分页轮次摘要（2026-11-05，BREAKING）：列表端点统一返回形态。
+         *
+         *     裸数组无法表达「还有更多」，前端只能硬顶（20 轮）。
+         *     四个字段一律必填——带默认值会在 OpenAPI 里变成可选，前端类型随之变松。
+         */
+        PagedTurnSummary: {
+            /** Has More */
+            has_more: boolean;
+            /** Items */
+            items: components["schemas"]["TurnSummaryPayload"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
         };
         /**
          * ProcessSettings
@@ -1066,6 +1192,14 @@ export interface components {
             variant: string;
         };
         /**
+         * RollbackRequest
+         * @description 撤销请求（POST /history/{session_id}/rollback）：撤销到 turn_id 这一轮完成时。
+         */
+        RollbackRequest: {
+            /** Turn Id */
+            turn_id: string;
+        };
+        /**
          * ScanResponse
          * @description GET /project/scan 数据体：符号表统计（F-101 只读透出）。
          */
@@ -1174,6 +1308,10 @@ export interface components {
             open_items?: string[];
             /** State */
             state: string;
+            /** Steps */
+            steps?: {
+                [key: string]: unknown;
+            }[];
             /**
              * Target
              * @default
@@ -1372,7 +1510,10 @@ export interface operations {
     };
     get_history_api_v1_history_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1385,7 +1526,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_list_HistoryItemPayload__"];
+                    "application/json": components["schemas"]["ApiResponse_PagedHistoryItem_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1487,9 +1637,47 @@ export interface operations {
             };
         };
     };
-    get_session_turns_api_v1_history__session_id__turns_get: {
+    rollback_session_api_v1_history__session_id__rollback_post: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RollbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_FlowSnapshotResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_turns_api_v1_history__session_id__turns_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: never;
             path: {
                 session_id: string;
@@ -1504,7 +1692,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_list_TurnSummaryPayload__"];
+                    "application/json": components["schemas"]["ApiResponse_PagedTurnSummary_"];
                 };
             };
             /** @description Validation Error */

@@ -18,6 +18,8 @@ interface ConsoleInputProps {
   isSubmitting: boolean
   /** 多轮 composer：项目路径沿用会话，允许空（后端按 session 继承）。 */
   projectOptional?: boolean
+  /** 整体禁用（2026-11-05 形态层）：思考中输入区不再整块隐藏，改为禁用输入 + 停止按钮。 */
+  disabled?: boolean
   /** 重挂载回填：思考视图切换会卸载本组件，失败退回输入页时草稿不能丢。 */
   initialSentence?: string
   initialProject?: string
@@ -58,6 +60,7 @@ export function ConsoleInput({
   initialSentence = '',
   initialProject = '',
   projectOptional = false,
+  disabled = false,
   onSubmit,
 }: ConsoleInputProps) {
   // 订阅 settings 单字段（selector 内禁返回新引用：`?? []` 会触发无限重渲染，MUST-16）
@@ -87,7 +90,10 @@ export function ConsoleInput({
   }, [sentence])
 
   const isDisabled =
-    isSubmitting || sentence.trim() === '' || (!projectOptional && project.trim() === '')
+    disabled ||
+    isSubmitting ||
+    sentence.trim() === '' ||
+    (!projectOptional && project.trim() === '')
 
   // 当前生效条目（默认展示其完整名称 label）；无激活位时回退首条（防御未激活态）
   const activeEntry = entries.find((m) => m.is_active) ?? entries[0]
@@ -184,6 +190,7 @@ export function ConsoleInput({
           value={sentence}
           rows={textRows(sentence)}
           placeholder={PROMPT_HINT}
+          disabled={disabled}
           onChange={(event) => setSentence(event.currentTarget.value)}
         />
         <div className="console-input__tools">

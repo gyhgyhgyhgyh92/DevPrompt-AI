@@ -37,7 +37,12 @@ beforeEach(() => {
   localStorage.clear()
   useSettingsStore.setState({ settings: null })
   vi.mocked(getSettings).mockResolvedValue(settingsFixture)
-  vi.mocked(getHistory).mockResolvedValue([])
+  vi.mocked(getHistory).mockResolvedValue({
+    items: [],
+    has_more: false,
+    limit: 50,
+    offset: 0,
+  })
   vi.mocked(putSettings).mockResolvedValue(settingsFixture)
 })
 

@@ -18,6 +18,8 @@ function snapshotOf(overrides?: Partial<FlowSnapshotResponse>): FlowSnapshotResp
     state: 'RANKING',
     status: 'done',
     message: 'ok',
+    evidence_stale: false,
+    reply_text: '',
     questions: [
       {
         key: 'target',
@@ -123,10 +125,27 @@ describe('useOptimizeStore 快照镜像', () => {
     const next = useOptimizeStore.getState()
     expect(next.sessionId).toBe('sess-1') // 容器不丢，下一轮复用
     expect(next.turns).toHaveLength(1)
-    expect(next.currentTurnId).toBe('t1')
+    // 归属释放（2026-11-04）：新轮开始时上一轮不再是「当前轮」，否则会被 TurnList 过滤掉
+    expect(next.currentTurnId).toBeNull()
     expect(next.isThinking).toBe(true)
     expect(next.variants).toEqual([]) // 本轮快照被清
     expect(next.status).toBeNull()
+  })
+
+  it('applySnapshot 采用服务端 current_turn_id（归属不再靠列表末位推断）', () => {
+    useOptimizeStore.getState().setCurrentTurnId('old')
+
+    useOptimizeStore.getState().applySnapshot(snapshotOf({ current_turn_id: 't2' }))
+
+    expect(useOptimizeStore.getState().currentTurnId).toBe('t2')
+  })
+
+  it('applySnapshot 缺 current_turn_id 时保留现值（兼容老后端与测试夹具）', () => {
+    useOptimizeStore.getState().setCurrentTurnId('keep')
+
+    useOptimizeStore.getState().applySnapshot(snapshotOf())
+
+    expect(useOptimizeStore.getState().currentTurnId).toBe('keep')
   })
 
   it('reset 清空流程状态回初始值', () => {

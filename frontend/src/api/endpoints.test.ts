@@ -83,13 +83,15 @@ describe('api/endpoints 12 操作', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(postOptimize({ sentence: '加个按钮', project: 'D:/repo' })).rejects.toBeInstanceOf(
-      ApiError,
-    )
+    await expect(
+      postOptimize({ sentence: '加个按钮', project: 'D:/repo', base_turn_id: '' }),
+    ).rejects.toBeInstanceOf(ApiError)
     expect(fetchMock.mock.calls).toHaveLength(1)
     const init = fetchMock.mock.calls[0]?.[1]
     expect(init?.method).toBe('POST')
-    expect(init?.body).toBe(JSON.stringify({ sentence: '加个按钮', project: 'D:/repo' }))
+    expect(init?.body).toBe(
+      JSON.stringify({ sentence: '加个按钮', project: 'D:/repo', base_turn_id: '' }),
+    )
   })
 
   it('postFollowup 三模式互斥：混合请求体直接拒绝且不发请求', async () => {
@@ -130,22 +132,39 @@ describe('api/endpoints 12 操作', () => {
 })
 
 describe('api/endpoints 偏好与设置', () => {
-  it('getHistory 返回会话摘要列表', async () => {
+  it('getHistory 返回分页会话摘要', async () => {
     stubFetchJson(
-      envelope([
-        {
-          session_id: 'sess-1',
-          state: 'DONE',
-          project: 'D:/repo',
-          project_root: 'D:/repo',
-          title: '加个导出按钮',
-          pinned: false,
-          updated_at: '2026-10-12T00:00:00Z',
-        },
-      ]),
+      envelope({
+        items: [
+          {
+            session_id: 'sess-1',
+            state: 'DONE',
+            project: 'D:/repo',
+            project_root: 'D:/repo',
+            title: '加个导出按钮',
+            pinned: false,
+            updated_at: '2026-10-12T00:00:00Z',
+          },
+        ],
+        has_more: true,
+        limit: 50,
+        offset: 0,
+      }),
     )
 
-    await expect(getHistory()).resolves.toHaveLength(1)
+    const page = await getHistory()
+    expect(page.items).toHaveLength(1)
+    expect(page.has_more).toBe(true)
+    expect(page.items[0]?.session_id).toBe('sess-1')
+  })
+
+  it('getHistory 透传分页参数到查询串', async () => {
+    const fetchMock = stubFetchJson(envelope({ items: [], has_more: false, limit: 20, offset: 40 }))
+
+    await getHistory({ limit: 20, offset: 40 })
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('limit=20')
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('offset=40')
   })
 
   it('getSettings / putSettings 读写设置视图', async () => {

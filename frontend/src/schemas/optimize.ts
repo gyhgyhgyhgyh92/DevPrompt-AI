@@ -2,10 +2,16 @@ import { z } from 'zod'
 
 /** POST /optimize 请求体（契约 OptimizeRequest）；session_id 非空 = 同一会话开新一轮。 */
 export const OptimizeRequestSchema = z.object({
-  sentence: z.string().min(1),
+  // 原句可留空：留空表示「沿用上一轮目标」（追问入口）或「以 base_turn_id 为基线继续」。
+  sentence: z.string(),
   project: z.string(),
   session_id: z.string().optional(),
+  /** 以某一历史轮为基线新开一轮（2026-11-05「以此轮继续」）；空串 = 不指定基线。 */
+  base_turn_id: z.string(),
 })
+
+/** POST /history/{session_id}/rollback 请求体（2026-11-05 撤销，物理删除其后轮次）。 */
+export const RollbackRequestSchema = z.object({ turn_id: z.string() })
 
 /** 反问未知项（契约 UnknownItemPayload，MUST-26 四要素）。 */
 export const AskOptionSchema = z.object({
@@ -58,12 +64,36 @@ export const FactSchema = z.object({
   passed: z.boolean(),
 })
 
+/** 交付证据门（契约 DeliveryGatePayload，2026-11-05）：只镜像状态，不做判定（MUST-08）。 */
+export const DeliveryGateSchema = z.object({
+  can_mark_c: z.boolean(),
+  can_mark_recommend: z.boolean(),
+  disclosure: z.string(),
+  reasons: z.array(z.string()),
+  status: z.string(),
+  /** 语义色阶由后端领域层给出（ok / warn / error），前端只按它选样式（MUST-33）。 */
+  tone: z.string(),
+})
+
 /**
  * 流程快照（契约 FlowSnapshotResponse）。
  * state/status/level/variant 按契约为自由字符串，前端只镜像不判定（MUST-07）。
  */
 export const FlowSnapshotSchema = z.object({
   cleared: z.array(z.string()).optional(),
+  /** 本轮归属（2026-11-04，additive）：前端据此决定该轮进历史列表还是当前对话区。 */
+  current_turn_id: z.string().nullish(),
+  /** 交付证据门（2026-11-05，additive）：缺省表示未过门（反问中 / 进行中）。 */
+  delivery_gate: DeliveryGateSchema.nullish(),
+  // agentic 进度（2026-11-04）：仅 status === 'running' 时有值，用于时间线渲染
+  agent_step: z.number().nullish(),
+  agent_action: z.string().nullish(),
+  agent_elapsed_ms: z.number().nullish(),
+  // 交付时证据已过期（2026-11-05）：期间代码被改，方案基于旧证据。
+  // 用 default 而非 optional：后端带默认值 => OpenAPI 视为总会返回，生成类型是必填。
+  evidence_stale: z.boolean().default(false),
+  // 纯回答轮的正文（2026-11-05）：本轮只回答、不产出方案。
+  reply_text: z.string().default(''),
   facts: z.array(FactSchema).optional(),
   message: z.string(),
   questions: z.array(UnknownItemSchema).optional(),
@@ -87,13 +117,21 @@ export const TurnSummarySchema = z.object({
   created_at: z.string().default(''),
 })
 
-export const TurnSummaryListSchema = z.array(TurnSummarySchema)
+/** 分页轮次摘要（契约 PagedTurnSummary，2026-11-05）：裸数组 → 包装对象。 */
+export const PagedTurnSummarySchema = z.object({
+  has_more: z.boolean(),
+  items: z.array(TurnSummarySchema),
+  limit: z.number(),
+  offset: z.number(),
+})
 
 /** 单轮详情（GET /turns/{turn_id}）：正文懒加载。 */
 export const TurnDetailSchema = TurnSummarySchema.extend({
   input: z.string().default(''),
   variants: z.array(VariantSchema).default([]),
   facts: z.array(FactSchema).default([]),
+  /** 本轮动作序列（2026-11-05 形态层）：历史轮可回看「这一步在做什么」。 */
+  steps: z.array(z.record(z.string(), z.unknown())).default([]),
 })
 
 export const FeedbackRequestSchema = z.object({

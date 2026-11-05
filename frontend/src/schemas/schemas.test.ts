@@ -6,7 +6,7 @@ import {
   RankingViewSchema,
   VariantSchema,
 } from './optimize'
-import { HistoryListSchema, PreferenceVectorSchema } from './preference'
+import { PagedHistoryItemSchema, PreferenceVectorSchema } from './preference'
 import { ModelServiceUpdateSchema, SettingsResponseSchema } from './settings'
 
 describe('schemas/optimize 契约校验', () => {
@@ -132,9 +132,24 @@ describe('schemas/preference 与 settings 契约校验', () => {
     ).toBe(false)
   })
 
-  it('HistoryList 元素缺字段即拒绝', () => {
+  it('PagedHistoryItem 元素缺字段即拒绝', () => {
     expect(
-      HistoryListSchema.safeParse([{ session_id: 's', state: 'DONE', project: 'p' }]).success,
+      PagedHistoryItemSchema.safeParse({
+        items: [{ session_id: 's', state: 'DONE', project: 'p' }],
+        has_more: false,
+        limit: 50,
+        offset: 0,
+      }).success,
+    ).toBe(false)
+  })
+
+  it('PagedHistoryItem 缺少分页字段即拒绝（契约四字段必填）', () => {
+    expect(
+      PagedHistoryItemSchema.safeParse({
+        items: [],
+        has_more: false,
+        limit: 50,
+      }).success,
     ).toBe(false)
   })
 
