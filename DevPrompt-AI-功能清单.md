@@ -1,6 +1,6 @@
 # DevPrompt AI · 全栈功能清单
 
-> 版本 v1.1 · 2026-10-10（BREAKING：废除 CLI 形态，全面转向 Web-only 架构，批准人=项目所有者）
+> 版本 v1.19 · 2026-11-05（新增：F-207 六维观测落库与接线判定、F-208 成本软护栏启用；BREAKING 无，批准人=项目所有者）
 > 用途：作为 AI 项目开发的规格输入
 > 配套文档：`AGENTS.md`（宪法）、`DevPrompt-AI-项目架构文档.md`、`DevPrompt-AI-技术栈文档.md`
 
@@ -318,6 +318,41 @@ INIT → RETRIEVING → PROBING → [ASKING ↔ CONFIRMING] → GENERATING → R
 **验收**：
 - 门禁为 RED 时仍返回三套方案与披露文案，`can_mark_recommend=False`
 - 组合一致：`marked = ranking.marked and gate.can_mark_recommend`
+
+## F-207 六维状态感知的观测落库与接线判定（2026-11-05 新增）
+
+**输入**：一轮的 agent 动作序列、断言对账报告、轮次与记忆命中信号
+
+**行为**：六维快照（momentum / pressure / coverage / complexity / familiarity / stability +
+加权总分）与断言对账计数（`total` / `covered` / `undeclared`）、本轮标称档位随轮次摘要落进
+`summary_json`（**零 DDL**，纯数值，不含原句与绝对路径）；`scripts/measure_sensorium.py`
+统计六维分布、异常组与完成组的分离度、声明率与每轮 token 分布，并给出接线判定与护栏上限建议。
+
+- **当前判定：不接线**——首批真实样本 3 条 < 门槛 20，且无 ABORTED 轮次 → 六维保持 shadow，
+  不参与熔断判定；结论与门槛见 `eval/agent/report-sensorium-2026-11-05.md`
+- **接线门槛**（三项同时满足才升级为熔断第四判据）：有效样本 ≥20 轮、异常组样本 ≥3、
+  两组 score 中位数差 ≥0.15
+- 启用成本护栏会改变 `pressure` 维度（`cost_budget > 0` 时按成本占比加权）→ 标定必须在护栏启用后重采
+
+**验收**：
+- 轮次 `summary_json` 含 `level` / `claims` / `sensorium` 三块，且不含原句与绝对路径
+- 统计脚本对无快照的旧库不崩，输出「样本不足」而非编造结论
+
+## F-208 成本软护栏启用（2026-11-05 新增）
+
+**输入**：单流程累计 LLM token（`session.data["cost_tokens"]`，与落库 `usage.llm_tokens` 同源）
+
+**行为**：`FOLLOWUP_COST_BUDGET` 由 0（禁用）改为 **30000 token**（≈8~9 个完整轮），
+命中后按 MUST-26 软护栏语义触发：显式展示已澄清清单，由用户裁决「继续追问 / 直接生成」，
+**不静默终止**。
+
+- 定位是「成本异常时的兜底闸」，**不替代**轮次护栏（`FOLLOWUP_SOFT_ROUND_GUARD=10`）
+- 阈值标定样本仅 3 条（实测单轮 p50 3.4k / p95 3.6k），标注「待复核」，样本补足后重标
+- 运行时回滚：配置改回 0 即禁用（判定逻辑在 `domain/decision/followup.py`，未改动）
+
+**验收**：
+- 默认配置下 `followup_cost_budget > 0`，达阈值时 `should_trigger` 为真、差 1 token 为假
+- 设回 0 时不触发（`0 = 禁用` 语义不变）
 
 ---
 

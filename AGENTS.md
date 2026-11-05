@@ -1,6 +1,6 @@
 # DevPrompt AI · Agent 宪法
 
-> 版本 v1.5 · 2026-10-16（新增：LLM 失败细分码 5011~5015、`code` 为前端查表键的约定、启动自愈；BREAKING 无，批准人=项目所有者）
+> 版本 v1.19 · 2026-11-05（新增：六维快照与断言声明率随轮次落库、usage 落库口径修复、成本软护栏启用为 30000 token；六维保持 shadow 不接线、claim_strict 保持灰度；W3 排序 A/B 因供应商 402 中止待重跑；BREAKING 无，批准人=项目所有者）
 > **本文件是 AI 在本项目执行任何任务时必须加载并遵守的最高规则。**
 > 规则冲突时，本文件 > 其他文档 > 一般工程惯例。
 > 详细说明见 `DevPrompt-AI-技术栈文档.md`、`DevPrompt-AI-功能清单.md`、`DevPrompt-AI-项目架构文档.md`。
@@ -767,6 +767,7 @@ GET /api/v1/history/{session_id}/turns?limit=20&offset=0
 | 版本 | 日期 | 内容 | 批准人 |
 |---|---|---|---|
 | v1.4 | 2026-10-15 | 裁定方案甲：MUST-25 第二段排序准确率门禁（≥80%）降为参考指标，W3 出口以「LLM 决策 + ripgrep 精确取证」为准 | 项目所有者 |
+| v1.19 | 2026-11-05 | **观测落库 + 成本护栏启用**：①六维快照与断言对账随 `summary_json` 落库（`level`/`claims`/`sensorium` 三块；零 DDL、纯数值、不含原句与绝对路径），新增 `scripts/measure_sensorium.py` 统计六维分布/分离度/声明率/token 分布并给出接线判定与护栏上限建议；②修 `usage` 落库口径根因（`_finish_turn` 早于 `_snapshot` → `usage_json.llm_tokens` 恒为 0，改为落库前先入账）；③`FOLLOWUP_COST_BUDGET` 由 0（禁用）启用为 **30000 token**（≈8~9 个完整轮；实测单轮 p50 3.4k），定位为「成本异常时的兜底闸」，不替代 10 轮轮次护栏；④六维**保持 shadow 不接线**（有效样本 3 < 门槛 20，且无 ABORTED 轮次）；⑤`claim_strict` 保持灰度关闭，补齐声明率统计口径（首批样本无 C 档轮，声明率待算）；⑥**W3 排序 A/B 再次无有效数据**：供应商 402 余额耗尽，两次尝试（并发/独占）均中止不写报告，充值后按 `doc-阶段/2026-11-05-W3排序实测-中止记录.md` §四独占重跑 | 项目所有者 |
 | v1.18 | 2026-11-05 | **形态层收尾 + 撤销语义裁定**：①MUST-32 修订（所有者裁定）：撤销=物理删除其后轮次，完整链路=前端二次确认→service 终态/归属校验→`delete_after`→`session.rolled_back` 留痕；已知边界如实披露（notes/anchor 不回退、定位不继承）；②对话流全量同构：新增 `AssistantBlock` 单一渲染器，历史轮与当前轮共用（动作序列/门禁卡片/方案卡/回答正文），前端不伪造未落库内容；③轮级操作条加「撤销到此轮」（danger 样式 + 二次确认）；④中断后延时拉 `GET /result` 校对状态，不伪造 aborted；⑤W3 排序评测 A/B 双跑（带/无签名各 100 例，同模型同环境），对照脚本 `eval/recall/measure_ranking_ab.py` | 项目所有者 |
 | v1.17 | 2026-11-05 | **BREAKING · 遗留收敛 + 形态层第一部分**：①MUST-09 修订：候选可附 ≤1 行 / ≤120 字符签名（**仍禁函数体**），老版 ctags 自动降级重试；②新增 MUST-31 列表端点统一分页契约（裸数组 → `{items, has_more, limit, offset}`）；③新增 MUST-32 turn append-only，「回滚/继续」= 以基线轮新开一轮（`base_turn_id`）；④新增 MUST-33 门禁色阶与文案由后端承载（`DeliveryVerdict.tone`）；⑤断言对账：空声明 `coverage` 记 0 + `undeclared` 标记，是否降档由 `claim_strict` 灰度控制（默认关闭）；⑥跨轮澄清改为**继承**（按 target 判定，换目标自动作废并留痕）；⑦mypy 38 → 0（只改调用侧标注与 mock，未动协议定义）。**W1 召回率重跑 95/100 未退化；W3 因供应商余额不足未产出**（见 `eval/recall/report-ranking-2026-11-05-aborted.md`） | 项目所有者 |
 | v1.16 | 2026-11-05 | **BREAKING · 内核重构第一阶段**：①MUST-28 档位完备度改为「**适用项全过**」（`FactResult.applicable`，默认 True 保证旧数据零变化）——非前端项目从 B 上限变为可达 C；②新增 **MUST-30 交付证据门**（GREEN/YELLOW/RED，**只降质量标记不阻断交付**；新增 `domain/delivery/gate.py` 与快照可选字段 `delivery_gate`）；③断言对账加固：`ClaimReport.undeclared` + 空声明 `coverage` 记 0（原记 1.0，模型只要不声明即可绕过对账），是否降档由 `claim_strict` 灰度控制（默认关闭）；④外环监督：hook 由 3 阶段扩到 5 阶段（`pre_turn`/`post_tool` 新增）+ `allow/correct/halt` 三态，超时与异常一律视为 allow；⑤新增 `domain/agent/sensorium.py` 六维状态感知（**shadow 模式**：只落库与发事件，不参与熔断）；⑥新增 `domain/agent/anchor.py` 本轮目标锚点（纯内部状态，用户不可见、无确认门）；⑦缓存命中观测（读 `usage.prompt_tokens_details.cached_tokens`，缺失记 None 不虚报）。**本次不含**：Plan 先行 / Ask-Craft-Plan 三模式 / 桌面端 / 前缀缓存分层（经调研判定无收益） | 项目所有者 |
