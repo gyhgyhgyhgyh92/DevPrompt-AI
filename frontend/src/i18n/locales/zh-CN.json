@@ -60,7 +60,12 @@
     "menu_pin": "置顶任务",
     "menu_copy_path": "复制项目路径",
     "menu_rename": "重命名",
-    "menu_delete": "删除任务"
+    "menu_delete": "删除任务",
+    "delete_project_failed": "删除项目失败",
+    "sidebar_label": "项目",
+    "aria_collapse": "收起侧边栏",
+    "footer_nav": "侧栏导航",
+    "confirm_delete_project": "删除项目"
   },
   "settings": {
     "modal": { "title": "设置" },

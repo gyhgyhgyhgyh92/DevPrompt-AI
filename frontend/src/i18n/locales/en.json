@@ -69,7 +69,12 @@
     "menu_pin": "Pin to top",
     "menu_copy_path": "Copy project path",
     "menu_rename": "Rename",
-    "menu_delete": "Delete task"
+    "menu_delete": "Delete task",
+    "delete_project_failed": "Failed to delete the project",
+    "sidebar_label": "Projects",
+    "aria_collapse": "Collapse sidebar",
+    "footer_nav": "Sidebar navigation",
+    "confirm_delete_project": "Delete project"
   },
   "settings": {
     "modal": { "title": "Settings" },

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router'
 import {
   HISTORY_PAGE_SIZE,
@@ -142,6 +143,7 @@ interface ProjectSidebarProps {
 }
 
 export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const history = useHistoryStore((s) => s.history)
   const hasMore = useHistoryStore((s) => s.hasMore)
@@ -209,7 +211,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
     navigate('/')
     getResult(sessionId)
       .then((snapshot) => useOptimizeStore.getState().applySnapshot(snapshot))
-      .catch(() => showToast('会话结果加载失败'))
+      .catch(() => showToast(t('history.load_result_failed')))
   }
 
   function handleNewSession(): void {
@@ -226,7 +228,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
       await patchHistory(item.session_id, { pinned: !item.pinned })
       await refreshHistory()
     } catch {
-      showToast('置顶操作失败')
+      showToast(t('history.pin_failed'))
     }
   }
 
@@ -244,7 +246,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
       await patchHistory(item.session_id, { title })
       await refreshHistory()
     } catch {
-      showToast('重命名失败')
+      showToast(t('history.rename_failed'))
     }
   }
 
@@ -283,13 +285,15 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
     try {
       if (target.kind === 'session') {
         await deleteSession(target.item)
-        showToast('已删除')
+        showToast(t('history.deleted'))
       } else {
         const deleted = await deleteProject(target.group)
         showToast(`已删除 ${deleted} 条会话`)
       }
     } catch {
-      showToast(target.kind === 'session' ? '删除失败' : '删除项目失败')
+      showToast(
+        target.kind === 'session' ? t('history.delete_failed') : t('history.delete_project_failed'),
+      )
     } finally {
       setDeleting(false)
       setPendingDelete(null)
@@ -302,8 +306,8 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
     const text = item.project_root !== '' ? item.project_root : item.project
     void navigator.clipboard
       .writeText(text)
-      .then(() => showToast('已复制'))
-      .catch(() => showToast('复制失败'))
+      .then(() => showToast(t('history.copied')))
+      .catch(() => showToast(t('history.copy_failed')))
   }
 
   const sorted = sortItems(history)
@@ -330,7 +334,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
         {isRenaming ? (
           <input
             className="project-sidebar__rename-input"
-            aria-label="重命名会话"
+            aria-label={t('history.aria_rename')}
             value={renameDraft}
             autoFocus
             onChange={(event) => setRenameDraft(event.currentTarget.value)}
@@ -356,7 +360,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
           </button>
         )}
         {item.pinned ? (
-          <span className="project-sidebar__item-pin" aria-label="已置顶">
+          <span className="project-sidebar__item-pin" aria-label={t('history.pinned')}>
             <PinIcon />
           </span>
         ) : null}
@@ -364,7 +368,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
           <button
             type="button"
             className="project-sidebar__menu-btn"
-            aria-label="更多操作"
+            aria-label={t('history.aria_more')}
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation()
@@ -392,12 +396,12 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
   }
 
   return (
-    <aside className="project-sidebar" aria-label="项目">
+    <aside className="project-sidebar" aria-label={t('history.sidebar_label')}>
       <div className="project-sidebar__head">
         <button
           type="button"
           className="project-sidebar__collapse"
-          aria-label="收起侧边栏"
+          aria-label={t('history.aria_collapse')}
           onClick={onCollapse}
         >
           <CollapseIcon />
@@ -440,13 +444,13 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
             onClick={() => void loadMoreHistory()}
             disabled={isLoadingMore}
           >
-            {isLoadingMore ? '正在加载…' : '加载更多会话'}
+            {isLoadingMore ? t('history.loading') : t('history.load_more')}
           </button>
         ) : null}
         {history.length === 0 ? <p className="project-sidebar__empty">暂无历史会话</p> : null}
       </div>
 
-      <nav className="project-sidebar__footer" aria-label="侧栏导航">
+      <nav className="project-sidebar__footer" aria-label={t('history.footer_nav')}>
         <Link to="/history">历史记录 →</Link>
       </nav>
 
@@ -460,13 +464,21 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
       {pendingDelete !== null
         ? createPortal(
             <ConfirmDialog
-              title={pendingDelete.kind === 'session' ? '删除会话' : '删除项目'}
+              title={
+                pendingDelete.kind === 'session'
+                  ? t('history.confirm_delete_title')
+                  : t('history.confirm_delete_project')
+              }
               description={
                 pendingDelete.kind === 'session'
                   ? `将删除「${itemTitle(pendingDelete.item)}」这条会话记录及其历史轮次，不会删除本地项目文件。`
                   : `将删除「${pendingDelete.group.project}」下全部 ${pendingDelete.group.items.length} 条会话记录（含置顶与历史轮次），不会删除本地项目文件。`
               }
-              confirmLabel={pendingDelete.kind === 'session' ? '删除会话' : '删除项目'}
+              confirmLabel={
+                pendingDelete.kind === 'session'
+                  ? t('history.confirm_delete_title')
+                  : t('history.confirm_delete_project')
+              }
               isBusy={isDeleting}
               onConfirm={() => void handleConfirmDelete()}
               onClose={() => setPendingDelete(null)}
