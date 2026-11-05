@@ -75,6 +75,38 @@ def test_not_applicable_failures_do_not_trigger_red() -> None:
     assert verdict.status == "GREEN"
 
 
+def test_red_when_anchors_invalid() -> None:
+    """U-2：C 档正文锚点明确无效 → RED（不标 C / 不标推荐），方案照常返回。"""
+    verdict = evaluate_delivery(
+        DeliveryInput(
+            has_target=True,
+            facts=_green_facts(),
+            claim_coverage=1.0,
+            variant_count=3,
+            anchor_invalid_count=2,
+        )
+    )
+
+    assert verdict.status == "RED"
+    assert "2 处无效锚点" in verdict.disclosure
+    assert verdict.can_mark_c is False
+    assert verdict.can_mark_recommend is False
+
+
+def test_no_anchor_penalty_when_clear() -> None:
+    verdict = evaluate_delivery(
+        DeliveryInput(
+            has_target=True,
+            facts=_green_facts(),
+            claim_coverage=1.0,
+            variant_count=3,
+            anchor_invalid_count=0,
+        )
+    )
+
+    assert verdict.status == "GREEN"
+
+
 def test_red_when_claims_undeclared() -> None:
     verdict = evaluate_delivery(
         DeliveryInput(

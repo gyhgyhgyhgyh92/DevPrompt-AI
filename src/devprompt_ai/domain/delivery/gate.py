@@ -40,6 +40,8 @@ class DeliveryInput:
     variant_count: int = 0
     #: 本轮请求的期望套数（U-7）；实际不足时 YELLOW 披露，None 表示不核对
     expected_variant_count: int | None = None
+    #: C 档正文锚点校验（U-2）：明确无效的锚点数（文件不存在或行号越界）→ RED
+    anchor_invalid_count: int = 0
     #: `decide_mark` 的结论；None 表示未打分（单套方案）
     recommend_marked: bool | None = None
     recommend_reason: str = ""
@@ -78,6 +80,8 @@ def evaluate_delivery(data: DeliveryInput) -> DeliveryVerdict:
         red.append("适用事实全部未通过")
     if data.claims_undeclared:
         red.append("方案未声明任何引用，证据链无法核对")
+    if data.anchor_invalid_count:
+        red.append(f"C 档方案含 {data.anchor_invalid_count} 处无效锚点（路径不存在或行号越界）")
     if red:
         return DeliveryVerdict(
             status="RED",

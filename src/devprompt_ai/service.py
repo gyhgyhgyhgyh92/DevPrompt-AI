@@ -60,6 +60,7 @@ from devprompt_ai.domain.errors import (
     DevPromptError,
     StateError,
 )
+from devprompt_ai.domain.generate.anchors import Anchor, extract_anchors, verify_anchors
 from devprompt_ai.domain.generate.claims import CLAIM_COVERAGE_MIN, ClaimReport
 from devprompt_ai.domain.generate.ports import (
     GeneratePort,
@@ -1939,6 +1940,7 @@ class ForgeService:
             )
             await _notify(session, progress, single_variant_text())
 
+        await self._verify_c_anchors(session)
         verdict = self._evaluate_delivery_gate(session, len(variants), marked)
         session.data["delivery_gate"] = {
             "status": verdict.status,
@@ -1971,6 +1973,44 @@ class ForgeService:
         await self._finish_turn(session)
         return self._snapshot(session, "done")
 
+    async def _verify_c_anchors(self, session: FlowSession) -> None:
+        """U-2：C 档正文锚点后端校验——明确无效则降 B 并披露，判不清不降档。"""
+        if session.data.get("level") != "C":
+            return
+        variants = [v for v in session.data.get("variants", []) if isinstance(v, dict)]
+        body = next((str(v.get("body", "")) for v in variants if v.get("level") == "C"), "")
+        anchors = extract_anchors(body)
+        if not anchors:
+            return
+        root = str(session.data.get("project_root", ""))
+        verdicts: list[tuple[Anchor, bool | None]] = [
+            (anchor, await self._probe_anchor(root, anchor)) for anchor in anchors
+        ]
+        report = verify_anchors(verdicts)
+        session.data["anchor_report"] = {
+            "total": report.total,
+            "invalid": list(report.invalid),
+        }
+        if report.invalid:
+            emit(
+                "evidence.anchor_invalid",
+                total=report.total,
+                invalid=len(report.invalid),
+                request_id=session.data.get("last_request_id", ""),
+            )
+
+    async def _probe_anchor(self, root: str, anchor: Anchor) -> bool | None:
+        """单锚点核验：False=明确无效；None=判不清（保守不降档）。路径为仓库相对形态。"""
+        rel = anchor.path.replace("\\", "/")
+        full = f"{root}/{rel}" if root else rel
+        try:
+            if not await self._reader.exists(full):
+                return False
+            text = await self._reader.read(full)
+        except Exception:  # noqa: BLE001 - 读取失败属判不清，保守不降档
+            return None
+        return 1 <= anchor.line <= len(text.splitlines())
+
     def _evaluate_delivery_gate(
         self, session: FlowSession, variant_count: int, marked: bool | None
     ) -> DeliveryVerdict:
@@ -1991,6 +2031,10 @@ class ForgeService:
         ranking_data = session.data.get("ranking")
         reason = str(ranking_data.get("reason", "")) if isinstance(ranking_data, dict) else ""
         expected = session.data.get("expected_variant_count")
+        anchor_report = session.data.get("anchor_report")
+        anchor_invalid = (
+            len(anchor_report.get("invalid", [])) if isinstance(anchor_report, dict) else 0
+        )
         return evaluate_delivery(
             DeliveryInput(
                 has_target=bool(session.data.get("target")),
@@ -2001,6 +2045,7 @@ class ForgeService:
                 expected_variant_count=int(expected)
                 if isinstance(expected, (int, float))
                 else None,
+                anchor_invalid_count=anchor_invalid,
                 recommend_marked=marked,
                 recommend_reason=reason,
             )

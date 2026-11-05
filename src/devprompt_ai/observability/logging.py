@@ -45,6 +45,7 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "evidence.stale_reprobe",
         "evidence.claim_uncovered",
         "evidence.claim_undeclared",
+        "evidence.anchor_invalid",
         "delivery.gate",
         "session.rolled_back",
         "followup.expect_unmet",
