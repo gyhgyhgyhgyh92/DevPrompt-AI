@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import './SessionMenu.css'
 
 interface SessionMenuProps {
@@ -81,6 +82,7 @@ export function SessionMenu({
   onDelete,
   onClose,
 }: SessionMenuProps) {
+  const { t } = useTranslation()
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -101,7 +103,7 @@ export function SessionMenu({
   }, [onClose])
 
   return (
-    <div className="session-menu" role="menu" ref={menuRef} aria-label="会话操作">
+    <div className="session-menu" role="menu" ref={menuRef} aria-label={t('history.menu_label')}>
       <button
         type="button"
         role="menuitem"
@@ -110,15 +112,15 @@ export function SessionMenu({
         onClick={onPin}
       >
         <PinIcon />
-        <span>置顶任务</span>
+        <span>{t('history.menu_pin')}</span>
       </button>
       <button type="button" role="menuitem" className="session-menu__item" onClick={onCopyPath}>
         <FolderIcon />
-        <span>复制项目路径</span>
+        <span>{t('history.menu_copy_path')}</span>
       </button>
       <button type="button" role="menuitem" className="session-menu__item" onClick={onRename}>
         <PencilIcon />
-        <span>重命名</span>
+        <span>{t('history.menu_rename')}</span>
       </button>
       <button
         type="button"
@@ -127,7 +129,7 @@ export function SessionMenu({
         onClick={onDelete}
       >
         <TrashIcon />
-        <span>删除任务</span>
+        <span>{t('history.menu_delete')}</span>
       </button>
     </div>
   )

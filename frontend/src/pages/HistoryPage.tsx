@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router'
 import {
   HISTORY_PAGE_SIZE,
@@ -48,6 +49,7 @@ const TOAST_DURATION_MS = 2000
  * 有副作用端点禁自动重试（MUST-15）。
  */
 export function HistoryPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const history = useHistoryStore((s) => s.history)
   const hasMore = useHistoryStore((s) => s.hasMore)
@@ -125,7 +127,7 @@ export function HistoryPage() {
     navigate('/')
     getResult(sessionId)
       .then((snapshot) => useOptimizeStore.getState().applySnapshot(snapshot))
-      .catch(() => showToast('会话结果加载失败'))
+      .catch(() => showToast(t('history.load_result_failed')))
   }
 
   async function handlePin(item: HistoryItemPayload): Promise<void> {
@@ -133,9 +135,9 @@ export function HistoryPage() {
     try {
       await patchHistory(item.session_id, { pinned: !item.pinned })
       await refreshHistory()
-      showToast(item.pinned ? '已取消置顶' : '已置顶')
+      showToast(item.pinned ? t('history.unpinned') : t('history.pinned'))
     } catch {
-      showToast('置顶操作失败')
+      showToast(t('history.pin_failed'))
     }
   }
 
@@ -152,9 +154,9 @@ export function HistoryPage() {
     try {
       await patchHistory(item.session_id, { title })
       await refreshHistory()
-      showToast('已重命名')
+      showToast(t('history.renamed'))
     } catch {
-      showToast('重命名失败')
+      showToast(t('history.rename_failed'))
     }
   }
 
@@ -168,9 +170,9 @@ export function HistoryPage() {
         navigate('/')
       }
       await refreshHistory()
-      showToast('已删除')
+      showToast(t('history.deleted'))
     } catch {
-      showToast('删除失败')
+      showToast(t('history.delete_failed'))
     } finally {
       setDeleting(false)
       setPendingDelete(null)
@@ -183,8 +185,8 @@ export function HistoryPage() {
     const text = item.project_root !== '' ? item.project_root : item.project
     void navigator.clipboard
       .writeText(text)
-      .then(() => showToast('已复制'))
-      .catch(() => showToast('复制失败'))
+      .then(() => showToast(t('history.copied')))
+      .catch(() => showToast(t('history.copy_failed')))
   }
 
   const sorted = sortItems(history)
@@ -221,7 +223,7 @@ export function HistoryPage() {
                     {isRenaming ? (
                       <input
                         className="field__input"
-                        aria-label="重命名会话"
+                        aria-label={t('history.aria_rename')}
                         value={renameDraft}
                         autoFocus
                         onChange={(event) => setRenameDraft(event.currentTarget.value)}
@@ -238,7 +240,7 @@ export function HistoryPage() {
                         onClick={() => handleOpen(item.session_id)}
                       >
                         <span className="history-page__item-title">
-                          {item.pinned ? <span aria-label="已置顶">📌 </span> : null}
+                          {item.pinned ? <span aria-label={t('history.pinned')}>📌 </span> : null}
                           {itemTitle(item)}
                           {isCurrent ? <span className="history-page__tag">进行中</span> : null}
                         </span>
@@ -262,7 +264,7 @@ export function HistoryPage() {
                       <button
                         type="button"
                         className="button button--ghost"
-                        aria-label="更多操作"
+                        aria-label={t('history.aria_more')}
                         aria-expanded={isMenuOpen}
                         onClick={() =>
                           setOpenMenuId((current) =>
@@ -297,7 +299,7 @@ export function HistoryPage() {
                 onClick={() => void loadMoreHistory()}
                 disabled={isLoadingMore}
               >
-                {isLoadingMore ? '正在加载…' : '加载更多会话'}
+                {isLoadingMore ? t('history.loading') : t('history.load_more')}
               </button>
             ) : null}
             {sorted.length === 0 ? <p className="context-panel__empty">暂无历史记录</p> : null}
@@ -307,9 +309,9 @@ export function HistoryPage() {
 
       {pendingDelete !== null ? (
         <ConfirmDialog
-          title="删除会话"
+          title={t('history.confirm_delete_title')}
           description={`将删除「${itemTitle(pendingDelete)}」这条会话记录及其历史轮次，不会删除本地项目文件。`}
-          confirmLabel="删除会话"
+          confirmLabel={t('history.confirm_delete_title')}
           isBusy={isDeleting}
           onConfirm={() => void handleConfirmDelete(pendingDelete)}
           onClose={() => setPendingDelete(null)}
