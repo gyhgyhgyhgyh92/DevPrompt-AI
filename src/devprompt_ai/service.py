@@ -2089,7 +2089,8 @@ class ForgeService:
                 anchor_invalid_count=anchor_invalid,
                 recommend_marked=marked,
                 recommend_reason=reason,
-            )
+            ),
+            _session_locale(session),
         )
 
     async def _act_abort(self, session: FlowSession, *, reason: str) -> None:

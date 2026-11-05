@@ -93,6 +93,18 @@ def test_red_when_anchors_invalid() -> None:
     assert verdict.can_mark_recommend is False
 
 
+def test_disclosure_is_localized() -> None:
+    """披露文案随 locale 切换（2026-11-06，F-209 后端双语）；默认仍逐字中文。"""
+    zh = evaluate_delivery(DeliveryInput(has_target=False, variant_count=3))
+    assert zh.status == "RED"
+    assert "未定位到目标符号" in zh.disclosure
+
+    en = evaluate_delivery(DeliveryInput(has_target=False, variant_count=3), locale="en")
+    assert en.status == "RED"
+    assert "Target symbol not located" in en.disclosure
+    assert en.tone == "error"
+
+
 def test_no_anchor_penalty_when_clear() -> None:
     verdict = evaluate_delivery(
         DeliveryInput(

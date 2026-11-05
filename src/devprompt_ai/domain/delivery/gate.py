@@ -13,15 +13,17 @@
 **门禁不阻断交付**：与天枢真实行为一致（其 RED 也只披露不阻断），且符合 MUST-27
 「不标记必须给具体原因，不得静默」——阻断会让用户拿不到任何东西。
 
-纯函数、零 I/O：不读 session、不写日志、不调用 LLM。
+纯函数、零 I/O：不读 session、不写日志、不调用 LLM。文案按 ``locale`` 从
+``common/i18n.py`` 取（2026-11-06），默认 zh-CN。
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import Literal
 
+from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale, tr
 from devprompt_ai.domain.generate.claims import CLAIM_COVERAGE_MIN
 from devprompt_ai.domain.models import FactResult
 
@@ -63,51 +65,66 @@ class DeliveryVerdict:
     tone: Literal["ok", "warn", "error"] = "ok"
 
 
-_DISCLOSURE_PREFIX: Final = {
-    "RED": "本轮证据链不足以背书，方案照常提供，但未标记为可交付档位",
-    "YELLOW": "本轮证据可用但不足以背书推荐，方案照常提供",
-}
+def _join(items: Sequence[str], locale: Locale) -> str:
+    """按语言拼列表：中文用顿号，英文用逗号。"""
+    return tr("common.list_sep", locale).join(items)
 
 
-def evaluate_delivery(data: DeliveryInput) -> DeliveryVerdict:
+def evaluate_delivery(data: DeliveryInput, locale: Locale = DEFAULT_LOCALE) -> DeliveryVerdict:
     """按 RED → YELLOW → GREEN 优先级判定，命中即返回。"""
     applicable = [fact for fact in data.facts if fact.applicable]
 
     red: list[str] = []
     if not data.has_target:
-        red.append("未定位到目标符号")
+        red.append(tr("gate.red.no_target", locale))
     elif applicable and not any(fact.passed for fact in applicable):
-        red.append("适用事实全部未通过")
+        red.append(tr("gate.red.facts_failed", locale))
     if data.claims_undeclared:
-        red.append("方案未声明任何引用，证据链无法核对")
+        red.append(tr("gate.red.claims_undeclared", locale))
     if data.anchor_invalid_count:
-        red.append(f"C 档方案含 {data.anchor_invalid_count} 处无效锚点（路径不存在或行号越界）")
+        red.append(tr("gate.red.anchor_invalid", locale, count=data.anchor_invalid_count))
     if red:
         return DeliveryVerdict(
             status="RED",
             reasons=tuple(red),
             can_mark_c=False,
             can_mark_recommend=False,
-            disclosure=f"{_DISCLOSURE_PREFIX['RED']}：{'；'.join(red)}。",
+            disclosure=tr(
+                "gate.disclosure.red",
+                locale,
+                reasons=_join(red, locale),
+            ),
             tone="error",
         )
 
     yellow: list[str] = []
     if data.claim_coverage is not None and data.claim_coverage < CLAIM_COVERAGE_MIN:
-        yellow.append(f"断言覆盖率 {data.claim_coverage:.0%}，低于 {CLAIM_COVERAGE_MIN:.0%}")
+        yellow.append(
+            tr(
+                "gate.yellow.coverage",
+                locale,
+                coverage=f"{data.claim_coverage:.0%}",
+                threshold=f"{CLAIM_COVERAGE_MIN:.0%}",
+            )
+        )
     if data.expected_variant_count is not None and data.variant_count < data.expected_variant_count:
-        yellow.append(f"本次仅 {data.variant_count} 套（模型未给出全部档位）")
+        yellow.append(tr("gate.yellow.variant_short", locale, count=data.variant_count))
     if data.variant_count < 2:
-        yellow.append("仅一套方案，未做推荐比较")
+        yellow.append(tr("gate.yellow.single_variant", locale))
     if data.recommend_marked is False:
-        yellow.append(data.recommend_reason or "推荐置信度不足")
+        # 推荐理由由 decide_mark 生成（同一层已按语言输出），空则给兜底文案
+        yellow.append(data.recommend_reason or tr("gate.yellow.no_recommend", locale))
     if yellow:
         return DeliveryVerdict(
             status="YELLOW",
             reasons=tuple(yellow),
             can_mark_c=True,
             can_mark_recommend=False,
-            disclosure=f"{_DISCLOSURE_PREFIX['YELLOW']}：{'；'.join(yellow)}。",
+            disclosure=tr(
+                "gate.disclosure.yellow",
+                locale,
+                reasons=_join(yellow, locale),
+            ),
             tone="warn",
         )
 

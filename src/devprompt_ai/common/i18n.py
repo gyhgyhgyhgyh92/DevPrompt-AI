@@ -53,6 +53,18 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "common.list_sep": "、",
         "clarify.manual_reason": "候选不足（{matched} 条）",
         "clarify.manual_ask": "请指明目标符号名与文件路径（格式：符号@路径）",
+        "gate.red.no_target": "未定位到目标符号",
+        "gate.red.facts_failed": "适用事实全部未通过",
+        "gate.red.claims_undeclared": "方案未声明任何引用，证据链无法核对",
+        "gate.red.anchor_invalid": "C 档方案含 {count} 处无效锚点（路径不存在或行号越界）",
+        "gate.disclosure.red": (
+            "本轮证据链不足以背书，方案照常提供，但未标记为可交付档位：{reasons}。"
+        ),
+        "gate.yellow.coverage": "断言覆盖率 {coverage}，低于 {threshold}",
+        "gate.yellow.variant_short": "本次仅 {count} 套（模型未给出全部档位）",
+        "gate.yellow.single_variant": "仅一套方案，未做推荐比较",
+        "gate.yellow.no_recommend": "推荐置信度不足",
+        "gate.disclosure.yellow": "本轮证据可用但不足以背书推荐，方案照常提供：{reasons}。",
     },
     "en": {
         "progress.retrieval": (
@@ -105,6 +117,30 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "clarify.manual_reason": "Not enough candidates ({matched} matched)",
         "clarify.manual_ask": (
             "Please specify the target symbol and file path (format: symbol@path)"
+        ),
+        "gate.red.no_target": "Target symbol not located",
+        "gate.red.facts_failed": "Every applicable fact check failed",
+        "gate.red.claims_undeclared": (
+            "The variants declare no references, so the evidence chain cannot be verified"
+        ),
+        "gate.red.anchor_invalid": (
+            "Level-C variants contain {count} invalid anchor(s) (missing path or line out of range)"
+        ),
+        "gate.disclosure.red": (
+            "Evidence is not strong enough to endorse this turn; variants are still "
+            "provided, but no deliverable level is marked: {reasons}."
+        ),
+        "gate.yellow.coverage": ("Claim coverage {coverage} is below the required {threshold}"),
+        "gate.yellow.variant_short": (
+            "Only {count} variant(s) this turn (the model did not provide all levels)"
+        ),
+        "gate.yellow.single_variant": (
+            "Only one variant, so no recommendation comparison was made"
+        ),
+        "gate.yellow.no_recommend": "Recommendation confidence is too low",
+        "gate.disclosure.yellow": (
+            "Evidence is usable but not enough to endorse a recommendation; "
+            "variants are still provided: {reasons}."
         ),
     },
 }
