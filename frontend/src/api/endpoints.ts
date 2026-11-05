@@ -12,7 +12,7 @@ import {
   HistoryUpdateRequestSchema,
   PagedHistoryItemSchema,
   ProjectDeleteSchema,
-} from '../schemas/preference'
+} from '../schemas/history'
 import {
   ModelCatalogRefreshRequestSchema,
   ModelCatalogResponseSchema,
@@ -305,7 +305,6 @@ export async function deleteHistoryByProject(
   return data.deleted
 }
 
-/** DELETE /preference/adoptions：清空服务端采纳历史（有副作用端点，禁重试，MUST-15）。 */
 export function getSettings(signal?: AbortSignal): Promise<SettingsResponse> {
   return request(ENDPOINTS.settings, { method: 'GET', schema: SettingsResponseSchema, signal })
 }

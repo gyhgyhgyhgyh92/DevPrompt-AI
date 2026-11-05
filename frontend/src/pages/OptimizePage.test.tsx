@@ -177,13 +177,6 @@ class MockEventSource {
   }
 }
 
-const vectorFixture = {
-  detail_level: 0.25,
-  include_diff: 0.75,
-  specify_tests: 0.1,
-  max_files_norm: 0.9,
-}
-
 function snapshotFixture(overrides: Partial<FlowSnapshotResponse> = {}): FlowSnapshotResponse {
   return {
     session_id: 'sess-1',
@@ -232,7 +225,7 @@ afterEach(() => {
 
 describe('OptimizePage 三栏工作台', () => {
   it('初始态渲染居中 ConsoleInput（无侧栏 / 无结果区）', () => {
-    stubApi([{ match: '/preference', payload: envelope(vectorFixture) }])
+    stubApi([])
 
     renderPage()
 
@@ -241,7 +234,7 @@ describe('OptimizePage 三栏工作台', () => {
   })
 
   it('无流程时渲染启动卡片（原句输入 + 发送 + 选择文件夹（本地））', () => {
-    stubApi([{ match: '/preference', payload: envelope(vectorFixture) }])
+    stubApi([])
 
     renderPage()
 
@@ -554,7 +547,7 @@ describe('OptimizePage 三态容器', () => {
   })
 
   it('优化页不再内嵌会话侧栏（已迁至 AppShell）', async () => {
-    stubApi([{ match: '/preference', payload: envelope(vectorFixture) }])
+    stubApi([])
 
     renderPage()
 

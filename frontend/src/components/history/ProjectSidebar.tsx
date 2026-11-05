@@ -448,7 +448,6 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
 
       <nav className="project-sidebar__footer" aria-label="侧栏导航">
         <Link to="/history">历史记录 →</Link>
-        <Link to="/preference">偏好记忆 →</Link>
       </nav>
 
       {toast !== null ? (

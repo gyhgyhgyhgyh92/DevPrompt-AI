@@ -1,4 +1,7 @@
-"""SQLite DDL（L1 会话存储 F-501 + L3 偏好存储 F-503）。幂等；SQL 集中于 memory/（MUST-06）。"""
+"""SQLite DDL（会话 / 多轮 turn / 项目记忆 / 设置 / 隔离区 / 模型目录）。
+
+幂等；SQL 集中于 memory/（MUST-06）。
+"""
 
 SESSIONS_DDL = """
 CREATE TABLE IF NOT EXISTS forge_sessions (

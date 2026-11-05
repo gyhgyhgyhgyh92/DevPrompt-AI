@@ -6,7 +6,7 @@ import {
   RankingViewSchema,
   VariantSchema,
 } from './optimize'
-import { PagedHistoryItemSchema, PreferenceVectorSchema } from './preference'
+import { PagedHistoryItemSchema } from './history'
 import { ModelServiceUpdateSchema, SettingsResponseSchema } from './settings'
 
 describe('schemas/optimize 契约校验', () => {
@@ -120,18 +120,7 @@ describe('schemas/optimize 契约校验', () => {
   })
 })
 
-describe('schemas/preference 与 settings 契约校验', () => {
-  it('PreferenceVector 四维必须是数字', () => {
-    expect(
-      PreferenceVectorSchema.safeParse({
-        detail_level: 0.25,
-        include_diff: 0.75,
-        specify_tests: 'x',
-        max_files_norm: 0.9,
-      }).success,
-    ).toBe(false)
-  })
-
+describe('schemas/history 与 settings 契约校验', () => {
   it('PagedHistoryItem 元素缺字段即拒绝', () => {
     expect(
       PagedHistoryItemSchema.safeParse({

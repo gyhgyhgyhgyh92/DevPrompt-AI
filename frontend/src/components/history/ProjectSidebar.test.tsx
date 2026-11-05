@@ -37,13 +37,6 @@ function item(overrides: Partial<HistoryItemPayload> & { session_id: string }): 
   }
 }
 
-const vectorFixture = {
-  detail_level: 0.25,
-  include_diff: 0.75,
-  specify_tests: 0.1,
-  max_files_norm: 0.9,
-}
-
 function snapshot(): FlowSnapshotResponse {
   return {
     session_id: 's1',
@@ -59,11 +52,10 @@ function snapshot(): FlowSnapshotResponse {
   }
 }
 
-/** 默认路由：GET /history 返回列表，GET /result 返回快照，GET /preference 返回向量。 */
+/** 默认路由：GET /history 返回列表，GET /result 返回快照。 */
 function defaultHandler(items: readonly HistoryItemPayload[]): Handler {
   return (input, method) => {
     if (input.includes('/api/v1/result/')) return snapshot()
-    if (input.includes('/api/v1/preference')) return vectorFixture
     if (input.includes('/api/v1/history')) {
       // 列表端点 2026-11-05 起返回分页包装对象（裸数组 → {items, has_more, limit, offset}）
       return method === 'GET' ? { items: [...items], has_more: false, limit: 50, offset: 0 } : null

@@ -9,8 +9,6 @@ vi.mock('../../api/endpoints', () => ({
   getSettings: vi.fn(),
   putSettings: vi.fn(),
   getHealth: vi.fn(),
-  getPreference: vi.fn(),
-  putPreference: vi.fn(),
   getHistory: vi.fn(),
 }))
 

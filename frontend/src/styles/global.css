@@ -491,7 +491,7 @@ pre {
   border-radius: var(--radius-md);
 }
 
-/* 上下文/偏好空态文案（PreferencePage/HistoryPage/VariantTabs 共用） */
+/* 上下文空态文案（HistoryPage/VariantTabs 共用） */
 
 .context-panel__empty {
   font-size: var(--text-body-sm);
