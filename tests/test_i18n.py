@@ -44,14 +44,14 @@ def test_no_empty_templates() -> None:
 
 
 def test_tr_interpolates_and_falls_back() -> None:
-    assert tr("progress.symbols", "zh-CN", total=42) == "已扫描 42 个符号"
-    assert tr("progress.symbols", "en", total=42) == "42 symbols scanned"
+    assert tr("progress.symbols", "zh-CN", total=42) == "符号表就绪，共 42 个符号参与匹配。"
+    assert tr("progress.symbols", "en", total=42) == "Symbol table ready: 42 symbols are matched."
     # 缺键返回键名（暴露漏译，不抛异常）
     assert tr("progress.does_not_exist") == "progress.does_not_exist"
     # 插值参数缺失时返回模板原文，不抛异常
-    assert tr("progress.symbols") == "已扫描 {total} 个符号"
+    assert tr("progress.symbols") == "符号表就绪，共 {total} 个符号参与匹配。"
 
 
 def test_default_locale_is_zh() -> None:
     assert DEFAULT_LOCALE == "zh-CN"
-    assert tr("progress.done") == "已完成。"
+    assert tr("progress.answering") == "正在回答你的追问。"

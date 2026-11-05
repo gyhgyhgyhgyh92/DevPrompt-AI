@@ -21,40 +21,85 @@ DEFAULT_LOCALE: Final[Locale] = "zh-CN"
 #: 两语言键集必须完全一致，由 tests/test_i18n.py 强制。
 MESSAGES: Final[dict[str, dict[str, str]]] = {
     "zh-CN": {
-        "progress.retrieval": "正在检索相关代码…",
-        "progress.symbols": "已扫描 {total} 个符号",
-        "progress.candidates": "筛选出 {count} 个候选组件",
-        "progress.facts": "已核对 {count} 项取证结论",
-        "progress.target": "已定位目标：{label}",
-        "progress.level": "将生成 {level} 档提示词",
-        "progress.clarification": "需要向你确认 {count} 个问题",
-        "progress.generation": "正在生成提示词…",
-        "progress.scoring": "正在评估方案适配度…",
-        "progress.recommendation": "已标出推荐方案：{label}",
-        "progress.single_variant": "只生成一套方案（信息已足够），跳过打分与推荐。",
-        "progress.answering": "正在回答你的问题…",
-        "progress.manual_required": "未能自动定位，请手动补充组件名或文件路径。",
-        "progress.stop_generation": "已停止生成。",
-        "progress.done": "已完成。",
+        "progress.retrieval": "开始分析这条提示词，先在你的项目里检索相关代码。",
+        "progress.symbols": "符号表就绪，共 {total} 个符号参与匹配。",
+        "progress.candidates_trimmed": (
+            "匹配到 {matched} 个相关符号，按相关度压到 {kept} 条候选（上限固定）。"
+        ),
+        "progress.candidates_all": "匹配到 {matched} 个相关符号，全部进入候选（未触及上限）。",
+        "progress.manual_required": (
+            "只匹配到 {matched} 个符号，不足以自动定位目标，"
+            "需要你补充具体符号名或文件路径后再继续。"
+        ),
+        "progress.target": "选中目标 {name}（{location}），正在核对事实依据。",
+        "progress.facts": "事实核对完成：{total} 项中 {passed} 项通过。",
+        "progress.level": "研判完成，整体置信度 {confidence}，可输出 {level} 档。",
+        "progress.level_unknown": "未评估",
+        "progress.clarification": "研判出 {count} 处信息缺口，先和你确认再继续。",
+        "progress.answering": "正在回答你的追问。",
+        "progress.generation": "开始生成 {count} 套方案（{labels}）。",
+        "progress.single_variant": "信息量只够输出 1 套保守方案，按规则跳过打分与推荐。",
+        "progress.scoring": "为各套方案打分，并结合你的历史偏好计算加权总分。",
+        "progress.recommendation_unmarked": (
+            "综合评分完成，{reason}（最高为 {label} 档，领先 {gap}）。"
+        ),
+        "progress.recommendation_plain": "综合评分完成，推荐 {label} 档（领先次优 {gap}）。",
+        "progress.recommendation_reasoned": (
+            "综合评分完成，推荐 {label} 档（领先 {gap}，{reason}）。"
+        ),
+        "level.a": "保守",
+        "level.b": "标准",
+        "level.c": "激进",
+        "common.list_sep": "、",
     },
     "en": {
-        "progress.retrieval": "Retrieving related code…",
-        "progress.symbols": "{total} symbols scanned",
-        "progress.candidates": "{count} candidate components selected",
-        "progress.facts": "{count} fact checks verified",
-        "progress.target": "Target located: {label}",
-        "progress.level": "Generating level {level} prompts",
-        "progress.clarification": "{count} questions need your confirmation",
-        "progress.generation": "Generating prompts…",
-        "progress.scoring": "Scoring variant fit…",
-        "progress.recommendation": "Recommended variant marked: {label}",
-        "progress.single_variant": "Only one variant was needed; scoring and ranking skipped.",
-        "progress.answering": "Answering your question…",
-        "progress.manual_required": (
-            "Could not locate the target; please add a component name or file path."
+        "progress.retrieval": (
+            "Analyzing this prompt; first retrieving related code from your project."
         ),
-        "progress.stop_generation": "Generation stopped.",
-        "progress.done": "Done.",
+        "progress.symbols": "Symbol table ready: {total} symbols are matched.",
+        "progress.candidates_trimmed": (
+            "Matched {matched} related symbols; kept {kept} candidates by relevance (fixed cap)."
+        ),
+        "progress.candidates_all": (
+            "Matched {matched} related symbols; all of them entered the candidates (cap not hit)."
+        ),
+        "progress.manual_required": (
+            "Only {matched} symbols matched, which is not enough to locate the target "
+            "automatically; please add a specific symbol name or file path to continue."
+        ),
+        "progress.target": (
+            "Target selected: {name} ({location}); verifying the supporting facts."
+        ),
+        "progress.facts": "Fact checks finished: {passed} of {total} passed.",
+        "progress.level": (
+            "Probing finished; overall confidence {confidence}, level {level} can be produced."
+        ),
+        "progress.level_unknown": "not assessed",
+        "progress.clarification": (
+            "Found {count} information gaps; confirming them with you before continuing."
+        ),
+        "progress.answering": "Answering your follow-up question.",
+        "progress.generation": "Generating {count} variants ({labels}).",
+        "progress.single_variant": (
+            "There is only enough information for one conservative variant; "
+            "scoring and ranking are skipped by rule."
+        ),
+        "progress.scoring": (
+            "Scoring each variant and computing a weighted total with your historical preferences."
+        ),
+        "progress.recommendation_unmarked": (
+            "Scoring finished; {reason} (best is level {label}, ahead by {gap})."
+        ),
+        "progress.recommendation_plain": (
+            "Scoring finished; recommending level {label} (ahead of runner-up by {gap})."
+        ),
+        "progress.recommendation_reasoned": (
+            "Scoring finished; recommending level {label} (ahead by {gap}, {reason})."
+        ),
+        "level.a": "conservative",
+        "level.b": "standard",
+        "level.c": "aggressive",
+        "common.list_sep": ", ",
     },
 }
 

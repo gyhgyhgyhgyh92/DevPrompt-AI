@@ -3,6 +3,9 @@
 
 约束（MUST-19）：文案**不得**出现用户原句与绝对路径。本模块的函数签名拿不到原句
 （结构性保证），路径统一经 :func:`display_path` 收窄为仓库相对形式。
+
+本地化（2026-11-06）：文案表在 ``common/i18n.py``；各函数末位可选 ``locale`` 参数，
+默认 ``zh-CN``——旧调用零改动，服务层按会话语言传入即可。
 """
 
 from __future__ import annotations
@@ -11,8 +14,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final, Literal, Protocol
 
-#: 档位中文名（方案的差异是信息完整度，不是文风，MUST-28）。
-LEVEL_NAMES: Final[dict[str, str]] = {"A": "保守", "B": "标准", "C": "激进"}
+from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale, tr
+
+#: 档位在语言包里的键（方案的差异是信息完整度，不是文风，MUST-28）。
+_LEVEL_KEYS: Final[dict[str, str]] = {"A": "level.a", "B": "level.b", "C": "level.c"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,7 +28,7 @@ class ActionInfo:
     """
 
     title: str
-    """动作中文名，如「检索代码」「读取文件」。"""
+    """动作名（按当前语言渲染，如「检索代码」「读取文件」）。"""
 
     detail: str
     """等宽预览：rg 参数（相对路径）或文件相对路径。"""
@@ -54,9 +59,10 @@ class ProgressSink(Protocol):
     async def emit(self, event: ProgressEvent) -> None: ...
 
 
-def level_label(variant: str) -> str:
+def level_label(variant: str, locale: Locale = DEFAULT_LOCALE) -> str:
     """``A`` → ``A 保守``；未知档位原样返回（不猜）。"""
-    return f"{variant} {LEVEL_NAMES[variant]}" if variant in LEVEL_NAMES else variant
+    key = _LEVEL_KEYS.get(variant)
+    return f"{variant} {tr(key, locale)}" if key is not None else variant
 
 
 def display_path(path: str) -> str:
@@ -68,67 +74,85 @@ def display_path(path: str) -> str:
     return "/".join(parts)
 
 
-def retrieval_text() -> str:
-    return "开始分析这条提示词，先在你的项目里检索相关代码。"
+def retrieval_text(locale: Locale = DEFAULT_LOCALE) -> str:
+    return tr("progress.retrieval", locale)
 
 
-def symbols_text(total: int) -> str:
-    return f"符号表就绪，共 {total} 个符号参与匹配。"
+def symbols_text(total: int, locale: Locale = DEFAULT_LOCALE) -> str:
+    return tr("progress.symbols", locale, total=total)
 
 
-def candidates_text(matched: int, kept: int) -> str:
+def candidates_text(matched: int, kept: int, locale: Locale = DEFAULT_LOCALE) -> str:
     if matched > kept:
-        return f"匹配到 {matched} 个相关符号，按相关度压到 {kept} 条候选（上限固定）。"
-    return f"匹配到 {matched} 个相关符号，全部进入候选（未触及上限）。"
+        return tr("progress.candidates_trimmed", locale, matched=matched, kept=kept)
+    return tr("progress.candidates_all", locale, matched=matched)
 
 
-def manual_required_text(matched: int) -> str:
-    return (
-        f"只匹配到 {matched} 个符号，不足以自动定位目标，需要你补充具体符号名或文件路径后再继续。"
-    )
+def manual_required_text(matched: int, locale: Locale = DEFAULT_LOCALE) -> str:
+    return tr("progress.manual_required", locale, matched=matched)
 
 
-def target_text(name: str, path: str, line: int) -> str:
+def target_text(name: str, path: str, line: int, locale: Locale = DEFAULT_LOCALE) -> str:
     location = f"{display_path(path)}:{line}" if line > 0 else display_path(path)
-    return f"选中目标 {name}（{location}），正在核对事实依据。"
+    return tr("progress.target", locale, name=name, location=location)
 
 
-def facts_text(passed: int, total: int) -> str:
-    return f"事实核对完成：{total} 项中 {passed} 项通过。"
+def facts_text(passed: int, total: int, locale: Locale = DEFAULT_LOCALE) -> str:
+    return tr("progress.facts", locale, passed=passed, total=total)
 
 
-def level_text(level: str, confidence: float | None) -> str:
+def level_text(level: str, confidence: float | None, locale: Locale = DEFAULT_LOCALE) -> str:
     """研判结论提示。confidence 为 None 表示模型未给判断——不是「置信度 0」。"""
-    shown = "未评估" if confidence is None else f"{confidence:.2f}"
-    return f"研判完成，整体置信度 {shown}，可输出 {level_label(level)} 档。"
+    shown = tr("progress.level_unknown", locale) if confidence is None else f"{confidence:.2f}"
+    return tr("progress.level", locale, confidence=shown, level=level_label(level, locale))
 
 
-def clarification_text(count: int) -> str:
-    return f"研判出 {count} 处信息缺口，先和你确认再继续。"
+def clarification_text(count: int, locale: Locale = DEFAULT_LOCALE) -> str:
+    return tr("progress.clarification", locale, count=count)
 
 
-def answering_text() -> str:
+def answering_text(locale: Locale = DEFAULT_LOCALE) -> str:
     """纯回答动作的进度文案（2026-11-05）。"""
-    return "正在回答你的追问。"
+    return tr("progress.answering", locale)
 
 
-def generation_text(levels: Sequence[str]) -> str:
-    labels = "、".join(level_label(level) for level in levels)
-    return f"开始生成 {len(levels)} 套方案（{labels}）。"
+def generation_text(levels: Sequence[str], locale: Locale = DEFAULT_LOCALE) -> str:
+    separator = tr("common.list_sep", locale)
+    labels = separator.join(level_label(level, locale) for level in levels)
+    return tr("progress.generation", locale, count=len(levels), labels=labels)
 
 
-def single_variant_text() -> str:
-    return "信息量只够输出 1 套保守方案，按规则跳过打分与推荐。"
+def single_variant_text(locale: Locale = DEFAULT_LOCALE) -> str:
+    return tr("progress.single_variant", locale)
 
 
-def scoring_text() -> str:
-    return "为各套方案打分，并结合你的历史偏好计算加权总分。"
+def scoring_text(locale: Locale = DEFAULT_LOCALE) -> str:
+    return tr("progress.scoring", locale)
 
 
-def recommendation_text(marked: bool, variant: str, gap: float, reason: str) -> str:
-    label = level_label(variant)
+def recommendation_text(
+    marked: bool,
+    variant: str,
+    gap: float,
+    reason: str,
+    locale: Locale = DEFAULT_LOCALE,
+) -> str:
+    label = level_label(variant, locale)
+    shown_gap = f"{gap:.2f}"
     if not marked:
-        return f"综合评分完成，{reason}（最高为 {label} 档，领先 {gap:.2f}）。"
+        return tr(
+            "progress.recommendation_unmarked",
+            locale,
+            reason=reason,
+            label=label,
+            gap=shown_gap,
+        )
     if reason:
-        return f"综合评分完成，推荐 {label} 档（领先 {gap:.2f}，{reason}）。"
-    return f"综合评分完成，推荐 {label} 档（领先次优 {gap:.2f}）。"
+        return tr(
+            "progress.recommendation_reasoned",
+            locale,
+            label=label,
+            gap=shown_gap,
+            reason=reason,
+        )
+    return tr("progress.recommendation_plain", locale, label=label, gap=shown_gap)
