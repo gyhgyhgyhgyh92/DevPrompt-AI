@@ -91,9 +91,15 @@ class FakeForgeService:
         progress: Any = None,
         session_id: str | None = None,
         base_turn_id: str = "",
+        locale: str = "zh-CN",
     ) -> FlowSnapshot:
         self.optimize_calls.append(
-            {"session_id": session_id, "sentence": sentence, "base_turn_id": base_turn_id}
+            {
+                "session_id": session_id,
+                "sentence": sentence,
+                "base_turn_id": base_turn_id,
+                "locale": locale,
+            }
         )
         return self._next()
 
@@ -299,6 +305,22 @@ async def test_optimize_returns_snapshot(
     assert body["data"]["status"] == "ask"
     assert body["request_id"]
     assert fake_service.state == "ASKING"
+
+
+async def test_optimize_forwards_accept_language(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """界面语言经 Accept-Language 解析后传给 service（2026-11-06，F-209 后端双语）。"""
+    await client.post(
+        "/api/v1/optimize",
+        json={"sentence": "改按钮", "project": "."},
+        headers={"accept-language": "en-US,en;q=0.9"},
+    )
+    assert fake_service.optimize_calls[-1]["locale"] == "en"
+
+    # 无头（或未知语言）回落 zh-CN，不报错也不变成第三种语言
+    await client.post("/api/v1/optimize", json={"sentence": "改按钮", "project": "."})
+    assert fake_service.optimize_calls[-1]["locale"] == "zh-CN"
 
 
 async def test_optimize_missing_fields_422(client: httpx.AsyncClient) -> None:

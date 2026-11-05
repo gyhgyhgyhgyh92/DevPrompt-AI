@@ -13,6 +13,7 @@ from typing import Any, TypeVar
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse
 
+from devprompt_ai.common.i18n import Locale, resolve_locale
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.errors import DevPromptError, StateError
 from devprompt_ai.domain.models import TurnRecord
@@ -65,6 +66,11 @@ async def get_service() -> ForgeService:
         cfg.validate()
         _service = await build_default(cfg)
     return _service
+
+
+def _locale(request: Request) -> Locale:
+    """``Accept-Language`` → 界面语言（只做头解析，不含业务判定，MUST-10）。"""
+    return resolve_locale(request.headers.get("accept-language"))
 
 
 def _request_id(request: Request) -> str:
@@ -154,6 +160,7 @@ async def post_optimize(
         request_id=request_id,
         session_id=req.session_id,
         base_turn_id=req.base_turn_id,
+        locale=_locale(request),
     )
     return _ok(_snapshot_payload(snapshot), request_id)
 
@@ -258,6 +265,7 @@ async def post_optimize_stream(request: Request, req: OptimizeRequest) -> Stream
             request_id=request_id,
             progress=sink,
             session_id=req.session_id,
+            locale=_locale(request),
         )
 
     return _stream_progress(request_id, _produce)

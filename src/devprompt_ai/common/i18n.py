@@ -51,6 +51,8 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "level.b": "标准",
         "level.c": "激进",
         "common.list_sep": "、",
+        "clarify.manual_reason": "候选不足（{matched} 条）",
+        "clarify.manual_ask": "请指明目标符号名与文件路径（格式：符号@路径）",
     },
     "en": {
         "progress.retrieval": (
@@ -100,6 +102,10 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "level.b": "standard",
         "level.c": "aggressive",
         "common.list_sep": ", ",
+        "clarify.manual_reason": "Not enough candidates ({matched} matched)",
+        "clarify.manual_ask": (
+            "Please specify the target symbol and file path (format: symbol@path)"
+        ),
     },
 }
 

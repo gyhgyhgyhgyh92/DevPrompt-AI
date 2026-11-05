@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 from devprompt_ai.common.cost import take_llm_tokens
 from devprompt_ai.common.hashing import sha256_hex
+from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale, tr
 from devprompt_ai.common.process import ProcessError
 from devprompt_ai.common.secrets import mask_secret
 from devprompt_ai.config import MODEL_KEY_MAP, AppConfig
@@ -204,6 +205,11 @@ _RANK_CACHE: dict[tuple[str, str, str, str], tuple[float, list[int]]] = {}
 仍会命中旧 order，唯一保护是越界检查（只防越界，防不了错位）。
 值 = (过期时刻 monotonic, 候选索引顺序)。禁存原句与决策原始响应。
 """
+
+
+def _session_locale(session: FlowSession) -> Locale:
+    """会话语言（2026-11-06）：创建会话时由 Accept-Language 写入，历史轮沿用当轮值。"""
+    return "en" if session.data.get("locale") == "en" else DEFAULT_LOCALE
 
 
 async def _notify(session: FlowSession, progress: ProgressSink | None, text: str) -> None:
@@ -591,6 +597,7 @@ class ForgeService:
         progress: ProgressSink | None = None,
         session_id: str | None = None,
         base_turn_id: str = "",
+        locale: Locale = DEFAULT_LOCALE,
     ) -> FlowSnapshot:
         """F-001：创建/恢复会话，执行阶段一至二（检索+探针），路由 ask/done。
 
@@ -633,6 +640,8 @@ class ForgeService:
                 "sentence": memory.sentence,
                 "project_root": project_root,
                 "last_request_id": request_id,
+                # 会话语言（2026-11-06）：由 Accept-Language 解析后随会话保留，历史轮沿用。
+                "locale": locale,
                 "clarifications": dict(memory.clarifications),
                 "rounds": 0,
                 "cost_tokens": 0,  # 总 token（护栏判定用，MUST-26 成本预算）
@@ -824,14 +833,20 @@ class ForgeService:
             elif session.data.get("target"):
                 emit("evidence.reused", count=len(existing_facts), request_id=request_id)
                 passed = sum(1 for f in existing_facts if f.get("passed"))
-                await _notify(session, progress, facts_text(passed, len(existing_facts)))
+                await _notify(
+                    session,
+                    progress,
+                    facts_text(passed, len(existing_facts), _session_locale(session)),
+                )
                 return True
 
-        await _notify(session, progress, retrieval_text())
-        await _notify(session, progress, symbols_text(len(symbols)))
+        await _notify(session, progress, retrieval_text(_session_locale(session)))
+        await _notify(session, progress, symbols_text(len(symbols), _session_locale(session)))
         result = build_candidates(sentence, symbols)
         await _notify(
-            session, progress, candidates_text(result.total_matched, len(result.candidates))
+            session,
+            progress,
+            candidates_text(result.total_matched, len(result.candidates), _session_locale(session)),
         )
         session.data["candidates"] = [
             {"name": c.name, "path": c.path, "score": c.score, "source": c.source}
@@ -842,13 +857,21 @@ class ForgeService:
             # slots dataclass 无 __dict__，序列化必须走 asdict（计划 §6.2 注意事项）
             item = UnknownItem(
                 key="manual_target",
-                reason=f"候选不足（{result.total_matched} 条）",
+                reason=tr(
+                    "clarify.manual_reason",
+                    _session_locale(session),
+                    matched=result.total_matched,
+                ),
                 best_guess="",
-                ask="请指明目标符号名与文件路径（格式：符号@路径）",
+                ask=tr("clarify.manual_ask", _session_locale(session)),
             )
             session.data["unknowns"] = [dataclasses.asdict(item)]
             session.data["level"] = "A"
-            await _notify(session, progress, manual_required_text(result.total_matched))
+            await _notify(
+                session,
+                progress,
+                manual_required_text(result.total_matched, _session_locale(session)),
+            )
             await hop(session, FlowState.ASKING, self._sessions)
             await self._finish_turn(session)
             return False
@@ -857,14 +880,22 @@ class ForgeService:
         symbol = Symbol(name=top.name, path=top.path, line=top.line, kind="function")
         runner, reader = self._traced(progress, project_root, lambda: session.state)
         location = await locate_symbol(symbol, runner, reader, root=project_root)
-        await _notify(session, progress, target_text(top.name, top.path, location.definition_line))
+        await _notify(
+            session,
+            progress,
+            target_text(top.name, top.path, location.definition_line, _session_locale(session)),
+        )
         facts = await verify_facts(location, sentence, runner, reader, root=project_root)
         # 只统计适用项：对后端项目报「3/7 通过」是误导，真实分母是 4
         applicable = [f for f in facts if f.applicable]
         await _notify(
             session,
             progress,
-            facts_text(sum(1 for f in applicable if f.passed), len(applicable)),
+            facts_text(
+                sum(1 for f in applicable if f.passed),
+                len(applicable),
+                _session_locale(session),
+            ),
         )
         session.data["facts"] = [
             {
@@ -1721,10 +1752,14 @@ class ForgeService:
         await _notify(
             session,
             progress,
-            level_text(str(session.data["level"]), confidence),
+            level_text(str(session.data["level"]), confidence, _session_locale(session)),
         )
         if unknowns:
-            await _notify(session, progress, clarification_text(len(unknowns)))
+            await _notify(
+                session,
+                progress,
+                clarification_text(len(unknowns), _session_locale(session)),
+            )
         return bool(unknowns)
 
     async def _probe_and_route(
@@ -1815,7 +1850,7 @@ class ForgeService:
             max_versions=3 if self._should_offer_three(session) else 1,
             preferred=_preferred_level(session),
         )
-        await _notify(session, progress, generation_text(levels))
+        await _notify(session, progress, generation_text(levels, _session_locale(session)))
         # U-7：记下期望套数，交付门据实际产出披露「本次仅 N 套」（模型可只给子集）。
         session.data["expected_variant_count"] = len(levels)
         multi = await self._generator.generate_variants(ctx, levels)
@@ -1883,14 +1918,20 @@ class ForgeService:
     ) -> RankingView | None:
         """对多套方案打分并写入 ``session.data["ranking"]``。"""
         await transition(session, FlowState.RANKING, self._sessions)
-        await _notify(session, progress, scoring_text())
+        await _notify(session, progress, scoring_text(_session_locale(session)))
         ranking = await self._rank_and_mark(session, variants)
         session.data["ranking"] = dataclasses.asdict(ranking) if ranking is not None else None
         if ranking is not None:
             await _notify(
                 session,
                 progress,
-                recommendation_text(ranking.marked, ranking.variant, ranking.gap, ranking.reason),
+                recommendation_text(
+                    ranking.marked,
+                    ranking.variant,
+                    ranking.gap,
+                    ranking.reason,
+                    _session_locale(session),
+                ),
             )
         return ranking
 
@@ -1904,7 +1945,7 @@ class ForgeService:
         """
         await hop(session, FlowState.GENERATING, self._sessions)
         ctx = await self._generation_context(session)
-        await _notify(session, progress, answering_text())
+        await _notify(session, progress, answering_text(_session_locale(session)))
         text = await self._generator.answer(ctx)
         self._account_llm_usage(session, last_usage())
         session.data["reply_text"] = text
@@ -1938,7 +1979,7 @@ class ForgeService:
                 confidence=None,
                 request_id=session.data.get("last_request_id", ""),
             )
-            await _notify(session, progress, single_variant_text())
+            await _notify(session, progress, single_variant_text(_session_locale(session)))
 
         await self._verify_c_anchors(session)
         verdict = self._evaluate_delivery_gate(session, len(variants), marked)

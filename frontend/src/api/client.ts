@@ -77,6 +77,8 @@ export async function request<S extends z.ZodType>(
         method,
         headers: {
           accept: 'application/json',
+          // 界面语言（2026-11-06）：后端按此头输出进度流/披露/方案模板的语言
+          'accept-language': i18n.language,
           // 带 JSON body 必须声明 content-type，否则后端不解包请求体
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
@@ -160,7 +162,11 @@ export async function openPostStream(
   try {
     response = await fetch(path, {
       method: 'POST',
-      headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
+      headers: {
+        accept: 'text/event-stream',
+        'content-type': 'application/json',
+        'accept-language': i18n.language,
+      },
       body: JSON.stringify(body),
       signal,
     })
