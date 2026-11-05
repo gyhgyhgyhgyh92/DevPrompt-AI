@@ -435,6 +435,12 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | zustand | `^5.0` |
 | react-router | `^7` |
 | zod | `^4` |
+| i18next | `^26.7.2`（2026-11-06 F-209 多语言；版本经 npm registry 核实） |
+| react-i18next | `^17.1.13`（peer: i18next ≥26.2 / react ≥16.8） |
+
+> **MUST-04 第 5 级论证（F-209）**：React 无内置 i18n；标准库 `Intl` 只做日期/数字/复数格式化，
+> 不做查表、插值与语言切换；项目内无封装（自建等于重写 i18next 核心子集）；已登记依赖均不含 i18n。
+> 故按业主指定引入两个包，`pnpm-lock.yaml` 锁定。
 | eslint | `^9` |
 | prettier | `^3` |
 | vitest | 最新稳定 |

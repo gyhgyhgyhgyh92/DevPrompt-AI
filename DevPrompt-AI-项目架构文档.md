@@ -1233,9 +1233,12 @@ frontend/
     │   ├── common.ts
     │   ├── optimize.ts
     │   ├── stream.ts             思考过程流事件契约（thought / snapshot / error 判别联合，2026-10-19）
-    │   ├── preference.ts
+    │   ├── history.ts            历史会话契约（F-501；自 preference.ts 迁出，2026-11-06）
     │   ├── settings.ts           设置契约校验（F-604）
-    │   └── errorCodes.ts         错误码 → 用户文案表（N-7；须覆盖后端 ERROR_CODES 全部条目）
+    │   └── errorCodes.ts         错误码 → i18n 键映射（F-209；文案在 i18n/locales，须覆盖后端全部码）
+    ├── i18n/                  多语言（F-209，2026-11-06）
+    │   ├── index.ts           i18next 初始化（资源同步 import；locale 取 appearance 真源）
+    │   └── locales/           zh-CN.json / en.json（键集一致由 keys.test.ts 守卫）
     ├── styles/                全局样式与 token
     │   ├── tokens.css         CSS Variables 设计 token
     │   ├── global.css
