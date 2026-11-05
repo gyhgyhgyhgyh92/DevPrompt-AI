@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { TurnDetailPayload, TurnSummaryPayload } from '../../api/types'
+import { i18n } from '../../i18n'
 import { useOptimizeStore } from '../../stores/useOptimizeStore'
 import { errorMessage } from '../settings/errorMessage'
 import { AssistantBlock } from './AssistantBlock'
@@ -39,6 +41,7 @@ export function TurnList({
   onContinueFrom,
   onRollbackTo,
 }: TurnListProps) {
+  const { t } = useTranslation()
   const turnBodies = useOptimizeStore((s) => s.turnBodies)
   const setTurnBody = useOptimizeStore((s) => s.setTurnBody)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -58,7 +61,7 @@ export function TurnList({
       results.forEach((result, index) => {
         const turnId = pending[index]?.turn_id ?? ''
         if (result.status === 'fulfilled') setTurnBody(turnId, result.value.detail)
-        else nextErrors[turnId] = errorMessage(result.reason, '轮次加载失败')
+        else nextErrors[turnId] = errorMessage(result.reason, i18n.t('turn.load_failed'))
       })
       setErrors((prev) => ({ ...prev, ...nextErrors }))
     })
@@ -78,7 +81,7 @@ export function TurnList({
           onClick={onLoadEarlier}
           disabled={loadingEarlier}
         >
-          {loadingEarlier ? '正在加载更早的轮次…' : '加载更早的轮次'}
+          {loadingEarlier ? t('turn.loading_earlier') : t('turn.load_earlier')}
         </button>
       ) : null}
       {turns.map((turn) => {

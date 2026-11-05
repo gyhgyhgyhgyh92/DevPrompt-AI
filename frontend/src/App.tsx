@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { BrowserRouter } from 'react-router'
 import { useShallow } from 'zustand/react/shallow'
 import { getHealth, getSettings } from './api/endpoints'
@@ -16,10 +17,10 @@ type ApiStatus = 'checking' | 'ok' | 'down'
 /** GET /health 里代表「API 可用性」的检查项名（后端检查项标识，非前端判定）。 */
 const LLM_CHECK_NAME = 'llm_config'
 
-const API_STATUS_TEXT: Record<ApiStatus, string> = {
-  checking: 'API 检测中',
-  ok: 'API 正常',
-  down: 'API 异常',
+const API_STATUS_KEY: Record<ApiStatus, string> = {
+  checking: 'app.status_checking',
+  ok: 'app.status_ok',
+  down: 'app.status_down',
 }
 
 /**
@@ -27,6 +28,7 @@ const API_STATUS_TEXT: Record<ApiStatus, string> = {
  * 6B 承诺：T6-4 页面落地后切 BrowserRouter，恢复 URL 直达与刷新定位。
  */
 export function App() {
+  const { t } = useTranslation()
   const [apiStatus, setApiStatus] = useState<ApiStatus>('checking')
   const [isSettingsOpen, setSettingsOpen] = useState(false)
   // 窄屏（<768）侧边栏抽屉开合；纯表现层状态，不进 store，不含任何业务判定（MUST-07/08）
@@ -120,7 +122,7 @@ export function App() {
           <button
             type="button"
             className="app-titlebar__menu"
-            aria-label="打开侧边栏"
+            aria-label={t('app.open_sidebar')}
             aria-expanded={isDrawerOpen}
             onClick={handleMenuClick}
           >
@@ -131,19 +133,19 @@ export function App() {
             DevPrompt AI
           </span>
           <span className="app-titlebar__chip">
-            {activeProject ? `▸ ${activeProject}` : '▸ 未选择项目'}
+            {activeProject ? `▸ ${activeProject}` : `▸ ${t('app.no_project')}`}
           </span>
           <span className="app-titlebar__spacer" />
           <span className={`api-pill api-pill--${apiStatus}`}>
             <span className="api-pill__dot" aria-hidden="true" />
-            {API_STATUS_TEXT[apiStatus]}
+            {t(API_STATUS_KEY[apiStatus])}
           </span>
           <button
             type="button"
             className="button button--ghost"
             onClick={() => setSettingsOpen(true)}
           >
-            ⚙ 设置
+            ⚙ {t('app.settings')}
           </button>
         </header>
         <div className="app-body">
@@ -154,7 +156,7 @@ export function App() {
             <button
               type="button"
               className="app-drawer__overlay"
-              aria-label="关闭侧边栏"
+              aria-label={t('app.close_sidebar')}
               onClick={() => setDrawerOpen(false)}
             />
           ) : null}
@@ -163,7 +165,7 @@ export function App() {
           </main>
         </div>
         <footer className="app-statusbar">
-          <span>session: {sessionId ?? '无'}</span>
+          <span>session: {sessionId ?? t('app.none')}</span>
           <span>state: {state}</span>
           <span>SSE: {sseStatus}</span>
         </footer>

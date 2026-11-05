@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import './optimize.css'
 
 interface TurnActionsProps {
@@ -24,6 +25,7 @@ export function TurnActions({
   onRollbackTo,
   disabled = false,
 }: TurnActionsProps) {
+  const { t } = useTranslation()
   return (
     <div className="turn-actions">
       <button
@@ -31,9 +33,9 @@ export function TurnActions({
         className="turn-actions__btn"
         onClick={() => onContinueFrom(turnId)}
         disabled={disabled}
-        title="以这一轮的方案为起点，重新生成一轮"
+        title={t('turn.continue_hint')}
       >
-        以此轮继续
+        {t('turn.continue')}
       </button>
       {onRollbackTo !== undefined ? (
         <button
@@ -41,14 +43,14 @@ export function TurnActions({
           className="turn-actions__btn turn-actions__btn--danger"
           onClick={() => {
             // 二次确认：物理删除不可恢复。文案同时说明保留范围。
-            if (window.confirm('撤销到这一轮？其后的所有轮次将被永久删除，且无法恢复。')) {
+            if (window.confirm(t('turn.rollback_confirm'))) {
               onRollbackTo(turnId)
             }
           }}
           disabled={disabled}
-          title="回到这一轮完成时的状态，删除其后的所有轮次"
+          title={t('turn.rollback_hint')}
         >
-          撤销到此轮
+          {t('turn.rollback')}
         </button>
       ) : null}
     </div>

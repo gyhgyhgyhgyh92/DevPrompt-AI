@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { putSettings } from '../../api/endpoints'
 import type { SettingsUpdate } from '../../api/types'
 import { applyAppearanceTheme, useSettingsStore } from '../../stores/useSettingsStore'
@@ -8,6 +9,7 @@ import './settings.css'
 
 /** 流程与安全面板（F-604 安全标签页）：软护栏调节 + 锁定项只读 + 遥测 + 清除本地数据。 */
 export function SecurityPanel() {
+  const { t } = useTranslation()
   const settings = useSettingsStore((state) => state.settings)
   const setSettings = useSettingsStore((state) => state.setSettings)
   const appearanceTheme = useSettingsStore((state) => state.appearance.theme)
@@ -30,7 +32,7 @@ export function SecurityPanel() {
   }, [settings])
 
   if (!settings) {
-    return <p className="settings-note">设置加载中…</p>
+    return <p className="settings-note">{t('settings.loading')}</p>
   }
 
   const saveProcess = async (process: NonNullable<SettingsUpdate['process']>) => {
@@ -38,9 +40,9 @@ export function SecurityPanel() {
     try {
       const next = await putSettings({ process })
       setSettings(next)
-      setStatus({ ok: true, text: '已保存' })
+      setStatus({ ok: true, text: t('settings.saved') })
     } catch (error) {
-      setStatus({ ok: false, text: errorMessage(error, '保存失败') })
+      setStatus({ ok: false, text: errorMessage(error, t('settings.save_failed')) })
     } finally {
       setIsBusy(false)
     }
@@ -50,7 +52,7 @@ export function SecurityPanel() {
     const rounds = Number(roundGuard.trim())
     const budget = Number(costBudget.trim())
     if (!Number.isFinite(rounds) || !Number.isFinite(budget)) {
-      setStatus({ ok: false, text: '护栏参数必须是数字' })
+      setStatus({ ok: false, text: t('settings.security.numeric_required') })
       return
     }
     await saveProcess({ followup_soft_round_guard: rounds, followup_cost_budget: budget })
@@ -64,16 +66,16 @@ export function SecurityPanel() {
     }
     clearLocalData()
     setIsConfirmingClear(false)
-    setStatus({ ok: true, text: '已清除本地数据' })
+    setStatus({ ok: true, text: t('settings.security.cleared') })
   }
 
   return (
-    <section className="settings-panel" aria-label="流程与安全">
-      <h3 className="settings-panel__title">流程与安全</h3>
+    <section className="settings-panel" aria-label={t('settings.security.title')}>
+      <h3 className="settings-panel__title">{t('settings.security.title')}</h3>
       <div className="settings-grid">
         <div className="settings-field">
           <label className="settings-label" htmlFor="settings-round-guard">
-            反问软护栏轮数
+            {t('settings.security.round_guard')}
           </label>
           <input
             id="settings-round-guard"
@@ -84,7 +86,7 @@ export function SecurityPanel() {
         </div>
         <div className="settings-field">
           <label className="settings-label" htmlFor="settings-cost-budget">
-            反问成本预算
+            {t('settings.security.cost_budget')}
           </label>
           <input
             id="settings-cost-budget"
@@ -95,7 +97,7 @@ export function SecurityPanel() {
         </div>
         <div className="settings-field">
           <label className="settings-label" htmlFor="settings-candidate-limit">
-            候选集上限（宪法 MUST-09 锁定）
+            {t('settings.security.candidate_limit')}
           </label>
           <input
             id="settings-candidate-limit"
@@ -104,9 +106,7 @@ export function SecurityPanel() {
             disabled
             readOnly
           />
-          <span className="settings-hint">
-            值来自后端 locked.candidate_limit，只读下发不接受修改
-          </span>
+          <span className="settings-hint">{t('settings.security.candidate_limit_hint')}</span>
         </div>
       </div>
       <div className="settings-actions">
@@ -116,13 +116,13 @@ export function SecurityPanel() {
           disabled={isBusy}
           onClick={saveGuardParams}
         >
-          保存流程参数
+          {t('settings.security.save_params')}
         </button>
       </div>
       <div className="settings-row">
-        <span className="settings-label">遥测</span>
+        <span className="settings-label">{t('settings.security.telemetry')}</span>
         <Toggle
-          label="遥测"
+          label={t('settings.security.telemetry')}
           checked={settings.process.telemetry}
           disabled={isBusy}
           onChange={(checked) => void saveProcess({ telemetry: checked })}
@@ -134,7 +134,7 @@ export function SecurityPanel() {
           className="settings-btn settings-btn--danger"
           onClick={handleClearLocalData}
         >
-          {isConfirmingClear ? '确认清除？' : '清除本地数据'}
+          {isConfirmingClear ? t('settings.security.confirm_clear') : t('settings.security.clear')}
         </button>
         {isConfirmingClear ? (
           <button
@@ -142,13 +142,11 @@ export function SecurityPanel() {
             className="settings-btn"
             onClick={() => setIsConfirmingClear(false)}
           >
-            取消
+            {t('common.cancel')}
           </button>
         ) : null}
       </div>
-      <p className="settings-note">
-        仅清除本机 devprompt:v1: 本地留存（会话与记忆缓存），服务端记录不受影响
-      </p>
+      <p className="settings-note">{t('settings.security.clear_note')}</p>
       {status.text !== '' ? (
         <p
           className={

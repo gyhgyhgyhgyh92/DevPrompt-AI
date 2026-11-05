@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { ThinkingItem } from '../../schemas/stream'
 import './optimize.css'
 
@@ -66,16 +67,18 @@ export function TraceThought({ text }: { text: string }) {
  * 展开后是灰底代码块（命令 + 输出）。折叠状态留在组件内（MUST-16）。
  */
 export function TraceAction({ item }: { item: ActionItem }) {
+  const { t } = useTranslation()
   const [isOpen, setOpen] = useState(false)
   const [isCopied, setCopied] = useState(false)
-  const isRead = item.title === '读取文件'
+  // title 由后端下发（harness/trace.py 的动作名），后端按 locale 出同一文案，这里按当前语言的键比对。
+  const isRead = item.title === t('trace.read_file')
   const isFailed = item.status === 'failed'
   // 失败时 scope 就是「Exit code N」：标题里直接带出退出码，折叠也能看出失败（对齐 CodeBuddy）
   const label = isRead
-    ? `已读取 ${item.detail}`
+    ? t('trace.read_with_detail', { detail: item.detail })
     : isFailed
-      ? `命令失败 · ${item.scope}`
-      : '命令已执行'
+      ? t('trace.command_failed', { scope: item.scope })
+      : t('trace.command_ok')
   const command = isRead ? '' : item.detail
   const hasBody = command !== '' || item.output !== ''
 
@@ -110,7 +113,7 @@ export function TraceAction({ item }: { item: ActionItem }) {
         <button
           type="button"
           className="trace-step__copy"
-          aria-label={isCopied ? '已复制' : '复制命令'}
+          aria-label={isCopied ? t('common.copied') : t('trace.copy_command')}
           onClick={handleCopy}
         >
           <CopyIcon />

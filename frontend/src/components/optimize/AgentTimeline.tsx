@@ -17,14 +17,17 @@ interface AgentTimelineProps {
   elapsedMs: number | null
 }
 
-const ACTION_LABELS: Record<string, string> = {
-  retrieve: '检索目标',
-  probe: '研判取证',
-  ask: '向你提问',
-  generate: '生成方案',
-  rank: '打分与推荐',
-  deliver: '交付',
-  abort: '中止本轮',
+import { useTranslation } from 'react-i18next'
+
+/** 动作名 → 语言包键（纯展示字典；文案在 chat.action.*）。 */
+const ACTION_KEYS: Record<string, string> = {
+  retrieve: 'chat.action.retrieve',
+  probe: 'chat.action.probe',
+  ask: 'chat.action.ask',
+  generate: 'chat.action.generate',
+  rank: 'chat.action.rank',
+  deliver: 'chat.action.deliver',
+  abort: 'chat.action.abort',
 }
 
 /** 毫秒转可读时长：1 秒以下保留毫秒，以上保留一位小数秒。 */
@@ -34,10 +37,14 @@ export function formatElapsed(ms: number): string {
 }
 
 export function AgentTimeline({ step, action, elapsedMs }: AgentTimelineProps) {
+  const { t } = useTranslation()
   if (step === null && action === null) {
     return null
   }
-  const label = action === null ? '决策中' : (ACTION_LABELS[action] ?? action)
+  // 未知动作名原样展示（不吞信息），null 才是「决策中」。
+  const actionKey = action === null ? undefined : ACTION_KEYS[action]
+  const label =
+    action === null ? t('chat.deciding') : actionKey === undefined ? action : t(actionKey)
   return (
     <div
       className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300"

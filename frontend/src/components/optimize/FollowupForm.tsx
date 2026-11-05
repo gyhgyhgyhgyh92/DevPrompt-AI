@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { UnknownItemPayload } from '../../api/types'
 import './optimize.css'
 
@@ -59,6 +60,7 @@ export function FollowupForm({
   onAnswersChange,
   onGuardrail,
 }: FollowupFormProps) {
+  const { t } = useTranslation()
   function setAnswer(key: string, value: string): void {
     onAnswersChange({ ...answers, [key]: value })
   }
@@ -106,7 +108,9 @@ export function FollowupForm({
                 <span className="clarify-card__header">{item.header}</span>
               ) : null}
               <span className="clarify-card__key">{item.key}</span>
-              <span className="clarify-card__kind">{item.multi_select ? '多选' : '单选'}</span>
+              <span className="clarify-card__kind">
+                {item.multi_select ? t('clarify.multi') : t('clarify.single')}
+              </span>
             </div>
             <p className="clarify-card__ask">{item.ask}</p>
             <p className="clarify-card__reason">{item.reason}</p>
@@ -158,10 +162,10 @@ export function FollowupForm({
             ) : null}
 
             <label className="field">
-              <span>{'输入自定义回答'}</span>
+              <span>{t('clarify.custom_input')}</span>
               <input
                 className="field__input"
-                placeholder="输入自定义回答..."
+                placeholder={t('clarify.custom_placeholder')}
                 value={answers[item.key] ?? ''}
                 onChange={(event) => setAnswer(item.key, event.target.value)}
               />

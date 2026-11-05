@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { ProviderDirectoryEntry } from '../../schemas/settings'
 
 /** 契约侧类型（api/types.ts 由 openapi 生成），比 Zod 推断更贴近服务端实际下发。 */
@@ -33,8 +34,8 @@ export interface ProviderSelectProps {
   placeholder?: string
 }
 
-/** 默认占位文案（不预设厂商，用户自选）。 */
-const PLACEHOLDER = '选择供应商…'
+/** 默认占位文案键（不预设厂商，用户自选）。 */
+const PLACEHOLDER_KEY = 'settings.provider.placeholder'
 
 /**
  * 供应商下拉（2026-09-17 多供应商扩展 W8）。
@@ -48,21 +49,22 @@ export function ProviderSelect({
   value,
   onChange,
   disabled,
-  placeholder = PLACEHOLDER,
+  placeholder,
 }: ProviderSelectProps) {
+  const { t } = useTranslation()
   return (
     <select
       className="settings-select"
       value={value}
       disabled={disabled}
-      aria-label="供应商"
+      aria-label={t('settings.provider.aria')}
       onChange={(event) => onChange(event.currentTarget.value)}
     >
-      <option value="">{placeholder}</option>
+      <option value="">{placeholder ?? t(PLACEHOLDER_KEY)}</option>
       {(providers ?? []).map((item) => (
         <option key={item.id} value={item.id}>
           {item.label}
-          {item.base_url === '' ? '（端点未登记）' : ''}
+          {item.base_url === '' ? t('settings.provider.unregistered') : ''}
         </option>
       ))}
     </select>

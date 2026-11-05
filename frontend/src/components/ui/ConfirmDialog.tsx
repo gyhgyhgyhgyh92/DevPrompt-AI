@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import './ConfirmDialog.css'
 
 export interface ConfirmDialogProps {
@@ -29,6 +30,7 @@ export function ConfirmDialog({
   onConfirm,
   onClose,
 }: ConfirmDialogProps) {
+  const { t } = useTranslation()
   const panelRef = useRef<HTMLDivElement | null>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
   const titleId = useId()
@@ -80,7 +82,7 @@ export function ConfirmDialog({
             disabled={isBusy}
             onClick={onClose}
           >
-            取消
+            {t('common.cancel')}
           </button>
           <button
             type="button"
@@ -88,7 +90,7 @@ export function ConfirmDialog({
             disabled={isBusy}
             onClick={onConfirm}
           >
-            {isBusy ? '处理中…' : confirmLabel}
+            {isBusy ? t('common.processing') : confirmLabel}
           </button>
         </div>
       </div>

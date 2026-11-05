@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { NOT_INSTALLED_HINT, pickFolderViaNative } from './nativeFolder'
+import { notInstalledHint, pickFolderViaNative } from './nativeFolder'
 
 /**
  * 模拟扩展回信。
@@ -48,14 +48,14 @@ describe('pickFolderViaNative（扩展桥）', () => {
 
   it('扩展回 ok=false 且无 error：回落到「未装扩展」指引', async () => {
     simulateExtension({ ok: false })
-    await expect(pickFolderViaNative()).rejects.toThrow(NOT_INSTALLED_HINT)
+    await expect(pickFolderViaNative()).rejects.toThrow(notInstalledHint())
   })
 
   it('无扩展应答：超时后给出可执行指引（不静默）', async () => {
     vi.useFakeTimers()
     try {
       const pending = pickFolderViaNative(50)
-      const assertion = expect(pending).rejects.toThrow(NOT_INSTALLED_HINT)
+      const assertion = expect(pending).rejects.toThrow(notInstalledHint())
       await vi.advanceTimersByTimeAsync(60)
       await assertion
     } finally {
@@ -85,7 +85,7 @@ describe('pickFolderViaNative（扩展桥）', () => {
     vi.useFakeTimers()
     try {
       const pending = pickFolderViaNative(50)
-      const assertion = expect(pending).rejects.toThrow(NOT_INSTALLED_HINT)
+      const assertion = expect(pending).rejects.toThrow(notInstalledHint())
       await vi.advanceTimersByTimeAsync(60)
       await assertion
     } finally {

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { RankingViewPayload, VariantPayload } from '../../api/types'
 import './optimize.css'
 import { PromptCard } from './PromptCard'
@@ -14,11 +15,12 @@ interface VariantTabsProps {
 
 /** 方案对比区（F-703）：A/B/C 并列三卡；空列表渲染空态（不静默）。 */
 export function VariantTabs({ variants, ranking, renderActions }: VariantTabsProps) {
+  const { t } = useTranslation()
   if (variants.length === 0) {
-    return <p className="context-panel__empty">暂无方案</p>
+    return <p className="context-panel__empty">{t('optimize.no_variants')}</p>
   }
   return (
-    <div className="variant-tabs" role="list" aria-label="方案对比">
+    <div className="variant-tabs" role="list" aria-label={t('optimize.variant_compare')}>
       {variants.map((variant) => (
         <div role="listitem" key={variant.level}>
           <PromptCard variant={variant} ranking={ranking} actions={renderActions?.(variant)} />

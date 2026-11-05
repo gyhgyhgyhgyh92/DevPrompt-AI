@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { DeliveryGatePayload, RankingViewPayload, VariantPayload } from '../../api/types'
 import { ConfidenceNotice } from './ConfidenceNotice'
 import { DeliveryGateCard } from './DeliveryGateCard'
@@ -61,6 +62,7 @@ export function AssistantBlock({
   ariaLabel,
   children,
 }: AssistantBlockProps) {
+  const { t } = useTranslation()
   const variantList = variants ?? []
   return (
     <article className="chat-reply" aria-label={ariaLabel}>
@@ -96,7 +98,7 @@ export function AssistantBlock({
         {message !== '' ? <p className="chat-reply__message">{message}</p> : null}
         {replyText !== '' ? (
           <div className="chat-reply__answer" role="status">
-            <span className="chat-reply__answer-label">回答</span>
+            <span className="chat-reply__answer-label">{t('chat.answer')}</span>
             <p className="chat-reply__answer-text">{replyText}</p>
           </div>
         ) : null}
@@ -106,7 +108,9 @@ export function AssistantBlock({
         {variantList.length > 0 ? <VariantTabs variants={variantList} ranking={ranking} /> : null}
 
         {(openItems ?? []).length > 0 ? (
-          <p className="thread__open">待确认：{(openItems ?? []).join('；')}</p>
+          <p className="thread__open">
+            {t('chat.open_items', { items: (openItems ?? []).join(t('common.list_sep')) })}
+          </p>
         ) : null}
 
         {children}

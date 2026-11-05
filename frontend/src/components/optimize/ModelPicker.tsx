@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { SettingsResponse } from '../../api/types'
 import { findProvider, formatWindow } from '../settings/ProviderSelect'
 import { Toggle } from '../ui/Toggle'
@@ -97,6 +98,7 @@ function TuningPanel({
   onToggleMode: (on: boolean) => void
   onPickEffort: (effort: string) => void
 }) {
+  const { t } = useTranslation()
   const windows: readonly number[] =
     meta.tiers.length > 0
       ? meta.tiers
@@ -139,9 +141,9 @@ function TuningPanel({
         <>
           <div className="model-picker__panel-title model-picker__panel-title--split">
             <span>思考模式</span>
-            <Toggle label="思考模式" checked={modeOn} onChange={onToggleMode} />
+            <Toggle label={t('model.thinking_mode')} checked={modeOn} onChange={onToggleMode} />
           </div>
-          <div className="model-picker__panel-title">思考强度</div>
+          <div className="model-picker__panel-title">{t('model.thinking_effort')}</div>
           <ul className="model-picker__options">
             {meta.efforts.map((effort) => (
               <li key={effort}>
@@ -150,7 +152,7 @@ function TuningPanel({
                   className="model-picker__option"
                   aria-pressed={currentEffort === effort}
                   disabled={!modeOn}
-                  title={modeOn ? undefined : '先开启思考模式才能选择强度'}
+                  title={modeOn ? undefined : t('model.effort_requires_mode')}
                   onClick={() => onPickEffort(effort)}
                 >
                   <span>{effort}</span>
@@ -180,6 +182,7 @@ export function ModelPicker({
   onSelect,
   onTune,
 }: ModelPickerProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -207,13 +210,13 @@ export function ModelPicker({
       <button
         type="button"
         className="console-input__model-select"
-        aria-label="选择模型"
+        aria-label={t('model.aria_select')}
         aria-haspopup="true"
         aria-expanded={open}
         disabled={disabled || entries.length === 0}
         onClick={() => setOpen((prev) => !prev)}
       >
-        {active?.model_id ?? '未配置模型'}
+        {active?.model_id ?? t('model.not_configured')}
       </button>
       {open ? (
         <div className="model-picker__menu">

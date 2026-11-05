@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import './optimize.css'
 
 interface CopyButtonProps {
@@ -8,7 +9,8 @@ interface CopyButtonProps {
 }
 
 /** 复制按钮：复制成功后短暂切换文案（本地态即弃，不上提，MUST-16）。 */
-export function CopyButton({ text, label = '复制' }: CopyButtonProps) {
+export function CopyButton({ text, label }: CopyButtonProps) {
+  const { t } = useTranslation()
   const [isCopied, setIsCopied] = useState(false)
 
   async function handleCopy(): Promise<void> {
@@ -22,7 +24,7 @@ export function CopyButton({ text, label = '复制' }: CopyButtonProps) {
       className={isCopied ? 'copy-button copy-button--done' : 'copy-button'}
       onClick={() => void handleCopy()}
     >
-      {isCopied ? '已复制' : label}
+      {isCopied ? t('common.copied') : (label ?? t('common.copy'))}
     </button>
   )
 }

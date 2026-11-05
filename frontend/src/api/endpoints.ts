@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import { i18n } from '../i18n'
 import { EmptyDataSchema, HealthResponseSchema, ScanResponseSchema } from '../schemas/common'
 import {
   FlowSnapshotSchema,
@@ -92,7 +93,7 @@ export const ENDPOINTS = {
 function parseBody<S extends z.ZodType>(schema: S, body: unknown): z.infer<S> {
   const parsed = schema.safeParse(body)
   if (!parsed.success) {
-    throw contractError('请求体不符合契约', '', parsed.error)
+    throw contractError(i18n.t('api.body_contract'), '', parsed.error)
   }
   return parsed.data
 }

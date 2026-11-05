@@ -1,3 +1,5 @@
+import { i18n } from '../i18n'
+
 /**
  * API 错误与错误映射（MUST-19：错误响应仅含 code + message + request_id，不回传堆栈）。
  * 所有失败路径（业务码、契约破坏、网络/超时/中止）统一映射为 ApiError；调用方不重试（MUST-15）。
@@ -57,16 +59,19 @@ export function networkError(message: string, cause?: unknown): ApiError {
  * 否则 405「后端未重启」会被统一显示成「网络连接失败」，让人去查网络（真实踩过）。
  */
 export function httpError(status: number, detail = ''): ApiError {
-  const message = detail === '' ? `服务返回 HTTP ${status}` : `${detail}（HTTP ${status}）`
+  const message =
+    detail === ''
+      ? i18n.t('api.http_plain', { status })
+      : i18n.t('api.http_detail', { detail, status })
   return new ApiError('http', status, message, '')
 }
 
 /** 超时中止（外部调用必须设超时）。 */
 export function timeoutError(requestId: string): ApiError {
-  return new ApiError('timeout', SENTINEL_CODE.timeout, '请求超时', requestId)
+  return new ApiError('timeout', SENTINEL_CODE.timeout, i18n.t('api.timeout'), requestId)
 }
 
 /** 调用方主动中止。 */
 export function abortedError(requestId: string): ApiError {
-  return new ApiError('aborted', SENTINEL_CODE.aborted, '请求已中止', requestId)
+  return new ApiError('aborted', SENTINEL_CODE.aborted, i18n.t('api.aborted'), requestId)
 }

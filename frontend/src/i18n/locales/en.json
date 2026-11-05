@@ -1,10 +1,76 @@
 {
+  "app": {
+    "status_checking": "Checking API",
+    "status_ok": "API OK",
+    "status_down": "API error",
+    "open_sidebar": "Open sidebar",
+    "close_sidebar": "Close sidebar",
+    "no_project": "No project selected",
+    "settings": "Settings",
+    "none": "none"
+  },
+  "api": {
+    "network_failed": "Network request failed",
+    "json_invalid": "Response is not valid JSON (HTTP {{status}})",
+    "contract_envelope": "Response envelope violates the contract",
+    "contract_data": "Response data violates the contract",
+    "body_contract": "Request body violates the contract",
+    "stream_unavailable": "Streaming endpoint unavailable; make sure the backend is restarted on the latest version",
+    "stream_unsupported": "Response does not support streaming",
+    "stream_broken": "Streaming connection interrupted",
+    "http_plain": "Server returned HTTP {{status}}",
+    "http_detail": "{{detail}} (HTTP {{status}})",
+    "timeout": "Request timed out",
+    "aborted": "Request aborted"
+  },
+  "native_picker": {
+    "not_installed": "Could not open the system folder picker: install the DevPrompt AI native folder picker extension (Chromium only; run pwsh -File scripts/install_native_picker.ps1, then load the unpacked extension)",
+    "unavailable": "System folder picker unavailable",
+    "no_browser": "Not a browser environment; cannot open the system folder picker"
+  },
   "common": {
     "close": "Close",
-    "request_failed": "Request failed"
+    "request_failed": "Request failed",
+    "copied": "Copied",
+    "copy": "Copy",
+    "cancel": "Cancel",
+    "processing": "Working…",
+    "list_sep": "; "
   },
   "optimize": {
-    "stop_generation": "Stop generating"
+    "stop_generation": "Stop generating",
+    "no_variants": "No variants yet",
+    "variant_compare": "Variant comparison"
+  },
+  "trace": {
+    "read_file": "Read file",
+    "read_with_detail": "Read {{detail}}",
+    "command_failed": "Command failed · {{scope}}",
+    "command_ok": "Command executed",
+    "copy_command": "Copy command"
+  },
+  "clarify": {
+    "multi": "Multi-select",
+    "single": "Single choice",
+    "custom_input": "Enter a custom answer",
+    "custom_placeholder": "Enter a custom answer..."
+  },
+  "model": {
+    "thinking_mode": "Thinking mode",
+    "thinking_effort": "Thinking effort",
+    "effort_requires_mode": "Enable thinking mode first to pick effort",
+    "aria_select": "Select model",
+    "not_configured": "No model configured"
+  },
+  "turn": {
+    "continue": "Continue from here",
+    "continue_hint": "Start a new turn from this turn's variants",
+    "rollback": "Roll back to here",
+    "rollback_hint": "Restore the state at the end of this turn and delete all later turns",
+    "rollback_confirm": "Roll back to this turn? All later turns will be permanently deleted and cannot be recovered.",
+    "load_failed": "Failed to load the turn",
+    "loading_earlier": "Loading earlier turns…",
+    "load_earlier": "Load earlier turns"
   },
   "console": {
     "prompt_hint": "Polish every prompt end-to-end — from clarifying needs to shipping production results",
@@ -28,6 +94,18 @@
     "tag_aborted": "Aborted",
     "tag_running": "Running",
     "planning": "Planning next step…",
+    "deciding": "Deciding",
+    "answer": "Answer",
+    "open_items": "To confirm: {{items}}",
+    "action": {
+      "retrieve": "Retrieving target",
+      "probe": "Probing facts",
+      "ask": "Asking you",
+      "generate": "Generating variants",
+      "rank": "Scoring & ranking",
+      "deliver": "Delivering",
+      "abort": "Aborting turn"
+    },
     "phase": {
       "INIT": { "label": "Initialize", "hint": "Create session and turn, verify parameters" },
       "RETRIEVING": { "label": "Retrieve code", "hint": "Scan symbol table, cap candidates at 25" },
@@ -99,6 +177,49 @@
     },
     "nav": { "label": "Settings sections" },
     "load_failed": "Failed to load settings",
+    "loading": "Loading settings…",
+    "saved": "Saved",
+    "save_failed": "Failed to save",
+    "appearance": {
+      "title": "Appearance",
+      "theme": "Theme",
+      "theme_light": "Light",
+      "theme_dark": "Dark",
+      "theme_system": "Follow system",
+      "locale": "UI language",
+      "locale_hint": "Changes take effect immediately",
+      "code_font": "Code font",
+      "restore_session": "Restore last session on launch",
+      "desktop_notification": "Desktop notifications"
+    },
+    "capability": {
+      "tools": "Tool calling",
+      "tools_hint": "This model can call function tools",
+      "reasoning": "Reasoning",
+      "reasoning_hint": "This model supports reasoning",
+      "aria": "Model capabilities",
+      "context": "Context {{length}}",
+      "unknown": "Unknown"
+    },
+    "provider": {
+      "placeholder": "Choose a provider…",
+      "aria": "Provider",
+      "unregistered": " (endpoint not registered)"
+    },
+    "security": {
+      "title": "Flow & security",
+      "round_guard": "Follow-up soft round guard",
+      "cost_budget": "Follow-up cost budget",
+      "candidate_limit": "Candidate limit (locked by MUST-09)",
+      "candidate_limit_hint": "Value comes from backend locked.candidate_limit; read-only",
+      "save_params": "Save flow parameters",
+      "telemetry": "Telemetry",
+      "clear": "Clear local data",
+      "confirm_clear": "Confirm clear?",
+      "clear_note": "Only clears local devprompt:v1: data (sessions and caches); server records are untouched",
+      "cleared": "Local data cleared",
+      "numeric_required": "Guard parameters must be numbers"
+    },
     "tab": {
       "model-service": "Model service",
       "appearance": "Appearance",
