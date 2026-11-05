@@ -1,0 +1,39 @@
+{
+  "errors": {
+    "1001": "Missing required parameters, please check your input",
+    "1002": "Invalid parameter type",
+    "1003": "Parameter out of allowed range",
+    "1004": "Malformed request",
+    "2001": "Project path not found, please confirm the directory exists",
+    "2002": "Project path is not readable, please check access permissions",
+    "2003": "Code search tool (ripgrep) failed, please retry",
+    "2004": "Symbol table tool (ctags) failed, please retry",
+    "2005": "No candidate component located, please add the component name or file path",
+    "2006": "Too many candidates, please narrow down the search",
+    "3001": "Decision service unavailable, please retry later",
+    "3002": "Insufficient information confidence, handled conservatively",
+    "3003": "Context exceeds the length limit, add a component name to narrow it down",
+    "3004": "Too many requests, please retry later",
+    "4001": "Prompt generation failed, please retry",
+    "4002": "Model service unreachable, please check the model settings",
+    "4003": "Unexpected model output format, please retry",
+    "5001": "Missing external tool, please check that ripgrep / ctags are installed",
+    "5011": "Model call timed out, retry later or increase the timeout setting",
+    "5012": "Provider rate limited, please retry later",
+    "5013": "Provider balance or quota exhausted, please top up and retry",
+    "5014": "Model authentication failed, please check the API key",
+    "5015": "Model service error, please retry later",
+    "5021": "Failed to fetch the model list, check the provider endpoint and key and retry",
+    "6001": "This action is not allowed in the current state, refresh and retry",
+    "6002": "Follow-up round limit reached, choose to continue asking or generate directly",
+    "6003": "This flow does not exist or has expired",
+    "9001": "Internal error, please retry",
+    "9002": "Configuration incomplete or failed validation, please check the settings",
+    "kind": {
+      "contract": "The response data does not match the contract, please retry later",
+      "network": "Network connection failed, please check your network and retry",
+      "timeout": "Request timed out, please retry later",
+      "aborted": "Request cancelled"
+    }
+  }
+}

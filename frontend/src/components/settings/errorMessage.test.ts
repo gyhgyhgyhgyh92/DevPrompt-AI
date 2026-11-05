@@ -8,7 +8,7 @@ import {
   timeoutError,
 } from '../../api/errors'
 import { errorMessage, hasMappedText } from './errorMessage'
-import { ERROR_TEXT } from '../../schemas/errorCodes'
+import { i18n } from '../../i18n'
 
 /**
  * 错误文案三段降级（N-7）：按 code 查表 → 后端 message → fallback。
@@ -24,7 +24,7 @@ describe('errorMessage 三段降级', () => {
       'rid-1',
     )
     const text = errorMessage(err, '请求失败')
-    expect(text).toBe(ERROR_TEXT[5013])
+    expect(text).toBe(i18n.t('errors.5013'))
     expect(text).toContain('余额')
     expect(text).not.toContain('output_type') // 不得泄漏实现细节
   })
@@ -68,21 +68,5 @@ describe('errorMessage 三段降级', () => {
   it('hasMappedText 供检查与测试复用', () => {
     expect(hasMappedText(2005)).toBe(true)
     expect(hasMappedText(9999)).toBe(false)
-  })
-})
-
-describe('映射表内容', () => {
-  it('每个码都有非空中文文案', () => {
-    for (const [code, text] of Object.entries(ERROR_TEXT)) {
-      expect(text.trim(), `码 ${code} 文案为空`).not.toBe('')
-      expect(text, `码 ${code} 文案非中文`).toMatch(/[一-龥]/)
-    }
-  })
-
-  it('不泄漏内部标识符或路径', () => {
-    for (const [code, text] of Object.entries(ERROR_TEXT)) {
-      expect(text, `码 ${code} 文案含 src/ 路径`).not.toContain('src/')
-      expect(text.toLowerCase(), `码 ${code} 文案含变量名风格`).not.toMatch(/output_type/)
-    }
   })
 })

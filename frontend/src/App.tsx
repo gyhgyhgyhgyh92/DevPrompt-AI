@@ -6,6 +6,7 @@ import { ProjectSidebar } from './components/history/ProjectSidebar'
 import { SettingsModal } from './components/settings/SettingsModal'
 import { BrandMark } from './components/ui/BrandMark'
 import { AppRoutes } from './router'
+import { applyLocale } from './i18n'
 import { useOptimizeStore } from './stores/useOptimizeStore'
 import { useHistoryStore } from './stores/useHistoryStore'
 import { useSettingsStore } from './stores/useSettingsStore'
@@ -37,6 +38,12 @@ export function App() {
   )
   const history = useHistoryStore((s) => s.history)
   const setSettings = useSettingsStore((s) => s.setSettings)
+  const locale = useSettingsStore((s) => s.appearance.locale)
+
+  // 界面语言即时生效（2026-11-06 多语言）：appearance.locale 是唯一真源
+  useEffect(() => {
+    applyLocale(locale)
+  }, [locale])
 
   // 标题栏 API pill 数据源（GET /health）；失败即降级为「API 异常」，不重试（MUST-15）
   //

@@ -92,11 +92,9 @@ export function AppearancePanel() {
           }
         >
           <option value="zh-CN">简体中文</option>
-          <option value="en" disabled>
-            English（计划中）
-          </option>
+          <option value="en">English</option>
         </select>
-        <span className="settings-hint">English 语言包尚未提供，选项暂不可用</span>
+        <span className="settings-hint">切换后界面文案即时生效</span>
       </div>
       <div className="settings-field">
         <label className="settings-label" htmlFor="settings-code-font">

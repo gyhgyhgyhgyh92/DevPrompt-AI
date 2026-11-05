@@ -1,3 +1,4 @@
+import { i18n } from '../../i18n'
 import { ERROR_TEXT, SUCCESS_CODE } from '../../schemas/errorCodes'
 import type { ApiError } from '../../api/errors'
 
@@ -20,11 +21,11 @@ export function errorMessage(error: unknown, fallback: string): string {
 }
 
 /** 契约破坏 / 网络 / 超时 / 中止：前端侧错误，按 kind 归类而非按 code（哨兵码为负）。 */
-const KIND_TEXT: Readonly<Record<string, string>> = {
-  contract: '服务返回的数据不符合契约，请稍后重试',
-  network: '网络连接失败，请检查网络后重试',
-  timeout: '请求超时，请稍后重试',
-  aborted: '请求已取消',
+const KIND_KEY: Readonly<Record<string, string>> = {
+  contract: 'errors.kind.contract',
+  network: 'errors.kind.network',
+  timeout: 'errors.kind.timeout',
+  aborted: 'errors.kind.aborted',
 }
 
 /** 按 code 查表；未命中再按 ApiError.kind 查；都没有则返回空串表示「需回落」。 */
@@ -32,11 +33,12 @@ function lookupByCode(error: unknown): string {
   if (typeof error !== 'object' || error === null) return ''
   const candidate = error as { code?: unknown; kind?: unknown }
   if (typeof candidate.code === 'number' && candidate.code !== SUCCESS_CODE) {
-    const text = ERROR_TEXT[candidate.code]
-    if (text !== undefined) return text
+    const key = ERROR_TEXT[candidate.code]
+    if (key !== undefined) return i18n.t(key)
   }
   if (typeof candidate.kind === 'string') {
-    return KIND_TEXT[candidate.kind] ?? ''
+    const key = KIND_KEY[candidate.kind]
+    if (key !== undefined) return i18n.t(key)
   }
   return ''
 }
