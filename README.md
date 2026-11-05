@@ -83,9 +83,10 @@ pnpm dev
 
 打开 <http://localhost:5173>。前端 dev server 会把 `/api` 代理到后端 8000 端口。
 
-> ⚠️ **Windows 下不要用 `--reload`**：uvicorn 的热重载会把 asyncio 事件循环切成
+> ⛔ **Windows 下 `--reload` 已被拒绝**：uvicorn 的热重载会把 asyncio 事件循环切成
 > Selector，子进程随之不可用——`rg` / `ctags` / `git` 版本探测抛 `NotImplementedError`
-> （启动体检三项变黄）、符号表扫描失效、原生文件夹选择器弹不出来。后端改完手动重启即可，
+> （启动体检三项变黄）、符号表扫描失效、原生文件夹选择器弹不出来。
+> 因此 Windows 上带 `--reload` 启动会直接报错退出（退出码 2）；后端改完手动重启即可，
 > 前端热更新交给 Vite。
 
 > ⚠️ 端口必须一致：`main.py` 的 `DEFAULT_PORT` 与 `frontend/vite.config.ts` 的 proxy
@@ -122,7 +123,7 @@ pnpm dev
 |---|---|
 | `uv run devprompt-ai` | 启动服务（单端口托管前端） |
 | `.\.venv\Scripts\devprompt-ai.exe` | 同一入口的直接调用形式（uv 托管解释器异常时的兜底） |
-| `uv run devprompt-ai --reload` | 源码变更自动重载（**Windows 下子进程不可用，见「开发模式」**） |
+| `uv run devprompt-ai --reload` | 源码变更自动重载（**Windows 下被拒绝、退出码 2，见「开发模式」**） |
 | `uv run pytest` | 后端测试 |
 | `uv run ruff check .` / `uv run ruff format .` | 后端 lint / 格式化 |
 | `uv run mypy` | 后端类型检查 |
@@ -189,6 +190,16 @@ frontend/src/
 ```
 
 架构规范、接口定义与错误码清单见 `DevPrompt-AI-项目架构文档.md`；开发约定见 `AGENTS.md`。
+
+---
+
+## 已知限制
+
+| 限制 | 说明 |
+|---|---|
+| 无远端仓库，MUST-22 无技术强制力 | 仓库当前仅本地单仓库（`git remote -v` 为空），「main 禁止直推 + PR 双人评审」无法由平台强制执行，所有门禁均为本地等效验证；建立远端仓库并开启分支保护后此条自动失效 |
+| 浏览器扩展仅 Chromium 系 | 原生文件夹选择器依赖 Chromium 系扩展 + native messaging；Firefox 未适配，未装扩展时没有回退入口 |
+| 后端改代码需手动重启 | Windows 下 `--reload` 被拒绝（见「开发模式」），其余平台可用 |
 
 ---
 
