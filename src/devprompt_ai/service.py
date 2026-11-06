@@ -1966,6 +1966,26 @@ class ForgeService:
         只是不标推荐并附披露文案（MUST-27：不标记必须给具体原因）。
         """
         variants = list(session.data.get("variants", []) or [])
+        # 交付前置不变量（2026-11-06）：多套必须有 ranking。agentic 调度下 RANK 与 DELIVER
+        # 是模型可选的并行动作，模型可能跳过打分直接交付——前端就只剩「未产生推荐视图」
+        # 兜底且用户拿不到「为什么不推荐」（违背 MUST-27）。放在这里而非分派处：
+        # 线性路径与 agentic 路径共用同一保证，将来新增调用路径也不会漏。
+        # 已记录跳过原因（打分失败）时不重试，避免同一次失败在交付时再打一次分。
+        if (
+            len(variants) >= 2
+            and not isinstance(session.data.get("ranking"), dict)
+            and "ranking_skip_reason" not in session.data
+        ):
+            emit(
+                "recommendation.recovered",
+                variant_count=len(variants),
+                request_id=session.data.get("last_request_id", ""),
+            )
+            await self._act_rank(
+                session,
+                [VariantDraft(**item) for item in variants],
+                progress=progress,
+            )
         ranking_data = session.data.get("ranking")
         marked: bool | None = None
         if isinstance(ranking_data, dict) and "marked" in ranking_data:

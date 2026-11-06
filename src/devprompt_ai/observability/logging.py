@@ -22,6 +22,7 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "flow.completed",
         "recommendation.made",
         "recommendation.skipped",
+        "recommendation.recovered",
         "state.truncated",
         "followup.guardrail",
         "followup.clarifications_invalidated",

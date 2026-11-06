@@ -248,6 +248,55 @@ async def test_loop_delivers_and_records_steps() -> None:
     assert [s["action"] for s in steps] == ["retrieve", "probe", "generate", "deliver"]
 
 
+class _TwoVariantGenerator:
+    """固定按请求档位产出前两套：用于复现「模型跳过 RANK 直接 DELIVER」。"""
+
+    async def generate_single(self, ctx: Any, locale: str = "zh-CN") -> VariantDraft:
+        return VariantDraft(title="t", body="b", changes=["x"], level=ctx.level)
+
+    async def generate_variants(
+        self, ctx: Any, levels: Sequence[Level], locale: str = "zh-CN"
+    ) -> MultiVariantDraft:
+        picked = list(levels)[:2]
+        return MultiVariantDraft(
+            variants=[
+                VariantDraft(title=f"t-{lv}", body=f"body-{lv}", changes=["x"], level=lv)
+                for lv in picked
+            ]
+        )
+
+    async def answer(self, ctx: Any, locale: str = "zh-CN") -> str:
+        return "答"
+
+
+async def test_deliver_recovers_missing_ranking() -> None:
+    """模型跳过 RANK 直接 DELIVER 时，交付前必须补打分（2026-11-06 不变量）。
+
+    为什么测这条：agentic 调度下 RANK 与 DELIVER 都是模型可选的并行动作，跳过打分会让
+    前端只剩「未产生推荐视图」兜底，用户拿不到「为什么不推荐」（违背 MUST-27）。
+    """
+    decider = ScriptedDecider(
+        actions=[
+            _action(AgentAction.RETRIEVE),
+            _action(AgentAction.PROBE),
+            _action(AgentAction.GENERATE),
+            _action(AgentAction.DELIVER),
+        ]
+    )
+    svc, store = _service(decider, generator=_TwoVariantGenerator())
+
+    snapshot = await svc.optimize("local", "C:/proj", "把 SubmitButton 改成蓝色", request_id="r1")
+
+    assert snapshot.state == FlowState.DONE.value
+    session = next(iter(store.items.values()))
+    # 补算生效：ranking 非空，且没有被标记为「打分失败」
+    assert isinstance(session.data.get("ranking"), dict)
+    assert session.data["ranking"]["variant"] in {"A", "B"}
+    assert "ranking_skip_reason" not in session.data
+    # 打分确实发生过：档位明细已写入
+    assert session.data.get("ranking_details")
+
+
 async def test_loop_stops_at_asking_when_questions_pending() -> None:
     probe = FactProbeOutput(
         judgments=[],
