@@ -2381,7 +2381,7 @@ class ForgeService:
                 total = weighted_total(fit)
                 entries.append((score, total))
                 details[v.level] = (fit, total)
-            rec = decide_mark(entries)
+            rec = decide_mark(entries, _session_locale(session))
         except Exception:
             emit_error(
                 "recommendation.skipped",

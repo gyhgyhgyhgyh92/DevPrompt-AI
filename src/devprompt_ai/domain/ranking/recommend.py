@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
+from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale, tr
 from devprompt_ai.domain.decision.port import VariantScore
 
 # MUST-27 阈值：条件①②为置信度门禁（优先于一切分差判定），③④⑤为分差双阈值。
@@ -17,9 +18,10 @@ ANY_CONF_MIN: Final[float] = 0.4
 GAP_SOFT: Final[float] = 0.12
 GAP_HARD: Final[float] = 0.5
 
-REASON_CONF_BASE: Final[str] = "置信度不足，建议人工选择"
-REASON_CLOSE: Final[str] = "三套适配度接近，建议人工选择"
-REASON_SMALL_GAP: Final[str] = "分差较小"
+#: 理由文案的键（2026-11-06 双语）：文案在 common/i18n.py，默认 zh-CN。
+_REASON_BASE_KEY: Final[str] = "ranking.conf_base"
+_REASON_CLOSE_KEY: Final[str] = "ranking.conf_close"
+_REASON_SMALL_GAP_KEY: Final[str] = "ranking.conf_small_gap"
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +39,9 @@ class RecommendationResult:
     reason: str
 
 
-def decide_mark(entries: list[tuple[VariantScore, float]]) -> RecommendationResult:
+def decide_mark(
+    entries: list[tuple[VariantScore, float]], locale: Locale = DEFAULT_LOCALE
+) -> RecommendationResult:
     """MUST-27 五条优先级判定，命中即止。
 
     契约：entries 为 [(VariantScore, 该档加权总分)]，总分已由调用方按 F-403
@@ -46,7 +50,7 @@ def decide_mark(entries: list[tuple[VariantScore, float]]) -> RecommendationResu
     （MUST-28：单套方案跳过打分与推荐判定，由 service 保证不调用）。
     """
     if len(entries) < 2:
-        raise ValueError(f"推荐判定需要至少 2 套方案（MUST-28），实际 {len(entries)}")
+        raise ValueError(tr("ranking.need_two", locale, count=len(entries)))
 
     ranked = sorted(entries, key=lambda entry: entry[1], reverse=True)
     top_score, top_total = ranked[0]
@@ -60,7 +64,13 @@ def decide_mark(entries: list[tuple[VariantScore, float]]) -> RecommendationResu
             gap=gap,
             confidence=top_score.confidence,
             marked=False,
-            reason=(f"{REASON_CONF_BASE}（最高档 {top_score.confidence:.2f} < {TOP_CONF_MIN}）"),
+            reason=tr(
+                "ranking.conf_top",
+                locale,
+                base=tr(_REASON_BASE_KEY, locale),
+                conf=f"{top_score.confidence:.2f}",
+                min=TOP_CONF_MIN,
+            ),
         )
 
     # ② 任一档（非「三档均」）置信度不足——避免两档低置信时被绕过。
@@ -72,7 +82,13 @@ def decide_mark(entries: list[tuple[VariantScore, float]]) -> RecommendationResu
             gap=gap,
             confidence=top_score.confidence,
             marked=False,
-            reason=f"{REASON_CONF_BASE}（最低档 {min_conf:.2f} < {ANY_CONF_MIN}）",
+            reason=tr(
+                "ranking.conf_any",
+                locale,
+                base=tr(_REASON_BASE_KEY, locale),
+                conf=f"{min_conf:.2f}",
+                min=ANY_CONF_MIN,
+            ),
         )
 
     # ③ 分差低于软阈值：三套适配度接近。
@@ -82,11 +98,11 @@ def decide_mark(entries: list[tuple[VariantScore, float]]) -> RecommendationResu
             gap=gap,
             confidence=top_score.confidence,
             marked=False,
-            reason=REASON_CLOSE,
+            reason=tr(_REASON_CLOSE_KEY, locale),
         )
 
     # ④⑤ 双阈值标记：d ≥ 0.5 正向推荐；0.12 ≤ d < 0.5 标记但附「分差较小」。
-    reason = REASON_SMALL_GAP if gap < GAP_HARD else ""
+    reason = tr(_REASON_SMALL_GAP_KEY, locale) if gap < GAP_HARD else ""
     return RecommendationResult(
         variant=top_score.variant,
         gap=gap,

@@ -7,6 +7,7 @@ from typing import Any, Literal, cast
 
 import pytest
 
+from devprompt_ai.common.i18n import tr
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.decision.port import (
     AskOption,
@@ -29,7 +30,6 @@ from devprompt_ai.domain.models import (
     TurnStore,
 )
 from devprompt_ai.domain.progress import ActionInfo, ProgressEvent, ProgressSink
-from devprompt_ai.domain.ranking.recommend import REASON_SMALL_GAP
 from devprompt_ai.memory.turn_store import SQLiteTurnStore
 from devprompt_ai.service import _RANK_CACHE, FlowSnapshot, ForgeService
 
@@ -286,7 +286,7 @@ async def test_optimize_full_flow_with_questions() -> None:
     assert snap2.ranking is not None
     assert snap2.ranking.variant == "B"
     assert snap2.ranking.marked is True
-    assert snap2.ranking.reason == REASON_SMALL_GAP
+    assert snap2.ranking.reason == tr("ranking.conf_small_gap")
     assert 0.12 <= snap2.ranking.gap < 0.5
 
 

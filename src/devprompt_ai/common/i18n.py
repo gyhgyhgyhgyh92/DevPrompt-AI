@@ -65,6 +65,12 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "gate.yellow.single_variant": "仅一套方案，未做推荐比较",
         "gate.yellow.no_recommend": "推荐置信度不足",
         "gate.disclosure.yellow": "本轮证据可用但不足以背书推荐，方案照常提供：{reasons}。",
+        "ranking.conf_base": "置信度不足，建议人工选择",
+        "ranking.conf_close": "三套适配度接近，建议人工选择",
+        "ranking.conf_small_gap": "分差较小",
+        "ranking.conf_top": "{base}（最高档 {conf} < {min}）",
+        "ranking.conf_any": "{base}（最低档 {conf} < {min}）",
+        "ranking.need_two": "推荐判定需要至少 2 套方案（MUST-28），实际 {count}",
     },
     "en": {
         "progress.retrieval": (
@@ -142,6 +148,12 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
             "Evidence is usable but not enough to endorse a recommendation; "
             "variants are still provided: {reasons}."
         ),
+        "ranking.conf_base": "Confidence is too low; please choose manually",
+        "ranking.conf_close": "The three variants fit similarly; please choose manually",
+        "ranking.conf_small_gap": "The gap between variants is small",
+        "ranking.conf_top": "{base} (top {conf} < {min})",
+        "ranking.conf_any": "{base} (lowest {conf} < {min})",
+        "ranking.need_two": ("Recommendation needs at least 2 variants (MUST-28); got {count}"),
     },
 }
 
