@@ -208,7 +208,7 @@ class FakeForgeService:
         self.delete_project_calls.append(project_root)
         return 2
 
-    async def get_settings(self) -> dict[str, Any]:
+    async def get_settings(self, locale: str = "zh-CN") -> dict[str, Any]:
         return dict(self.settings_view)
 
     async def update_settings(

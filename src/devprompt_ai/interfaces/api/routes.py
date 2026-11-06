@@ -528,7 +528,7 @@ async def delete_project_history(
 async def get_settings(request: Request) -> ApiResponse[SettingsResponse]:
     request_id = _request_id(request)
     svc = await get_service()
-    return _ok(SettingsResponse(**await svc.get_settings()), request_id)
+    return _ok(SettingsResponse(**await svc.get_settings(_locale(request))), request_id)
 
 
 @router.put("/settings")

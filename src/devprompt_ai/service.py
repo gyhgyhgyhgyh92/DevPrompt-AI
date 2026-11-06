@@ -1409,7 +1409,7 @@ class ForgeService:
             )
         return merged
 
-    async def get_settings(self) -> dict[str, Any]:
+    async def get_settings(self, locale: Locale = DEFAULT_LOCALE) -> dict[str, Any]:
         """F-604 读设置（T6-11）：有效配置视图（env 已并入）；api_key 恒脱敏，候选上限锁定只读。
 
         2026-10-18 供应商中心化重构：`provider_configs` 段是**用户自己配置的供应商**
@@ -1421,7 +1421,7 @@ class ForgeService:
         return {
             "models": self._registry_view(),
             "provider_configs": self._provider_configs_view(),
-            "providers": providers_projection(),
+            "providers": providers_projection(locale),
             "model_service": {
                 "provider": cfg.llm_provider,
                 "base_url": cfg.llm_base_url,

@@ -21,6 +21,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 
+from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale
+
 #: 参数类型。`string-array` 用于 stop 这类需要 JSON 序列化的多值参数。
 ParameterType = Literal["number", "integer", "boolean", "string", "string-array"]
 
@@ -163,6 +165,18 @@ class ProviderSpec:
     base_url: str = ""
     needs_key: bool = True
     quirks: str = ""
+    #: 英文展示名（2026-11-06 双语）；空串表示沿用 ``label``（品牌名可不译）。
+    label_en: str = ""
+    #: 英文怪癖说明；空串表示沿用中文 ``quirks``。
+    quirks_en: str = ""
+
+    def display_label(self, locale: Locale = DEFAULT_LOCALE) -> str:
+        if locale != "en":
+            return self.label
+        return self.label_en or _LABEL_EN.get(self.label, self.label)
+
+    def display_quirks(self, locale: Locale = DEFAULT_LOCALE) -> str:
+        return self.quirks_en if locale == "en" and self.quirks_en else self.quirks
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -177,6 +191,29 @@ class ProviderSpec:
             "max_context_length": self.max_context_length,
             "context_window_tiers": list(self.context_window_tiers),
         }
+
+
+#: 中文展示名 → 英文展示名（2026-11-06 双语）。品牌名可保留原文，但英文用户
+#: 需要在下拉里认出来源——只在中文 label 上做映射，避免 25 个 spec 各改一处。
+#: ``quirks`` 仍为中文说明（纯补充备注，见功能清单 F-209 限制）。
+_LABEL_EN: Final[dict[str, str]] = {
+    "阿里通义（百炼）": "Aliyun Tongyi (Bailian)",
+    "智谱 GLM": "Zhipu GLM",
+    "月之暗面 Kimi": "Moonshot Kimi",
+    "火山方舟（豆包）": "Volcengine Ark (Doubao)",
+    "百度千帆（文心）": "Baidu Qianfan (ERNIE)",
+    "腾讯混元": "Tencent Hunyuan",
+    "讯飞星火": "iFlytek Spark",
+    "阶跃星辰": "StepFun",
+    "百川智能": "Baichuan",
+    "零一万物": "01.AI (Yi)",
+    "商汤（商量）": "SenseTime (SenseNova)",
+    "小米 MiMo": "Xiaomi MiMo",
+    "硅基流动": "SiliconFlow",
+    "魔搭 ModelScope": "ModelScope",
+    "自定义": "Custom",
+    "OpenAI 兼容（通用）": "OpenAI-compatible (generic)",
+}
 
 
 def is_value_empty(value: Any) -> bool:
@@ -689,7 +726,7 @@ def is_mode_supported(provider: str, api_mode: str) -> bool:
     return api_mode in spec.supported_api_modes
 
 
-def providers_projection() -> list[dict[str, Any]]:
+def providers_projection(locale: Locale = DEFAULT_LOCALE) -> list[dict[str, Any]]:
     """provider 目录投影（供 `GET /settings` 的 `providers` 段）。
 
     前端据此渲染 provider 下拉、动态表单与**上下文窗口档位下拉**：
@@ -706,7 +743,7 @@ def providers_projection() -> list[dict[str, Any]]:
     return [
         {
             "id": key,
-            "label": spec.label,
+            "label": spec.display_label(locale),
             "base_url": spec.base_url,
             "needs_key": spec.needs_key,
             "default_api_mode": spec.api_mode,
@@ -723,7 +760,7 @@ def providers_projection() -> list[dict[str, Any]]:
                 for meta in MODEL_SPECS.get(key, ())
             ],
             "supports_reasoning": spec.supports_reasoning,
-            "quirks": spec.quirks,
+            "quirks": spec.display_quirks(locale),
         }
         for key, spec in PROVIDER_SPECS.items()
     ]
