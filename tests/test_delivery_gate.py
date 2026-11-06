@@ -93,6 +93,31 @@ def test_red_when_anchors_invalid() -> None:
     assert verdict.can_mark_recommend is False
 
 
+def test_yellow_discloses_revoked_recommendation() -> None:
+    """打分层已推荐、被证据门撤销时必须说清（2026-11-06）。
+
+    否则进度流说「推荐 B 标准 档」，门禁卡片说「不足以背书推荐」，同一轮自相矛盾。
+    """
+    verdict = evaluate_delivery(
+        DeliveryInput(
+            has_target=True,
+            facts=_green_facts(),
+            claim_coverage=0.67,
+            variant_count=2,
+            recommend_marked=True,
+            ranking_marked=True,
+            ranked_level="B",
+            ranked_gap=0.25,
+        )
+    )
+
+    assert verdict.status == "YELLOW"
+    assert verdict.can_mark_recommend is False
+    assert "原推荐 B 档已撤销" in verdict.disclosure
+    assert "0.25" in verdict.disclosure
+    assert "67%" in verdict.disclosure
+
+
 def test_disclosure_is_localized() -> None:
     """披露文案随 locale 切换（2026-11-06，F-209 后端双语）；默认仍逐字中文。"""
     zh = evaluate_delivery(DeliveryInput(has_target=False, variant_count=3))

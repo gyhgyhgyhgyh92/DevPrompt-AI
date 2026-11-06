@@ -64,6 +64,9 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "gate.yellow.variant_short": "本次仅 {count} 套（模型未给出全部档位）",
         "gate.yellow.single_variant": "仅一套方案，未做推荐比较",
         "gate.yellow.no_recommend": "推荐置信度不足",
+        "gate.yellow.recommend_revoked": (
+            "原推荐 {level} 档已撤销（分差 {gap} 达标，但本轮证据不足以背书）"
+        ),
         "gate.disclosure.yellow": "本轮证据可用但不足以背书推荐，方案照常提供：{reasons}。",
         "ranking.conf_base": "置信度不足，建议人工选择",
         "ranking.conf_close": "三套适配度接近，建议人工选择",
@@ -238,6 +241,10 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
             "Only one variant, so no recommendation comparison was made"
         ),
         "gate.yellow.no_recommend": "Recommendation confidence is too low",
+        "gate.yellow.recommend_revoked": (
+            "The original recommendation (level {level}, gap {gap}) was revoked: "
+            "this turn's evidence is not strong enough to endorse it"
+        ),
         "gate.disclosure.yellow": (
             "Evidence is usable but not enough to endorse a recommendation; "
             "variants are still provided: {reasons}."

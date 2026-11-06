@@ -2092,6 +2092,14 @@ class ForgeService:
             undeclared = self._cfg.claim_strict
         ranking_data = session.data.get("ranking")
         reason = str(ranking_data.get("reason", "")) if isinstance(ranking_data, dict) else ""
+        ranked_level = ""
+        ranked_gap: float | None = None
+        ranking_marked: bool | None = None
+        if isinstance(ranking_data, dict):
+            ranked_level = str(ranking_data.get("variant", ""))
+            raw_gap = ranking_data.get("gap")
+            ranked_gap = float(raw_gap) if isinstance(raw_gap, (int, float)) else None
+            ranking_marked = bool(ranking_data.get("marked", False))
         expected = session.data.get("expected_variant_count")
         anchor_report = session.data.get("anchor_report")
         anchor_invalid = (
@@ -2109,6 +2117,9 @@ class ForgeService:
                 else None,
                 anchor_invalid_count=anchor_invalid,
                 recommend_marked=marked,
+                ranking_marked=ranking_marked,
+                ranked_level=ranked_level,
+                ranked_gap=ranked_gap,
                 recommend_reason=reason,
             ),
             _session_locale(session),

@@ -47,6 +47,12 @@ class DeliveryInput:
     #: `decide_mark` 的结论；None 表示未打分（单套方案）
     recommend_marked: bool | None = None
     recommend_reason: str = ""
+    #: 打分层的原始推荐结论（2026-11-06）：与 `recommend_marked` 区分开——
+    #: 前者只表示「分差/置信度够不够」，能否真正标推荐由本门（证据）决定。
+    ranking_marked: bool | None = None
+    #: 打分层的推荐档位与分差，用于把「原推荐 X 已撤销」说清楚。
+    ranked_level: str = ""
+    ranked_gap: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +117,19 @@ def evaluate_delivery(data: DeliveryInput, locale: Locale = DEFAULT_LOCALE) -> D
         yellow.append(tr("gate.yellow.variant_short", locale, count=data.variant_count))
     if data.variant_count < 2:
         yellow.append(tr("gate.yellow.single_variant", locale))
-    if data.recommend_marked is False:
+    if data.ranking_marked is True:
+        # 打分层本已推荐、且**本轮已存在其它证据缺口**（yellow 非空）→ 撤销并说清撤销了谁、
+        # 为什么（2026-11-06）；没有缺口时保持 GREEN 与推荐不变，不得凭空造出 YELLOW。
+        if yellow:
+            yellow.append(
+                tr(
+                    "gate.yellow.recommend_revoked",
+                    locale,
+                    level=data.ranked_level or "?",
+                    gap=f"{data.ranked_gap:.2f}" if data.ranked_gap is not None else "?",
+                )
+            )
+    elif data.recommend_marked is False:
         # 推荐理由由 decide_mark 生成（同一层已按语言输出），空则给兜底文案
         yellow.append(data.recommend_reason or tr("gate.yellow.no_recommend", locale))
     if yellow:
