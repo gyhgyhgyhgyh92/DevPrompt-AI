@@ -71,6 +71,9 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "ranking.conf_top": "{base}（最高档 {conf} < {min}）",
         "ranking.conf_any": "{base}（最低档 {conf} < {min}）",
         "ranking.need_two": "推荐判定需要至少 2 套方案（MUST-28），实际 {count}",
+        "claims.render.undeclared": "未声明引用，证据链无法核对",
+        "claims.render.summary": "已核对断言 {covered}/{total}，{missing} 处未取证",
+        "claims.render.absent": "（其中 {count} 处为已确认不存在）",
         "template.body_semantics": (
             "\n\n【body 的语义（2026-10-20 起强制）】"
             "body 必须是可直接复制给 Agent 执行的提示词正文："
@@ -157,6 +160,8 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
             "variants 数组长度与档位必须与请求档位一致。\n"
             "claims 规则：正文里每一处文件路径、符号名、行号、样式 token 引用都要逐条声明，"
             "target 必须与正文原文完全一致；kind=line 时写成「路径:行号」。"
+            "若正文明确断言某类引用**不存在**（例如「未找到可用的颜色 token」），"
+            "用 kind=absence 并在 negates 里填被否定的类别（file/symbol/token/line）。"
             "没有引用就给空数组，禁止编造。"
         ),
         "template.field.memory": "项目记忆",
@@ -243,6 +248,9 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "ranking.conf_top": "{base} (top {conf} < {min})",
         "ranking.conf_any": "{base} (lowest {conf} < {min})",
         "ranking.need_two": ("Recommendation needs at least 2 variants (MUST-28); got {count}"),
+        "claims.render.undeclared": "No references declared; the evidence chain cannot be verified",
+        "claims.render.summary": "Verified {covered}/{total} claims, {missing} unverified",
+        "claims.render.absent": " ({count} confirmed absent)",
         "template.body_semantics": (
             "\n\n[Semantics of `body` (mandatory since 2026-10-20)] `body` must be a prompt "
             "that an Agent can execute as-is: role and goal, context (files/symbols/line "
@@ -345,8 +353,11 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
             "The variants array length and levels must match the requested levels exactly.\n"
             "claims rules: every file path, symbol name, line number, and style-token "
             "reference in the body must be declared one by one, and target must match the body "
-            'text exactly; for kind=line use "path:line". Emit an empty array when there are '
-            "no references; never fabricate."
+            'text exactly; for kind=line use "path:line". If the body explicitly asserts that '
+            'some reference does NOT exist (for example "no usable colour token was found"), '
+            "use kind=absence and put the negated category in negates "
+            "(file/symbol/token/line). Emit an empty array when there are no references; "
+            "never fabricate."
         ),
         "template.field.memory": "project_memory",
     },

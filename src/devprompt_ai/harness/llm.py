@@ -316,8 +316,8 @@ def _build_multi_user(
         + tr("template.instruction_prefix", locale)
         + '{"variants": [{"title": "...", "body": "...", '
         '"changes": ["..."], "level": "A", '
-        '"claims": [{"kind": "file|symbol|token|line", "target": "..."}]}]}\n'
-        + tr("template.multi.claims_rules", locale)
+        '"claims": [{"kind": "file|symbol|token|line|absence", "target": "...", '
+        '"negates": "file|symbol|token|line"}]}]}\n' + tr("template.multi.claims_rules", locale)
     )
 
 

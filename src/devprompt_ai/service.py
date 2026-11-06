@@ -1884,7 +1884,7 @@ class ForgeService:
             "uncovered": list(report.uncovered),
             "coverage": report.coverage,
             "undeclared": report.undeclared,
-            "summary": report.render(),
+            "summary": report.render(_session_locale(session)),
         }
         if session.data.get("level") != "C":
             return
@@ -1992,6 +1992,7 @@ class ForgeService:
             marked = bool(ranking_data["marked"])
         if len(variants) < 2:
             # MUST-28：单套（仅 A 档）跳过打分与推荐，ranking=None，不计算 d
+            session.data["ranking_skip_reason"] = "single-variant"
             emit(
                 "recommendation.skipped",
                 reason="single-variant",
@@ -2403,6 +2404,9 @@ class ForgeService:
                 details[v.level] = (fit, total)
             rec = decide_mark(entries, _session_locale(session))
         except Exception:
+            # 记录跳过原因：交付前的不变量据此**不重试**打分（同一次失败不打两次），
+            # 前端也据此区分「打分失败（可重试）」与「单套跳过（正常）」（2026-11-06）。
+            session.data["ranking_skip_reason"] = "score-failed"
             emit_error(
                 "recommendation.skipped",
                 reason="score-failed",
@@ -2411,6 +2415,8 @@ class ForgeService:
                 request_id=request_id,
             )
             return None
+        # 打分成功：清掉可能残留的跳过原因（例如上一轮失败后本会话被复用）
+        session.data.pop("ranking_skip_reason", None)
         top_fit, top_total = details[rec.variant]
         # 逐档明细（2026-11-05）：回答「为什么没选 C」需要各档实际分数，
         # 而 RankingView 只装得下被选中的那一档。

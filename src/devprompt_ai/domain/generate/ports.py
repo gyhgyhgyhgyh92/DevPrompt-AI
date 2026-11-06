@@ -39,7 +39,7 @@ class GenerationContext(BaseModel):
     ranking_summary: str = ""
 
 
-ClaimKind: TypeAlias = Literal["file", "symbol", "token", "line"]
+ClaimKind: TypeAlias = Literal["file", "symbol", "token", "line", "absence"]
 
 
 class Claim(BaseModel):
@@ -53,6 +53,18 @@ class Claim(BaseModel):
     #: 文件相对路径 / 符号名 / 样式 token / "路径:行号"，必须与正文原文一致
     target: str
     note: str = ""
+    #: ``kind="absence"`` 时必填：被否定的引用类别（2026-11-06）。
+    #: 没有它就无法判断「未找到」该去核哪一项取证。
+    negates: Literal["file", "symbol", "token", "line"] | None = None
+
+    @model_validator(mode="after")
+    def _check_negates(self) -> Claim:
+        """absence 必须指明类别；非 absence 不允许携带 negates（防止语义混淆）。"""
+        if self.kind == "absence" and self.negates is None:
+            raise ValueError("kind=absence 必须同时给出 negates（被否定的引用类别）")
+        if self.kind != "absence" and self.negates is not None:
+            raise ValueError("negates 只用于 kind=absence")
+        return self
 
 
 class ReplyOutput(BaseModel):

@@ -20,6 +20,37 @@ def _facts(*, token_passed: bool = True) -> list[FactResult]:
     ]
 
 
+def test_absence_claim_covered_when_fact_failed() -> None:
+    """如实报告「未找到某 token」：对应取证失败即算覆盖（2026-11-06 kind=absence）。
+
+    为什么需要这个类型：此前 `passed=False` 一律记 uncovered——模型越诚实（明确说
+    「没有这个 token」）反而越被扣分，覆盖率被否定性结论拖成 YELLOW。
+    """
+    claims = [
+        Claim(kind="file", target="src/ui/button.tsx"),
+        Claim(kind="absence", target="--color-primary-500", negates="token"),
+    ]
+
+    report = match_claims(claims, _facts(token_passed=False))
+
+    assert report.covered == 2
+    assert report.absent_ok == 1
+    assert report.coverage == 1.0
+    assert report.uncovered == ()
+
+
+def test_absence_claim_uncovered_when_fact_passed() -> None:
+    """说「没有」但取证实际找到了——这才是错误断言，必须记 uncovered。"""
+    claims = [Claim(kind="absence", target="--color-x", negates="token")]
+
+    report = match_claims(claims, _facts(token_passed=True))
+
+    assert report.covered == 0
+    assert report.absent_ok == 0
+    assert report.uncovered == ("--color-x",)
+    assert report.coverage == 0.0
+
+
 def test_all_claims_covered() -> None:
     claims = [
         Claim(kind="file", target="src/ui/button.tsx"),
