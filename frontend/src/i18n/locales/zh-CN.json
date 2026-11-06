@@ -35,7 +35,10 @@
     "copy": "复制",
     "cancel": "取消",
     "processing": "处理中…",
-    "list_sep": "；"
+    "list_sep": "；",
+    "loading": "加载中…",
+    "reload": "重新加载",
+    "open": "打开"
   },
   "optimize": {
     "stop_generation": "停止生成",
@@ -61,14 +64,24 @@
     "multi": "多选",
     "single": "单选",
     "custom_input": "输入自定义回答",
-    "custom_placeholder": "输入自定义回答..."
+    "custom_placeholder": "输入自定义回答...",
+    "esc_hint": "Esc 取消 · 有多选时可勾多项",
+    "generate_direct": "直接生成",
+    "submit": "提交",
+    "continue_asking": "继续追问",
+    "generate_conservative": "直接生成（保守版）",
+    "answered_prefix": "已澄清：",
+    "adopt_guess": "采用推断",
+    "best_guess": "当前最佳推断：{{guess}}"
   },
   "model": {
     "thinking_mode": "思考模式",
     "thinking_effort": "思考强度",
     "effort_requires_mode": "先开启思考模式才能选择强度",
     "aria_select": "选择模型",
-    "not_configured": "未配置模型"
+    "not_configured": "未配置模型",
+    "context_length": "上下文长度",
+    "nominal_only": "该模型仅支持标称窗口，无可选档位"
   },
   "turn": {
     "continue": "以此轮继续",
@@ -115,15 +128,42 @@
       "abort": "中止本轮"
     },
     "phase": {
-      "INIT": { "label": "初始化", "hint": "建立会话与轮次，核对参数" },
-      "RETRIEVING": { "label": "检索代码", "hint": "扫描符号表，候选压到 25 条" },
-      "PROBING": { "label": "研判信息", "hint": "七项取证，判断信息是否足够" },
-      "ASKING": { "label": "等待确认", "hint": "存在信息缺口，等你回答" },
-      "CONFIRMING": { "label": "整理答复", "hint": "重新研判，缺口是否补齐" },
-      "GENERATING": { "label": "生成方案", "hint": "一次调用产出 1~3 套方案" },
-      "RANKING": { "label": "评估推荐", "hint": "按适配度与偏好打分、标推荐" },
-      "DONE": { "label": "已完成", "hint": "结果已产出" },
-      "ABORTED": { "label": "已中止", "hint": "异常或连接断开，会话已安全关闭" }
+      "INIT": {
+        "label": "初始化",
+        "hint": "建立会话与轮次，核对参数"
+      },
+      "RETRIEVING": {
+        "label": "检索代码",
+        "hint": "扫描符号表，候选压到 25 条"
+      },
+      "PROBING": {
+        "label": "研判信息",
+        "hint": "七项取证，判断信息是否足够"
+      },
+      "ASKING": {
+        "label": "等待确认",
+        "hint": "存在信息缺口，等你回答"
+      },
+      "CONFIRMING": {
+        "label": "整理答复",
+        "hint": "重新研判，缺口是否补齐"
+      },
+      "GENERATING": {
+        "label": "生成方案",
+        "hint": "一次调用产出 1~3 套方案"
+      },
+      "RANKING": {
+        "label": "评估推荐",
+        "hint": "按适配度与偏好打分、标推荐"
+      },
+      "DONE": {
+        "label": "已完成",
+        "hint": "结果已产出"
+      },
+      "ABORTED": {
+        "label": "已中止",
+        "hint": "异常或连接断开，会话已安全关闭"
+      }
     }
   },
   "history": {
@@ -151,10 +191,19 @@
     "sidebar_label": "项目",
     "aria_collapse": "收起侧边栏",
     "footer_nav": "侧栏导航",
-    "confirm_delete_project": "删除项目"
+    "confirm_delete_project": "删除项目",
+    "title": "历史记录",
+    "back_workbench": "← 工作台",
+    "load_failed_page": "历史记录加载失败，请检查服务是否运行。",
+    "tag_current": "进行中",
+    "empty": "暂无历史记录",
+    "empty_sessions": "暂无历史会话",
+    "link_history": "历史记录 →"
   },
   "settings": {
-    "modal": { "title": "设置" },
+    "modal": {
+      "title": "设置"
+    },
     "model": {
       "load_list_failed": "模型列表读取失败",
       "need_provider": "每个供应商都要选厂商并填写 Base URL",
@@ -172,9 +221,20 @@
       "refreshing": "刷新中…",
       "refresh": "刷新模型列表",
       "testing": "测试中…",
-      "test": "测试连接"
+      "test": "测试连接",
+      "lead": "按供应商配置一次 Base URL 与 API Key，刷新获取可用模型列表，勾选需要的模型后保存；当前生效项在启动页切换。",
+      "empty_hint": "尚未配置任何供应商，点击「新增供应商」开始。",
+      "endpoint_unknown": "官方端点未登记，请自行查询该厂商文档填写",
+      "available": "可用模型（勾选即启用，未勾选的将删除）",
+      "refresh_first": "先点「刷新模型列表」获取该端点的可用模型",
+      "current": "当前",
+      "delete_provider": "删除供应商",
+      "save": "保存",
+      "add_provider": "新增供应商"
     },
-    "nav": { "label": "设置分组" },
+    "nav": {
+      "label": "设置分组"
+    },
     "load_failed": "设置加载失败",
     "loading": "设置加载中…",
     "saved": "已保存",
@@ -223,7 +283,9 @@
       "model-service": "模型服务",
       "appearance": "通用外观",
       "security": "流程与安全"
-    }
+    },
+    "api_mode": "API 形态",
+    "api_mode_only": "{{mode}}（该供应商仅支持这一种形态）"
   },
   "errors": {
     "1001": "缺少必填参数，请检查输入",
@@ -261,5 +323,14 @@
       "timeout": "请求超时，请稍后重试",
       "aborted": "请求已取消"
     }
+  },
+  "score": {
+    "detail": "评分明细",
+    "fit": "适配度 {{value}}",
+    "total": "总分 {{value}}",
+    "note": "总分 = 适配度（偏好记忆已移除）"
+  },
+  "gate": {
+    "evidence_stale": "交付前检测到目标项目文件已变更，本方案基于上一轮取证结果，引用的行号与 token 出处可能已过期。建议重新提交一次以获得最新证据。"
   }
 }

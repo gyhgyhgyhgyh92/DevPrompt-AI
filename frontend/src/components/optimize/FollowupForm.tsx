@@ -76,7 +76,7 @@ export function FollowupForm({
             disabled={isBusy}
             onClick={() => onGuardrail('continue')}
           >
-            继续追问
+            {t('clarify.continue_asking')}
           </button>
           <button
             type="button"
@@ -84,14 +84,14 @@ export function FollowupForm({
             disabled={isBusy}
             onClick={() => onGuardrail('generate')}
           >
-            直接生成（保守版）
+            {t('clarify.generate_conservative')}
           </button>
         </div>
       ) : null}
 
       {cleared.length > 0 ? (
         <p className="thread__chips">
-          <span>已澄清：</span>
+          <span>{t('clarify.answered_prefix')}</span>
           {cleared.map((key) => (
             <span className="thread__chip" key={key}>
               {key}
@@ -149,14 +149,14 @@ export function FollowupForm({
 
             {item.best_guess !== '' ? (
               <p className="clarify-card__guess">
-                <span>当前最佳推断：{item.best_guess}</span>
+                <span>{t('clarify.best_guess', { guess: item.best_guess })}</span>
                 <button
                   type="button"
                   className="button button--ghost"
                   disabled={isBusy}
                   onClick={() => setAnswer(item.key, item.best_guess)}
                 >
-                  采用推断
+                  {t('clarify.adopt_guess')}
                 </button>
               </p>
             ) : null}

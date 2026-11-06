@@ -188,7 +188,7 @@ export function ModelServicePanel() {
   }, [savedIds])
 
   if (!settings) {
-    return <p className="settings-note">设置加载中…</p>
+    return <p className="settings-note">{t('settings.loading')}</p>
   }
 
   const providerDirectory = settings.providers ?? []
@@ -332,14 +332,11 @@ export function ModelServicePanel() {
 
   return (
     <section className="settings-panel" aria-label={t('settings.tab.model-service')}>
-      <h3 className="settings-panel__title">模型服务</h3>
-      <p className="settings-panel__desc">
-        按供应商配置一次 Base URL 与 API Key，刷新获取可用模型列表，勾选需要的模型后保存；
-        当前生效项在启动页切换。
-      </p>
+      <h3 className="settings-panel__title">{t('settings.tab.model-service')}</h3>
+      <p className="settings-panel__desc">{t('settings.model.lead')}</p>
       <div className="settings-model-list" aria-label={t('settings.model.provider_list')}>
         {drafts.length === 0 ? (
-          <p className="settings-note">尚未配置任何供应商，点击「新增供应商」开始。</p>
+          <p className="settings-note">{t('settings.model.empty_hint')}</p>
         ) : null}
         {drafts.map((draft) => {
           const pickedProvider = findProvider(providerDirectory, draft.provider)
@@ -360,13 +357,13 @@ export function ModelServicePanel() {
                   className="settings-btn settings-btn--small settings-btn--danger"
                   onClick={() => removeProvider(draft.key)}
                 >
-                  删除供应商
+                  {t('settings.model.delete_provider')}
                 </button>
               </div>
               <div className="settings-grid">
                 <div className="settings-field">
                   <label className="settings-label" htmlFor={`${draft.key}-provider`}>
-                    供应商
+                    {t('settings.provider.aria')}
                   </label>
                   <ProviderSelect
                     providers={providerDirectory}
@@ -393,7 +390,7 @@ export function ModelServicePanel() {
                     }
                   />
                   {pickedProvider?.base_url === '' ? (
-                    <span className="settings-hint">官方端点未登记，请自行查询该厂商文档填写</span>
+                    <span className="settings-hint">{t('settings.model.endpoint_unknown')}</span>
                   ) : null}
                 </div>
                 <div className="settings-field">
@@ -462,9 +459,9 @@ export function ModelServicePanel() {
                 </span>
               ) : null}
               <div className="settings-field">
-                <div className="settings-label">可用模型（勾选即启用，未勾选的将删除）</div>
+                <div className="settings-label">{t('settings.model.available')}</div>
                 {catalog.models.length === 0 ? (
-                  <span className="settings-hint">先点「刷新模型列表」获取该端点的可用模型</span>
+                  <span className="settings-hint">{t('settings.model.refresh_first')}</span>
                 ) : (
                   <ul className="provider-model-list">
                     {catalog.models.map((item) => {
@@ -480,7 +477,9 @@ export function ModelServicePanel() {
                             />
                             <span className="provider-model-list__name">{item.model_id}</span>
                             {row?.isActive ? (
-                              <span className="settings-model-badge">当前</span>
+                              <span className="settings-model-badge">
+                                {t('settings.model.current')}
+                              </span>
                             ) : null}
                             {row !== undefined ? (
                               <ModelCapabilityBadge capabilities={row.capabilities} />
@@ -509,7 +508,7 @@ export function ModelServicePanel() {
       </div>
       <div className="settings-actions">
         <button type="button" className="settings-btn" disabled={isBusy} onClick={addProvider}>
-          新增供应商
+          {t('settings.model.add_provider')}
         </button>
         <button
           type="button"
@@ -517,7 +516,7 @@ export function ModelServicePanel() {
           disabled={isBusy}
           onClick={() => void saveAll()}
         >
-          保存
+          {t('settings.model.save')}
         </button>
       </div>
       {status.text !== '' ? (

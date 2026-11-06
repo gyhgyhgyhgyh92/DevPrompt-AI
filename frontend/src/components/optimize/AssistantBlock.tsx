@@ -96,7 +96,9 @@ export function AssistantBlock({
 
       <div className="chat-reply__body">
         {error !== undefined ? <p className="chat-reply__error">{error}</p> : null}
-        {error === undefined && loading ? <p className="thread__loading">加载中…</p> : null}
+        {error === undefined && loading ? (
+          <p className="thread__loading">{t('common.loading')}</p>
+        ) : null}
 
         {message !== '' ? <p className="chat-reply__message">{message}</p> : null}
         {replyText !== '' ? (

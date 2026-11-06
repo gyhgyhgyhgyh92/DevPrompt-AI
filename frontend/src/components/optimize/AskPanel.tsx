@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface AskPanelProps {
   /** 本轮问题总数。 */
@@ -30,6 +31,7 @@ export function AskPanel({
   onEscape,
   children,
 }: AskPanelProps) {
+  const { t } = useTranslation()
   const bodyId = useId()
   // 折叠为纯表现层局部状态（MUST-16 不上提）；新一批问题由父级 key 重挂载回到展开态
   const [isCollapsed, setCollapsed] = useState(false)
@@ -76,7 +78,7 @@ export function AskPanel({
           </div>
 
           <footer className="ask-panel__foot">
-            <span className="ask-panel__hint">Esc 取消 · 有多选时可勾多项</span>
+            <span className="ask-panel__hint">{t('clarify.esc_hint')}</span>
             <div className="ask-panel__actions">
               <button
                 type="button"
@@ -84,7 +86,7 @@ export function AskPanel({
                 disabled={isBusy}
                 onClick={onEscape}
               >
-                直接生成
+                {t('clarify.generate_direct')}
               </button>
               <button
                 type="button"
@@ -92,7 +94,7 @@ export function AskPanel({
                 disabled={isBusy}
                 onClick={onSubmit}
               >
-                提交
+                {t('clarify.submit')}
               </button>
             </div>
           </footer>

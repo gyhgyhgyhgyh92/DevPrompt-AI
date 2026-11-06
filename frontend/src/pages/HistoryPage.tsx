@@ -195,17 +195,17 @@ export function HistoryPage() {
     <section className="workspace">
       <div className="workspace__thread">
         <div className="history-page__head">
-          <h1>历史记录</h1>
-          <Link to="/">← 工作台</Link>
+          <h1>{t('history.title')}</h1>
+          <Link to="/">{t('history.back_workbench')}</Link>
         </div>
 
-        {isLoading ? <p className="context-panel__empty">加载中…</p> : null}
+        {isLoading ? <p className="context-panel__empty">{t('common.loading')}</p> : null}
 
         {!isLoading && loadFailed ? (
           <div className="history-page__notice">
-            <p className="context-panel__empty">历史记录加载失败，请检查服务是否运行。</p>
+            <p className="context-panel__empty">{t('history.load_failed_page')}</p>
             <button type="button" className="button" onClick={() => void load()}>
-              重新加载
+              {t('common.reload')}
             </button>
           </div>
         ) : null}
@@ -242,7 +242,9 @@ export function HistoryPage() {
                         <span className="history-page__item-title">
                           {item.pinned ? <span aria-label={t('history.pinned')}>📌 </span> : null}
                           {itemTitle(item)}
-                          {isCurrent ? <span className="history-page__tag">进行中</span> : null}
+                          {isCurrent ? (
+                            <span className="history-page__tag">{t('history.tag_current')}</span>
+                          ) : null}
                         </span>
                         <span className="history-page__item-meta">
                           <span className="session-sidebar__badge">{item.state}</span>
@@ -259,7 +261,7 @@ export function HistoryPage() {
                         className="button button--ghost"
                         onClick={() => handleOpen(item.session_id)}
                       >
-                        打开
+                        {t('common.open')}
                       </button>
                       <button
                         type="button"
@@ -302,7 +304,9 @@ export function HistoryPage() {
                 {isLoadingMore ? t('history.loading') : t('history.load_more')}
               </button>
             ) : null}
-            {sorted.length === 0 ? <p className="context-panel__empty">暂无历史记录</p> : null}
+            {sorted.length === 0 ? (
+              <p className="context-panel__empty">{t('history.empty')}</p>
+            ) : null}
           </>
         ) : null}
       </div>

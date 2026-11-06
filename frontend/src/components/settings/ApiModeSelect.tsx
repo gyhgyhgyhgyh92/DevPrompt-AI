@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 export interface ApiModeSelectProps {
   /** 该 provider 支持的模式集（后端目录的 supported_api_modes）。 */
   supported: ReadonlyArray<string> | undefined
@@ -28,6 +30,7 @@ export function ApiModeSelect({
   id,
   disabled,
 }: ApiModeSelectProps) {
+  const { t } = useTranslation()
   const list = (supported ?? []).length > 0 ? (supported ?? []) : [defaultMode]
   // 未传 id 时回落到固定值：label 的 htmlFor 不能为空，否则控件失去关联（可访问性）
   const selectId = id ?? 'model-api-mode'
@@ -37,8 +40,8 @@ export function ApiModeSelect({
     return (
       <div className="model-api-mode">
         <div className="settings-field">
-          <span className="settings-label">API 形态</span>
-          <p className="settings-hint">{list[0]}（该供应商仅支持这一种形态）</p>
+          <span className="settings-label">{t('settings.api_mode')}</span>
+          <p className="settings-hint">{t('settings.api_mode_only', { mode: list[0] })}</p>
         </div>
       </div>
     )

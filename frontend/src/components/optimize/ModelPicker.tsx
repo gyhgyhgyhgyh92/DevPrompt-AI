@@ -114,7 +114,7 @@ function TuningPanel({
     <div className="model-picker__panel" onClick={(event) => event.stopPropagation()}>
       {windows.length > 0 ? (
         <>
-          <div className="model-picker__panel-title">上下文长度</div>
+          <div className="model-picker__panel-title">{t('model.context_length')}</div>
           <ul className="model-picker__options">
             {windows.map((tokens) => (
               <li key={tokens}>
@@ -133,14 +133,14 @@ function TuningPanel({
             ))}
           </ul>
           {windows.length <= 1 ? (
-            <div className="model-picker__panel-title">该模型仅支持标称窗口，无可选档位</div>
+            <div className="model-picker__panel-title">{t('model.nominal_only')}</div>
           ) : null}
         </>
       ) : null}
       {hasEfforts ? (
         <>
           <div className="model-picker__panel-title model-picker__panel-title--split">
-            <span>思考模式</span>
+            <span>{t('model.thinking_mode')}</span>
             <Toggle label={t('model.thinking_mode')} checked={modeOn} onChange={onToggleMode} />
           </div>
           <div className="model-picker__panel-title">{t('model.thinking_effort')}</div>

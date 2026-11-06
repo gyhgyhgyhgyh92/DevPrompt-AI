@@ -406,7 +406,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
         >
           <CollapseIcon />
         </button>
-        <span className="project-sidebar__title">项目</span>
+        <span className="project-sidebar__title">{t('history.sidebar_label')}</span>
       </div>
 
       <button type="button" className="project-sidebar__new" onClick={handleNewSession}>
@@ -447,11 +447,13 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
             {isLoadingMore ? t('history.loading') : t('history.load_more')}
           </button>
         ) : null}
-        {history.length === 0 ? <p className="project-sidebar__empty">暂无历史会话</p> : null}
+        {history.length === 0 ? (
+          <p className="project-sidebar__empty">{t('history.empty_sessions')}</p>
+        ) : null}
       </div>
 
       <nav className="project-sidebar__footer" aria-label={t('history.footer_nav')}>
-        <Link to="/history">历史记录 →</Link>
+        <Link to="/history">{t('history.link_history')}</Link>
       </nav>
 
       {toast !== null ? (

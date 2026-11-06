@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { RankingViewPayload } from '../../api/types'
 import './optimize.css'
 
@@ -8,14 +9,15 @@ interface ScoreDetailProps {
 
 /** 评分明细（2026-10-21：偏好记忆移除后总分 = 适配度）。 */
 export function ScoreDetail({ ranking }: ScoreDetailProps) {
+  const { t } = useTranslation()
   return (
     <details className="score-detail">
-      <summary className="score-detail__summary">评分明细</summary>
+      <summary className="score-detail__summary">{t('score.detail')}</summary>
       <ul className="score-detail__list">
-        <li>适配度 {ranking.fit}</li>
-        <li>总分 {ranking.total}</li>
+        <li>{t('score.fit', { value: ranking.fit })}</li>
+        <li>{t('score.total', { value: ranking.total })}</li>
       </ul>
-      <p className="score-detail__note">总分 = 适配度（偏好记忆已移除）</p>
+      <p className="score-detail__note">{t('score.note')}</p>
     </details>
   )
 }
