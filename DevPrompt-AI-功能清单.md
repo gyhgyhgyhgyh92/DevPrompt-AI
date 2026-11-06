@@ -364,12 +364,15 @@ INIT → RETRIEVING → PROBING → [ASKING ↔ CONFIRMING] → GENERATING → R
 **前端已全量抽取**（键一致性由 `src/i18n/keys.test.ts` 守卫：两语言键集一致、无空文案、错误码全覆盖）。
 
 **后端双语（同日扩展）**：会话语言经 `Accept-Language` 由 routes 解析 → `optimize(locale=…)` →
-`session.data["locale"]`，已覆盖进度流全部文案（`domain/progress.py`）、交付门披露与降级理由
-（`domain/delivery/gate.py`）与手填目标的澄清文案；文案表在 `common/i18n.py`，缺键返回键名。
+`session.data["locale"]`，已覆盖：进度流全部文案（`domain/progress.py`）、交付门披露与降级理由
+（`domain/delivery/gate.py`）、推荐理由（`domain/ranking/recommend.py`）、**A/B/C 三档与纯回答
+模板**（含共享的 body 语义段、边界声明、多套路径的档位约束与 claims 规则）、手填目标的澄清文案；
+文案表在 `common/i18n.py`，缺键返回键名。模板中英对照由 `tests/domain/generate/test_templates_i18n.py`
+钉住（role 双语、body 段切换、边界不串语言、JSON 指令逐字一致）。
 
-**限制（必须随结论一起读）**：①A/B/C 方案模板与 25 家 provider 描述仍为中文（模板双语需结构等价
-对照测试，尚未做）；②Zod 校验 message 仍中文（动态 schema 未重构）；③英文文案为本轮直译，
-未经母语者复核。
+**限制（必须随结论一起读）**：①设置页 provider 下拉的 16 个中文 `label` 与 12 段 `quirks` 说明
+仍为中文（`aliases` 是匹配数据、按设计不译）；②Zod 校验 message 仍中文（动态 schema 未重构）；
+③英文文案为直译，未经母语者复核；④**英文模板的结构等价已测，但模型产出质量无法离线验证**（零额度）。
 
 **验收**：切换 locale 后已抽取文案即时变更且刷新保持；键集一致性测试通过。
 
