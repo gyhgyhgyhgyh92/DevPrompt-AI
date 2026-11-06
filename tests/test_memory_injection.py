@@ -34,7 +34,7 @@ class RecordingGenerator(FakeGenerator):
         self.contexts: list[GenerationContext] = []
 
     async def generate_variants(
-        self, ctx: GenerationContext, levels: list[Level]
+        self, ctx: GenerationContext, levels: list[Level], locale: str = "zh-CN"
     ) -> MultiVariantDraft:
         self.contexts.append(ctx)
         return MultiVariantDraft(

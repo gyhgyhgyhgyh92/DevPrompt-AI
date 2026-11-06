@@ -1853,7 +1853,7 @@ class ForgeService:
         await _notify(session, progress, generation_text(levels, _session_locale(session)))
         # U-7：记下期望套数，交付门据实际产出披露「本次仅 N 套」（模型可只给子集）。
         session.data["expected_variant_count"] = len(levels)
-        multi = await self._generator.generate_variants(ctx, levels)
+        multi = await self._generator.generate_variants(ctx, levels, _session_locale(session))
         self._account_llm_usage(session, last_usage())
         # slots dataclass 无 __dict__，序列化必须走 model_dump（计划 §6.2 注意事项）
         session.data["variants"] = [v.model_dump() for v in multi.variants]
@@ -1946,7 +1946,7 @@ class ForgeService:
         await hop(session, FlowState.GENERATING, self._sessions)
         ctx = await self._generation_context(session)
         await _notify(session, progress, answering_text(_session_locale(session)))
-        text = await self._generator.answer(ctx)
+        text = await self._generator.answer(ctx, _session_locale(session))
         self._account_llm_usage(session, last_usage())
         session.data["reply_text"] = text
         if FlowState(session.state) is not FlowState.DONE:

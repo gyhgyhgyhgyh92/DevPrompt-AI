@@ -154,15 +154,15 @@ class FakeDecider:
 
 
 class FakeGenerator:
-    async def generate_single(self, ctx):  # type: ignore[no-untyped-def]
+    async def generate_single(self, ctx, locale="zh-CN"):  # type: ignore[no-untyped-def]
         return VariantDraft(title="t", body="b", changes=["x"], level=ctx.level)
 
-    async def generate_variants(self, ctx, levels):  # type: ignore[no-untyped-def]
+    async def generate_variants(self, ctx, levels, locale="zh-CN"):  # type: ignore[no-untyped-def]
         return MultiVariantDraft(
             variants=[VariantDraft(title="t", body="b", changes=["x"], level=lv) for lv in levels]
         )
 
-    async def answer(self, ctx):  # type: ignore[no-untyped-def]
+    async def answer(self, ctx, locale="zh-CN"):  # type: ignore[no-untyped-def]
         return "回答"
 
 

@@ -133,19 +133,19 @@ class FakeGenerator:
     def __init__(self, llm_tokens_per_call: int) -> None:
         self.llm_tokens_per_call = llm_tokens_per_call
 
-    async def generate_single(self, ctx: GenerationContext) -> VariantDraft:
+    async def generate_single(self, ctx: GenerationContext, locale: str = "zh-CN") -> VariantDraft:
         add_llm_tokens(self.llm_tokens_per_call)
         return VariantDraft(title="t", body="b", changes=["x"], level=ctx.level)
 
     async def generate_variants(
-        self, ctx: GenerationContext, levels: list[Level]
+        self, ctx: GenerationContext, levels: list[Level], locale: str = "zh-CN"
     ) -> MultiVariantDraft:
         add_llm_tokens(self.llm_tokens_per_call)
         return MultiVariantDraft(
             variants=[VariantDraft(title="t", body="b", changes=["x"], level=lv) for lv in levels]
         )
 
-    async def answer(self, ctx: GenerationContext) -> str:
+    async def answer(self, ctx: GenerationContext, locale: str = "zh-CN") -> str:
         add_llm_tokens(self.llm_tokens_per_call)
         return "回答"
 

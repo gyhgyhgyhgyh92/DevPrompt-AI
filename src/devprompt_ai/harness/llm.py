@@ -33,6 +33,7 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel, ValidationError
 
 from devprompt_ai.common.cost import add_llm_tokens
+from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale, tr
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.error_codes import registered
 from devprompt_ai.domain.errors import ConfigurationError, GenerationError
@@ -46,7 +47,6 @@ from devprompt_ai.domain.generate.ports import (
 from devprompt_ai.domain.model_spec import resolve_api_mode
 from devprompt_ai.domain.prompt_guard import (
     JSON_STRICT_RULES,
-    VERIFIABLE_ANCHOR_C,
     build_evidence_block,
 )
 from devprompt_ai.harness.adapters import adapter_kind_for, build_adapter
@@ -248,48 +248,40 @@ def _parse_model(output_type: type[ModelT], raw: str) -> ModelT | None:
 
 # ---- 三套同次调用模板（T5-2：F-302/303/304 档位约束 + F-301 一致性约束；按请求档位裁剪）----
 
-_TIER_CONSTRAINTS: Final[dict[str, str]] = {
-    "A": (
-        "A 保守版：只陈述用户意图与可执行要点，明确改动范围边界，结尾附待确认清单"
-        "（缺什么列什么）；禁止出现任何行号，禁止编造未取证的文件路径与选择器。"
-    ),
-    "B": (
-        "B 标准版：给出已取证的文件路径与选择器，明确变更边界（改什么、不改什么）；"
-        "推断项必须以「（推断）」字样显式标注；包含验证方式（跑什么测试、出什么 diff）；"
-        "禁止编造未提供的行号。"
-    ),
-    "C": (
-        "C 激进版：给出完整路径、行号、组件名与设计 token 定义位置；"
-        "边界预判必须覆盖多状态、响应式、暗色模式、无障碍；"
-        "结尾附显式测试指令（含测试文件路径）。\n"
-        f"{VERIFIABLE_ANCHOR_C}"
-    ),
+#: 各档约束的文案键（2026-11-06 双语；文案在 common/i18n.py 的 template.tier.*）。
+_TIER_KEYS: Final[dict[str, str]] = {
+    "A": "template.tier.a",
+    "B": "template.tier.b",
+    "C": "template.tier.c",
 }
 
 _LEVEL_RANK: Final[dict[str, int]] = {"A": 0, "B": 1, "C": 2}
 
 
-def _build_multi_system(levels: list[Level]) -> str:
+def _build_multi_system(levels: list[Level], locale: Locale = DEFAULT_LOCALE) -> str:
     """按请求档位裁剪模板约束（levels 决定要求几套），并注入一致性与梯度约束。"""
     ordered = sorted(levels)
-    tiers = "\n".join(f"- {_TIER_CONSTRAINTS[lv]}" for lv in ordered)
+    tiers = tr("template.multi.tiers_sep", locale).join(
+        tr(_TIER_KEYS[lv], locale) for lv in ordered
+    )
     return (
-        f"你是提示词优化师。基于同一份上下文，一次性输出 {len(ordered)} 套提示词方案，"
-        f"请求档位为 {'、'.join(ordered)}。\n"
-        "各档位模板约束：\n"
-        f"{tiers}\n"
-        "一致性约束：所有方案共享同一份事实基础，同一事实在各套中的描述必须一致"
-        "（禁止信息漂移）；各套正文长度与详细度必须呈明显梯度（A 最短、C 最长）。\n"
-        "除请求档位外不得多套、少套或改用其他档位。只输出 JSON。"
-        "\n\n【body 的语义（2026-10-20 起强制）】body 必须是可直接复制给 Agent 执行的提示词正文："
-        "包含角色与目标、上下文（文件/符号/行号，只能用已提供的）、必须遵守的约束、期望的输出格式。"
-        "禁止出现「建议」「为什么这样改」「本方案改动如下」「以下是我的优化」等元叙述；"
-        "不要复述取证过程；不要写实施方案之外的客套话。"
-        "改动了哪几处只写在 changes 数组里，不得混进 body。"
+        tr(
+            "template.multi.role",
+            locale,
+            count=len(ordered),
+            levels=tr("common.list_sep", locale).join(ordered),
+        )
+        + "\n"
+        + tr("template.multi.tiers", locale, tiers=tiers)
+        + "\n"
+        + tr("template.multi.consistency", locale)
+        + tr("template.body_semantics", locale)
     )
 
 
-def _build_multi_user(ctx: GenerationContext, levels: list[Level]) -> str:
+def _build_multi_user(
+    ctx: GenerationContext, levels: list[Level], locale: Locale = DEFAULT_LOCALE
+) -> str:
     """用户消息：证据走 JSON 块 + 安全声明（M-5），指令在首尾。
 
     证据字段含检索到的真实代码摘要——其中的注释/字符串可能包含指令性文本，
@@ -297,27 +289,35 @@ def _build_multi_user(ctx: GenerationContext, levels: list[Level]) -> str:
     """
     evidence = build_evidence_block(
         {
-            "用户需求": ctx.sentence,
-            "取证摘要": ctx.facts_summary or "（无，禁止编造路径与行号）",
-            "已澄清信息": ctx.clarifications,
-            "保守模式": ctx.conservative,
+            tr("template.field.request", locale): ctx.sentence,
+            tr("template.field.facts", locale): (
+                ctx.facts_summary or tr("template.field.none_facts", locale)
+            ),
+            tr("template.field.clarifications", locale): ctx.clarifications,
+            tr("template.field.conservative", locale): ctx.conservative,
             # 多轮（2026-10-20）：历史结论与记忆由 build_context 装配，缺省为空不出现
-            "历史轮次": ctx.history_block or "（首轮，无历史）",
-            "项目记忆": ctx.memory_block or "（无）",
+            tr("template.field.history", locale): (
+                ctx.history_block or tr("template.field.none_history", locale)
+            ),
+            tr("template.field.memory", locale): (
+                ctx.memory_block or tr("template.field.none_facts_plain", locale)
+            ),
             # 多轮（2026-11-04）：上一轮方案正文，供「在已有方案上改」的轮次引用
-            "上一轮方案": ctx.previous_variants or "（无，本轮从零生成）",
+            tr("template.field.previous_variants", locale): (
+                ctx.previous_variants or tr("template.field.none_variants", locale)
+            ),
         }
     )
     return (
-        f"请求档位（逐一输出，顺序 A→B→C）：{sorted(levels)}\n"
-        f"{evidence}\n"
-        '请输出 JSON：{"variants": [{"title": "...", "body": "...", '
+        tr("template.multi.request_levels", locale, levels=sorted(levels))
+        + "\n"
+        + evidence
+        + "\n"
+        + tr("template.instruction_prefix", locale)
+        + '{"variants": [{"title": "...", "body": "...", '
         '"changes": ["..."], "level": "A", '
-        '"claims": [{"kind": "file|symbol|token|line", "target": "..."}]}]}，'
-        "variants 数组长度与档位必须与请求档位一致。\n"
-        "claims 规则：正文里每一处文件路径、符号名、行号、样式 token 引用都要逐条声明，"
-        "target 必须与正文原文完全一致；kind=line 时写成「路径:行号」。"
-        "没有引用就给空数组，禁止编造。"
+        '"claims": [{"kind": "file|symbol|token|line", "target": "..."}]}]}\n'
+        + tr("template.multi.claims_rules", locale)
     )
 
 
@@ -327,18 +327,25 @@ class LLMGenerator:
     def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
 
-    async def generate_single(self, ctx: GenerationContext) -> VariantDraft:
+    async def generate_single(
+        self, ctx: GenerationContext, locale: Locale = DEFAULT_LOCALE
+    ) -> VariantDraft:
         from devprompt_ai.domain.generate.templates import TEMPLATE_BY_LEVEL
         from devprompt_ai.harness.guardrails import validate_variant
 
         tpl = TEMPLATE_BY_LEVEL[ctx.level]
         # 生成类调用输出长（完整方案正文）：timeout 缺省即 cfg.llm_timeout（F-604，默认 60s；
         # 10s 会截断真实生成——4H 端到端实测）
-        draft = await chat_structured(self._cfg, VariantDraft, tpl.system, tpl.build_user(ctx))
+        draft = await chat_structured(
+            self._cfg,
+            VariantDraft,
+            tpl.system(locale),
+            tpl.build_user(ctx, locale),
+        )
         validate_variant(draft)
         return draft
 
-    async def answer(self, ctx: GenerationContext) -> str:
+    async def answer(self, ctx: GenerationContext, locale: Locale = DEFAULT_LOCALE) -> str:
         """纯回答（2026-11-05）：一次结构化调用，只取正文。
 
         与 generate_single 的唯一差别是输出模型——``ReplyOutput`` 没有
@@ -348,12 +355,15 @@ class LLMGenerator:
         from devprompt_ai.domain.generate.templates import reply as reply_tpl
 
         out = await chat_structured(
-            self._cfg, ReplyOutput, reply_tpl.SYSTEM, reply_tpl.build_user(ctx)
+            self._cfg,
+            ReplyOutput,
+            reply_tpl.system_text(locale),
+            reply_tpl.build_user(ctx, locale),
         )
         return out.text
 
     async def generate_variants(
-        self, ctx: GenerationContext, levels: list[Level]
+        self, ctx: GenerationContext, levels: list[Level], locale: Locale = DEFAULT_LOCALE
     ) -> MultiVariantDraft:
         """三套（或裁剪后 1~3 套）同次调用生成（F-301；T5-1/T5-2）。
 
@@ -373,8 +383,8 @@ class LLMGenerator:
         draft = await chat_structured(
             self._cfg,
             MultiVariantDraft,
-            _build_multi_system(levels),
-            _build_multi_user(ctx, levels),
+            _build_multi_system(levels, locale),
+            _build_multi_user(ctx, levels, locale),
         )
         got = frozenset(v.level for v in draft.variants)
         # U-7（2026-11-06 业主裁定）：套数不足不再整单失败——接受请求档位的非空子集，

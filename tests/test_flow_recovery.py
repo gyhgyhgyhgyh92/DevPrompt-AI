@@ -155,11 +155,11 @@ class FixedDecider:
 class FixedGenerator:
     """GeneratePort 确定性实现：正文随档位/序号固定生成（供 diff 对照）。"""
 
-    async def generate_single(self, ctx: GenerationContext) -> VariantDraft:
+    async def generate_single(self, ctx: GenerationContext, locale: str = "zh-CN") -> VariantDraft:
         return VariantDraft(title="t", body=f"body-{ctx.level}", changes=["x"], level=ctx.level)
 
     async def generate_variants(
-        self, ctx: GenerationContext, levels: list[Level]
+        self, ctx: GenerationContext, levels: list[Level], locale: str = "zh-CN"
     ) -> MultiVariantDraft:
         return MultiVariantDraft(
             variants=[
@@ -173,7 +173,7 @@ class FixedGenerator:
             ]
         )
 
-    async def answer(self, ctx: GenerationContext) -> str:
+    async def answer(self, ctx: GenerationContext, locale: str = "zh-CN") -> str:
         return "回答"
 
 

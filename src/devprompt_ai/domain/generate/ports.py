@@ -6,6 +6,8 @@ from typing import Literal, Protocol, TypeAlias, runtime_checkable
 
 from pydantic import BaseModel, Field, model_validator
 
+from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale
+
 Level: TypeAlias = Literal["A", "B", "C"]
 
 # MUST-28 可输出档位仅允许从 A 起的前缀集：A→{A}、B→{A,B}、C→{A,B,C}（禁止跳档如 {B}、{A,C}）
@@ -99,9 +101,11 @@ class MultiVariantDraft(BaseModel):
 
 @runtime_checkable
 class GeneratePort(Protocol):
-    async def generate_single(self, ctx: GenerationContext) -> VariantDraft: ...
+    async def generate_single(
+        self, ctx: GenerationContext, locale: Locale = DEFAULT_LOCALE
+    ) -> VariantDraft: ...
 
-    async def answer(self, ctx: GenerationContext) -> str:
+    async def answer(self, ctx: GenerationContext, locale: Locale = DEFAULT_LOCALE) -> str:
         """纯回答（2026-11-05）：只产出文字，不产生方案。
 
         与 ``generate_single`` 共用 ``GenerationContext``——回答「为什么选 B」需要
@@ -110,7 +114,7 @@ class GeneratePort(Protocol):
         ...
 
     async def generate_variants(
-        self, ctx: GenerationContext, levels: list[Level]
+        self, ctx: GenerationContext, levels: list[Level], locale: Locale = DEFAULT_LOCALE
     ) -> MultiVariantDraft:
         """三套（或裁剪后 1~3 套）在同一次 LLM 调用中生成（F-301；阶段五 5C/T5-1）。
 

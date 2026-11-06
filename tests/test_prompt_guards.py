@@ -70,13 +70,13 @@ class TestTaskBoundary:
     def test_all_three_generation_levels_have_boundary(self) -> None:
         """M-7：生成三档 system 均须带边界声明。"""
         for level, tpl in TEMPLATE_BY_LEVEL.items():
-            assert TASK_NOT_EXECUTE in tpl.system, f"{level} 档缺边界声明"
+            assert TASK_NOT_EXECUTE in tpl.system("zh-CN"), f"{level} 档缺边界声明"
 
     def test_generation_levels_keep_their_original_constraints(self) -> None:
         """边界声明是**附加**，不得覆盖各档原有约束。"""
-        assert "待确认清单" in TEMPLATE_BY_LEVEL["A"].system
-        assert "（推断）" in TEMPLATE_BY_LEVEL["B"].system
-        assert "边界预判" in TEMPLATE_BY_LEVEL["C"].system
+        assert "待确认清单" in TEMPLATE_BY_LEVEL["A"].system("zh-CN")
+        assert "（推断）" in TEMPLATE_BY_LEVEL["B"].system("zh-CN")
+        assert "边界预判" in TEMPLATE_BY_LEVEL["C"].system("zh-CN")
 
 
 class TestNonGoals:
@@ -132,7 +132,7 @@ class TestVerifiableAnchor:
 
     def test_only_c_level_requires_it(self) -> None:
         """M-6：A/B 档不要求真实行号（信息量不足时不得被逼编造）。"""
-        assert VERIFIABLE_ANCHOR_C in TEMPLATE_BY_LEVEL["C"].system
+        assert VERIFIABLE_ANCHOR_C in TEMPLATE_BY_LEVEL["C"].system("zh-CN")
 
 
 class TestMultiUserEvidence:
@@ -167,6 +167,6 @@ class TestJsonStrictRules:
 
     def test_appended_to_instructions(self) -> None:
         """M-8：必须真正接到 instructions 上（否则常量形同虚设）。"""
-        from devprompt_ai.harness.llm import _TIER_CONSTRAINTS
+        from devprompt_ai.domain.generate.templates.c_thorough import system_text
 
-        assert VERIFIABLE_ANCHOR_C in _TIER_CONSTRAINTS["C"]
+        assert VERIFIABLE_ANCHOR_C in system_text("zh-CN")

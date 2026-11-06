@@ -46,9 +46,9 @@ def test_template_by_level() -> None:
         clarifications={"token_defined": "用 --color-primary-500"},
     )
     for _level, tpl in TEMPLATE_BY_LEVEL.items():
-        user = tpl.build_user(ctx)
+        user = tpl.build_user(ctx, "zh-CN")
         assert ctx.sentence in user
-    assert "src/ui/button.tsx" in TEMPLATE_BY_LEVEL["B"].build_user(ctx)
+    assert "src/ui/button.tsx" in TEMPLATE_BY_LEVEL["B"].build_user(ctx, "zh-CN")
 
 
 def test_validate_variant_rejects_empty_shell() -> None:

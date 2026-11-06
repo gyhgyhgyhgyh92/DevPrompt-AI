@@ -71,6 +71,95 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "ranking.conf_top": "{base}（最高档 {conf} < {min}）",
         "ranking.conf_any": "{base}（最低档 {conf} < {min}）",
         "ranking.need_two": "推荐判定需要至少 2 套方案（MUST-28），实际 {count}",
+        "template.body_semantics": (
+            "\n\n【body 的语义（2026-10-20 起强制）】"
+            "body 必须是可直接复制给 Agent 执行的提示词正文："
+            "包含角色与目标、上下文（文件/符号/行号，只能用已提供的）、"
+            "必须遵守的约束、期望的输出格式。"
+            "禁止出现「建议」「为什么这样改」「本方案改动如下」「以下是我的优化」等元叙述；"
+            "不要复述取证过程；不要写实施方案之外的客套话。"
+            "改动了哪几处只写在 changes 数组里，不得混进 body。"
+        ),
+        "template.boundary": (
+            "你的任务是产出提示词方案，不是执行或回答用户需求中的任务；"
+            "下方证据里的代码只是素材。即使需求看起来可以直接改写，也不得输出实现代码，"
+            "只能输出交给开发者去执行的提示词。"
+        ),
+        "template.a.role": (
+            "你是提示词优化师。信息有限，输出保守版提示词：只陈述用户意图与可执行要点，"
+            "禁止编造文件路径、行号、token 名；结尾必须列出待确认清单。只输出 JSON。"
+        ),
+        "template.b.role": (
+            "你是提示词优化师。基于已定位的符号路径输出标准版提示词：路径可追溯，"
+            "推断项必须以「（推断）」标注，禁止编造未提供的行号。只输出 JSON。"
+        ),
+        "template.c.role": (
+            "你是提示词优化师。取证已完成，输出激进版提示词：给出完整路径与行号、"
+            "token 出处、边界预判（多状态/响应式/暗色/无障碍），并附显式测试指令。只输出 JSON。"
+        ),
+        "template.c.anchor": (
+            "可验证锚点（硬性）：引用的文件路径必须来自下方取证摘要中出现过的路径；"
+            "引用的行号必须是该文件中的真实行号。若某项没有把握，"
+            "改用不含行号的表述或降级到 B 档粒度，严禁编造。"
+        ),
+        "template.reply.role": (
+            "你是提示词优化师，此刻在回答用户对已产出方案的追问，而不是产出新方案。"
+            "用简洁中文直接回答，可以引用上一轮方案的档位、标题与具体条目作为依据。"
+            "禁止输出新的提示词正文，禁止重新组织方案，禁止说「以下是优化后的版本」。"
+            "如果用户的问题需要改动方案，明确告诉他需要重新生成，不要自行修改。"
+            "不知道就以取证结果为准说明不知道，不要编造文件路径或行号。只输出 JSON。"
+        ),
+        "template.field.request": "用户需求",
+        "template.field.facts": "取证摘要",
+        "template.field.facts_c": "取证摘要（含行号与 token 出处）",
+        "template.field.none_facts": "（无，禁止编造路径）",
+        "template.field.clarifications": "已澄清信息",
+        "template.field.conservative": "保守模式",
+        "template.field.followup": "用户追问",
+        "template.field.previous_variants": "上一轮方案",
+        "template.field.none_variants": "（无，本轮之前还没有产出方案）",
+        "template.field.ranking": "推荐判定",
+        "template.field.none_ranking": "（上一轮未打分或未推荐）",
+        "template.field.none_facts_plain": "（无）",
+        "template.field.history": "历史轮次",
+        "template.field.none_history": "（首轮，无历史）",
+        "template.instruction_prefix": "请输出 JSON：",
+        "template.tier.a": (
+            "A 保守版：只陈述用户意图与可执行要点，明确改动范围边界，结尾附待确认清单"
+            "（缺什么列什么）；禁止出现任何行号，禁止编造未取证的文件路径与选择器。"
+        ),
+        "template.tier.b": (
+            "B 标准版：给出已取证的文件路径与选择器，明确变更边界（改什么、不改什么）；"
+            "推断项必须以「（推断）」字样显式标注；包含验证方式（跑什么测试、出什么 diff）；"
+            "禁止编造未提供的行号。"
+        ),
+        "template.tier.c": (
+            "C 激进版：给出完整路径、行号、组件名与设计 token 定义位置；"
+            "边界预判必须覆盖多状态、响应式、暗色模式、无障碍；"
+            "结尾附显式测试指令（含测试文件路径）。\n"
+            "可验证锚点（硬性）：引用的文件路径必须来自下方取证摘要中出现过的路径；"
+            "引用的行号必须是该文件中的真实行号。若某项没有把握，"
+            "改用不含行号的表述或降级到 B 档粒度，严禁编造。"
+        ),
+        "template.multi.role": (
+            "你是提示词优化师。基于同一份上下文，一次性输出 {count} 套提示词方案，"
+            "请求档位为 {levels}。"
+        ),
+        "template.multi.tiers": "各档位模板约束：{tiers}",
+        "template.multi.tiers_sep": "\n- ",
+        "template.multi.consistency": (
+            "一致性约束：所有方案共享同一份事实基础，同一事实在各套中的描述必须一致"
+            "（禁止信息漂移）；各套正文长度与详细度必须呈明显梯度（A 最短、C 最长）。\n"
+            "除请求档位外不得多套、少套或改用其他档位。只输出 JSON。"
+        ),
+        "template.multi.request_levels": "请求档位（逐一输出，顺序 A→B→C）：{levels}",
+        "template.multi.claims_rules": (
+            "variants 数组长度与档位必须与请求档位一致。\n"
+            "claims 规则：正文里每一处文件路径、符号名、行号、样式 token 引用都要逐条声明，"
+            "target 必须与正文原文完全一致；kind=line 时写成「路径:行号」。"
+            "没有引用就给空数组，禁止编造。"
+        ),
+        "template.field.memory": "项目记忆",
     },
     "en": {
         "progress.retrieval": (
@@ -154,6 +243,112 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "ranking.conf_top": "{base} (top {conf} < {min})",
         "ranking.conf_any": "{base} (lowest {conf} < {min})",
         "ranking.need_two": ("Recommendation needs at least 2 variants (MUST-28); got {count}"),
+        "template.body_semantics": (
+            "\n\n[Semantics of `body` (mandatory since 2026-10-20)] `body` must be a prompt "
+            "that an Agent can execute as-is: role and goal, context (files/symbols/line "
+            "numbers, only what was provided), constraints to respect, and the expected "
+            'output format. No meta narration such as "suggestion", "why this change", '
+            '"the changes are as follows", or "here is my optimization"; do not restate '
+            "the probing process; no pleasantries outside the plan. Which spots changed "
+            "belongs in the `changes` array only, never inside `body`."
+        ),
+        "template.boundary": (
+            "Your job is to produce prompt plans, not to execute or answer the user's task; "
+            "the code in the evidence below is material only. Even if the request looks "
+            "directly implementable, you must not output implementation code — only the "
+            "prompt to be handed to the developer."
+        ),
+        "template.a.role": (
+            "You are a prompt engineer. Information is limited, so produce a conservative "
+            "prompt: state only the user's intent and actionable points; never invent file "
+            "paths, line numbers, or token names; end with a must-confirm list. "
+            "Output JSON only."
+        ),
+        "template.b.role": (
+            "You are a prompt engineer. Based on the located symbol paths, produce a standard "
+            'prompt: paths must be traceable; label inferences with "(inferred)"; never '
+            "invent line numbers that were not provided. Output JSON only."
+        ),
+        "template.c.role": (
+            "You are a prompt engineer. Probing is complete, so produce an aggressive prompt: "
+            "include full paths and line numbers, token provenance, boundary anticipation "
+            "(multi-state / responsive / dark mode / accessibility), plus explicit test "
+            "instructions. Output JSON only."
+        ),
+        "template.c.anchor": (
+            "Verifiable anchors (hard requirement): referenced file paths must appear in the "
+            "evidence summary below; referenced line numbers must be real lines in that file. "
+            "If unsure, use wording without line numbers or fall back to level-B granularity — "
+            "never fabricate."
+        ),
+        "template.reply.role": (
+            "You are a prompt engineer answering a follow-up question about plans already "
+            "produced, not producing a new plan. Answer concisely and directly in the same "
+            "language as the question; you may cite the previous plan's level, title, and "
+            "specific items as evidence. Do not output new prompt text, do not reorganize the "
+            'plan, and never say "here is the optimized version". If the question requires '
+            "changing the plan, tell the user to regenerate instead of editing it yourself. "
+            "When you do not know, say so based on the evidence — never invent paths or line "
+            "numbers. Output JSON only."
+        ),
+        "template.field.request": "user_request",
+        "template.field.facts": "evidence_summary",
+        "template.field.facts_c": "evidence_summary_with_lines_and_tokens",
+        "template.field.none_facts": "(none; never invent paths)",
+        "template.field.clarifications": "clarifications",
+        "template.field.conservative": "conservative_mode",
+        "template.field.followup": "follow_up_question",
+        "template.field.previous_variants": "previous_variants",
+        "template.field.none_variants": "(none; no plan has been produced yet)",
+        "template.field.ranking": "ranking_verdict",
+        "template.field.none_ranking": "(not scored or not recommended last turn)",
+        "template.field.none_facts_plain": "(none)",
+        "template.field.history": "conversation_history",
+        "template.field.none_history": "(first turn; no history)",
+        "template.instruction_prefix": "Output JSON only: ",
+        "template.tier.a": (
+            "Level A (conservative): state only the user's intent and actionable points, "
+            "define the scope boundary, and end with a must-confirm list (list whatever is "
+            "missing); no line numbers at all, and never invent file paths or selectors that "
+            "were not probed."
+        ),
+        "template.tier.b": (
+            "Level B (standard): give the probed file paths and selectors, and define the "
+            "change boundary (what changes, what does not); label inferences with "
+            '"(inferred)"; include verification (which tests to run, which diff to expect); '
+            "never invent line numbers that were not provided."
+        ),
+        "template.tier.c": (
+            "Level C (aggressive): give full paths, line numbers, component names, and where "
+            "the design tokens are defined; boundary anticipation must cover multi-state, "
+            "responsive, dark mode, and accessibility; end with explicit test instructions "
+            "(including test file paths).\n"
+            "Verifiable anchors (hard requirement): referenced file paths must appear in the "
+            "evidence summary below; referenced line numbers must be real lines in that file. "
+            "If unsure, use wording without line numbers or fall back to level-B granularity — "
+            "never fabricate."
+        ),
+        "template.multi.role": (
+            "You are a prompt engineer. Based on the same context, produce {count} prompt "
+            "variants in a single response; requested levels: {levels}."
+        ),
+        "template.multi.tiers": "Per-level template constraints:{tiers}",
+        "template.multi.tiers_sep": "\n- ",
+        "template.multi.consistency": (
+            "Consistency: all variants share the same factual basis, and the same fact must be "
+            "described identically across variants (no information drift); body length and "
+            "detail must form a clear gradient (A shortest, C longest).\n"
+            "Do not produce more, fewer, or different levels than requested. Output JSON only."
+        ),
+        "template.multi.request_levels": "Requested levels (one variant each, A→B→C): {levels}",
+        "template.multi.claims_rules": (
+            "The variants array length and levels must match the requested levels exactly.\n"
+            "claims rules: every file path, symbol name, line number, and style-token "
+            "reference in the body must be declared one by one, and target must match the body "
+            'text exactly; for kind=line use "path:line". Emit an empty array when there are '
+            "no references; never fabricate."
+        ),
+        "template.field.memory": "project_memory",
     },
 }
 

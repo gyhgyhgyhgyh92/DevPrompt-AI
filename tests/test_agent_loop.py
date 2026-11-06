@@ -123,15 +123,17 @@ class FakeReader:
 
 
 class FakeGenerator:
-    async def generate_single(self, ctx: Any) -> VariantDraft:
+    async def generate_single(self, ctx: Any, locale: str = "zh-CN") -> VariantDraft:
         return VariantDraft(title="t", body="b", changes=["x"], level=ctx.level)
 
-    async def generate_variants(self, ctx: Any, levels: Sequence[Level]) -> MultiVariantDraft:
+    async def generate_variants(
+        self, ctx: Any, levels: Sequence[Level], locale: str = "zh-CN"
+    ) -> MultiVariantDraft:
         return MultiVariantDraft(
             variants=[VariantDraft(title="t", body="b", changes=["x"], level=lv) for lv in levels]
         )
 
-    async def answer(self, ctx: Any) -> str:
+    async def answer(self, ctx: Any, locale: str = "zh-CN") -> str:
         return "默认回答"
 
 
@@ -451,7 +453,9 @@ class ClaimGenerator(FakeGenerator):
         self.covered = covered
         self.total = total
 
-    async def generate_variants(self, ctx: Any, levels: Sequence[Level]) -> MultiVariantDraft:
+    async def generate_variants(
+        self, ctx: Any, levels: Sequence[Level], locale: str = "zh-CN"
+    ) -> MultiVariantDraft:
         claims = [
             Claim(kind="file", target="src/ui/button.tsx" if i < self.covered else f"nope_{i}.tsx")
             for i in range(self.total)
@@ -750,7 +754,7 @@ class ReplyGenerator(FakeGenerator):
         self.text = text
         self.contexts: list[Any] = []
 
-    async def answer(self, ctx: Any) -> str:
+    async def answer(self, ctx: Any, locale: str = "zh-CN") -> str:
         self.contexts.append(ctx)
         return self.text
 
