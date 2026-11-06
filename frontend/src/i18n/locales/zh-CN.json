@@ -42,6 +42,9 @@
     "no_variants": "暂无方案",
     "variant_compare": "方案对比"
   },
+  "validation": {
+    "followup_mode_exclusive": "answers / escape / guardrail_action 三种模式必须且只能启用一种"
+  },
   "trace": {
     "read_file": "读取文件",
     "read_with_detail": "已读取 {{detail}}",

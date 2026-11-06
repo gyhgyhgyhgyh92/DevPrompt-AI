@@ -34,3 +34,28 @@ def test_default_locale_unchanged() -> None:
     assert [p["label"] for p in providers_projection()] == [
         p["label"] for p in providers_projection("zh-CN")
     ]
+
+
+def test_quirks_are_translated_for_english() -> None:
+    """11 段 quirks 说明在英文下有对应文案，且默认语言仍是原文（F-209 限制已解除）。"""
+    zh = {p["id"]: p for p in providers_projection("zh-CN")}
+    en = {p["id"]: p for p in providers_projection("en")}
+
+    assert "x-api-key" in zh["anthropic"]["quirks"]
+    assert "x-api-key" in en["anthropic"]["quirks"]
+    assert zh["anthropic"]["quirks"] != en["anthropic"]["quirks"]
+
+    # 所有带 quirks 的 provider 在英文下都不应残留中文
+    for provider_id, item in en.items():
+        if not item["quirks"]:
+            continue
+        assert not any("\u4e00" <= ch <= "\u9fff" for ch in item["quirks"]), (
+            f"{provider_id} 的英文 quirks 仍含中文：{item['quirks']}"
+        )
+
+
+def test_untouched_quirks_fall_back_to_chinese() -> None:
+    """未登记英文映射的 provider 回落中文原文（不返回空串）。"""
+    for item in providers_projection("en"):
+        if item["quirks"]:
+            assert item["quirks"].strip() != ""

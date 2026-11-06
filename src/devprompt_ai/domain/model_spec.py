@@ -176,7 +176,9 @@ class ProviderSpec:
         return self.label_en or _LABEL_EN.get(self.label, self.label)
 
     def display_quirks(self, locale: Locale = DEFAULT_LOCALE) -> str:
-        return self.quirks_en if locale == "en" and self.quirks_en else self.quirks
+        if locale != "en":
+            return self.quirks
+        return self.quirks_en or _QUIRKS_EN.get(self.key, self.quirks)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -213,6 +215,43 @@ _LABEL_EN: Final[dict[str, str]] = {
     "魔搭 ModelScope": "ModelScope",
     "自定义": "Custom",
     "OpenAI 兼容（通用）": "OpenAI-compatible (generic)",
+}
+
+
+#: provider key → 英文怪癖说明（2026-11-06 双语）。按 key 查而非中文原文，
+#: 避免把长段落当中文键；未登记映射的回落中文原文。
+_QUIRKS_EN: Final[dict[str, str]] = {
+    "anthropic": (
+        "Native Messages uses the x-api-key header; max_tokens is required; "
+        "temperature/top_p are ignored"
+    ),
+    "gemini": (
+        "The OpenAI-compatible layer has concurrency and quota limits; "
+        "long contexts are billed in tiers"
+    ),
+    "deepseek": (
+        "Reasoner models need thinking enabled; V3 models do not support reasoning_effort. "
+        "To use native Messages, create a separate provider entry with base_url "
+        "https://api.deepseek.com/anthropic (do not append /v1/messages manually) and install "
+        "the anthropic dependency; the API ignores budget_tokens/top_k/service_tier"
+    ),
+    "dashscope": (
+        "Use the compatible-mode path; Coding Plan subscriptions have a dedicated base_url"
+    ),
+    "zhipu": "The trailing slash in base_url is required",
+    "volcengine": (
+        "Model ids must include the inference endpoint id (ep-xxx), not the bare model name"
+    ),
+    "qianfan": (
+        "v2 is not compatible with the legacy endpoint; some models require IAM signing "
+        "instead of Bearer"
+    ),
+    "spark": "base_url differs by model version (/v2, /x2)",
+    "minimax": (
+        "Mainland China (minimaxi.com) and overseas (minimax.io) keys and endpoints cannot be mixed"
+    ),
+    "siliconflow": "One key serves many models; model ids look like vendor/model",
+    "modelscope": "Free quota is rate-limited; model ids look like vendor/model",
 }
 
 

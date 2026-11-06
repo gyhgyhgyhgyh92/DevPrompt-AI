@@ -42,6 +42,9 @@
     "no_variants": "No variants yet",
     "variant_compare": "Variant comparison"
   },
+  "validation": {
+    "followup_mode_exclusive": "Exactly one of answers / escape / guardrail_action must be set"
+  },
   "trace": {
     "read_file": "Read file",
     "read_with_detail": "Read {{detail}}",

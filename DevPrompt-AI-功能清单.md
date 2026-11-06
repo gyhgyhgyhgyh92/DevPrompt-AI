@@ -370,10 +370,13 @@ INIT → RETRIEVING → PROBING → [ASKING ↔ CONFIRMING] → GENERATING → R
 文案表在 `common/i18n.py`，缺键返回键名。模板中英对照由 `tests/domain/generate/test_templates_i18n.py`
 钉住（role 双语、body 段切换、边界不串语言、JSON 指令逐字一致）。
 
-**限制（必须随结论一起读）**：①provider 下拉的 16 个中文 `label` 已双语（映射表），但 12 段
-`quirks` 说明仍为中文（`aliases` 是匹配数据、按设计不译）；②Zod 校验 message 仍中文（动态 schema
-未重构）；③英文文案为直译，未经母语者复核；④**英文模板的结构等价已测，但模型产出质量无法离线
-验证**（零额度）。
+**覆盖清单（2026-11-06 补全）**：前端全部界面文案、错误码 26 码、后端进度流/交付门披露/推荐理由/
+A/B/C 与纯回答模板、provider 目录的 16 个 `label` 与 **11 段 `quirks` 说明**（映射表按 provider key）、
+以及 **Zod 校验文案**（`superRefine` 回调内求值，切换语言即时生效；`refine` 的常量 message 无法随
+语言变化，故改写法）。`aliases` 是匹配数据、按设计不译。
+
+**限制（必须随结论一起读）**：①英文文案为直译，未经母语者复核；②**英文模板的结构等价已测，
+但模型产出质量无法离线验证**（零额度）。
 
 **验收**：切换 locale 后已抽取文案即时变更且刷新保持；键集一致性测试通过。
 

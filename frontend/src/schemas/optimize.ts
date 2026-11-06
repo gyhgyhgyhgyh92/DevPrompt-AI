@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { i18n } from '../i18n'
 
 /** POST /optimize 请求体（契约 OptimizeRequest）；session_id 非空 = 同一会话开新一轮。 */
 export const OptimizeRequestSchema = z.object({
@@ -151,9 +152,16 @@ export const FollowupRequestSchema = z
     escape: z.boolean(),
     guardrail_action: z.enum(['continue', 'generate']).nullish(),
   })
-  .refine(
-    (value) =>
-      [value.answers != null, value.escape, value.guardrail_action != null].filter(Boolean)
-        .length === 1,
-    { message: 'answers / escape / guardrail_action 三种模式必须且只能启用一种' },
-  )
+  // superRefine 而非 refine：文案要在**每次校验时**求值（refine 的 message 只能是常量，
+  // 写常量会在模块加载时锁定首次语言，切到英文后仍出中文）。
+  .superRefine((value, ctx) => {
+    const enabled = [value.answers != null, value.escape, value.guardrail_action != null].filter(
+      Boolean,
+    ).length
+    if (enabled !== 1) {
+      ctx.addIssue({
+        code: 'custom',
+        message: i18n.t('validation.followup_mode_exclusive'),
+      })
+    }
+  })
