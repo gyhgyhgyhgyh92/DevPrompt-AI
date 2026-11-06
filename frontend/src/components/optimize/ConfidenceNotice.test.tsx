@@ -28,6 +28,16 @@ describe('ConfidenceNotice 置信度说明', () => {
     expect(screen.getByText('后端未产生推荐视图，请人工选择')).toBeTruthy()
   })
 
+  it('单套跳过打分时说明是正常行为（2026-11-06）', () => {
+    render(<ConfidenceNotice ranking={null} skipReason="single-variant" />)
+    expect(screen.getByText(/只产出 1 套方案/)).toBeTruthy()
+  })
+
+  it('打分失败时提示可重试', () => {
+    render(<ConfidenceNotice ranking={null} skipReason="score-failed" />)
+    expect(screen.getByText(/打分服务本轮不可用/)).toBeTruthy()
+  })
+
   it('已标记推荐时不渲染（由 RecommendBadge 承接）', () => {
     render(<ConfidenceNotice ranking={{ ...ranking, marked: true }} />)
 

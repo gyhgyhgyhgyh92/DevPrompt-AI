@@ -649,6 +649,8 @@ export interface components {
             /** Questions */
             questions?: components["schemas"]["UnknownItemPayload"][];
             ranking?: components["schemas"]["RankingViewPayload"] | null;
+            /** Ranking Skip Reason */
+            ranking_skip_reason?: string | null;
             /**
              * Reply Text
              * @default

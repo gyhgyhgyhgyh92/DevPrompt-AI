@@ -45,6 +45,11 @@
   "validation": {
     "followup_mode_exclusive": "Exactly one of answers / escape / guardrail_action must be set"
   },
+  "ranking": {
+    "skip_single_variant": "Only one variant was produced this turn, so scoring and recommendation were skipped by rule; add a component name or file path and run another turn to get a comparison.",
+    "skip_score_failed": "The scoring service was unavailable this turn; variants are still provided. Retry to get a recommendation and score details.",
+    "skip_unknown": "The backend produced no recommendation view; please choose manually"
+  },
   "trace": {
     "read_file": "Read file",
     "read_with_detail": "Read {{detail}}",

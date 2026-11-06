@@ -45,6 +45,11 @@
   "validation": {
     "followup_mode_exclusive": "answers / escape / guardrail_action 三种模式必须且只能启用一种"
   },
+  "ranking": {
+    "skip_single_variant": "本轮只产出 1 套方案，按规则跳过打分与推荐；补充组件名或文件路径后再来一轮即可获得多套对比。",
+    "skip_score_failed": "打分服务本轮不可用，方案已照常提供；重试即可获得推荐与评分明细。",
+    "skip_unknown": "后端未产生推荐视图，请人工选择"
+  },
   "trace": {
     "read_file": "读取文件",
     "read_with_detail": "已读取 {{detail}}",

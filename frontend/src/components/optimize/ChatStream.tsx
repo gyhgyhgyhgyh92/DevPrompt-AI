@@ -75,6 +75,8 @@ interface ChatStreamProps {
   cleared: readonly string[]
   variants: readonly VariantPayload[]
   ranking: RankingViewPayload | null
+  /** 未产生推荐的原因（2026-11-06）：透传给 ConfidenceNotice 区分「单套跳过」与「打分失败」。 */
+  rankingSkipReason?: string | null
   /** 交付证据门结果（2026-11-05 形态层）：null 表示本轮未过门。 */
   deliveryGate: DeliveryGatePayload | null
   elapsedSeconds: number | null
@@ -104,6 +106,7 @@ export function ChatStream({
   cleared,
   variants,
   ranking,
+  rankingSkipReason = null,
   deliveryGate,
   elapsedSeconds,
   errorMessage,
@@ -242,6 +245,7 @@ export function ChatStream({
         gate={isThinking ? null : deliveryGate}
         variants={isThinking ? [] : variants}
         ranking={isThinking ? null : ranking}
+        rankingSkipReason={isThinking ? null : rankingSkipReason}
         replyText={isThinking ? '' : replyText}
         message={!isThinking && isResult ? message : ''}
         error={errorMessage ?? undefined}

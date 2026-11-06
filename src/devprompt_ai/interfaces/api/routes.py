@@ -102,6 +102,7 @@ def _snapshot_payload(snapshot: FlowSnapshot) -> FlowSnapshotResponse:
             if snapshot.delivery_gate is not None
             else None
         ),
+        ranking_skip_reason=snapshot.ranking_skip_reason,
         status=snapshot.status,
         state=snapshot.state,
         questions=[

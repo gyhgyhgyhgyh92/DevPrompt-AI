@@ -196,6 +196,9 @@ class FlowSnapshotResponse(BaseModel):
     cleared: list[str] = Field(default_factory=list)
     variants: list[VariantPayload] = Field(default_factory=list)
     ranking: RankingViewPayload | None = None
+    #: ranking 为 null 的原因（2026-11-06，additive）：
+    #: single-variant（正常）/ score-failed（可重试）。
+    ranking_skip_reason: str | None = None
     target: SymbolPayload | None = None
     facts: list[FactPayload] = Field(default_factory=list)
     cost: CostDetailPayload | None = None  # F-805 成本明细（additive，无新增契约路径）

@@ -53,6 +53,7 @@ export function OptimizePage() {
     cleared,
     variants,
     ranking,
+    rankingSkipReason,
     isSubmitting,
     thinking,
     isThinking,
@@ -75,6 +76,7 @@ export function OptimizePage() {
       cleared: s.cleared,
       variants: s.variants,
       ranking: s.ranking,
+      rankingSkipReason: s.rankingSkipReason,
       isSubmitting: s.isSubmitting,
       turns: s.turns,
       hasMoreTurns: s.hasMoreTurns,
@@ -394,6 +396,7 @@ export function OptimizePage() {
             {/* 交付时证据已过期：代码被改过，方案引用的行号可能失效（只披露不阻断） */}
             <EvidenceStaleNotice stale={evidenceStale} />
             <ChatStream
+              rankingSkipReason={rankingSkipReason}
               state={state}
               status={status}
               sentence={sentence}

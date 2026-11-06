@@ -299,6 +299,8 @@ class FlowSnapshot:
     reply_text: str = ""
     #: 交付证据门结果（2026-11-05）：只披露质量标记，不阻断交付。
     delivery_gate: DeliveryGateView | None = None
+    #: 未产生推荐视图的原因（2026-11-06）：single-variant（正常）/ score-failed（可重试）。
+    ranking_skip_reason: str | None = None
     """本轮归属（2026-11-04）：前端据此决定该轮进历史列表还是当前对话区。
 
     此前前端用「轮次列表末位」推断当前轮，导致新一轮提交瞬间把上一轮从历史里过滤掉
@@ -2543,6 +2545,11 @@ class ForgeService:
             target=target,
             facts=facts,
             cost=cost,
+            ranking_skip_reason=(
+                str(session.data["ranking_skip_reason"])
+                if isinstance(session.data.get("ranking_skip_reason"), str)
+                else None
+            ),
             current_turn_id=str(turn_id) if turn_id else None,
             agent_step=len(agent_steps) if agent_steps else None,
             agent_action=str(last_step.get("action")) if isinstance(last_step, dict) else None,

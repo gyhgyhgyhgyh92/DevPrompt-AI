@@ -523,6 +523,17 @@
               }
             ]
           },
+          "ranking_skip_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ranking Skip Reason"
+          },
           "reply_text": {
             "default": "",
             "title": "Reply Text",

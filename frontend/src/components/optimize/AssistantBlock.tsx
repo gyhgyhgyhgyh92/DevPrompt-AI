@@ -24,6 +24,8 @@ interface AssistantBlockProps {
   variants?: readonly VariantPayload[]
   /** 历史轮无落库的推荐视图，传 null 时由 ConfidenceNotice 自行省略。 */
   ranking?: RankingViewPayload | null
+  /** 未产生推荐的原因（2026-11-06）：single-variant / score-failed。 */
+  rankingSkipReason?: string | null
   /** 纯回答轮正文。 */
   replyText?: string
   /** 系统提示文案 / 历史轮结论。 */
@@ -54,6 +56,7 @@ export function AssistantBlock({
   gate,
   variants,
   ranking = null,
+  rankingSkipReason = null,
   replyText = '',
   message = '',
   openItems,
@@ -103,7 +106,7 @@ export function AssistantBlock({
           </div>
         ) : null}
 
-        <ConfidenceNotice ranking={ranking} />
+        <ConfidenceNotice ranking={ranking} skipReason={rankingSkipReason} />
         <DeliveryGateCard gate={gate ?? null} />
         {variantList.length > 0 ? <VariantTabs variants={variantList} ranking={ranking} /> : null}
 
