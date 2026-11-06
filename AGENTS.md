@@ -1,6 +1,6 @@
 # DevPrompt AI · Agent 宪法
 
-> 版本 v1.24 · 2026-11-06（多语言全量覆盖：前端界面/错误码/Zod 校验文案 + 后端进度、披露、推荐理由、方案模板、provider label 与 quirks；成本护栏阈值结构推导 50000；BREAKING：响应文案与方案正文随 Accept-Language 变化、护栏默认值 30000→50000，批准人=项目所有者）
+> 版本 v1.25 · 2026-11-06（三个跨层缺陷根治：交付前强制补打分、推荐被撤销时披露说清、否定性结论不再误判未覆盖；新增 ranking_skip_reason 契约字段与 JSX 文案扫描门禁；多语言全量覆盖；护栏阈值 50000 结构推导；BREAKING：多套方案必打分、YELLOW 披露新增撤销条目、ClaimKind 增 absence，批准人=项目所有者）
 > **本文件是 AI 在本项目执行任何任务时必须加载并遵守的最高规则。**
 > 规则冲突时，本文件 > 其他文档 > 一般工程惯例。
 > 详细说明见 `DevPrompt-AI-技术栈文档.md`、`DevPrompt-AI-功能清单.md`、`DevPrompt-AI-项目架构文档.md`。
@@ -765,6 +765,7 @@ GET /api/v1/history/{session_id}/turns?limit=20&offset=0
 | 版本 | 日期 | 内容 | 批准人 |
 |---|---|---|---|
 | v1.4 | 2026-10-15 | 裁定方案甲：MUST-25 第二段排序准确率门禁（≥80%）降为参考指标，W3 出口以「LLM 决策 + ripgrep 精确取证」为准 | 项目所有者 |
+| v1.25 | 2026-11-06 | **三个跨层缺陷根治**：①**交付前置不变量**——`_act_deliver` 入口检查「≥2 套必须有 ranking」，缺失则补算（agentic 调度下 RANK 与 DELIVER 是模型可选的并行动作，此前模型跳过打分会让前端只剩「未产生推荐视图」兜底，违背 MUST-27），补事件 `recommendation.recovered`；②**推荐撤销披露**——`DeliveryInput` 增 `ranking_marked/ranked_level/ranked_gap`，YELLOW 时若打分层本已推荐则追加「原推荐 X 档已撤销（分差 d 达标，但本轮证据不足）」，消除「进度说推荐、门禁说不背书」的自相矛盾；③**`kind=absence`**——否定性结论（「未找到某 token」）此前因对应 fact `passed=False` 一律记未覆盖，越诚实越被扣分；新增该类型 + `negates` 字段，判据反向（取证失败才算覆盖，取证通过反而记错），防编造能力不降；④新增 `ranking_skip_reason`（single-variant / score-failed）让前端区分「正常跳过」与「可重试」；⑤JSX 文本节点文案清零（40 余处）并新增 `jsxScan.test.ts` 门禁——此前的「清零」口径只统计引号内字符串，JSX 文本节点整体漏计 | 项目所有者 |
 | v1.24 | 2026-11-06 | **多语言覆盖收口（两条残留清零）**：①provider 的 **11 段 `quirks` 说明**双语——按 provider key 建英文映射表（不用中文原文作键），`display_quirks` 未登记时回落中文；②**Zod 校验文案**双语——`refine` 的 message 只能是常量（模块加载即锁定语言），改 `superRefine` 在回调内 `i18n.t(...)`，切换语言即时生效；新增用例：英文下 quirks 无中文残留、切换语言后校验文案跟着变。至此 F-209 仅剩两项非代码限制（英文未母语复核、英文模板产出质量无法离线验证） | 项目所有者 |
 | v1.23 | 2026-11-06 | **后端双语补全至方案层**：①推荐理由（`decide_mark` 五条判定）接 locale，消除「披露英文、理由中文」混排；②**A/B/C 三档与纯回答模板双语**——`system_text(locale)` / `build_user(ctx, locale)`，共享的 body 语义段、T-2 边界声明、可验证锚点声明与多套路径的档位约束/一致性/claims 规则全部进语言包，`GeneratePort` 三方法加 locale（默认 zh-CN，旧调用零改动），方案正文从此随会话语言产出；③新增 `tests/domain/generate/test_templates_i18n.py` 钉住结构等价（role 双语、body 段切换、边界不串语言、JSON 指令逐字一致）；④残留：provider label/quirks 中文、Zod message 中文、英文未经母语复核、英文模板产出质量无法离线验证 | 项目所有者 |
 | v1.22 | 2026-11-06 | **前端 i18n 清零 + 后端双语贯通 + 护栏阈值结构化**：①前端剩余 78 处引号内文案全部迁入语言包（组件/设置三面板/api 层错误兜底/App 外壳），仅剩一条 Zod 校验 message 按计划不抽；`NOT_INSTALLED_HINT` 常量改 `notInstalledHint()` 函数（常量会在模块加载时锁定首次语言）；②新增 `common/i18n.py`（`Locale` / `resolve_locale` / `tr` / `MESSAGES`，扁平键、缺键返回键名），进度流 14 个文案函数与 `level_label` 增可选 locale，交付门 RED/YELLOW 披露与五类原因全部双语；③`Accept-Language` 贯通：routes 解析 → `optimize(locale=…)` → `session.data["locale"]`（历史轮沿用），前端普通请求与 SSE 各加一个头，契约零改动；④`FOLLOWUP_COST_BUDGET` 由 30000 改为**结构推导 50000**（10 轮 × 单轮 5k 上界），消除「阈值仅依 3 条样本」的悬空风险 | 项目所有者 |
