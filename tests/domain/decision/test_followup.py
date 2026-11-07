@@ -10,6 +10,7 @@ from devprompt_ai.domain.decision.followup import (
     EXECUTION_REASON,
     MAX_QUESTIONS,
     GuardrailState,
+    answered_headers,
     build_unknowns,
     lint_questions,
 )
@@ -111,8 +112,8 @@ class TestBuildUnknowns:
 
         assert [i.key for i in items] == ["要补测试吗?"]
 
-    def test_answered_header_skips_whole_topic(self) -> None:
-        """同 header 已答即整类跳过（模型改写措辞时的兜底层，2026-11-03）。"""
+    def test_answered_header_skips_same_topic(self) -> None:
+        """同 header + 同一件事（措辞接近）仍跳过：模型改写标点时靠这一层兜住。"""
         probe = _probe(
             [
                 _ask("按钮悬停色要不要一起改?", header="状态覆盖"),
@@ -120,9 +121,28 @@ class TestBuildUnknowns:
             ]
         )
 
-        items = build_unknowns(probe, [], answered_header_set={"状态覆盖"})
+        items = build_unknowns(
+            probe, [], answered_header_asks={"状态覆盖": ["按钮悬停色需要一起改吗"]}
+        )
 
         assert [i.key for i in items] == ["导出放哪?"]
+
+    def test_same_header_new_question_is_kept(self) -> None:
+        """同 header 下的**新**问题不能整类吞掉（2026-11-07 修 shortcut）。"""
+        probe = _probe([_ask("重连次数上限取几次?", header="范围")])
+
+        items = build_unknowns(probe, [], answered_header_asks={"范围": ["允许修改测试文件吗"]})
+
+        assert [i.key for i in items] == ["重连次数上限取几次?"]
+
+    def test_answered_headers_maps_header_to_answered_asks(self) -> None:
+        """header → 已答问题归一文本，供上面两条规则区分「改措辞」与「新问题」。"""
+        headers = answered_headers(
+            {"允许改测试吗": "可以"},
+            [{"ask": "允许改测试吗?", "header": "范围"}, {"ask": "还没答的", "header": "风险"}],
+        )
+
+        assert headers == {"范围": frozenset({"允许改测试吗"})}
 
 
 class TestLintQuestions:

@@ -45,6 +45,7 @@ from devprompt_ai.domain.context import (
     build_context,
     summary_from_turn,
 )
+from devprompt_ai.domain.decision.direction import detect_direction_conflict
 from devprompt_ai.domain.decision.followup import (
     GuardrailState,
     UnknownItem,
@@ -308,18 +309,7 @@ class FlowSnapshot:
     """
 
 
-#: 用户表达方向性分歧的信号词（启发式，不调 LLM）：命中则本轮重新给三套。
-#: shortcut: 只覆盖常见说法，未命中时沿用上一轮选定方向（省 token），需要更准可换 LLM 判定。
-_DIRECTION_CONFLICT_WORDS: tuple[str, ...] = (
-    "推翻",
-    "不要按",
-    "换个方向",
-    "换成另一种",
-    "重新考虑",
-    "走激进",
-    "保守一点",
-    "别用刚才",
-)
+# 方向分歧检测已抽到 domain/decision/direction.py（2026-11-07）：纯函数 + 可测词表。
 
 
 def _gate_view(raw: object) -> DeliveryGateView | None:
@@ -1725,7 +1715,7 @@ class ForgeService:
             probe,
             facts,
             clarifications=session.data.get("clarifications"),
-            answered_header_set=answered_headers(
+            answered_header_asks=answered_headers(
                 session.data.get("clarifications", {}), session.data.get("unknowns", [])
             ),
         )
@@ -2157,8 +2147,7 @@ class ForgeService:
             "facts_complete", False
         ):
             return True  # 事实前提失效：上一轮完备、本轮不完备 → 重新展开
-        sentence = str(session.data.get("sentence", ""))
-        return any(word in sentence for word in _DIRECTION_CONFLICT_WORDS)
+        return detect_direction_conflict(str(session.data.get("sentence", "")))
 
     async def _assemble_context(self, session: FlowSession) -> ContextPayload:
         """装配多轮上下文（纯函数在 domain/context）：历史摘要 + 偏好投影。

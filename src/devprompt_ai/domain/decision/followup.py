@@ -36,22 +36,55 @@ def _normalize_question(text: str) -> str:
     return "".join(ch for ch in text.casefold() if ch.isalnum())
 
 
+def _bigram_overlap(left: str, right: str) -> float:
+    """字符二元组 Jaccard（中文无空格，按字切分比按词切分更稳）。"""
+    if len(left) < 2 or len(right) < 2:
+        return 1.0 if left == right else 0.0
+    left_grams = {left[index : index + 2] for index in range(len(left) - 1)}
+    right_grams = {right[index : index + 2] for index in range(len(right) - 1)}
+    union = left_grams | right_grams
+    return len(left_grams & right_grams) / len(union) if union else 0.0
+
+
+#: 「同一 header 下算同一件事」的措辞相似度下限（2026-11-07）。
+#: 低于它说明是同标签下的**新**问题（模型常用同一 header 追问下一层细节），必须继续问。
+_SAME_TOPIC_SIMILARITY = 0.45
+
+
 def answered_headers(
     clarifications: Mapping[str, str], unknowns: Sequence[Mapping[str, Any]]
-) -> set[str]:
-    """已答题目对应的 header 集合（2026-11-03）。
+) -> dict[str, frozenset[str]]:
+    """已答题目的 header → 已答问题归一文本（2026-11-07 由 set 升级为映射）。
 
-    ``unknowns`` 是上一轮落进 session.data 的未知项（含 header/ask）；其中 ``ask``
-    已在 ``clarifications`` 里的那些，其 header 视为「这件事已经问过了」。
+    只记 header 会误杀「同 header 下的新问题」：上一轮问「允许改测试吗」，这一轮改问
+    「重连上限取几次」时，两者 header 都是「范围」，旧实现会整体跳过。现在带上已答问题
+    原文，由 :func:`build_unknowns` 判断「同一件事改措辞」还是「新问题」。
     """
     answered = {_normalize_question(key) for key in clarifications}
-    headers: set[str] = set()
+    headers: dict[str, set[str]] = {}
     for item in unknowns:
         ask = str(item.get("ask", ""))
         header = str(item.get("header", "")).strip()
-        if header != "" and _normalize_question(ask) in answered:
-            headers.add(header)
-    return headers
+        normalized = _normalize_question(ask)
+        if header != "" and normalized in answered:
+            headers.setdefault(header, set()).add(normalized)
+    return {header: frozenset(asks) for header, asks in headers.items()}
+
+
+def _same_topic_answered(
+    header: str, normalized_question: str, answered: Mapping[str, frozenset[str]]
+) -> bool:
+    """同一 header 下，这问是否就是已答过的那件事（同文本或措辞高度重合）。"""
+    if header == "":
+        return False
+    asks = answered.get(header)
+    if not asks:
+        return False
+    return any(
+        ask == normalized_question
+        or _bigram_overlap(ask, normalized_question) >= _SAME_TOPIC_SIMILARITY
+        for ask in asks
+    )
 
 
 def _is_long_label(label: str) -> bool:
@@ -136,7 +169,7 @@ def build_unknowns(
     facts: Sequence[FactResult],
     *,
     clarifications: dict[str, str] | None = None,
-    answered_header_set: Collection[str] | None = None,
+    answered_header_asks: Mapping[str, Collection[str]] | None = None,
 ) -> list[UnknownItem]:
     """把工具调用解析出的问题转成未知项（2026-10-22 起答案键 = ``question`` 原文）。
 
@@ -144,15 +177,15 @@ def build_unknowns(
 
     - ``questions`` 为空 → 本轮不提问（模型没调工具，或参数畸形已在上层记录）
     - 已答过的 question（**归一化后**比对）直接跳过；重复文本只保留第一次出现
-    - ``answered_header_set`` 里的 header 整体跳过：模型改写措辞时靠这一层兜住，
-      同一件事不会被追问第二次（2026-11-03；值由 :func:`answered_headers` 算出）
+    - ``answered_header_asks``：header → 已答问题归一文本。同 header 且措辞相似
+      （二元组重合 ≥ :data:`_SAME_TOPIC_SIMILARITY`）才跳过——模型常拿同一 header 追问
+      **下一层细节**，只按 header 去重会把新问题一起吞掉（2026-11-07 清理 shortcut）
     - 截断到 :data:`MAX_QUESTIONS` 个；``facts`` 仅保留参数位（工具调用路径不再按事实键匹配）
-
-    shortcut: header 级去重按「短标签相同即视为同一件事」，同标签下的**新**问题也会被
-    跳过；此时退化为保守假设 + 未确认项（规范 §5 的兜底分支），需要精确区分时由模型换 header。
     """
     clar = {_normalize_question(key) for key in (clarifications or {})}
-    answered = {_normalize_question(header) for header in (answered_header_set or ())}
+    answered: dict[str, frozenset[str]] = {
+        header.strip(): frozenset(asks) for header, asks in (answered_header_asks or {}).items()
+    }
     if not probe.questions:
         return []
 
@@ -168,7 +201,7 @@ def build_unknowns(
             or normalized == ""
             or normalized in clar
             or normalized in seen
-            or (header != "" and _normalize_question(header) in answered)
+            or _same_topic_answered(header, normalized, answered)
         ):
             continue
         seen.add(normalized)
