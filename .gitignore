@@ -23,3 +23,4 @@ eval/repos/
 .ruff_cache/
 .codebuddy/
 .tmp/
+.playwright-cli/

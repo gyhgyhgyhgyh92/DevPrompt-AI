@@ -373,11 +373,12 @@ describe('OptimizePage 三栏工作台', () => {
     gate.release()
 
     expect(await screen.findByText('缺目标定位')).toBeTruthy()
-    // 过程不因反问出现而消失：收进摘要行（2026-11-04 整组折叠），点开仍可回看
-    const toggle = document.querySelector('.chat-reply__process-toggle')
-    expect(toggle).not.toBeNull()
-    await user.click(toggle as HTMLElement)
+    // 反问出现后过程仍保持展开（2026-11-07 裁定：结束不自动折叠），折叠按钮可用
     expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
+    const toggle = screen.getByRole('button', { name: /折叠过程/ })
+    await user.click(toggle)
+    expect(document.querySelector('.chat-reply__phases')).toBeNull()
+    expect(screen.getByText(/个动作 ·/)).toBeTruthy()
   })
 })
 

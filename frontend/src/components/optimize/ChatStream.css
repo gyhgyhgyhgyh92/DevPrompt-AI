@@ -26,16 +26,17 @@
   justify-content: flex-end;
 }
 
-/* 用户消息气泡：右对齐浅灰圆角块（图五） */
+/* 用户消息：右对齐、1px 描边 + 浅色底（终端工具：不用大色块，也不加尾巴） */
 .chat-user-bubble {
-  max-inline-size: 70%;
-  padding: var(--space-3) var(--space-4);
+  max-inline-size: 78%;
+  padding: var(--space-2) var(--space-3);
   font-size: var(--text-body-sm);
   line-height: var(--line-height-body);
   color: var(--color-text-primary);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   background: var(--bubble);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md);
 }
 
@@ -64,10 +65,26 @@
   border-radius: var(--radius-sm);
 }
 
+/* 品牌行：色块 + 等宽名称 + 右对齐耗时（不摆头像徽章，减少「聊天应用」观感） */
+.chat-reply__mark {
+  inline-size: 8px;
+  block-size: 8px;
+  background: var(--color-primary-500);
+  border-radius: 2px;
+}
+
 .chat-reply__brand {
-  font: var(--font-body-medium);
-  font-size: var(--text-body-sm);
-  color: var(--color-text-primary);
+  font: var(--font-code-medium);
+  font-size: var(--text-micro);
+  letter-spacing: 0.02em;
+  color: var(--color-text-secondary);
+}
+
+.chat-reply__elapsed {
+  margin-inline-start: auto;
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
 }
 
 /* 多轮全文流（2026-10-20）：每轮完整铺开——用户气泡靠右、助手块靠左。
@@ -258,54 +275,91 @@
   transform: rotate(90deg);
 }
 
-/* 阶段列表简版（展开细节） */
-/* 流程阶段（2026-10-20）：纵向时间轴，中文名 + 这一步在做什么 */
-.chat-reply__phases {
+/* 过程区标题栏：左「执行过程 + 步数」，右折叠控制（2026-11-07） */
+.chat-reply__process-bar {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: var(--space-2) 0 0;
-  padding: 0;
-  font-size: var(--text-caption-sm);
-  list-style: none;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  margin-block-start: var(--space-3);
+  padding-block-end: var(--space-1);
 }
 
-/* 过程整组折叠（2026-11-04，对齐 CodeBuddy v2.81）：结束后只留一行摘要 */
+.chat-reply__process-title {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  font: var(--font-code-medium);
+  font-size: var(--text-micro);
+  letter-spacing: var(--track-wide);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.chat-reply__process-count {
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  letter-spacing: 0;
+  color: var(--text-faint);
+  text-transform: none;
+}
+
+/* 折叠控制：等宽微标签，展开态显示动作名、折叠态直接显示摘要 */
 .chat-reply__process-toggle {
-  display: flex;
+  display: inline-flex;
+  flex-shrink: 0;
   gap: var(--space-2);
   align-items: center;
-  margin-block-start: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--text-caption-sm);
-  color: var(--color-text-secondary);
+  max-inline-size: 100%;
+  padding: 2px var(--space-2);
+  overflow: hidden;
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
   text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
 }
 
 .chat-reply__process-toggle:hover {
   color: var(--color-text-primary);
-  background: var(--color-surface-code);
+  background: var(--hover);
+  border-color: var(--color-border-subtle);
 }
 
 .chat-reply__process-caret {
-  font-size: var(--text-caption-sm);
   color: var(--color-text-muted);
+}
+
+/* 执行账本（2026-11-07）：每阶段一行，行间发丝分隔线，不用进度条语义 */
+.chat-reply__phases {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-block-start: 1px solid var(--divider);
 }
 
 .chat-reply__phase {
   display: block;
-  padding-block-end: var(--space-2);
   color: var(--color-text-muted);
 }
 
 .chat-reply__phase-head {
   display: flex;
   gap: var(--space-2);
-  align-items: baseline;
+  align-items: center;
+  min-block-size: 28px;
+  padding-block: 2px;
+  border-block-end: 1px solid var(--divider);
 }
 
 .chat-reply__phase--done {
@@ -313,50 +367,133 @@
 }
 
 .chat-reply__phase--current {
-  color: var(--color-text-brand);
+  color: var(--color-text-primary);
 }
 
 .chat-reply__phase-mark {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
   inline-size: 12px;
-  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.chat-reply__phase-mark--done {
+  color: var(--color-text-muted);
+}
+
+.chat-reply__phase-mark--running {
+  color: var(--color-running-500);
+  animation: phase-breathe 1.6s ease-in-out infinite;
 }
 
 .chat-reply__phase-label {
-  min-inline-size: 68px;
-  font-weight: 500;
+  flex-shrink: 0;
+  min-inline-size: 76px;
+  font: var(--font-code-medium);
+  font-size: var(--text-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
 }
 
 .chat-reply__phase-hint {
   flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  font-size: var(--text-body-xs);
   color: var(--color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+.chat-reply__phase--current .chat-reply__phase-hint {
+  color: var(--color-text-secondary);
+}
+
+.chat-reply__phase-meta {
+  flex-shrink: 0;
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  color: var(--text-faint);
+}
+
+/* 「进行中」是绿色唯一允许出现的过程状态（成功/进行中语义） */
 .chat-reply__phase-tag {
+  flex-shrink: 0;
   padding: 0 var(--space-2);
-  font-size: var(--text-caption-sm);
-  color: var(--color-text-brand);
-  background: var(--color-primary-soft);
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  color: var(--color-running-500);
+  background: var(--color-running-soft);
   border-radius: var(--radius-full);
 }
 
-/* 每个步骤下方的过程（2026-10-20）：文字段 + 工具卡片 */
+@keyframes phase-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-reply__phase-mark--running {
+    animation: none;
+  }
+}
+
+/* 每个阶段下方的过程：文字段 + 工具卡，左侧 1px 竖轨串起整段 */
 .chat-reply__phase-log {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin: var(--space-1) 0 0;
-  padding-inline-start: 20px;
+  margin: 0;
+  padding: var(--space-2) 0 var(--space-2) var(--space-3);
   list-style: none;
-  border-inline-start: 2px solid var(--color-border-subtle);
+  border-block-end: 1px solid var(--divider);
+  border-inline-start: 1px solid var(--divider);
 }
 
 .chat-reply__phase-text {
   margin: 0;
-  font-size: var(--text-caption-sm);
+  font-size: var(--text-body-sm);
   line-height: 1.7;
   color: var(--color-text-secondary);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+/* 打字光标：6px 方块，1s 步进闪烁（不做平滑过渡，终端感） */
+.chat-reply__caret {
+  display: inline-block;
+  inline-size: 6px;
+  block-size: 13px;
+  margin-inline-start: 2px;
+  vertical-align: -2px;
+  background: var(--color-text-secondary);
+  animation: caret-blink 1s steps(1, end) infinite;
+}
+
+@keyframes caret-blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-reply__caret {
+    animation: none;
+  }
 }
 
 .chat-reply__phase-card {
@@ -537,12 +674,12 @@
   color: var(--color-text-muted);
 }
 
-/* 思考过程条目（2026-10-22，对齐参考截图）：灰底思考块 + 动作行 + 可展开代码块 */
+/* 工具动作（2026-11-07 两形态）：
+ * 读取 = 瘦胶囊行；命令 = 终端块（命令常显 + 退出码胶囊 + 可展开输出）。 */
 .trace-thought {
   margin: 0 0 var(--space-2);
   padding: var(--space-2) var(--space-3);
   font-size: var(--text-body-sm);
-  font-weight: 500;
   line-height: 1.7;
   color: var(--color-text-secondary);
   background: var(--color-surface-code);
@@ -553,9 +690,13 @@
   margin-block-end: var(--space-2);
 }
 
+.trace-step:last-child {
+  margin-block-end: 0;
+}
+
 .trace-step__head {
   display: flex;
-  gap: var(--space-2);
+  gap: var(--space-1);
   align-items: center;
 }
 
@@ -564,8 +705,9 @@
   flex: 1;
   gap: var(--space-2);
   align-items: center;
+  min-inline-size: 0;
   padding: 2px var(--space-2);
-  font-size: var(--text-caption-sm);
+  font-size: var(--text-body-xs);
   color: var(--color-text-secondary);
   text-align: start;
   cursor: pointer;
@@ -574,25 +716,46 @@
   border-radius: var(--radius-sm);
 }
 
-.trace-step__toggle:hover:not(:disabled) {
-  background: var(--color-border-subtle);
-}
-
-.trace-step__toggle:disabled {
-  cursor: default;
+.trace-step__toggle:hover {
+  background: var(--hover);
 }
 
 .trace-step__icon {
   display: inline-flex;
+  flex-shrink: 0;
   color: var(--color-text-muted);
 }
 
+/* 胶囊行里的路径是主信息：等宽、可截断，不换行 */
+.trace-step__label {
+  min-inline-size: 0;
+  overflow: hidden;
+  font-family: var(--font-family-code);
+  font-size: var(--text-caption-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .trace-step__scope {
+  flex-shrink: 0;
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  color: var(--text-faint);
+}
+
+/* 耗时：右对齐等宽，弱色（可核对但不抢视线） */
+.trace-step__duration {
+  flex-shrink: 0;
+  margin-inline-start: auto;
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
   color: var(--color-text-muted);
 }
 
 .trace-step__caret {
-  transition: transform 0.16s ease-out;
+  flex-shrink: 0;
+  color: var(--text-faint);
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 
 .trace-step__toggle[aria-expanded='true'] .trace-step__caret {
@@ -601,20 +764,73 @@
 
 .trace-step__copy {
   display: inline-flex;
+  flex-shrink: 0;
   padding: 2px;
-  color: var(--color-text-muted);
+  color: var(--text-faint);
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .trace-step__copy:hover {
   color: var(--color-text-secondary);
 }
 
+/* 命令正文行：$ 命令 ─────────── exit 0 */
+.trace-step--cmd .trace-step__head {
+  padding-block-end: 2px;
+}
+
+.trace-step__cmd {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  min-inline-size: 0;
+  padding: var(--space-1) var(--space-2);
+  overflow: hidden;
+  font-family: var(--font-family-code);
+  background: var(--color-surface-code);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.trace-step__cmd-prompt {
+  flex-shrink: 0;
+  font-size: var(--text-micro);
+  color: var(--color-primary-500);
+}
+
+.trace-step__cmd-text {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  color: var(--color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+}
+
+.trace-step__exit {
+  flex-shrink: 0;
+  padding: 0 var(--space-2);
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
+}
+
+.trace-step__exit--failed {
+  color: var(--color-danger-500);
+  border-color: var(--color-danger-500);
+}
+
 .trace-step__body {
-  margin-block-start: var(--space-2);
+  margin-block-start: var(--space-1);
   padding: var(--space-2);
   background: var(--color-surface-code);
   border: 1px solid var(--color-border-subtle);
@@ -626,7 +842,7 @@
   margin: 0;
   overflow: auto;
   font: var(--font-code-regular);
-  font-size: var(--text-caption-sm);
+  font-size: var(--text-micro);
   line-height: 1.6;
   color: var(--color-text-secondary);
   white-space: pre-wrap;
@@ -634,19 +850,18 @@
 }
 
 .trace-step__code--output {
-  margin-block-start: var(--space-2);
-  padding-block-start: var(--space-2);
-  border-block-start: 1px solid var(--color-border-subtle);
+  padding-block-start: var(--space-1);
   color: var(--color-text-muted);
 }
 
-/* 失败态（2026-11-04）：标题带 Exit code 并用错误色，折叠时也能看出失败（对齐 CodeBuddy） */
+/* 失败态（2026-11-04）：标题与退出码转错误色，折叠时也能看出失败 */
 .trace-step--failed .trace-step__toggle,
+.trace-step--failed .trace-step__icon,
 .trace-step--failed .trace-step__scope {
   color: var(--color-danger-500);
 }
 
-.trace-step--failed .trace-step__body {
+.trace-step--failed .trace-step__cmd {
   border-color: var(--color-danger-500);
 }
 
@@ -675,22 +890,23 @@
   }
 }
 
-/* 纯回答气泡（2026-11-05）：只承载文字，与方案卡片明确区分 */
+/* 纯回答块（2026-11-05）：左侧 2px 竖线 + 极浅底，与方案卡片区分开 */
 .chat-reply__answer {
-  margin: 12px 0;
-  padding: 12px 14px;
-  border-left: 3px solid var(--accent, #0ea5e9);
-  background: rgba(14, 165, 233, 0.06);
-  border-radius: 6px;
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  background: var(--color-primary-soft);
+  border-inline-start: 2px solid var(--color-primary-500);
+  border-radius: var(--radius-sm);
 }
 
 .chat-reply__answer-label {
   display: inline-block;
-  margin-bottom: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  opacity: 0.7;
+  margin-block-end: var(--space-1);
+  font: var(--font-code-medium);
+  font-size: var(--text-micro);
+  letter-spacing: var(--track-wide);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
 }
 
 .chat-reply__answer-text {

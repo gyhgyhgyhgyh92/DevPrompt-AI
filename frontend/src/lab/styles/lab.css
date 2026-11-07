@@ -1,0 +1,164 @@
+/*
+ * Style Lab 的 Tailwind 入口（仅被 src/lab/** 引用，生产构建不包含）。
+ *
+ * 为什么不 `@import 'tailwindcss'`：v4 的完整入口带 preflight，会全局重置既有 100+ 组件的
+ * 排版（h1 字号、list 样式、input 继承等），而本仓库的样式全部基于自研 reset + tokens.css。
+ * 这里只取 theme 与 utilities 两层，reset 仍由 global.css 负责。
+ *
+ * 颜色纪律：组件内不出现字面色值，只用 utility（bg-surface / text-ink-2 / border-line …），
+ * utility 的取值全部指向 tokens.css 的变量；三套风格的差异只在 lab-tokens.css 里覆盖同名变量。
+ */
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+@import './lab-tokens.css';
+@import './lab-motion.css';
+
+/* 主题信号沿用 data-theme（与 tokens.css、App 的 applyAppearanceTheme 一致），
+ * `& *` 让嵌套的明暗并排预览也能正确取到 dark: 变体。 */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/*
+ * `@theme inline`：utility 里直接内联 var(...)，因此样式变量仍是唯一色值来源，
+ * lab-tokens.css 覆盖变量即可换肤，不需要重新生成 utility。
+ */
+@theme inline {
+  /* 表面层级：canvas（页面底）→ surface（卡片）→ panel（浮层）→ code（代码/内嵌） */
+  --color-canvas: var(--color-surface-base);
+  --color-surface: var(--color-surface-raised);
+  --color-panel: var(--color-surface-overlay);
+  --color-code: var(--color-surface-code);
+
+  /* 描边：line（细）/ line-strong（分隔强调）/ divider（横线） */
+  --color-line: var(--color-border-subtle);
+  --color-line-strong: var(--color-border-strong);
+  --color-divider: var(--divider);
+
+  /* 文本四档 + 反色 */
+  --color-ink: var(--color-text-primary);
+  --color-ink-2: var(--color-text-secondary);
+  --color-ink-3: var(--color-text-muted);
+  --color-ink-4: var(--text-faint);
+  --color-ink-inverse: var(--color-text-inverse);
+
+  /* 强调与语义 */
+  --color-accent: var(--color-primary-500);
+  --color-accent-strong: var(--color-primary-700);
+  --color-accent-soft: var(--color-primary-soft);
+  --color-ok: var(--color-success-500);
+  --color-warn: var(--color-warning-500);
+  --color-danger: var(--color-danger-500);
+  --color-danger-soft: var(--color-danger-soft);
+
+  /* 交互底色 */
+  --color-bubble: var(--bubble);
+  --color-hover: var(--hover);
+  --color-selected: var(--selected);
+
+  /* 字体与字号阶梯（lab 专属，不覆盖 tokens.css 的 --text-body-*） */
+  --font-sans: var(--font-family-body);
+  --font-mono: var(--font-family-code);
+  --text-micro: 11px;
+  --text-meta: 12px;
+  --text-body: 13px;
+  --text-lead: 14px;
+  --text-title: 16px;
+  --text-display: 28px;
+
+  /* 圆角与阴影 */
+  --radius-chip: 6px;
+  --radius-card: 10px;
+  --radius-panel: 14px;
+  --radius-round: 999px;
+  --shadow-card: var(--shadow-md);
+  --shadow-float: var(--shadow-lg);
+}
+
+/* 样张页独占视口：`:has(.lab-root)` 在 lab 挂载后隐藏工作台壳层（标题栏 / 侧边栏）。
+ * 放在 lab.css 而不是 global.css：生产产物里没有只为 lab 存在的规则，App.tsx 也不需要知道 lab 的存在。 */
+body:has(.lab-root) .app-titlebar,
+body:has(.lab-root) .app-drawer,
+body:has(.lab-root) .app-drawer__overlay {
+  display: none;
+}
+
+/* 壳层原本「固定视口 + 内部滚动」，样张页要整页滚动：解除高度锁与 overflow 收口 */
+body:has(.lab-root) .app-shell {
+  block-size: auto;
+  min-block-size: 100dvh;
+  overflow: visible;
+}
+
+body:has(.lab-root) .app-body {
+  block-size: auto;
+  min-block-size: 0;
+}
+
+body:has(.lab-root) .app-main {
+  overflow: visible;
+}
+
+body:has(.lab-root) {
+  overflow-y: auto;
+}
+
+/* 正文字距/行高随风格变化：S1 紧凑可审计、S3 宽松好读（优先级高于 utility，故在 base 外声明） */
+.lab-surface p {
+  line-height: var(--lab-prose-leading, 1.6);
+}
+
+/* 点阵纸纹理（S1 专用；其余风格 --lab-grid-image: none 即为空） */
+.lab-grid {
+  background-image: var(--lab-grid-image);
+  background-size: var(--lab-grid-size, 16px 16px);
+}
+
+/* 风格级版式差异（用语义类而不是在 TSX 里分支，组件只描述内容结构） */
+.lab-surface[data-lab-style='blueprint'] .lab-bubble {
+  background: transparent;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+}
+
+/* S3：用户消息改成引用式排版，弱化「聊天气泡」感 */
+.lab-surface[data-lab-style='soft'] .lab-bubble {
+  padding-inline-start: var(--space-3);
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  border-inline-start: 2px solid var(--color-border-strong);
+  border-radius: 0;
+}
+
+/* S1 / S2：阶段名与表头用等宽大写微型标签，而不是正文体 */
+.lab-surface[data-lab-style='blueprint'] .lab-phase-label,
+.lab-surface[data-lab-style='terminal'] .lab-phase-label {
+  font-family: var(--font-family-code);
+  font-size: var(--text-caption-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* 跳过 preflight 后需要自己补的两条：lab 内部按钮不吃浏览器默认外观，代码块等宽。 */
+@layer base {
+  .lab-surface {
+    font-family: var(--font-family-body);
+    color: var(--color-text-primary);
+    background: var(--color-surface-base);
+  }
+
+  .lab-surface button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    background: none;
+    border: none;
+  }
+
+  .lab-surface :focus-visible {
+    outline: 2px solid var(--color-primary-500);
+    outline-offset: 2px;
+  }
+}

@@ -96,10 +96,12 @@
   background: var(--color-surface-base);
 }
 
+/* 选中态用左侧 2px 靛蓝竖线 + 极浅底（与侧边栏同一套语言，不用整块填色） */
 .settings-nav__item--active {
-  color: var(--color-text-brand);
-  background: var(--color-primary-soft);
-  border-color: var(--color-primary-500);
+  color: var(--color-text-primary);
+  background: var(--selected);
+  border-color: transparent;
+  box-shadow: inset 2px 0 0 var(--color-primary-500);
 }
 
 .settings-content {

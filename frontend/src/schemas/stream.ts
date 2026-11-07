@@ -13,6 +13,8 @@ export const ActionPayloadSchema = z.object({
   output: z.string().default(''),
   /** 动作结果；旧后端帧无此字段时按成功处理（2026-11-04）。 */
   status: z.enum(['ok', 'failed']).default('ok'),
+  /** 动作真实耗时（毫秒）；旧后端缺省时前端不展示耗时（2026-11-07）。 */
+  duration_ms: z.number().int().nullish(),
 })
 
 export const StreamEventSchema = z.discriminatedUnion('type', [
@@ -57,5 +59,7 @@ export type ThinkingItem =
       output: string
       /** 动作结果：failed = 命令非零退出，卡片按错误色渲染（2026-11-04；旧数据缺省按成功）。 */
       status?: 'ok' | 'failed'
+      /** 动作耗时（毫秒）；undefined 表示后端未测或旧数据，此时不展示耗时。 */
+      durationMs?: number
       phase: string
     }

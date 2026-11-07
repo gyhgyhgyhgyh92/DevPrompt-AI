@@ -113,12 +113,30 @@ export function OptimizePage() {
       node.scrollHeight - node.scrollTop - node.clientHeight < THREAD_BOTTOM_GAP
   }
 
-  // 内容增量（思考帧、轮次、每轮状态、方案）：仅在贴底时跟随
+  // 内容增量（思考帧、轮次、每轮状态、方案）：仅在贴底时跟随。
+  // 打字机每秒推进数十帧，这里把多次 store 变更合并到同一帧，避免逐字抖动与重复写 scrollTop。
+  const scrollFrameRef = useRef<number | null>(null)
   useEffect(() => {
-    const node = threadRef.current
-    if (node === null || !isStickToBottomRef.current) return
-    node.scrollTop = node.scrollHeight
+    const flush = (): void => {
+      scrollFrameRef.current = null
+      const node = threadRef.current
+      if (node === null || !isStickToBottomRef.current) return
+      node.scrollTop = node.scrollHeight
+    }
+    if (typeof requestAnimationFrame !== 'function') {
+      flush()
+      return
+    }
+    // 已有排队帧则不再重复排队（一帧一次足够）
+    scrollFrameRef.current ??= requestAnimationFrame(flush)
   }, [thinking, turns, status, message, questions, variants, isThinking])
+
+  useEffect(
+    () => () => {
+      if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current)
+    },
+    [],
+  )
 
   // 进入或切换会话：重置贴底并直接落到底（换会话不该停在上一段的滚动位置）
   useEffect(() => {
@@ -364,6 +382,7 @@ export function OptimizePage() {
             isSubmitting={isSubmitting || isBusy}
             initialSentence={sentence}
             initialProject={project}
+            isHero
             onSubmit={(nextSentence, nextProject) => {
               void handleOptimizeSubmit(nextSentence, nextProject)
             }}

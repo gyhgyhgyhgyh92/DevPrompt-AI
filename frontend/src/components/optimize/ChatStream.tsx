@@ -10,7 +10,7 @@ import type {
 import type { ThinkingItem } from '../../schemas/stream'
 import { AskFlow } from './AskFlow'
 import { AssistantBlock } from './AssistantBlock'
-import { TraceEntry } from './TraceEntry'
+import { PhaseLedger, type PhaseRow } from './PhaseLedger'
 import './ChatStream.css'
 
 /** 思考静默多久后提示「正在规划下一步」。 */
@@ -39,22 +39,6 @@ const PHASE_META: Record<(typeof PHASES)[number], { labelKey: string; hintKey: s
   RANKING: { labelKey: 'chat.phase.RANKING.label', hintKey: 'chat.phase.RANKING.hint' },
   DONE: { labelKey: 'chat.phase.DONE.label', hintKey: 'chat.phase.DONE.hint' },
   ABORTED: { labelKey: 'chat.phase.ABORTED.label', hintKey: 'chat.phase.ABORTED.hint' },
-}
-
-interface PhaseLogProps {
-  items: readonly ThinkingItem[]
-}
-
-/** 某一阶段下方的过程：文字段落 + 真实工具卡片（2026-10-20）。 */
-function PhaseLog({ items }: PhaseLogProps) {
-  if (items.length === 0) return null
-  return (
-    <div className="chat-reply__phase-log">
-      {items.map((item) => (
-        <TraceEntry key={item.id} item={item} />
-      ))}
-    </div>
-  )
 }
 
 interface ChatStreamProps {
@@ -88,11 +72,11 @@ interface ChatStreamProps {
 }
 
 /**
- * 正式界面对话流（2026-10-20 v2）：
- * 用户气泡 → 回复块（品牌行 + 步骤时间轴（每步下方挂过程）+ 分隔线 + 正文）。
+ * 正式界面对话流（2026-11-07 终端工具版）：
+ * 用户气泡 → 助手块（品牌行 + 执行账本 + 分隔线 + 正文）。
  *
- * 按用户要求移除了目标定位、取证事实、采纳/跳过操作栏与底部图标行——只留可直接发给
- * Agent 的提示词正文。纯展示组件：不做评分/阈值/推荐判定（MUST-08）。
+ * 过程区默认展开（含结束后），由用户手动折叠成一行摘要；正文区只留可直接
+ * 发给 Agent 的提示词。纯展示组件：不做评分/阈值/推荐判定（MUST-08）。
  */
 export function ChatStream({
   state,
@@ -128,6 +112,7 @@ export function ChatStream({
     const timer = window.setTimeout(() => setIdle(true), IDLE_HINT_MS)
     return () => window.clearTimeout(timer)
   }, [isThinking, thinking.length])
+
   // 阶段按**实际走过的路径**渲染（2026-11-04）：没问过就不出现「等待确认 / 整理答复」，
   // 单套方案按 MUST-28 跳过打分故不出现「评估推荐」，中止行只在真中止时出现。
   const hadAsk = questions.length > 0 || cleared.length > 0
@@ -139,18 +124,58 @@ export function ChatStream({
     return true
   })
   const currentIndex = visiblePhases.findIndex((phase) => phase === state)
-  // 过程整组折叠（2026-11-04，对齐 CodeBuddy v2.81）：结束/等待答复后收成一行摘要，
-  // 点击展开回看；进行中永远展开。status 每次变化若可折叠则复位为收起。
-  const canCollapse = thinking.length > 0 && !isThinking && (status === 'done' || status === 'ask')
-  const [isProcessOpen, setProcessOpen] = useState(false)
-  useEffect(() => {
-    if (canCollapse) setProcessOpen(false)
-  }, [canCollapse])
-  const showProcess = !canCollapse || isProcessOpen
+
+  // 过程区默认展开；结束后也保持展开，由用户点「折叠过程」收成一行（2026-11-07 用户裁定）。
+  const hasProcess = thinking.length > 0
+  const [isProcessOpen, setProcessOpen] = useState(true)
+
   const actionCount = thinking.filter((item) => item.kind === 'action').length
   const stepCount = PHASES.filter((phase) =>
     thinking.some((item) => (item.phase === '' ? state : item.phase) === phase),
   ).length
+  // 打字机只作用于「正在写的那一条」：最后一条文字且仍在流式中
+  const lastTextId = [...thinking].reverse().find((item) => item.kind === 'text')?.id ?? null
+  const animatingId = isThinking && lastTextId !== null ? lastTextId : null
+
+  const rows: PhaseRow[] = visiblePhases.map((phase, index) => {
+    const isDone = index < currentIndex
+    const isCurrent = phase === state
+    const meta = PHASE_META[phase]
+    // 没有缺口时，研判这一步给出「无需补充」的结论文案，而不是暗示存在缺口
+    const hint = phase === 'PROBING' && !hadAsk ? t('chat.probe_complete') : t(meta.hintKey)
+    // 无阶段标签的旧数据归到当前阶段，避免过程凭空消失
+    const logs = thinking.filter((item) => (item.phase === '' ? state : item.phase) === phase)
+    const phaseActions = logs.filter((item) => item.kind === 'action').length
+    return {
+      phase,
+      label: t(meta.labelKey),
+      hint,
+      meta: phaseActions > 0 ? t('chat.action_count', { count: phaseActions }) : '',
+      tag: isCurrent
+        ? phase === 'DONE'
+          ? t('chat.tag_done')
+          : phase === 'ABORTED'
+            ? t('chat.tag_aborted')
+            : t('chat.tag_running')
+        : null,
+      isCurrent,
+      isDone,
+      logs,
+    }
+  })
+
+  // 恢复的旧会话没有 elapsed（不伪造耗时），此时摘要省略秒数段
+  const summary =
+    elapsedSeconds !== null
+      ? t('chat.process_summary', {
+          phase: t(`chat.phase.${state}.label`),
+          actions: actionCount,
+          seconds: `${elapsedSeconds}s`,
+        })
+      : t('chat.process_summary_short', {
+          phase: t(`chat.phase.${state}.label`),
+          actions: actionCount,
+        })
 
   return (
     <div className="chat-stream">
@@ -169,76 +194,32 @@ export function ChatStream({
             </span>
           ) : null
         }
-        processToggle={
-          canCollapse ? (
-            <button
-              type="button"
-              className="chat-reply__process-toggle"
-              aria-expanded={isProcessOpen}
-              onClick={() => setProcessOpen((open) => !open)}
-            >
-              <span className="chat-reply__process-caret" aria-hidden="true">
-                {isProcessOpen ? '▾' : '▸'}
+        processControls={
+          hasProcess ? (
+            <div className="chat-reply__process-bar">
+              <span className="chat-reply__process-title">
+                {t('chat.phases')}
+                {!isProcessOpen && actionCount > 0 ? (
+                  <span className="chat-reply__process-count">
+                    {t('chat.step_count', { steps: stepCount })}
+                  </span>
+                ) : null}
               </span>
-              <span>
-                {t('chat.thinking_meta', {
-                  seconds: elapsedSeconds !== null ? `${elapsedSeconds}s` : t('chat.done'),
-                  actions: actionCount,
-                  steps: stepCount,
-                })}
-              </span>
-            </button>
+              <button
+                type="button"
+                className="chat-reply__process-toggle"
+                aria-expanded={isProcessOpen}
+                onClick={() => setProcessOpen((open) => !open)}
+              >
+                <span>{isProcessOpen ? t('chat.process_fold') : summary}</span>
+                <span className="chat-reply__process-caret" aria-hidden="true">
+                  {isProcessOpen ? '▾' : '▸'}
+                </span>
+              </button>
+            </div>
           ) : null
         }
-        timeline={
-          showProcess ? (
-            <ol className="chat-reply__phases" aria-label={t('chat.phases')}>
-              {visiblePhases.map((phase, index) => {
-                const isDone = index < currentIndex
-                const isCurrent = phase === state
-                const metaItem = PHASE_META[phase]
-                // 没有缺口时，研判这一步给出「无需补充」的结论文案，而不是暗示存在缺口
-                const hint =
-                  phase === 'PROBING' && !hadAsk ? t('chat.probe_complete') : t(metaItem.hintKey)
-                // 无阶段标签的旧数据归到当前阶段，避免过程凭空消失
-                const logs = thinking.filter(
-                  (item) => (item.phase === '' ? state : item.phase) === phase,
-                )
-                return (
-                  <li
-                    key={phase}
-                    className={
-                      isCurrent
-                        ? 'chat-reply__phase chat-reply__phase--current'
-                        : isDone
-                          ? 'chat-reply__phase chat-reply__phase--done'
-                          : 'chat-reply__phase'
-                    }
-                    aria-current={isCurrent ? 'step' : undefined}
-                  >
-                    <div className="chat-reply__phase-head">
-                      <span className="chat-reply__phase-mark" aria-hidden="true">
-                        {isDone ? '✓' : isCurrent ? '●' : '○'}
-                      </span>
-                      <span className="chat-reply__phase-label">{t(metaItem.labelKey)}</span>
-                      <span className="chat-reply__phase-hint">{hint}</span>
-                      {isCurrent ? (
-                        <span className="chat-reply__phase-tag">
-                          {phase === 'DONE'
-                            ? t('chat.tag_done')
-                            : phase === 'ABORTED'
-                              ? t('chat.tag_aborted')
-                              : t('chat.tag_running')}
-                        </span>
-                      ) : null}
-                    </div>
-                    <PhaseLog items={logs} />
-                  </li>
-                )
-              })}
-            </ol>
-          ) : null
-        }
+        timeline={isProcessOpen ? <PhaseLedger rows={rows} animatingId={animatingId} /> : null}
         planning={
           isThinking && isIdle ? <p className="chat-reply__planning">{t('chat.planning')}</p> : null
         }

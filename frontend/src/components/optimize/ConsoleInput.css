@@ -2,8 +2,74 @@
 
 .console-input {
   display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  align-items: center;
   justify-content: center;
   inline-size: 100%;
+}
+
+/* 启动页主视觉：品牌行 → 主张 → 副标题 → 能力标签（结果页 composer 不渲染这层） */
+.console-input__hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: center;
+  text-align: center;
+}
+
+.console-input__brand {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  font: var(--font-code-medium);
+  font-size: var(--text-micro);
+  letter-spacing: 0.02em;
+  color: var(--color-text-muted);
+}
+
+.console-input__brand-swatch {
+  inline-size: 8px;
+  block-size: 8px;
+  background: var(--color-primary-500);
+  border-radius: 2px;
+}
+
+.console-input__claim {
+  /* 22px 下 760px 约可容纳整句（中文断言不按词断行，过窄会出现「直/接」跨行） */
+  max-inline-size: 760px;
+  margin: 0;
+  font-size: var(--text-display);
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--color-text-primary);
+  text-wrap: balance;
+}
+
+.console-input__sub {
+  max-inline-size: 46ch;
+  font-size: var(--text-body-sm);
+  line-height: var(--line-height-body);
+  color: var(--color-text-secondary);
+}
+
+.console-input__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: center;
+}
+
+/* 能力标签：等宽微型胶囊，只作信息标注，不用强调色 */
+.console-input__chip {
+  padding: 2px var(--space-2);
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  letter-spacing: var(--track-micro);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
 }
 
 .console-input__card {
@@ -12,10 +78,31 @@
   inline-size: min(720px, calc(100% - 48px));
   max-inline-size: 720px;
   padding: var(--space-4);
-  background: var(--color-surface-base);
+  background: var(--color-surface-raised);
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-lg);
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+/* 聚焦时整卡描边转靛蓝 + 极淡光环（比只亮 textarea 更明确「正在输入」） */
+.console-input__card:focus-within {
+  border-color: var(--color-primary-500);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+/* 结果页 composer 更矮：单行起高，去掉分隔线与多余留白（启动页才需要那层仪式感） */
+.console-input:not(.console-input--hero) .console-input__card {
+  padding: var(--space-2) var(--space-3);
+}
+
+.console-input:not(.console-input--hero) .console-input__divider {
+  display: none;
+}
+
+.console-input:not(.console-input--hero) .console-input__folder {
+  margin-block-start: var(--space-1);
 }
 
 .console-input__text {
@@ -200,22 +287,25 @@
   border-radius: var(--radius-full);
 }
 
+/* 发送键：靛蓝实心方块（全站唯一的高饱和填充，位置固定 = 最强的动作暗示） */
 .console-input__send {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   inline-size: var(--space-8);
   block-size: var(--space-8);
   font-size: var(--text-title-md);
-  color: var(--brand);
+  color: var(--color-text-inverse);
   cursor: pointer;
-  background: var(--brand-btn);
+  background: var(--color-primary-500);
   border: none;
   border-radius: var(--radius-sm);
+  transition: background var(--dur-fast) var(--ease-out);
 }
 
 .console-input__send:hover:not(:disabled) {
-  background: var(--brand-btn-hover);
+  background: var(--color-primary-700);
 }
 
 .console-input__send:disabled {

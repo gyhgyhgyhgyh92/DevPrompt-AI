@@ -30,11 +30,14 @@ beforeEach(() => {
   useOptimizeStore.getState().reset()
   useHistoryStore.getState().reset()
   useSettingsStore.setState({ settings: null })
+  // 外观是持久化项：每个用例回到默认值，避免上一用例的 theme 泄漏到挂载 effect
+  useSettingsStore.getState().resetAppearance()
 })
 
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  delete document.documentElement.dataset.theme
 })
 
 describe('App 标题栏 API pill', () => {
@@ -183,6 +186,38 @@ const settingsFixture: SettingsResponse = {
   process: { followup_cost_budget: 2, followup_soft_round_guard: 12, telemetry: true },
   locked: { candidate_limit: 25 },
 }
+
+describe('App 主题应用（2026-11-06）', () => {
+  const appearance = {
+    locale: 'zh-CN',
+    codeFont: 'JetBrains Mono',
+    restoreSessionOnLaunch: true,
+    desktopNotification: false,
+  } as const
+
+  it('刷新后按偏好应用暗色（此前只写 index.html 的 light，暗色用户永远看到浅色）', () => {
+    stubFetch()
+    useSettingsStore.getState().setAppearance({ ...appearance, theme: 'dark' })
+
+    render(<App />)
+
+    expect(document.documentElement.dataset.theme).toBe('dark')
+  })
+
+  it('system 偏好跟随系统深色设置', () => {
+    stubFetch()
+    vi.stubGlobal('matchMedia', () => ({
+      matches: true,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }))
+    useSettingsStore.getState().setAppearance({ ...appearance, theme: 'system' })
+
+    render(<App />)
+
+    expect(document.documentElement.dataset.theme).toBe('dark')
+  })
+})
 
 describe('App 设置预加载（2026-11-03）', () => {
   it('挂载即加载设置：启动页模型按钮显示当前生效模型，不再是「未配置模型」', async () => {

@@ -22,13 +22,16 @@
   padding: var(--space-3) var(--space-3) var(--space-2) var(--space-4);
 }
 
+/* 「会话」微标签：等宽大写 + 字距，是这套视觉里唯一的分区信号 */
 .project-sidebar__title {
   display: inline-flex;
   gap: var(--space-1);
   align-items: center;
-  font: var(--font-body-medium);
-  font-size: var(--text-body-xs);
-  color: var(--color-text-primary);
+  font: var(--font-code-medium);
+  font-size: var(--text-micro);
+  letter-spacing: var(--track-wide);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
 }
 
 .project-sidebar__collapse {
@@ -49,23 +52,30 @@
   background: var(--hover);
 }
 
-/* 新建会话入口（列表上方轻量按钮） */
+/* 新建会话入口（ghost 按钮：1px 描边，悬停描边加深，不用填充色抢视线） */
 .project-sidebar__new {
   display: flex;
   gap: var(--space-2);
   align-items: center;
+  justify-content: center;
+  block-size: var(--menu-item-height);
   margin: 0 var(--space-3) var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  padding: 0 var(--space-3);
   font-size: var(--text-body-xs);
-  color: var(--color-text-primary);
+  color: var(--color-text-secondary);
   cursor: pointer;
   background: transparent;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
 }
 
 .project-sidebar__new:hover {
+  color: var(--color-text-primary);
   background: var(--hover);
+  border-color: var(--color-border-strong);
 }
 
 .project-sidebar__list {
@@ -83,9 +93,13 @@
   display: flex;
   gap: var(--space-2);
   align-items: center;
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--text-body-xs);
+  block-size: 24px;
+  padding: 0 var(--space-2);
+  font: var(--font-code-medium);
+  font-size: var(--text-micro);
+  letter-spacing: var(--track-micro);
   color: var(--color-text-muted);
+  text-transform: uppercase;
 }
 
 .project-sidebar__group-name {
@@ -141,7 +155,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  min-block-size: 36px;
+  min-block-size: var(--menu-item-height);
   padding-inline-start: var(--space-6);
   border-radius: var(--radius-sm);
 }
@@ -150,8 +164,19 @@
   background: var(--hover);
 }
 
+/* 选中态：2px 靛蓝左竖线 + 极浅底（不用整行填色抢注意力） */
 .project-sidebar__item-row--selected {
   background: var(--selected);
+}
+
+.project-sidebar__item-row--selected::before {
+  position: absolute;
+  inset-block: 4px;
+  inset-inline-start: 6px;
+  inline-size: 2px;
+  content: '';
+  background: var(--color-primary-500);
+  border-radius: var(--radius-full);
 }
 
 .project-sidebar__item {
@@ -160,7 +185,7 @@
   gap: var(--space-2);
   align-items: center;
   min-inline-size: 0;
-  block-size: 36px;
+  block-size: var(--menu-item-height);
   padding: 0 var(--space-2) 0 0;
   font-size: var(--text-body-sm);
   color: var(--color-text-primary);
@@ -170,10 +195,10 @@
   border: none;
 }
 
+/* 选中态已由左竖线表达，行内小圆点隐去，减少重复信号 */
 .project-sidebar__item-icon {
-  display: inline-flex;
-  flex-shrink: 0;
-  color: var(--brand);
+  display: none;
+  color: var(--color-primary-500);
 }
 
 .project-sidebar__item-title {
@@ -206,7 +231,8 @@
 }
 
 .project-sidebar__menu-btn:hover {
-  background: var(--color-border-subtle);
+  color: var(--color-text-primary);
+  background: var(--hover);
 }
 
 .project-sidebar__rename-input {
@@ -231,7 +257,18 @@
   flex-direction: column;
   gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
+  font: var(--font-code-medium);
+  font-size: var(--text-micro);
+  letter-spacing: var(--track-micro);
   border-block-start: 1px solid var(--divider);
+}
+
+.project-sidebar__footer a {
+  color: var(--color-text-muted);
+}
+
+.project-sidebar__footer a:hover {
+  color: var(--color-text-primary);
 }
 
 .project-sidebar__toast {

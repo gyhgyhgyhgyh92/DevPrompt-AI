@@ -258,7 +258,7 @@ describe('ChatStream 结果与反问', () => {
     expect(screen.getByText('网络连接失败')).toBeTruthy()
   })
 
-  it('结束后过程整组收成摘要行，点击展开回看（2026-11-04）', async () => {
+  it('结束后保持展开，点「折叠过程」才收成一行摘要（2026-11-07 裁定）', async () => {
     const user = userEvent.setup()
     const thinking: ThinkingItem[] = [
       { id: 't1', kind: 'text', text: '符号表就绪', phase: 'RETRIEVING' },
@@ -275,18 +275,26 @@ describe('ChatStream 结果与反问', () => {
     ]
     render(<ChatStream {...baseProps({ thinking, state: 'DONE', elapsedSeconds: 12 })} />)
 
-    // 收起：阶段列表与过程都不渲染，只留一行摘要
+    // 默认展开：账本与过程文字都在，折叠按钮显示动作名
+    expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
+    expect(screen.getByText('符号表就绪')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /折叠过程/ })).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: /折叠过程/ }))
+
+    // 收起后只剩一行摘要（阶段 · 动作数 · 耗时）
     expect(document.querySelector('.chat-reply__phases')).toBeNull()
     expect(screen.queryByText('符号表就绪')).toBeNull()
-    expect(screen.getByText(/思考 12s · 1 个动作 · 1 个步骤/)).toBeTruthy()
+    expect(screen.getByText(/已完成 · 1 个动作 · 12s/)).toBeTruthy()
 
-    await user.click(screen.getByRole('button', { name: /思考 12s/ }))
+    await user.click(screen.getByRole('button', { name: /已完成 · 1 个动作 · 12s/ }))
 
     expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
     expect(screen.getByText('符号表就绪')).toBeTruthy()
   })
 
-  it('进行中不折叠过程，也没有摘要行', () => {
+  it('进行中默认展开，也允许提前折叠（过程可见性优先但不强迫）', async () => {
+    const user = userEvent.setup()
     const thinking: ThinkingItem[] = [
       { id: 't1', kind: 'text', text: '符号表就绪', phase: 'RETRIEVING' },
     ]
@@ -295,7 +303,46 @@ describe('ChatStream 结果与反问', () => {
     )
 
     expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
-    expect(document.querySelector('.chat-reply__process-toggle')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: /折叠过程/ }))
+
+    expect(document.querySelector('.chat-reply__phases')).toBeNull()
+  })
+
+  it('工具卡展示后端下发的真实耗时；缺失时不渲染耗时', () => {
+    const withDuration: ThinkingItem[] = [
+      {
+        id: 'a1',
+        kind: 'action',
+        title: '检索符号',
+        detail: 'rg -n Foo',
+        scope: '命中 2 行',
+        output: '',
+        status: 'ok',
+        durationMs: 42,
+        phase: 'RETRIEVING',
+      },
+    ]
+    const { unmount } = render(
+      <ChatStream {...baseProps({ thinking: withDuration, state: 'DONE' })} />,
+    )
+    expect(screen.getByText('42ms')).toBeTruthy()
+    unmount()
+
+    const withoutDuration: ThinkingItem[] = [
+      {
+        id: 'a2',
+        kind: 'action',
+        title: '检索符号',
+        detail: 'rg -n Bar',
+        scope: '命中 1 行',
+        output: '',
+        status: 'ok',
+        phase: 'RETRIEVING',
+      },
+    ]
+    render(<ChatStream {...baseProps({ thinking: withoutDuration, state: 'DONE' })} />)
+    expect(document.querySelector('.trace-step__duration')).toBeNull()
   })
 
   it('失败动作按错误色渲染并带出退出码（2026-11-04）', () => {

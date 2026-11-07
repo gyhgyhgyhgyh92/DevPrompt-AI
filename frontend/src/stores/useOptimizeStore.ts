@@ -199,16 +199,24 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
       }
     }),
   appendAction: (action, phase = '') =>
-    set((state) =>
-      state.isThinking
-        ? {
-            thinking: [
-              ...state.thinking,
-              { id: nextThinkingId(), kind: 'action', ...action, phase },
-            ],
-          }
-        : { thinking: state.thinking },
-    ),
+    set((state) => {
+      if (!state.isThinking) return { thinking: state.thinking }
+      // 契约是 snake_case（duration_ms），视图模型是 camelCase（durationMs）：
+      // 在这里一次性转换，组件不再关心契约命名（MUST-16：store 只存结果）。
+      const { duration_ms: durationMs, ...rest } = action
+      return {
+        thinking: [
+          ...state.thinking,
+          {
+            id: nextThinkingId(),
+            kind: 'action',
+            ...rest,
+            durationMs: durationMs ?? undefined,
+            phase,
+          },
+        ],
+      }
+    }),
   endThinking: () => set({ isThinking: false }),
   applySnapshot: (snapshot) =>
     set((state) => ({

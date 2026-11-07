@@ -16,7 +16,8 @@
 
 .history-page__head h1 {
   margin: 0;
-  font-size: var(--text-title-md);
+  font-size: var(--text-title-lg);
+  font-weight: 600;
 }
 
 .history-page__notice {
@@ -60,7 +61,8 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
-  font-size: var(--text-caption-sm);
+  font: var(--font-code-regular);
+  font-size: var(--text-body-xs);
   color: var(--color-text-muted);
 }
 

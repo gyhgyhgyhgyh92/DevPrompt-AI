@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BrowserRouter } from 'react-router'
-import { useShallow } from 'zustand/react/shallow'
 import { getHealth, getSettings } from './api/endpoints'
 import { ProjectSidebar } from './components/history/ProjectSidebar'
 import { SettingsModal } from './components/settings/SettingsModal'
@@ -10,7 +9,7 @@ import { AppRoutes } from './router'
 import { applyLocale } from './i18n'
 import { useOptimizeStore } from './stores/useOptimizeStore'
 import { useHistoryStore } from './stores/useHistoryStore'
-import { useSettingsStore } from './stores/useSettingsStore'
+import { applyAppearanceTheme, useSettingsStore, watchSystemTheme } from './stores/useSettingsStore'
 
 type ApiStatus = 'checking' | 'ok' | 'down'
 
@@ -21,6 +20,22 @@ const API_STATUS_KEY: Record<ApiStatus, string> = {
   checking: 'app.status_checking',
   ok: 'app.status_ok',
   down: 'app.status_down',
+}
+
+/** 设置入口图标（线性齿轮；避免 ⚙ 字符在不同系统字体下大小与基线不一致）。 */
+function GearIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <circle cx="8" cy="8" r="2.3" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path
+        d="M8 1.5v1.7M8 12.8v1.7M1.5 8h1.7M12.8 8h1.7M3.4 3.4l1.2 1.2M11.4 11.4l1.2 1.2M12.6 3.4l-1.2 1.2M4.6 11.4l-1.2 1.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
 }
 
 /**
@@ -35,17 +50,24 @@ export function App() {
   const [isDrawerOpen, setDrawerOpen] = useState(false)
   // 一键收纳（F-602，2026-10-13）：桌面端收起整个侧边栏；与抽屉共用同一状态位（窄屏=关抽屉）
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const { sessionId, state, sseStatus } = useOptimizeStore(
-    useShallow((s) => ({ sessionId: s.sessionId, state: s.state, sseStatus: s.sseStatus })),
-  )
+  // 只订阅标题栏真正用到的一个字段（MUST-16：精确 selector，不整表订阅）
+  const sessionId = useOptimizeStore((s) => s.sessionId)
   const history = useHistoryStore((s) => s.history)
   const setSettings = useSettingsStore((s) => s.setSettings)
   const locale = useSettingsStore((s) => s.appearance.locale)
+  const theme = useSettingsStore((s) => s.appearance.theme)
 
   // 界面语言即时生效（2026-11-06 多语言）：appearance.locale 是唯一真源
   useEffect(() => {
     applyLocale(locale)
   }, [locale])
+
+  // 主题即时生效（2026-11-06）：刷新后必须按偏好重新应用（此前只写 index.html 的 light），
+  // system 模式还要跟随系统深色切换，故 apply + watch 成对出现，返回值即取消订阅。
+  useEffect(() => {
+    applyAppearanceTheme(theme)
+    return watchSystemTheme()
+  }, [theme])
 
   // 标题栏 API pill 数据源（GET /health）；失败即降级为「API 异常」，不重试（MUST-15）
   //
@@ -132,9 +154,7 @@ export function App() {
             <BrandMark size={18} />
             DevPrompt AI
           </span>
-          <span className="app-titlebar__chip">
-            {activeProject ? `▸ ${activeProject}` : `▸ ${t('app.no_project')}`}
-          </span>
+          <span className="app-titlebar__chip">{activeProject ?? t('app.no_project')}</span>
           <span className="app-titlebar__spacer" />
           <span className={`api-pill api-pill--${apiStatus}`}>
             <span className="api-pill__dot" aria-hidden="true" />
@@ -142,10 +162,13 @@ export function App() {
           </span>
           <button
             type="button"
-            className="button button--ghost"
+            className="app-titlebar__settings"
+            aria-label={t('app.settings')}
+            title={t('app.settings')}
             onClick={() => setSettingsOpen(true)}
           >
-            ⚙ {t('app.settings')}
+            <GearIcon />
+            <span>{t('app.settings')}</span>
           </button>
         </header>
         <div className="app-body">
@@ -164,11 +187,6 @@ export function App() {
             <AppRoutes />
           </main>
         </div>
-        <footer className="app-statusbar">
-          <span>session: {sessionId ?? t('app.none')}</span>
-          <span>state: {state}</span>
-          <span>SSE: {sseStatus}</span>
-        </footer>
       </div>
       <SettingsModal open={isSettingsOpen} onClose={() => setSettingsOpen(false)} />
     </BrowserRouter>

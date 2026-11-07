@@ -11,8 +11,8 @@ interface AssistantBlockProps {
   header?: ReactNode
   /** 操作条（TurnActions），紧跟品牌行。 */
   actions?: ReactNode
-  /** 过程折叠按钮（当前轮思考结束后收起为一行）。 */
-  processToggle?: ReactNode
+  /** 过程区标题栏（左边「执行过程」，右边折叠/展开控制）。 */
+  processControls?: ReactNode
   /** 阶段时间轴（当前轮实时渲染；历史轮不渲染——未逐帧落库，禁止伪造）。 */
   timeline?: ReactNode
   /** 「正在规划下一步」提示（当前轮思考静默期）。 */
@@ -49,7 +49,7 @@ interface AssistantBlockProps {
 export function AssistantBlock({
   header,
   actions,
-  processToggle,
+  processControls,
   timeline,
   planning,
   steps,
@@ -70,13 +70,14 @@ export function AssistantBlock({
   return (
     <article className="chat-reply" aria-label={ariaLabel}>
       <header className="chat-reply__head">
+        <span className="chat-reply__mark" aria-hidden="true" />
         <span className="chat-reply__brand">DevPrompt AI</span>
         {header}
       </header>
 
       {actions}
 
-      {processToggle}
+      {processControls}
 
       {timeline}
 

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SettingsResponse } from '../api/types'
 
 const APPEARANCE_KEY = 'devprompt:v1:appearance'
@@ -86,6 +86,111 @@ describe('useSettingsStore localStorage 外观项', () => {
     const reloaded = await loadStore()
 
     expect(reloaded.getState().appearance).toMatchObject({ theme: 'system' })
+  })
+})
+
+describe('watchSystemTheme（跟随系统主题）', () => {
+  /** jsdom 没有 matchMedia：这里造一个可手动触发 change 的最小替身。 */
+  function stubMedia(matches: boolean) {
+    const listeners = new Set<() => void>()
+    const media = {
+      matches,
+      media: '(prefers-color-scheme: dark)',
+      addEventListener: (_type: string, listener: () => void) => {
+        listeners.add(listener)
+      },
+      removeEventListener: (_type: string, listener: () => void) => {
+        listeners.delete(listener)
+      },
+    }
+    vi.stubGlobal('matchMedia', () => media)
+    return {
+      media,
+      emit: () => {
+        for (const listener of listeners) listener()
+      },
+      listenerCount: () => listeners.size,
+    }
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    delete document.documentElement.dataset.theme
+  })
+
+  /** store 与 watch/apply 必须来自**同一次**模块加载，否则读写的不是同一份状态。 */
+  async function loadModule() {
+    vi.resetModules()
+    return import('./useSettingsStore')
+  }
+
+  it('system 模式下系统切到深色：立即重解析 data-theme', async () => {
+    const { watchSystemTheme, applyAppearanceTheme, useSettingsStore: store } = await loadModule()
+    const control = stubMedia(false)
+    store.getState().setAppearance({
+      theme: 'system',
+      locale: 'zh-CN',
+      codeFont: 'JetBrains Mono',
+      restoreSessionOnLaunch: true,
+      desktopNotification: false,
+    })
+    applyAppearanceTheme('system')
+    expect(document.documentElement.dataset.theme).toBe('light')
+
+    const stop = watchSystemTheme()
+    control.media.matches = true
+    control.emit()
+
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    stop()
+  })
+
+  it('非 system 模式不订阅系统变化', async () => {
+    const { watchSystemTheme } = await loadModule()
+    const control = stubMedia(true)
+
+    const stop = watchSystemTheme()
+
+    expect(control.listenerCount()).toBe(0)
+    stop()
+  })
+
+  it('取消订阅后不再响应系统变化', async () => {
+    const { watchSystemTheme, applyAppearanceTheme, useSettingsStore: store } = await loadModule()
+    const control = stubMedia(false)
+    store.getState().setAppearance({
+      theme: 'system',
+      locale: 'zh-CN',
+      codeFont: 'JetBrains Mono',
+      restoreSessionOnLaunch: true,
+      desktopNotification: false,
+    })
+    const stop = watchSystemTheme()
+    stop()
+
+    control.media.matches = true
+    applyAppearanceTheme('light')
+    control.emit()
+
+    expect(document.documentElement.dataset.theme).toBe('light')
+    expect(control.listenerCount()).toBe(0)
+  })
+
+  it('环境无 matchMedia 时安全降级（不抛错、返回可调用的取消函数）', async () => {
+    const { watchSystemTheme, useSettingsStore: store } = await loadModule()
+    vi.stubGlobal('matchMedia', undefined)
+    store.getState().setAppearance({
+      theme: 'system',
+      locale: 'zh-CN',
+      codeFont: 'JetBrains Mono',
+      restoreSessionOnLaunch: true,
+      desktopNotification: false,
+    })
+
+    const stop = watchSystemTheme()
+
+    expect(typeof stop).toBe('function')
+    expect(() => stop()).not.toThrow()
   })
 })
 

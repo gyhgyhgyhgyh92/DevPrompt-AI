@@ -1,0 +1,290 @@
+/*
+ * Style Lab 的三套视觉体系（风格 × 配色 × 明暗）。
+ *
+ * 只覆盖 tokens.css 里**已有的变量名**（因此既有组件若被放进 lab 容器会自动换肤），
+ * 另加少量 lab 专属度量（--lab-*）。色值只允许出现在本文件，组件里一律用 utility。
+ *
+ * 选择器策略：每个预览面板本身带 `.lab-surface` + `data-lab-style` + `data-lab-palette`
+ * + `data-theme`，故同一页可并排呈现明暗两版（嵌套 data-theme 即可，不需要复制 token）。
+ */
+
+/* ===== 与风格无关的基线（lab 容器的默认值） ===== */
+
+.lab-surface {
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-menu: 10px;
+  --lab-row-h: 32px;
+  --lab-gap: 8px;
+  --lab-pad: 12px;
+  --lab-rail-w: 2px;
+  --lab-card-shadow: none;
+  --lab-grid-image: none;
+  --lab-blur: 0px;
+  --lab-track: 0.02em;
+  --lab-display-weight: 600;
+  --lab-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --lab-dur-fast: 140ms;
+  --lab-dur-base: 180ms;
+  --lab-dur-slow: 240ms;
+  --lab-prose-leading: 1.6;
+}
+
+/* ===== S1 工程图纸 Blueprint =====
+ * 近白纸感 / 蓝黑暗色、1px 发丝描边、零阴影、6px 圆角、点阵网格、等宽大写微型标签。
+ * 强调色只以 2px 竖线与 8% 底纹出现，不做整块填充。
+ */
+
+.lab-surface[data-lab-style='blueprint'] {
+  color-scheme: light;
+  --font-family-body: 'Inter', 'PingFang SC', 'HarmonyOS Sans SC', system-ui, sans-serif;
+  --font-family-code: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, Consolas, monospace;
+  --color-surface-base: #f6f7f9;
+  --color-surface-raised: #ffffff;
+  --color-surface-overlay: #ffffff;
+  --color-surface-code: #f2f4f7;
+  --color-border-subtle: #dce0e6;
+  --color-border-strong: #c9cfd8;
+  --divider: #e5e8ed;
+  --color-text-primary: #131518;
+  --color-text-secondary: #545a63;
+  --color-text-muted: #666e79;
+  --text-faint: #a9afb8;
+  --color-text-inverse: #ffffff;
+  --bubble: #f2f3f5;
+  --hover: #f2f3f5;
+  --selected: #edeff2;
+  --shadow-sm: 0 0 0 transparent;
+  --shadow-md: 0 0 0 transparent;
+  --shadow-lg: 0 0 0 transparent;
+  --shadow-menu: 0 8px 24px rgba(19, 21, 24, 0.08);
+  --radius-sm: 4px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-menu: 6px;
+  --lab-row-h: 30px;
+  --lab-gap: 8px;
+  --lab-pad: 14px;
+  --lab-rail-w: 2px;
+  --lab-card-shadow: none;
+  --lab-grid-image: radial-gradient(rgba(19, 21, 24, 0.22) 1px, transparent 1px);
+  --lab-grid-size: 14px 14px;
+  --lab-track: 0.08em;
+  --lab-display-weight: 500;
+  --lab-prose-leading: 1.55;
+  --lab-dur-fast: 140ms;
+  --lab-dur-base: 160ms;
+  --lab-dur-slow: 200ms;
+}
+
+.lab-surface[data-lab-style='blueprint'][data-theme='dark'] {
+  color-scheme: dark;
+  --color-surface-base: #090b0e;
+  --color-surface-raised: #0f1216;
+  --color-surface-overlay: #141821;
+  --color-surface-code: #0c0f13;
+  --color-border-subtle: rgba(255, 255, 255, 0.1);
+  --color-border-strong: rgba(255, 255, 255, 0.18);
+  --divider: rgba(255, 255, 255, 0.06);
+  --color-text-primary: #e6e9ed;
+  --color-text-secondary: #a6adb8;
+  --color-text-muted: #79818c;
+  --text-faint: #565d67;
+  --color-text-inverse: #0b0d10;
+  --bubble: #16191e;
+  --hover: #171b21;
+  --selected: #1b2027;
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --lab-grid-image: radial-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+}
+
+/* ===== S2 终端工具 Terminal Pro =====
+ * 2026-11-07 起 S2 已是**生产视觉**：颜色全部继承 `styles/tokens.css`，这里不再复制任何色值
+ * （否则两套值必然漂移）。只保留生产不需要的结构差异：更小的圆角、零投影、紧凑行高与行距。
+ */
+
+.lab-surface[data-lab-style='terminal'] {
+  color-scheme: light;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-menu: 10px;
+  --lab-row-h: 28px;
+  --lab-gap: 6px;
+  --lab-pad: 10px;
+  --lab-rail-w: 1px;
+  --lab-card-shadow: none;
+  --lab-grid-image: none;
+  --lab-track: 0.04em;
+  --lab-display-weight: 600;
+  --lab-prose-leading: 1.5;
+  --lab-dur-fast: 120ms;
+  --lab-dur-base: 180ms;
+  --lab-dur-slow: 220ms;
+}
+
+.lab-surface[data-lab-style='terminal'][data-theme='dark'] {
+  color-scheme: dark;
+}
+
+/* ===== S3 柔和层叠 Soft Stack =====
+ * 暖纸底、14px 圆角、双层柔和投影、输入区浮起并轻微模糊、分隔用渐隐细线。
+ */
+
+.lab-surface[data-lab-style='soft'] {
+  color-scheme: light;
+  --font-family-body: 'Inter', 'PingFang SC', 'HarmonyOS Sans SC', system-ui, sans-serif;
+  --font-family-code: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, Consolas, monospace;
+  --color-surface-base: #f7f2e8;
+  --color-surface-raised: #fffdf8;
+  --color-surface-overlay: #fffdf8;
+  --color-surface-code: #f1eadd;
+  --color-border-subtle: #e4dacb;
+  --color-border-strong: #d0c3ae;
+  --divider: #ece3d5;
+  --color-text-primary: #1f1d19;
+  --color-text-secondary: #5d574c;
+  --color-text-muted: #6f685c;
+  --text-faint: #b3ab9d;
+  --color-text-inverse: #ffffff;
+  --bubble: #f4f1ea;
+  --hover: #f5f2eb;
+  --selected: #f0ece3;
+  --shadow-sm: 0 1px 2px rgba(31, 29, 25, 0.04);
+  --shadow-md: 0 1px 2px rgba(31, 29, 25, 0.04), 0 12px 32px -16px rgba(31, 29, 25, 0.18);
+  --shadow-lg: 0 24px 48px -24px rgba(31, 29, 25, 0.28);
+  --shadow-menu: 0 16px 40px -20px rgba(31, 29, 25, 0.3);
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-menu: 14px;
+  --lab-row-h: 34px;
+  --lab-gap: 12px;
+  --lab-pad: 18px;
+  --lab-rail-w: 2px;
+  --lab-card-shadow: var(--shadow-md);
+  --lab-grid-image: none;
+  --lab-blur: 8px;
+  --lab-track: 0em;
+  --lab-display-weight: 600;
+  --lab-prose-leading: 1.8;
+  --lab-dur-fast: 180ms;
+  --lab-dur-base: 240ms;
+  --lab-dur-slow: 320ms;
+}
+
+.lab-surface[data-lab-style='soft'][data-theme='dark'] {
+  color-scheme: dark;
+  --color-surface-base: #0e0b07;
+  --color-surface-raised: #171310;
+  --color-surface-overlay: #1e1915;
+  --color-surface-code: #14100c;
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.15);
+  --divider: rgba(255, 255, 255, 0.06);
+  --color-text-primary: #f2ede4;
+  --color-text-secondary: #b5ac9e;
+  --color-text-muted: #8b8174;
+  --text-faint: #675f54;
+  --color-text-inverse: #100e0b;
+  --bubble: #1b1713;
+  --hover: #1d1915;
+  --selected: #221d18;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.32), 0 16px 40px -20px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 28px 56px -28px rgba(0, 0, 0, 0.72);
+  --shadow-menu: 0 18px 44px -22px rgba(0, 0, 0, 0.7);
+}
+
+/* ===== 配色候选（只换强调色族，不动中性表面） =====
+ * 用途纪律：accent 只用于「进行中 / 成功 / 聚焦 / 2px 轨道」；
+ * 11-13px 的文字不得直接用 accent（浅色下对比度 < 4.5:1），必须用 primary-900 或 ink-2。
+ */
+
+/* A · 信号绿（沿用品牌绿，收敛用法） */
+.lab-surface[data-lab-palette='signal'] {
+  --color-primary-100: #e3f6ea;
+  --color-primary-500: #1fa34a;
+  --color-primary-700: #188a3f;
+  --color-primary-900: #0f5c2a;
+  --color-primary-soft: #e3f6ea;
+  --color-text-brand: #0f5c2a;
+  --color-success-500: #16a34a;
+  --color-success-soft: rgba(22, 163, 74, 0.12);
+  --brand: #1fa34a;
+  --brand-btn: #e3f6ea;
+  --brand-btn-hover: #d2f0dc;
+}
+
+.lab-surface[data-lab-palette='signal'][data-theme='dark'] {
+  --color-primary-100: #123a22;
+  --color-primary-500: #34c46e;
+  --color-primary-700: #2aa85c;
+  --color-primary-900: #6ee7a0;
+  --color-primary-soft: rgba(52, 196, 110, 0.16);
+  --color-text-brand: #6ee7a0;
+  --color-success-500: #34c46e;
+  --color-success-soft: rgba(52, 196, 110, 0.16);
+  --brand: #34c46e;
+  --brand-btn: rgba(52, 196, 110, 0.16);
+  --brand-btn-hover: rgba(52, 196, 110, 0.24);
+}
+
+/* B · 石墨靛蓝（中性界面 + 一个冷静的强调色，最接近「专业工具」） */
+.lab-surface[data-lab-palette='graphite'] {
+  --color-primary-100: #eae8fc;
+  --color-primary-500: #4f46e5;
+  --color-primary-700: #4338ca;
+  --color-primary-900: #312e81;
+  --color-primary-soft: #eae8fc;
+  --color-text-brand: #4338ca;
+  --color-success-500: #16a34a;
+  --color-success-soft: rgba(22, 163, 74, 0.12);
+  --brand: #4f46e5;
+  --brand-btn: #eae8fc;
+  --brand-btn-hover: #dedaf9;
+}
+
+.lab-surface[data-lab-palette='graphite'][data-theme='dark'] {
+  --color-primary-100: #1e1b4b;
+  --color-primary-500: #818cf8;
+  --color-primary-700: #a5b4fc;
+  --color-primary-900: #c7d2fe;
+  --color-primary-soft: rgba(129, 140, 248, 0.18);
+  --color-text-brand: #a5b4fc;
+  --color-success-500: #34c46e;
+  --color-success-soft: rgba(52, 196, 110, 0.16);
+  --brand: #818cf8;
+  --brand-btn: rgba(129, 140, 248, 0.18);
+  --brand-btn-hover: rgba(129, 140, 248, 0.28);
+}
+
+/* C · 墨黑琥珀（暖色警示感，适合「执行日志」气质；浅色下必须配深字） */
+.lab-surface[data-lab-palette='amber'] {
+  --color-primary-100: #fbeee0;
+  --color-primary-500: #b45309;
+  --color-primary-700: #92400e;
+  --color-primary-900: #78350f;
+  --color-primary-soft: #fbeee0;
+  --color-text-brand: #78350f;
+  --color-success-500: #16a34a;
+  --color-success-soft: rgba(22, 163, 74, 0.12);
+  --brand: #b45309;
+  --brand-btn: #fbeee0;
+  --brand-btn-hover: #f6e2cd;
+}
+
+.lab-surface[data-lab-palette='amber'][data-theme='dark'] {
+  --color-primary-100: #3a2410;
+  --color-primary-500: #f59e0b;
+  --color-primary-700: #fbbf24;
+  --color-primary-900: #fcd34d;
+  --color-primary-soft: rgba(245, 158, 11, 0.16);
+  --color-text-brand: #fcd34d;
+  --color-success-500: #34c46e;
+  --color-success-soft: rgba(52, 196, 110, 0.16);
+  --brand: #f59e0b;
+  --brand-btn: rgba(245, 158, 11, 0.16);
+  --brand-btn-hover: rgba(245, 158, 11, 0.24);
+}

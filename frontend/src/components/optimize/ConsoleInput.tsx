@@ -10,6 +10,9 @@ import './ConsoleInput.css'
 /** 启动页主视觉固定文案（逐字，spec Task 3）：作为输入区占位展示，用户输入时隐藏。 */
 const PROMPT_HINT_KEY = 'console.prompt_hint'
 
+/** 启动页能力标签（i18n 键，顺序即展示顺序）。 */
+const HERO_CHIPS = ['console.chip_retrieval', 'console.chip_probing', 'console.chip_plans'] as const
+
 /** 输入自适应高度区间（1~6 行），超出由 textarea 内部滚动（上限见 ConsoleInput.css）。 */
 const MIN_TEXT_ROWS = 1
 const MAX_TEXT_ROWS = 6
@@ -24,13 +27,16 @@ interface ConsoleInputProps {
   /** 重挂载回填：思考视图切换会卸载本组件，失败退回输入页时草稿不能丢。 */
   initialSentence?: string
   initialProject?: string
+  /** 启动页主视觉（品牌行 + 主张 + 能力标签）；结果页 composer 不传，保持单行轻量。 */
+  isHero?: boolean
   /** 提交原句与项目路径（草稿不进 store，上抛交页面调 optimize 流）。 */
   onSubmit: (sentence: string, project: string) => void
 }
 
-function textRows(value: string): number {
+/** `minRows` 用于启动页：占位文案较长，1 行会被裁掉。 */
+function textRows(value: string, minRows: number = MIN_TEXT_ROWS): number {
   const lines = value.split('\n').length
-  return Math.min(MAX_TEXT_ROWS, Math.max(MIN_TEXT_ROWS, lines))
+  return Math.min(MAX_TEXT_ROWS, Math.max(minRows, lines))
 }
 
 /** 路径末段展示（与侧栏同口径，纯展示非业务判定）。 */
@@ -62,6 +68,7 @@ export function ConsoleInput({
   initialProject = '',
   projectOptional = false,
   disabled = false,
+  isHero = false,
   onSubmit,
 }: ConsoleInputProps) {
   const { t } = useTranslation()
@@ -176,7 +183,24 @@ export function ConsoleInput({
   }
 
   return (
-    <div className="console-input">
+    <div className={isHero ? 'console-input console-input--hero' : 'console-input'}>
+      {isHero ? (
+        <header className="console-input__hero">
+          <span className="console-input__brand">
+            <span aria-hidden="true" className="console-input__brand-swatch" />
+            <span>{t('console.brand_name')}</span>
+          </span>
+          <h1 className="console-input__claim">{t('console.hero_claim')}</h1>
+          <p className="console-input__sub">{t('console.hero_sub')}</p>
+          <div className="console-input__chips">
+            {HERO_CHIPS.map((key) => (
+              <span className="console-input__chip" key={key}>
+                {t(key)}
+              </span>
+            ))}
+          </div>
+        </header>
+      ) : null}
       <form
         className="console-input__card"
         onSubmit={(event) => {
@@ -190,7 +214,7 @@ export function ConsoleInput({
           aria-label={t('console.aria_sentence')}
           className="console-input__text"
           value={sentence}
-          rows={textRows(sentence)}
+          rows={textRows(sentence, isHero ? 2 : MIN_TEXT_ROWS)}
           placeholder={t(PROMPT_HINT_KEY)}
           disabled={disabled}
           onChange={(event) => setSentence(event.currentTarget.value)}
