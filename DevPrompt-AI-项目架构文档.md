@@ -1188,7 +1188,9 @@ frontend/
     │   │   ├── ModelPicker.tsx       模型选择器（2026-10-18：只列已配置条目；hover 飞出按模型参数面板——上下文长度 / 思考模式 / 思考强度，强度在开关关闭时置灰；档位取自官方静态登记，各模型独立）
     │   │   ├── nativeFolder.ts     原生文件夹选择器桥（2026-10-19：页面 postMessage → 扩展 content script → service worker → native host → 系统对话框）
     │   │   ├── ChatStream.tsx       对话流（用户气泡 → 回复块：步骤时间轴（每步下方挂过程）+ 方案正文；2026-10-20 移除目标定位/取证/操作栏）
-    │   │   ├── TraceEntry.tsx       思考过程条目（2026-10-22：灰底思考块 + 动作行 + 可展开命令/输出）
+    │   │   ├── TraceEntry.tsx       工具动作卡（2026-11-07 两形态：命令→终端块 `$`+exit 胶囊+可展开输出；读文件→瘦胶囊行；展示后端实测耗时）
+    │   │   ├── PhaseLedger.tsx      执行账本（2026-11-07：每阶段一行 28px，状态字形 + 等宽大写阶段名 + 动作计数，替代 ✓●○ 进度列表）
+    │   │   ├── TypewriterText.tsx   逐字呈现（2026-11-07：rAF 每帧 3 字 + 方块光标；只在增量增长时逐字，减少动效时整段）
     │   │   ├── TurnList.tsx         多轮全文流（2026-10-20：进入即并发拉取每轮正文，用户气泡右 / 助手块左；2026-11-05 去掉 20 轮硬顶改分页增量加载，正文进 store 常驻）
     │   │   ├── TurnActions.tsx     轮级操作条（2026-11-05：「以此轮继续」+「撤销到此轮」danger 二次确认）
     │   │   ├── DeliveryGateCard.tsx 交付证据门卡片（2026-11-05：色阶用后端 tone、文案用后端 disclosure，前端零判定）
@@ -1238,10 +1240,23 @@ frontend/
     ├── i18n/                  多语言（F-209，2026-11-06）
     │   ├── index.ts           i18next 初始化（资源同步 import；locale 取 appearance 真源）
     │   └── locales/           zh-CN.json / en.json（键集一致由 keys.test.ts 守卫）
-    ├── styles/                全局样式与 token
+    ├── styles/                全局样式与 token（**生产界面唯一配色来源**）
     │   ├── tokens.css         CSS Variables 设计 token
     │   ├── global.css
     │   └── phases.css         阶段指示器样式
+    ├── lab/                   风格样张页（**dev-only**，2026-11-07；生产构建 DCE 剔除）
+    │   ├── StyleLab.tsx       样张页外壳（风格/配色/主题/流式变体/回放控制，URL 参数可回填）
+    │   ├── StyleLab.test.tsx  冒烟：三列渲染、切换写 data 属性、回放推进与暂停
+    │   ├── LabSwitcher.tsx    分段控件 + 回放控制 + 章节外壳
+    │   ├── labCopy.ts         样张文案 zh/en（不进生产语言包）
+    │   ├── demoStream.ts      假流式事件序列 + 回放 hook（不触网、不做判定）
+    │   ├── types.ts           样张枚举（风格/配色/变体/构图）
+    │   ├── utils.ts           class 拼接、WCAG 对比度实测、减少动效检测
+    │   ├── styles/
+    │   │   ├── lab.css           Tailwind 入口（跳过 preflight）+ @theme token 桥接
+    │   │   ├── lab-tokens.css    3 风格 × 3 配色 × 明暗的 token 覆盖（同名变量，不改 tokens.css）
+    │   │   └── lab-motion.css    光标 / 轨道流光 / shimmer / reduced-motion 降级
+    │   └── specimens/         组件标本（启动页 / 对话线程 / 三种流式 / 工具卡 / 侧边栏 / 配色表）
     ├── utils/                 前端纯工具
     │   ├── format.ts
     │   └── diff.ts
@@ -1320,6 +1335,34 @@ styles    types      utils     utils     utils
 ```
 
 **明暗双主题**：通过 `:root` 与 `[data-theme="dark"]` 下的同名变量覆盖实现，组件内不出现任何硬编码颜色。
+
+**视觉语言与颜色语义（2026-11-07 起，S2「终端工具」）**：
+
+| 类别 | token | 允许出现的位置 |
+|---|---|---|
+| 强调（石墨靛蓝） | `--color-primary-500/700/900/soft`、`--brand*` | 主按钮、链接、选中竖线、聚焦环、当前阶段、推荐卡描边 |
+| 成功 | `--color-success-500/-soft` | 完成对勾、复制成功、API 正常 |
+| 进行中 | `--color-running-500/-soft` | 阶段状态点、「进行中」标签 |
+| 告警 / 失败 | `--color-warning-*` / `--color-danger-*` | 披露条竖线、失败动作描边与 Exit code、破坏性操作 |
+
+**绿色不再作为品牌色**：任何按钮底色、链接、选中态都不使用绿色（2026-11-07 所有者裁定）。
+
+**排版与形状**：字号阶梯 `22 / 16 / 14 / 13 / 12 / 11`（`--text-display` … `--text-micro`），元信息一律 `--font-family-code` + 大写 + 字距（`--track-micro` / `--track-wide`）；圆角 `8 / 8 / 10 / 8`；**卡片零投影**，层级靠 1px 描边与表面递进建立，仅浮层（菜单 / 弹窗）使用 `--shadow-lg` / `--shadow-menu`。
+
+> **与代码现状的偏差（2026-11-07 上报，待批准统一）**：上表写的是 `ComponentName.module.css`（CSS Modules），**代码现状是普通的 `ComponentName.css`**（全局作用域 + BEM 式类名，无 `:local` 隔离）。按宪法「文档与代码冲突时以代码为准并上报」，本轮样张页沿用现状（`.lab-surface[data-lab-style=…]` 这类后代选择器依赖全局作用域），不借机迁移 CSS Modules；是否统一由所有者决定。
+
+**样张页（`src/lab`）的样式例外（2026-11-07，批准人=项目所有者）**：
+
+| 规则 | 说明 |
+|---|---|
+| 颜色单一来源不变 | 色值只存在于 CSS；`lab-tokens.css` 用 `[data-lab-style][data-lab-palette][data-theme]` 覆盖**既有变量名**，`styles/tokens.css` 一行不改，生产界面零视觉变化 |
+| Tailwind 只做桥接 | `lab.css` 用 `@theme inline` 把 `--color-surface-base` 等映射成 `bg-surface` / `text-ink` / `border-line`；组件里只出现语义类，**不出现字面色值** |
+| 跳过 preflight | 只导入 `tailwindcss/theme.css` + `tailwindcss/utilities.css`，避免全局 reset 波及既有 100+ 组件 |
+| 主题信号唯一 | 仍以 `data-theme` 为准（嵌套节点可局部换主题，做法与 `AppearancePanel` 的主题预览一致），不引入 `class="dark"` 第二套信号 |
+| 生产零残留 | 入口经 `import.meta.env.DEV` 守卫 + `lazy()` 动态导入；验收时对 `dist/assets` 检索 `StyleLab` / `data-lab-style` / `lab-surface` 必须 0 命中 |
+| 文案不进生产语言包 | 样张文案集中在 `labCopy.ts`（zh/en 两套），不写进 `i18n/locales/*.json` |
+
+**样张页同样受门的约束**：`check_architecture.py` 的 MUST-08 阈值扫描、`jsxScan.test.ts` 的中文文案扫描、`staticChecks.test.ts` 的 useShallow 扫描**均覆盖 `src/lab`**，不设豁免；因此样张源码里不出现 `0.5` 这类会被误判为阈值的字面量（Tailwind 的 `gap-0.5` 改用 `gap-[2px]`）。
 
 ---
 

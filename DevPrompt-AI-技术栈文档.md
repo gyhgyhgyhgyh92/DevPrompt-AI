@@ -1,8 +1,8 @@
 # DevPrompt AI · 技术栈文档
 
-> 版本 v1.1 · 2026-10-10（BREAKING：废除 CLI 形态，全面转向 Web-only 架构，批准人=项目所有者）
+> 版本 v1.2 · 2026-11-07（**限定范围引入 Tailwind v4 与 motion**：仅用于 dev-only 的 `src/lab` 风格样张页，生产界面仍为 CSS + CSS Variables；批准人=项目所有者）
 > 配套文档：`DevPrompt-AI-功能清单.md`（v1.1）
-> 版本核实日期：2026-10-04，所有版本号均为当日可查的稳定版
+> 版本核实日期：2026-11-07（新增依赖经 `registry.npmmirror.com` 核实），其余条目仍为 2026-10-04 快照
 
 ---
 
@@ -13,14 +13,15 @@
 | 前端框架 | React 19.3 + TypeScript 5.9 |
 | 构建工具 | Vite 7 |
 | 包管理器 | pnpm 10 |
-| CSS 方案 | CSS Modules + CSS Variables |
+| CSS 方案 | CSS + CSS Variables（生产界面）；Tailwind v4 **仅限 dev-only 样张页**（§1.4） |
 | 状态管理 | Zustand 5 |
 | UI 组件库 | **不引入**（详见 §2.3） |
+| 动效 | 生产界面：纯 CSS；样张页：`motion` 14（§1.6） |
 | 后端语言 | Python 3.13 |
 | Web 框架 | FastAPI 0.136 |
 | 数据库 | SQLite（Python 标准库 `sqlite3`，WAL 模式） |
 
-**与常见前端项目的三处差异**（下文逐条论证）：不用 Tailwind、不用 UI 组件库、不用 React Query。
+**与常见前端项目的三处差异**（下文逐条论证）：生产界面不用 Tailwind、不用 UI 组件库、不用 React Query。
 
 ---
 
@@ -84,22 +85,49 @@
 
 ## 1.4 CSS 方案
 
-| 项 | 选型 |
-|---|---|
-| 方案 | **CSS Modules + CSS Variables** |
-| 预处理器 | 不使用 |
-| CSS-in-JS | 不使用 |
-| Tailwind CSS | **不使用** |
+| 项 | 生产界面 | `src/lab`（dev-only 样张页） |
+|---|---|---|
+| 方案 | **CSS + CSS Variables** | Tailwind CSS v4（utility 仅做 token 桥接） |
+| 预处理器 | 不使用 | 不使用 |
+| CSS-in-JS | 不使用 | 不使用 |
+| 样式入口 | 各组件 `Xxx.css` + `styles/tokens.css` | `src/lab/styles/lab.css` |
 
-**设计 token 定义**：全部放在 `styles/tokens.css`，用 CSS Variables 表达。
+**设计 token 定义**：全部放在 `styles/tokens.css`，用 CSS Variables 表达；样张页不改这个文件，只在 `src/lab/styles/lab-tokens.css` 里**用同名变量覆盖**。
 
 **这个选择与项目本身有呼应关系**：DevPrompt AI 的核心能力之一是识别被优化项目的设计 token（如 `--color-primary-500`）。用同一套 CSS Variables 机制实现自身 UI，既是自证也是约束——我们推荐的 token 命名规范，自己也在用。
 
-**为什么不用 Tailwind**：Tailwind v4 已是 React 生态主流，但它对**本项目无收益**。本项目 UI 元素种类极少（约 15 个），不需要原子类来加速开发；反而工具类会让「三套方案并排对比」这种精细布局的意图被淹没在 class 字符串里。
+**为什么生产界面不用 Tailwind**（结论不变）：本项目 UI 元素种类极少（约 17 个），不需要原子类来加速开发；工具类会让「三套方案并排对比」这类精细布局的意图被淹没在 class 字符串里。
+
+**为什么样张页用 Tailwind v4**（2026-11-07 新增，MUST-04 逐级说明）：
+- 第 1~3 级不成立：同一份内容要并排试**三套**视觉体系（描边策略、圆角、密度、字重全不同），用原生 CSS 需要三套并行样式表并在推翻时同步维护三处，改动成本远高于一次工具类重排；语言内置（CSS 变量）已用于「同一套骨架换 token」，但无法覆盖「骨架本身也不同」。
+- 第 4 级不成立：项目内现成的只有手写 CSS，没有可组合的样式原语。
+- 第 5 级的最小代价方案：`tailwindcss` + `@tailwindcss/vite`，**只导入 `theme` 与 `utilities` 两层、跳过 preflight**（避免全局重置既有 100+ 组件），并只被 `StyleLab.tsx` 引用，生产构建经 DCE 完全剔除（已在 `dist/assets` 检索 `StyleLab`/`data-lab-style`/`lab-surface` 均为 0 命中）。
+- 边界：色值仍只存在于 CSS（token 覆盖），组件里只出现 `bg-surface` / `text-ink` 这类语义类，不出现字面色值。
+
+**全站改版如何落地（2026-11-07 实测结论）**：S2「终端工具」全站换肤只改 `styles/tokens.css` 的变量值（品牌色改靛蓝族、中性面改冷灰递进、正文 13px、新增 `--text-micro/--text-meta` 与 `--color-running-*`），**115 处既有 `--color-primary-*` / `--brand*` 引用自动跟随**，未新增任何前端依赖、未改写既有组件 CSS 结构。这条路径验证了「token 唯一来源」的价值：换视觉不等于换技术栈。
 
 **为什么不用 CSS-in-JS**：运行时开销与 SSR 兼容性问题（本项目不需要 SSR，但引入额外复杂度无收益）。
 
-## 1.5 状态管理
+## 1.5 动效方案（2026-11-07 新增）
+
+| 场景 | 方案 |
+|---|---|
+| 生产界面（悬停、展开、呼吸、光标） | 纯 CSS（`transition` / `@keyframes`），必须尊重 `prefers-reduced-motion` |
+| 样张页的条目入场、阶段切换、摘要高度展开 | `motion` 14.10.0（React 版） |
+
+**为什么样张页用 motion**：摘要展开需要「高度 auto + 布局动画」，CSS 需要预设具体高度，做不到内容自适应；条目入场在多条目并行时，纯 CSS 需要给每条编号 delay，改一处数据要同步改样式。项目内无等价封装（第 3 级不成立），故为**样张页专属依赖**。
+
+**版本核实（MUST-24b，2026-11-07 经 registry.npmmirror.com 查询最新稳定版）**：
+
+| 依赖 | 已装版本 | 查询时最新版 | 用途 |
+|---|---|---|---|
+| `tailwindcss` | 4.3.4 | 4.3.5 | 样张页 utility |
+| `@tailwindcss/vite` | 4.3.4 | 4.3.5 | Vite 插件（构建期生成 CSS） |
+| `motion` | 14.10.0 | 14.10.1 | 样张页布局/入场动画 |
+
+> 采用「小版本固定」而非 `^`：这三个包只在样张页使用，升级收益低，固定版本可避免 lockfile 漂移带来构建差异；后续如需升级，先跑 `pnpm build` + `pnpm test` 再改版本号。
+
+## 1.6 状态管理
 
 | 项 | 选型 | 版本要求 |
 |---|---|---|
@@ -126,7 +154,7 @@
 
 **为什么不用 TanStack Router**：官方文档推荐它做类型安全的文件路由，但本项目只有 3 个页面，React Router 的 `createBrowserRouter` 已足够。TanStack Router 的类型优势在页面数增长后才显现。
 
-## 1.6 路由
+## 1.7 路由
 
 | 项 | 选型 | 版本要求 |
 |---|---|---|
@@ -155,7 +183,7 @@
 | Base UI | `^1.0` | 同上，2025-12 稳定版 |
 | MUI / Ant Design | v7 / v5+ | ❌ Material/Ant 设计语言与本项目风格冲突，且体积庞大 |
 | Headless UI | — | ❌ 仅 10+ 组件，覆盖不了需求 |
-| daisyUI | v5 | ❌ 纯 CSS 插件，与「不用 Tailwind」的决策冲突 |
+| daisyUI | v5 | ❌ 纯 CSS 插件，只服务 Tailwind 场景；本仓 Tailwind 仅限样张页，生产界面用不上 |
 | HeroUI | v2 | ❌ npm 依赖模式，体积大，含 framer-motion |
 | Mantine | v8 | ❌ 完整库（120+ 组件），远超需求 |
 
@@ -189,7 +217,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 
 **没有选择它的三个理由**：
 
-1. **需引入 Tailwind v4**。Shadcn/ui 与 Tailwind v4 深度绑定（OKLCH 颜色、CSS-first 配置）。采用它就等于放弃 §1.4 的 CSS Modules 决策。
+1. **会把 Tailwind 带进生产界面**。Shadcn/ui 与 Tailwind v4 深度绑定（OKLCH 颜色、CSS-first 配置）。样张页引入的 Tailwind 是**限定范围**（§1.4：跳过 preflight、dev-only chunk、生产构建剔除）；用 Shadcn/ui 则必须让 Tailwind 接管生产界面的全部样式，等于放弃 §1.4 的 CSS Variables 决策。
 2. **本项目组件规模有限（约 17 个，T6-10 校正）**。Shadcn/ui 的优势在 20+ 组件的大型表单/仪表盘场景才充分体现。本项目的组件逻辑简单，自己写反而更快。
 3. **update 不自动到达**。复制粘贴模型意味着需手动跟踪上游变更。本项目组件少，维护成本可控，但这个成本换来的收益不足以覆盖 Tailwind 的代价。
 
@@ -451,6 +479,9 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | typescript-eslint（dev） | `^8.71.0` |
 | @eslint/js（dev） | `^9.39.5` |
 | openapi-typescript（dev） | `^7.13.0` |
+| tailwindcss（dev，样张页专用） | `4.3.4` 固定（2026-11-07 核实；仅 `src/lab`） |
+| @tailwindcss/vite（dev，样张页专用） | `4.3.4` 固定 |
+| motion（样张页专用） | `14.10.0` 固定 |
 
 **T6-3 前端工程基座新增 dev 依赖登记（2026-10-12，MUST-24b）**
 
@@ -478,7 +509,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | typescript-eslint + @eslint/js | ESLint 9 flat config 下解析 TS 语法与类型规则的官方实现，ESLint 核心不解析 TypeScript（§6.1 已列 eslint，二者为其配套） |
 | openapi-typescript | F-705 契约管线指定工具（Pydantic → OpenAPI → TS 类型自动生成），属已登记技术决策，无标准库等价能力 |
 
-已排除项连带确认：未引入 Tailwind / UI 组件库 / CSS-in-JS / Redux Toolkit / React Query（F-701），主题切换用 CSS Variables + `data-theme`，滑条/开关为自研组件。
+已排除项连带确认：生产界面未引入 Tailwind / UI 组件库 / CSS-in-JS / Redux Toolkit / React Query（F-701），主题切换用 CSS Variables + `data-theme`，滑条/开关为自研组件。Tailwind v4 与 motion 仅存在于 dev-only 的 `src/lab`（§1.4/§1.5），生产构建已验证不含其代码与样式。
 
 ## 6.2 后端
 
@@ -564,7 +595,7 @@ system 本身已稳定、天然命中，user 每次都变、无法缓存。参�
 | openai-agents 锁 `>=0.23.1,<1.0` | 尚未发布 1.0；0.x 阶段 minor 可能含破坏性变更，必须用 lockfile 锁具体版本（MUST-24b） |
 | SQLite 用 WAL + busy_timeout | 多请求跨进程并发写（MUST-11）需要行级等待与 CAS 兜底 |
 | React 19.3 而非更低版本 | 需 `use()` 与 `useOptimistic` |
-| 不引入 Tailwind | 已决定用 CSS Modules，Shadcn/ui 依赖 Tailwind |
+| 生产界面不引入 Tailwind | 已决定生产用 CSS + CSS Variables；Shadcn/ui 依赖 Tailwind 接管全局样式。样张页（`src/lab`）为限定例外，见 §1.4 |
 
 ---
 
@@ -573,7 +604,7 @@ system 本身已稳定、天然命中，user 每次都变、无法缓存。参�
 | 技术 | 排除理由 |
 |---|---|
 | Webpack | Vite 7 在冷启动、HMR、生产构建上均无劣势，配置复杂度更低 |
-| Tailwind CSS | UI 元素仅约 15 个，工具类无收益；且是放弃 Shadcn/ui 的连带原因 |
+| Tailwind CSS（生产界面） | UI 元素仅约 17 个，工具类无收益；且是放弃 Shadcn/ui 的连带原因。样张页例外见 §1.4 |
 | Redux Toolkit | 无复杂跨组件状态，三层结构是纯开销 |
 | React Query | 请求时序可预测，SSE 需自管连接，缓存策略收益为零 |
 | TanStack Router | 仅 3 个页面，React Router 足够 |
