@@ -94,11 +94,12 @@
   --color-primary-900: #312e81;
   --color-primary-soft: #eef2ff;
 
-  /* 状态语义：绿只表示「成功」，绿点表示「进行中」 */
-  --color-success-500: #16a34a;
-  --color-success-soft: rgba(22, 163, 74, 0.12);
-  --color-running-500: #16a34a;
-  --color-running-soft: rgba(22, 163, 74, 0.12);
+  /* 状态语义：绿只表示「成功」，绿点表示「进行中」。
+   * 500 档必须能在浅画布上作小字（「已完成」「复制成功」），故取 green-700 而非 500。 */
+  --color-success-500: #137a3a;
+  --color-success-soft: rgba(19, 122, 58, 0.12);
+  --color-running-500: #137a3a;
+  --color-running-soft: rgba(19, 122, 58, 0.12);
 
   /* 中性表面（冷灰递进） */
   --color-surface-base: #ebeff5;
@@ -109,23 +110,25 @@
   /* 边框 / 分隔线（发丝线是唯一的层级手段） */
   --color-border-subtle: #ccd4e0;
   --color-border-strong: #b6c1d0;
+  /* 控件边界：WCAG 1.4.11 要求可交互控件的轮廓 3:1（发丝线只用于分隔） */
+  --color-border-control: #7b8697;
   --divider: #dbe2ec;
 
-  /* 文字 */
+  /* 文字（四级层次都按 WCAG AA 正文口径定值：primary 15:1 → faint 4.5:1） */
   --color-text-primary: #12161c;
   --color-text-secondary: #4a5464;
-  --color-text-muted: #6b7688;
+  --color-text-muted: #525d6d;
   --color-text-inverse: #ffffff;
   --color-text-brand: #4f46e5;
-  --text-faint: #98a2b3;
+  --text-faint: #636d7b;
 
-  /* 语义色 */
-  --color-warning-500: #d97706;
-  --color-warning-soft: rgba(217, 119, 6, 0.12);
-  --color-danger-500: #dc2626;
-  --color-danger-soft: rgba(220, 38, 38, 0.1);
+  /* 语义色（500 档同时承担小字与图标，故取 700 档以保证 4.5:1） */
+  --color-warning-500: #b45309;
+  --color-warning-soft: rgba(180, 83, 9, 0.12);
+  --color-danger-500: #b91c1c;
+  --color-danger-soft: rgba(185, 28, 28, 0.1);
   --color-overlay: rgba(9, 12, 18, 0.42);
-  --danger: #dc2626;
+  --danger: #b91c1c;
 
   /* 对话式 UI 语义 token */
   --bubble: #e3e9f1;
@@ -169,6 +172,7 @@
   /* 边框 / 分隔线 */
   --color-border-subtle: rgba(255, 255, 255, 0.08);
   --color-border-strong: rgba(255, 255, 255, 0.14);
+  --color-border-control: rgba(255, 255, 255, 0.38);
   --divider: rgba(255, 255, 255, 0.06);
 
   /* 文字 */
@@ -177,7 +181,7 @@
   --color-text-muted: #8b95a3;
   --color-text-inverse: #0b0e13;
   --color-text-brand: #818cf8;
-  --text-faint: #66707e;
+  --text-faint: #737d8b;
 
   /* 语义色 */
   --color-warning-500: #f59e0b;

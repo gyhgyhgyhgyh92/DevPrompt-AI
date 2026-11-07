@@ -442,7 +442,7 @@ pre {
   text-align: start;
   cursor: pointer;
   background: var(--color-surface-base);
-  border: 1px solid var(--color-border-strong);
+  border: 1px solid var(--color-border-control);
   border-radius: var(--radius-sm);
   transition:
     border-color 0.16s ease-out,
@@ -557,12 +557,12 @@ pre {
   color: var(--color-text-primary);
   cursor: pointer;
   background: var(--color-surface-code);
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--color-border-control);
   border-radius: var(--radius-sm);
 }
 
 .button:hover:not(:disabled) {
-  border-color: var(--color-border-strong);
+  border-color: var(--color-text-muted);
 }
 
 .button--primary {
@@ -599,7 +599,7 @@ pre {
   font: var(--font-code-regular);
   color: var(--color-text-primary);
   background: var(--color-surface-code);
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--color-border-control);
   border-radius: var(--radius-sm);
 }
 
