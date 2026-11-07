@@ -14,6 +14,22 @@ from devprompt_ai.memory.schema import SESSIONS_DDL
 _BUSY_TIMEOUT_MS = 5000
 
 
+def _scan_ids(conn: sqlite3.Connection, user_id: str, target_norm: str) -> list[str]:
+    """全表归一化比对（索引未命中时的兜底）：Windows 大小写/分隔符差异靠这里兜住。"""
+    rows = conn.execute(
+        "SELECT session_id, payload FROM forge_sessions WHERE user_id = ?", (user_id,)
+    ).fetchall()
+    ids: list[str] = []
+    for session_id, payload_raw in rows:
+        try:
+            payload = json.loads(payload_raw)
+        except json.JSONDecodeError:
+            continue
+        if os.path.normcase(str(payload.get("project_root", ""))) == target_norm:
+            ids.append(session_id)
+    return ids
+
+
 class SQLiteSessionStore:
     """每操作独立连接 + asyncio.to_thread（sqlite3 同步 API 的异步包装，MUST-13）。"""
 
@@ -142,27 +158,28 @@ class SQLiteSessionStore:
         return await asyncio.to_thread(_run)
 
     async def delete_by_project(self, user_id: str, project_root: str) -> int:
-        """项目级批量删除：payload.project_root 归一化比对后一次 DELETE IN，返回删除条数。"""
+        """项目级批量删除：先走索引精确匹配，未命中再全表归一化比对（2026-11-07）。
+
+        索引是**表达式索引**（`json_extract(payload,'$.project_root')` + `json_valid` 部分索引），
+        见 `schema.SESSIONS_DDL`。精确匹配用不上时（Windows 大小写/路径分隔符差异）退回
+        原来的全表 normcase 比对——行为不变，只是常见情形从 O(全表) 变成 O(命中行)。
+        """
         if project_root.strip() == "":
             return 0
 
-        # shortcut: project_root 只在 payload JSON 里、无索引列，故全表读出再匹配；
-        # 会话量上百后改为生成列（json_extract）+ 索引
         def _run() -> int:
-            target = os.path.normcase(project_root)
             with self._connect() as conn:
-                rows = conn.execute(
-                    "SELECT session_id, payload FROM forge_sessions WHERE user_id = ?",
-                    (user_id,),
-                ).fetchall()
-                ids: list[str] = []
-                for session_id, payload_raw in rows:
-                    try:
-                        payload = json.loads(payload_raw)
-                    except json.JSONDecodeError:
-                        continue
-                    if os.path.normcase(str(payload.get("project_root", ""))) == target:
-                        ids.append(session_id)
+                ids = [
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT session_id FROM forge_sessions"
+                        " WHERE user_id = ? AND json_valid(payload)"
+                        "   AND json_extract(payload, '$.project_root') = ?",
+                        (user_id, project_root),
+                    ).fetchall()
+                ]
+                if not ids:
+                    ids = _scan_ids(conn, user_id, os.path.normcase(project_root))
                 if not ids:
                     return 0
                 placeholders = ", ".join("?" * len(ids))

@@ -1,5 +1,6 @@
 """SQLiteSessionStore 集成测试：本地临时库，无外部依赖。"""
 
+import os
 import sqlite3
 
 import pytest
@@ -160,6 +161,18 @@ async def test_delete_by_project_absent_or_empty_returns_zero(store) -> None:  #
     assert await store.delete_by_project("local", "/repos/none") == 0
     assert await store.delete_by_project("local", "") == 0
     assert len(await store.list_recent("local")) == 1
+
+
+@pytest.mark.skipif(
+    os.path.normcase("A") == "A", reason="大小写敏感文件系统：normcase 不做归一，索引精确匹配已足够"
+)
+async def test_delete_by_project_falls_back_to_casefold_scan(store) -> None:  # type: ignore[no-untyped-def]
+    """索引精确匹配未命中时仍能删除（Windows 大小写差异）：先快路径、后全表归一化兜底。"""
+    await store.init_schema()
+    await _create(store, "c-1", sentence="A", project_root="C:/Repos/Alpha")
+
+    assert await store.delete_by_project("local", "c:/repos/alpha") == 1
+    assert await store.list_recent("local") == []
 
 
 async def test_rename_and_pin_persist(store) -> None:  # type: ignore[no-untyped-def]

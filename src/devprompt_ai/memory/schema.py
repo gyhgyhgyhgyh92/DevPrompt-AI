@@ -13,6 +13,11 @@ CREATE TABLE IF NOT EXISTS forge_sessions (
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON forge_sessions (user_id);
+-- 项目级删除走索引（2026-11-07）：project_root 只在 payload JSON 里，
+-- 表达式索引 + json_valid 部分索引，畸形 payload 不参与建索引（否则整表 DDL 失败）。
+CREATE INDEX IF NOT EXISTS idx_sessions_project
+  ON forge_sessions (user_id, json_extract(payload, '$.project_root'))
+  WHERE json_valid(payload);
 """
 
 # 多轮 turn（2026-10-20）：append-only，一次 optimize 一行，状态机作用域下沉到 turn。
