@@ -245,7 +245,22 @@ export function HistoryPage() {
                         onClick={() => handleOpen(item.session_id)}
                       >
                         <span className={s('history-page__item-title')}>
-                          {item.pinned ? <span aria-label={t('history.pinned')}>📌 </span> : null}
+                          {item.pinned ? (
+                            <span
+                              aria-label={t('history.pinned')}
+                              className={s('history-page__pin')}
+                            >
+                              <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true">
+                                <path
+                                  d="M8 2l1.5 3.4 3.5.4-2.6 2.3.7 3.4L8 9.8 4.9 11.5l.7-3.4L3 5.8l3.5-.4z"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.2"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </span>
+                          ) : null}
                           {itemTitle(item)}
                           {isCurrent ? (
                             <span className={s('history-page__tag')}>

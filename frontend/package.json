@@ -14,7 +14,8 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "gen:contract": "openapi-typescript ../openapi.json -o src/schemas/openapi.generated.ts",
-    "check:contract": "pnpm gen:contract && git diff --exit-code -- src/schemas/openapi.generated.ts && node scripts/check-contract.mjs"
+    "check:contract": "pnpm gen:contract && git diff --exit-code -- src/schemas/openapi.generated.ts && node scripts/check-contract.mjs",
+    "check:css": "python ../scripts/check_css_modules.py src"
   },
   "dependencies": {
     "i18next": "^26.7.2",

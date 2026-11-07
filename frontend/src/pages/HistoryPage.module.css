@@ -56,6 +56,13 @@
   overflow-wrap: anywhere;
 }
 
+/* 置顶标记：线性图钉 + 弱色（不用 📌 emoji，红色过重且跨平台渲染不一） */
+.history-page__pin {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
 .history-page__item-meta {
   display: flex;
   flex-wrap: wrap;

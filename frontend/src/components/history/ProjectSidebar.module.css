@@ -99,7 +99,8 @@
   font-size: var(--text-micro);
   letter-spacing: var(--track-micro);
   color: var(--color-text-muted);
-  text-transform: uppercase;
+  /* 目录名是标识符不是标签：不跟随大写变换（proj-a 显示成 PROJ-A 会误导） */
+  text-transform: none;
 }
 
 .project-sidebar__group-name {

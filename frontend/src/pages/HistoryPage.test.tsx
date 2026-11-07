@@ -137,7 +137,7 @@ describe('HistoryPage 历史列表', () => {
     )
 
     const titles = await screen.findAllByText(/条目$/)
-    expect(titles.map((node) => node.textContent)).toEqual(['📌 置顶条目', '未置顶条目'])
+    expect(titles.map((node) => node.textContent)).toEqual(['置顶条目', '未置顶条目'])
     expect(screen.getByLabelText('已置顶')).toBeTruthy()
   })
 
