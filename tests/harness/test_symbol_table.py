@@ -73,6 +73,31 @@ async def test_symbols_paths_normalized_to_repo_relative() -> None:
     assert [s.path for s in r.symbols] == ["src/App.tsx", "src/ui/b.tsx"]
 
 
+class RejectSignatureRunner(FakeRunner):
+    """模拟不认 `{signature}` 字段的老版 ctags：带该字段直接抛错。"""
+
+    async def run(self, args: list[str], **kw: object) -> str:
+        if any("{signature}" in arg for arg in args):
+            self.calls += 1
+            self.calls_args.append(args)
+            raise RuntimeError("ctags: Unknown field name: signature")
+        return await super().run(args, **kw)
+
+
+async def test_signature_capability_probed_once() -> None:
+    """老版 ctags 只在首次失败一次；之后直接不带签名，不再白跑失败调用（2026-11-07）。"""
+    runner = RejectSignatureRunner(_CTAGS_OUT)
+    provider = SymbolTableProvider(runner, ttl_seconds=3600.0)
+
+    await provider.get("C:/proj")
+    assert len(runner.calls_args) == 2  # 带签名失败 → 去签名重试成功
+
+    provider.mtime_digest_override = "changed"  # 强制缓存失效，触发第二次真实调用
+    await provider.get("C:/proj")
+    assert len(runner.calls_args) == 3  # 只多一次，且不带签名
+    assert all("{signature}" not in arg for arg in runner.calls_args[-1])
+
+
 async def test_relative_root_paths_normalized() -> None:
     # root 为相对路径（如 eval/recall/mock-x）时同样归一
     raw = (

@@ -52,18 +52,18 @@ class TestControlSamples:
         assert _ok(raw), f"对照样本不应回归：{name}"
 
 
-class TestRealVulnerabilities:
-    """真实脆弱点：Batch 3 实施 M-1 后，这两条应转为成功。"""
+class TestRealVulnerabilitiesFixed:
+    """两个真实脆弱点已于 2026-11-07 修复（括号配平 + 逐块尝试），改为回归用例。"""
 
-    def test_trailing_prose_with_braces_fails_now(self) -> None:
+    def test_trailing_prose_with_braces_is_tolerated(self) -> None:
         """LLM 常在 JSON 后追加说明，说明里带 {} 示例也很常见。"""
         raw = _PAYLOAD + '\n\n说明：取值如 {"level":"A"}。'
-        assert not _ok(raw), "改动前应失败；若已通过说明 M-1 已实施，请更新本用例"
+        assert _ok(raw)
 
-    def test_leading_prose_fence_fails_now(self) -> None:
-        """首个围栏块是说明文字时，正则取了错的那个块。"""
+    def test_leading_prose_fence_is_skipped(self) -> None:
+        """首个围栏块是说明文字时，继续往后找真正的 JSON 块。"""
         raw = "```\n分析：{}\n```\n```json\n" + _PAYLOAD + "\n```"
-        assert not _ok(raw), "改动前应失败；若已通过说明 M-1 已实施，请更新本用例"
+        assert _ok(raw)
 
 
 class TestKnownLimits:

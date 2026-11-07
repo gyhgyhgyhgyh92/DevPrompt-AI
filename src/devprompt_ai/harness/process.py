@@ -101,6 +101,8 @@ class SymbolTableProvider:
         self._cached_at: float = 0.0
         self.mtime_digest_override: str | None = None  # 测试注入点
         self.calls_args: list[list[str]] = []  # 测试观测点
+        #: ctags 是否支持 `{signature}` 字段：None=未知（首次尝试），False=已确认不支持（不再重试）
+        self._signature_ok: bool | None = None
 
     def _collect_mtimes(self, root: str) -> list[tuple[str, int]]:
         entries: list[tuple[str, int]] = []
@@ -133,15 +135,18 @@ class SymbolTableProvider:
                 symbols=self._cache_symbols or [], cache_hit=True, cache_key=key
             )
 
-        args = build_ctags_args(root)
+        # 老版 ctags 不认 `--fields=+n+{signature}`（未知字段名）会直接失败：签名只是排序的
+        # 增强信息，不该让整个符号表不可用。首次失败后记住「本进程不支持签名」，后续直接不带，
+        # 避免每次刷新缓存都白跑一次失败调用（2026-11-07 清理 shortcut）。
+        args = build_ctags_args(root, with_signature=self._signature_ok is not False)
         self.calls_args.append(args)
         try:
             raw = await self._runner.run(args, timeout=30.0)
         except Exception:
-            # 老版 ctags 不认 `--fields=+n+{signature}` 会直接失败（未知字段名）。
-            # 去掉签名重试一次：签名只是排序的增强信息，不该让整个符号表不可用。
-            # shortcut: 仅在带签名参数失败时降级；代价是排序少了签名（退化为改造前行为）。
-            # 升级路径：若 ctags 支持探测命令，可先探测再决定是否带签名，省一次重试。
+            if self._signature_ok is False:
+                raise
+            self._signature_ok = False
+            logger.info("symbols.signature_unsupported", extra={"what": "ctags"})
             args = build_ctags_args(root, with_signature=False)
             self.calls_args.append(args)
             raw = await self._runner.run(args, timeout=30.0)
