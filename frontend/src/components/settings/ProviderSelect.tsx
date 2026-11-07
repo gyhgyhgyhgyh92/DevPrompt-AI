@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ProviderDirectoryEntry } from '../../schemas/settings'
+import { makeS } from '../../utils/css'
+import styles from './settings.module.css'
+
+const s = makeS(styles)
 
 /** 契约侧类型（api/types.ts 由 openapi 生成），比 Zod 推断更贴近服务端实际下发。 */
 type ProviderEntry = Omit<
@@ -54,7 +58,7 @@ export function ProviderSelect({
   const { t } = useTranslation()
   return (
     <select
-      className="settings-select"
+      className={s('settings-select')}
       value={value}
       disabled={disabled}
       aria-label={t('settings.provider.aria')}

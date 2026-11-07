@@ -1,6 +1,9 @@
 import { useTranslation } from 'react-i18next'
 import type { RankingViewPayload } from '../../api/types'
-import './optimize.css'
+import styles from './optimize.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 interface ConfidenceNoticeProps {
   /** 推荐视图（契约 ranking）；null 表示后端未产生推荐视图。 */
@@ -23,10 +26,10 @@ export function ConfidenceNotice({ ranking, skipReason = null }: ConfidenceNotic
   const { t } = useTranslation()
   if (ranking === null) {
     const key = skipReason !== null ? SKIP_KEYS[skipReason] : undefined
-    return <p className="confidence-notice">{t(key ?? 'ranking.skip_unknown')}</p>
+    return <p className={s('confidence-notice')}>{t(key ?? 'ranking.skip_unknown')}</p>
   }
   if (ranking.marked) {
     return null
   }
-  return <p className="confidence-notice">{ranking.reason}</p>
+  return <p className={s('confidence-notice')}>{ranking.reason}</p>
 }

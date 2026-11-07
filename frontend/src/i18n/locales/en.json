@@ -176,7 +176,8 @@
         "label": "Aborted",
         "hint": "Abnormal or connection lost; session closed safely"
       }
-    }
+    },
+    "agent_step": "step {{step}}"
   },
   "history": {
     "load_result_failed": "Failed to load the session result",

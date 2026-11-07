@@ -1,6 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import './SessionMenu.css'
+import styles from './SessionMenu.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 interface SessionMenuProps {
   /** 当前条目是否已置顶（决定「置顶任务」项语义）。 */
@@ -103,29 +106,39 @@ export function SessionMenu({
   }, [onClose])
 
   return (
-    <div className="session-menu" role="menu" ref={menuRef} aria-label={t('history.menu_label')}>
+    <div
+      className={s('session-menu')}
+      role="menu"
+      ref={menuRef}
+      aria-label={t('history.menu_label')}
+    >
       <button
         type="button"
         role="menuitem"
-        className="session-menu__item"
+        className={s('session-menu__item')}
         aria-pressed={isPinned}
         onClick={onPin}
       >
         <PinIcon />
         <span>{t('history.menu_pin')}</span>
       </button>
-      <button type="button" role="menuitem" className="session-menu__item" onClick={onCopyPath}>
+      <button
+        type="button"
+        role="menuitem"
+        className={s('session-menu__item')}
+        onClick={onCopyPath}
+      >
         <FolderIcon />
         <span>{t('history.menu_copy_path')}</span>
       </button>
-      <button type="button" role="menuitem" className="session-menu__item" onClick={onRename}>
+      <button type="button" role="menuitem" className={s('session-menu__item')} onClick={onRename}>
         <PencilIcon />
         <span>{t('history.menu_rename')}</span>
       </button>
       <button
         type="button"
         role="menuitem"
-        className="session-menu__item session-menu__item--danger"
+        className={s('session-menu__item session-menu__item--danger')}
         onClick={onDelete}
       >
         <TrashIcon />

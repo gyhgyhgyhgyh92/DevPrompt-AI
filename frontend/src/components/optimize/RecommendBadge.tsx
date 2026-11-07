@@ -1,5 +1,8 @@
 import type { RankingViewPayload } from '../../api/types'
-import './optimize.css'
+import styles from './optimize.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 interface RecommendBadgeProps {
   /** 推荐视图（契约 ranking）；标记与否完全由后端判定，前端只渲染（MUST-08）。 */
@@ -12,7 +15,7 @@ export function RecommendBadge({ ranking }: RecommendBadgeProps) {
     return null
   }
   return (
-    <span className="recommend-badge">
+    <span className={s('recommend-badge')}>
       【推荐】{ranking.variant}（置信度 {ranking.confidence}）
     </span>
   )

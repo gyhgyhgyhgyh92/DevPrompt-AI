@@ -1,9 +1,12 @@
 import type { ReactNode } from 'react'
 import type { RankingViewPayload, VariantPayload } from '../../api/types'
 import { CopyButton } from './CopyButton'
-import './optimize.css'
+import styles from './optimize.module.css'
+import { makeS } from '../../utils/css'
 import { RecommendBadge } from './RecommendBadge'
 import { ScoreDetail } from './ScoreDetail'
+
+const s = makeS(styles)
 
 interface PromptCardProps {
   /** 单套方案（契约 VariantPayload）：body 为后端生成原文，前端零加工（MUST-08）。 */
@@ -24,26 +27,26 @@ export function PromptCard({ variant, ranking, actions }: PromptCardProps) {
 
   return (
     <article
-      className={isRecommended ? 'prompt-card prompt-card--recommended' : 'prompt-card'}
+      className={s(isRecommended ? 'prompt-card prompt-card--recommended' : 'prompt-card')}
       aria-label={`方案 ${variant.level}`}
     >
-      <header className="prompt-card__header">
+      <header className={s('prompt-card__header')}>
         <h3>{variant.title}</h3>
-        <span className="prompt-card__level">{variant.level}</span>
+        <span className={s('prompt-card__level')}>{variant.level}</span>
         <RecommendBadge ranking={isRankingVariant ? ranking : null} />
       </header>
-      <pre className="prompt-card__body">
+      <pre className={s('prompt-card__body')}>
         <code>{variant.body}</code>
       </pre>
       {(variant.changes ?? []).length > 0 ? (
-        <ul className="prompt-card__changes">
+        <ul className={s('prompt-card__changes')}>
           {(variant.changes ?? []).map((change) => (
             <li key={change}>{change}</li>
           ))}
         </ul>
       ) : null}
       {isRankingVariant && ranking !== null ? <ScoreDetail ranking={ranking} /> : null}
-      <footer className="prompt-card__footer">
+      <footer className={s('prompt-card__footer')}>
         <CopyButton text={variant.body} />
         {actions}
       </footer>

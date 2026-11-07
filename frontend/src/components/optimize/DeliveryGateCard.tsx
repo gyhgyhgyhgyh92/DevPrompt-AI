@@ -1,5 +1,8 @@
 import type { DeliveryGatePayload } from '../../api/types'
-import './optimize.css'
+import styles from './ChatStream.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 interface DeliveryGateCardProps {
   /** 后端给出的门禁结果；null 表示本轮未过门（进行中 / 反问中）。 */
@@ -16,9 +19,11 @@ export function DeliveryGateCard({ gate }: DeliveryGateCardProps) {
   if (gate === null || gate === undefined || gate.status === '') return null
 
   return (
-    <div className={`delivery-gate delivery-gate--${gate.tone}`} role="status">
-      <span className="delivery-gate__status">{gate.status}</span>
-      {gate.disclosure !== '' ? <p className="delivery-gate__text">{gate.disclosure}</p> : null}
+    <div className={s(`delivery-gate delivery-gate--${gate.tone}`)} role="status">
+      <span className={s('delivery-gate__status')}>{gate.status}</span>
+      {gate.disclosure !== '' ? (
+        <p className={s('delivery-gate__text')}>{gate.disclosure}</p>
+      ) : null}
     </div>
   )
 }

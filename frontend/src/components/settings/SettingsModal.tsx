@@ -6,7 +6,10 @@ import { AppearancePanel } from './AppearancePanel'
 import { errorMessage } from './errorMessage'
 import { ModelServicePanel } from './ModelServicePanel'
 import { SecurityPanel } from './SecurityPanel'
-import './settings.css'
+import styles from './settings.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 export interface SettingsModalProps {
   open: boolean
@@ -75,9 +78,9 @@ export function SettingsModal(props: SettingsModalProps) {
   if (!props.open) return null
 
   return (
-    <div className="settings-overlay">
+    <div className={s('settings-overlay')}>
       <div
-        className="settings-modal"
+        className={s('settings-modal')}
         data-tab={activeTab}
         role="dialog"
         aria-modal="true"
@@ -85,38 +88,38 @@ export function SettingsModal(props: SettingsModalProps) {
         ref={panelRef}
         tabIndex={-1}
       >
-        <header className="settings-modal__header">
-          <h2 className="settings-modal__title">{t('settings.modal.title')}</h2>
+        <header className={s('settings-modal__header')}>
+          <h2 className={s('settings-modal__title')}>{t('settings.modal.title')}</h2>
           <button
             type="button"
-            className="settings-close"
+            className={s('settings-close')}
             aria-label={t('common.close')}
             onClick={props.onClose}
           >
             ✕
           </button>
         </header>
-        <div className="settings-modal__body">
-          <nav className="settings-nav" aria-label={t('settings.nav.label')}>
+        <div className={s('settings-modal__body')}>
+          <nav className={s('settings-nav')} aria-label={t('settings.nav.label')}>
             {TAB_KEYS.map((key) => (
               <button
                 key={key}
                 type="button"
                 aria-current={activeTab === key ? 'page' : undefined}
-                className={
+                className={s(
                   activeTab === key
                     ? 'settings-nav__item settings-nav__item--active'
-                    : 'settings-nav__item'
-                }
+                    : 'settings-nav__item',
+                )}
                 onClick={() => setActiveTab(key)}
               >
                 {TAB_ICONS[key]} {t(`settings.tab.${key}`)}
               </button>
             ))}
           </nav>
-          <div className="settings-content">
+          <div className={s('settings-content')}>
             {loadError !== '' ? (
-              <p className="settings-status settings-status--error">{loadError}</p>
+              <p className={s('settings-status settings-status--error')}>{loadError}</p>
             ) : null}
             {activeTab === 'model-service' ? <ModelServicePanel /> : null}
             {activeTab === 'appearance' ? <AppearancePanel /> : null}

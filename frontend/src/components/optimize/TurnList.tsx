@@ -6,7 +6,10 @@ import { useOptimizeStore } from '../../stores/useOptimizeStore'
 import { errorMessage } from '../settings/errorMessage'
 import { AssistantBlock } from './AssistantBlock'
 import { TurnActions } from './TurnActions'
-import './optimize.css'
+import styles from './ChatStream.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 interface TurnListProps {
   /** 轮次摘要（升序）；正文进入即并发拉取。 */
@@ -73,11 +76,11 @@ export function TurnList({
   if (turns.length === 0 && !hasMore) return null
 
   return (
-    <div className="thread">
+    <div className={s('thread')}>
       {hasMore ? (
         <button
           type="button"
-          className="thread__more"
+          className={s('thread__more')}
           onClick={onLoadEarlier}
           disabled={loadingEarlier}
         >
@@ -87,13 +90,13 @@ export function TurnList({
       {turns.map((turn) => {
         const detail = turnBodies[turn.turn_id]
         return (
-          <section className="thread__turn" key={turn.turn_id}>
-            <div className="chat-stream__row chat-stream__row--user">
-              <div className="chat-user-bubble">{detail?.input ?? turn.conclusion}</div>
+          <section className={s('thread__turn')} key={turn.turn_id}>
+            <div className={s('chat-stream__row chat-stream__row--user')}>
+              <div className={s('chat-user-bubble')}>{detail?.input ?? turn.conclusion}</div>
             </div>
-            <div className="chat-stream__row">
+            <div className={s('chat-stream__row')}>
               <AssistantBlock
-                header={<span className="thread__round">第 {turn.turn_index + 1} 轮</span>}
+                header={<span className={s('thread__round')}>第 {turn.turn_index + 1} 轮</span>}
                 steps={detail?.steps}
                 variants={detail?.variants}
                 message={detail?.conclusion || turn.conclusion}

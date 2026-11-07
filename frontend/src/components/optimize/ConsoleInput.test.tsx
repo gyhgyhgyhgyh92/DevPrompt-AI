@@ -102,8 +102,8 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
   it('渲染居中卡片结构（console-input 容器 + 卡片）', () => {
     render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
 
-    expect(document.querySelector('.console-input')).not.toBeNull()
-    expect(document.querySelector('.console-input__card')).not.toBeNull()
+    expect(document.querySelector('[class*="console-input"]')).not.toBeNull()
+    expect(document.querySelector('[class*="console-input__card"]')).not.toBeNull()
   })
 
   it('输入区展示固定文案占位（逐字）', () => {

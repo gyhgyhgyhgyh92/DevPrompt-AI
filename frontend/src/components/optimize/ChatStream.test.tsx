@@ -44,8 +44,8 @@ describe('ChatStream 结构与阶段', () => {
     render(<ChatStream {...baseProps()} />)
 
     expect(screen.getByText('DevPrompt AI')).toBeTruthy()
-    expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
-    expect(document.querySelector('.chat-reply__divider')).not.toBeNull()
+    expect(document.querySelector('[class*="chat-reply__phases"]')).not.toBeNull()
+    expect(document.querySelector('[class*="chat-reply__divider"]')).not.toBeNull()
   })
 
   it('步骤用中文展示，并给出每一步在做什么', () => {
@@ -63,7 +63,7 @@ describe('ChatStream 结构与阶段', () => {
       />,
     )
 
-    const labels = Array.from(document.querySelectorAll('.chat-reply__phase-label')).map(
+    const labels = Array.from(document.querySelectorAll('[class*="chat-reply__phase-label"]')).map(
       (el) => el.textContent,
     )
     expect(labels).toEqual([
@@ -83,7 +83,7 @@ describe('ChatStream 结构与阶段', () => {
   it('无信息缺口时不渲染「等待确认 / 整理答复」，研判步骤给出无需补充的结论', () => {
     render(<ChatStream {...baseProps({ state: 'GENERATING', status: null, isThinking: true })} />)
 
-    const labels = Array.from(document.querySelectorAll('.chat-reply__phase-label')).map(
+    const labels = Array.from(document.querySelectorAll('[class*="chat-reply__phase-label"]')).map(
       (el) => el.textContent,
     )
     expect(labels).not.toContain('等待确认')
@@ -95,7 +95,7 @@ describe('ChatStream 结构与阶段', () => {
   it('单套方案跳过打分时不渲染「评估推荐」', () => {
     render(<ChatStream {...baseProps({ state: 'DONE', isThinking: true })} />)
 
-    const labels = Array.from(document.querySelectorAll('.chat-reply__phase-label')).map(
+    const labels = Array.from(document.querySelectorAll('[class*="chat-reply__phase-label"]')).map(
       (el) => el.textContent,
     )
     expect(labels).toContain('生成方案')
@@ -105,7 +105,7 @@ describe('ChatStream 结构与阶段', () => {
   it('中止时才出现「已中止」这一步', () => {
     render(<ChatStream {...baseProps({ state: 'ABORTED', status: 'aborted', isThinking: true })} />)
 
-    const labels = Array.from(document.querySelectorAll('.chat-reply__phase-label')).map(
+    const labels = Array.from(document.querySelectorAll('[class*="chat-reply__phase-label"]')).map(
       (el) => el.textContent,
     )
     expect(labels).toContain('已中止')
@@ -156,7 +156,9 @@ describe('ChatStream 结构与阶段', () => {
 
     expect(screen.getByText('已读取 src/ui/Button.tsx')).toBeTruthy()
     await userEvent.setup().click(screen.getByRole('button', { name: /已读取/ }))
-    expect(document.querySelector('.trace-step__code--output')?.textContent).toBe('line1\nline2')
+    expect(document.querySelector('[class*="trace-step__code--output"]')?.textContent).toBe(
+      'line1\nline2',
+    )
   })
 
   it('输出为空时不渲染输出块', async () => {
@@ -174,7 +176,7 @@ describe('ChatStream 结构与阶段', () => {
     render(<ChatStream {...baseProps({ thinking, state: 'DONE', isThinking: true })} />)
 
     await userEvent.setup().click(screen.getByRole('button', { name: /命令已执行/ }))
-    expect(document.querySelectorAll('.trace-step__code--output')).toHaveLength(0)
+    expect(document.querySelectorAll('[class*="trace-step__code--output"]')).toHaveLength(0)
   })
 
   it('思考静默 1.5 秒后提示「正在规划下一步」', () => {
@@ -210,8 +212,8 @@ describe('ChatStream 结果与反问', () => {
     expect(screen.getByText(/导出为 CSV/)).toBeTruthy()
     expect(screen.queryByText('目标定位')).toBeNull()
     expect(screen.queryByText('取证事实')).toBeNull()
-    expect(document.querySelector('.chat-suggestions')).toBeNull() // 采纳/编辑/跳过整行
-    expect(document.querySelector('.chat-reply__actions')).toBeNull() // 底部图标行
+    expect(document.querySelector('[class*="chat-suggestions"]')).toBeNull() // 采纳/编辑/跳过整行
+    expect(document.querySelector('[class*="chat-reply__actions"]')).toBeNull() // 底部图标行
     expect(screen.queryByText('由 AI 生成')).toBeNull()
   })
 
@@ -276,20 +278,20 @@ describe('ChatStream 结果与反问', () => {
     render(<ChatStream {...baseProps({ thinking, state: 'DONE', elapsedSeconds: 12 })} />)
 
     // 默认展开：账本与过程文字都在，折叠按钮显示动作名
-    expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
+    expect(document.querySelector('[class*="chat-reply__phases"]')).not.toBeNull()
     expect(screen.getByText('符号表就绪')).toBeTruthy()
     expect(screen.getByRole('button', { name: /折叠过程/ })).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: /折叠过程/ }))
 
     // 收起后只剩一行摘要（阶段 · 动作数 · 耗时）
-    expect(document.querySelector('.chat-reply__phases')).toBeNull()
+    expect(document.querySelector('[class*="chat-reply__phases"]')).toBeNull()
     expect(screen.queryByText('符号表就绪')).toBeNull()
     expect(screen.getByText(/已完成 · 1 个动作 · 12s/)).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: /已完成 · 1 个动作 · 12s/ }))
 
-    expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
+    expect(document.querySelector('[class*="chat-reply__phases"]')).not.toBeNull()
     expect(screen.getByText('符号表就绪')).toBeTruthy()
   })
 
@@ -302,11 +304,11 @@ describe('ChatStream 结果与反问', () => {
       <ChatStream {...baseProps({ thinking, state: 'PROBING', status: null, isThinking: true })} />,
     )
 
-    expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
+    expect(document.querySelector('[class*="chat-reply__phases"]')).not.toBeNull()
 
     await user.click(screen.getByRole('button', { name: /折叠过程/ }))
 
-    expect(document.querySelector('.chat-reply__phases')).toBeNull()
+    expect(document.querySelector('[class*="chat-reply__phases"]')).toBeNull()
   })
 
   it('工具卡展示后端下发的真实耗时；缺失时不渲染耗时', () => {
@@ -342,7 +344,7 @@ describe('ChatStream 结果与反问', () => {
       },
     ]
     render(<ChatStream {...baseProps({ thinking: withoutDuration, state: 'DONE' })} />)
-    expect(document.querySelector('.trace-step__duration')).toBeNull()
+    expect(document.querySelector('[class*="trace-step__duration"]')).toBeNull()
   })
 
   it('失败动作按错误色渲染并带出退出码（2026-11-04）', () => {
@@ -363,6 +365,6 @@ describe('ChatStream 结果与反问', () => {
     )
 
     expect(screen.getByText('命令失败 · Exit code 1')).toBeTruthy()
-    expect(document.querySelector('.trace-step--failed')).not.toBeNull()
+    expect(document.querySelector('[class*="trace-step--failed"]')).not.toBeNull()
   })
 })

@@ -1,4 +1,8 @@
 import { useTranslation } from 'react-i18next'
+import { makeS } from '../../utils/css'
+import styles from './settings.module.css'
+
+const s = makeS(styles)
 
 export interface ApiModeSelectProps {
   /** 该 provider 支持的模式集（后端目录的 supported_api_modes）。 */
@@ -38,18 +42,18 @@ export function ApiModeSelect({
   // 多数第三方厂商确实只有 OpenAI 兼容形态（model_spec 逐家核实），如实说明即可。
   if (list.length <= 1) {
     return (
-      <div className="model-api-mode">
-        <div className="settings-field">
-          <span className="settings-label">{t('settings.api_mode')}</span>
-          <p className="settings-hint">{t('settings.api_mode_only', { mode: list[0] })}</p>
+      <div className={s('model-api-mode')}>
+        <div className={s('settings-field')}>
+          <span className={s('settings-label')}>{t('settings.api_mode')}</span>
+          <p className={s('settings-hint')}>{t('settings.api_mode_only', { mode: list[0] })}</p>
         </div>
       </div>
     )
   }
   return (
-    <div className="model-api-mode">
-      <div className="settings-field">
-        <label className="settings-label" htmlFor={selectId}>
+    <div className={s('model-api-mode')}>
+      <div className={s('settings-field')}>
+        <label className={s('settings-label')} htmlFor={selectId}>
           API 形态
         </label>
         <select

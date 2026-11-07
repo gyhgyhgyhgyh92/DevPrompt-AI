@@ -176,7 +176,8 @@
         "label": "已中止",
         "hint": "异常或连接断开，会话已安全关闭"
       }
-    }
+    },
+    "agent_step": "第 {{step}} 步"
   },
   "history": {
     "load_result_failed": "会话结果加载失败",

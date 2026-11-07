@@ -78,29 +78,29 @@
 
 /* 样张页独占视口：`:has(.lab-root)` 在 lab 挂载后隐藏工作台壳层（标题栏 / 侧边栏）。
  * 放在 lab.css 而不是 global.css：生产产物里没有只为 lab 存在的规则，App.tsx 也不需要知道 lab 的存在。 */
-body:has(.lab-root) .app-titlebar,
-body:has(.lab-root) .app-drawer,
-body:has(.lab-root) .app-drawer__overlay {
+body:has([data-lab-root]) [data-titlebar],
+body:has([data-lab-root]) [data-drawer],
+body:has([data-lab-root]) [data-drawer-overlay] {
   display: none;
 }
 
 /* 壳层原本「固定视口 + 内部滚动」，样张页要整页滚动：解除高度锁与 overflow 收口 */
-body:has(.lab-root) .app-shell {
+body:has([data-lab-root]) [data-shell] {
   block-size: auto;
   min-block-size: 100dvh;
   overflow: visible;
 }
 
-body:has(.lab-root) .app-body {
+body:has([data-lab-root]) [data-body] {
   block-size: auto;
   min-block-size: 0;
 }
 
-body:has(.lab-root) .app-main {
+body:has([data-lab-root]) [data-main] {
   overflow: visible;
 }
 
-body:has(.lab-root) {
+body:has([data-lab-root]) {
   overflow-y: auto;
 }
 

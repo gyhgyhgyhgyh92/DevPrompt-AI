@@ -10,6 +10,10 @@ import { applyLocale } from './i18n'
 import { useOptimizeStore } from './stores/useOptimizeStore'
 import { useHistoryStore } from './stores/useHistoryStore'
 import { applyAppearanceTheme, useSettingsStore, watchSystemTheme } from './stores/useSettingsStore'
+import { makeS } from './utils/css'
+import styles from './App.module.css'
+
+const s = makeS(styles)
 
 type ApiStatus = 'checking' | 'ok' | 'down'
 
@@ -139,30 +143,33 @@ export function App() {
 
   return (
     <BrowserRouter>
-      <div className={isSidebarCollapsed ? 'app-shell app-shell--sidebar-collapsed' : 'app-shell'}>
-        <header className="app-titlebar">
+      <div
+        className={s(isSidebarCollapsed ? 'app-shell app-shell--sidebar-collapsed' : 'app-shell')}
+        data-shell
+      >
+        <header className={s('app-titlebar')} data-titlebar>
           <button
             type="button"
-            className="app-titlebar__menu"
+            className={s('app-titlebar__menu')}
             aria-label={t('app.open_sidebar')}
             aria-expanded={isDrawerOpen}
             onClick={handleMenuClick}
           >
             ☰
           </button>
-          <span className="app-titlebar__logo">
+          <span className={s('app-titlebar__logo')}>
             <BrandMark size={18} />
             DevPrompt AI
           </span>
-          <span className="app-titlebar__chip">{activeProject ?? t('app.no_project')}</span>
-          <span className="app-titlebar__spacer" />
-          <span className={`api-pill api-pill--${apiStatus}`}>
-            <span className="api-pill__dot" aria-hidden="true" />
+          <span className={s('app-titlebar__chip')}>{activeProject ?? t('app.no_project')}</span>
+          <span className={s('app-titlebar__spacer')} />
+          <span className={s(`api-pill api-pill--${apiStatus}`)}>
+            <span className={s('api-pill__dot')} aria-hidden="true" />
             {t(API_STATUS_KEY[apiStatus])}
           </span>
           <button
             type="button"
-            className="app-titlebar__settings"
+            className={s('app-titlebar__settings')}
             aria-label={t('app.settings')}
             title={t('app.settings')}
             onClick={() => setSettingsOpen(true)}
@@ -171,19 +178,23 @@ export function App() {
             <span>{t('app.settings')}</span>
           </button>
         </header>
-        <div className="app-body">
-          <div className={isDrawerOpen ? 'app-drawer app-drawer--open' : 'app-drawer'}>
+        <div className={s('app-body')} data-body>
+          <div
+            className={s(isDrawerOpen ? 'app-drawer app-drawer--open' : 'app-drawer')}
+            data-drawer
+          >
             <ProjectSidebar onCollapse={handleCollapse} onSelect={() => setDrawerOpen(false)} />
           </div>
           {isDrawerOpen ? (
             <button
               type="button"
-              className="app-drawer__overlay"
+              className={s('app-drawer__overlay')}
+              data-drawer-overlay
               aria-label={t('app.close_sidebar')}
               onClick={() => setDrawerOpen(false)}
             />
           ) : null}
-          <main className="app-main">
+          <main className={s('app-main')} data-main>
             <AppRoutes />
           </main>
         </div>

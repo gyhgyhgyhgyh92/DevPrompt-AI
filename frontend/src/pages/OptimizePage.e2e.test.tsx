@@ -174,9 +174,9 @@ describe('mock e2e 六路径', () => {
     const bubble = screen.getByText('加个导出按钮')
     expect(bubble.className).toContain('chat-user-bubble')
     expect(screen.getByRole('article', { name: 'AI 回复' })).toBeTruthy()
-    expect(document.querySelector('.chat-reply__divider')).not.toBeNull()
+    expect(document.querySelector('[class*="chat-reply__divider"]')).not.toBeNull()
     // 底部图标行（复制/重试/赞踩/AI 生成）已按用户要求移除
-    expect(document.querySelector('.chat-reply__actions')).toBeNull()
+    expect(document.querySelector('[class*="chat-reply__actions"]')).toBeNull()
   })
 
   it('② 反问 → 批量答复 → DONE：澄清卡数量与 answers 提交', async () => {
@@ -373,6 +373,6 @@ describe('mock e2e 六路径', () => {
     expect(recommended.className).toContain('prompt-card--recommended')
     // 刷新恢复：AI 回复块存在（旧会话无原句 → 无用户气泡，仅显状态）
     expect(screen.getByRole('article', { name: 'AI 回复' })).toBeTruthy()
-    expect(document.querySelector('.chat-user-bubble')).toBeNull()
+    expect(document.querySelector('[class*="chat-user-bubble"]')).toBeNull()
   })
 })

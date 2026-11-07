@@ -97,7 +97,7 @@ describe('AskFlow 组合层', () => {
     const { rerender } = renderFlow()
 
     await user.click(screen.getByRole('button', { name: /需要你确认 2 个问题/ }))
-    expect(document.querySelector('.ask-panel__body')).toBeNull()
+    expect(document.querySelector('[class*="ask-panel__body"]')).toBeNull()
 
     rerender(
       <AskFlow
@@ -111,6 +111,6 @@ describe('AskFlow 组合层', () => {
       />,
     )
 
-    expect(document.querySelector('.ask-panel__body')).not.toBeNull()
+    expect(document.querySelector('[class*="ask-panel__body"]')).not.toBeNull()
   })
 })

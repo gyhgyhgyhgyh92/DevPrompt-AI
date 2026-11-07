@@ -1,6 +1,9 @@
 import { useTranslation } from 'react-i18next'
 import type { ModelCapabilities } from '../../schemas/modelSpec'
-import './settings.css'
+import styles from './settings.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 export interface ModelCapabilityBadgeProps {
   capabilities: ModelCapabilities
@@ -38,21 +41,21 @@ export function ModelCapabilityBadge({ capabilities }: ModelCapabilityBadgeProps
   ]
 
   return (
-    <span className="model-cap" aria-label={t('settings.capability.aria')}>
+    <span className={s('model-cap')} aria-label={t('settings.capability.aria')}>
       {items.map((item) => (
         <span
           key={item.key}
-          className={
+          className={s(
             item.ok
               ? 'model-cap__badge model-cap__badge--on'
-              : 'model-cap__badge model-cap__badge--off'
-          }
+              : 'model-cap__badge model-cap__badge--off',
+          )}
           title={item.hint}
         >
           {item.label}
         </span>
       ))}
-      <span className="model-cap__badge model-cap__badge--info">
+      <span className={s('model-cap__badge model-cap__badge--info')}>
         {t('settings.capability.context', {
           length:
             formatContextLength(capabilities.max_context_length) ??

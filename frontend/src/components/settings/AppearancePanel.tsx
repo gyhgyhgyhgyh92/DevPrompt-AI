@@ -3,7 +3,10 @@ import { useTranslation } from 'react-i18next'
 import type { AppearanceSettings } from '../../schemas/settings'
 import { applyAppearanceTheme, useSettingsStore } from '../../stores/useSettingsStore'
 import { Toggle } from '../ui/Toggle'
-import './settings.css'
+import styles from './settings.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 type Theme = AppearanceSettings['theme']
 
@@ -20,20 +23,20 @@ const CODE_FONTS: readonly string[] = ['JetBrains Mono', 'Cascadia Code', 'Conso
 function ThemePreview(props: { theme: Theme }) {
   if (props.theme === 'system') {
     return (
-      <span className="theme-preview" aria-hidden="true">
-        <span className="theme-preview" data-theme="light">
-          <span className="theme-preview__bar" />
+      <span className={s('theme-preview')} aria-hidden="true">
+        <span className={s('theme-preview')} data-theme="light">
+          <span className={s('theme-preview__bar')} />
         </span>
-        <span className="theme-preview" data-theme="dark">
-          <span className="theme-preview__chip" />
+        <span className={s('theme-preview')} data-theme="dark">
+          <span className={s('theme-preview__chip')} />
         </span>
       </span>
     )
   }
   return (
-    <span className="theme-preview" data-theme={props.theme} aria-hidden="true">
-      <span className="theme-preview__bar" />
-      <span className="theme-preview__chip" />
+    <span className={s('theme-preview')} data-theme={props.theme} aria-hidden="true">
+      <span className={s('theme-preview__bar')} />
+      <span className={s('theme-preview__chip')} />
     </span>
   )
 }
@@ -59,21 +62,25 @@ export function AppearancePanel() {
     : [...CODE_FONTS, appearance.codeFont]
 
   return (
-    <section className="settings-panel" aria-label={t('settings.appearance.title')}>
-      <h3 className="settings-panel__title">{t('settings.appearance.title')}</h3>
-      <div className="settings-field">
-        <span className="settings-label">{t('settings.appearance.theme')}</span>
-        <div className="settings-segment" role="group" aria-label={t('settings.appearance.theme')}>
+    <section className={s('settings-panel')} aria-label={t('settings.appearance.title')}>
+      <h3 className={s('settings-panel__title')}>{t('settings.appearance.title')}</h3>
+      <div className={s('settings-field')}>
+        <span className={s('settings-label')}>{t('settings.appearance.theme')}</span>
+        <div
+          className={s('settings-segment')}
+          role="group"
+          aria-label={t('settings.appearance.theme')}
+        >
           {THEME_VALUES.map((theme) => (
             <button
               key={theme}
               type="button"
               aria-pressed={appearance.theme === theme}
-              className={
+              className={s(
                 appearance.theme === theme
                   ? 'settings-segment__item settings-segment__item--active'
-                  : 'settings-segment__item'
-              }
+                  : 'settings-segment__item',
+              )}
               onClick={() => update({ theme })}
             >
               <ThemePreview theme={theme} />
@@ -82,13 +89,13 @@ export function AppearancePanel() {
           ))}
         </div>
       </div>
-      <div className="settings-field">
-        <label className="settings-label" htmlFor="settings-locale">
+      <div className={s('settings-field')}>
+        <label className={s('settings-label')} htmlFor="settings-locale">
           {t('settings.appearance.locale')}
         </label>
         <select
           id="settings-locale"
-          className="settings-select"
+          className={s('settings-select')}
           value={appearance.locale}
           onChange={(event) =>
             update({ locale: event.currentTarget.value as AppearanceSettings['locale'] })
@@ -97,15 +104,15 @@ export function AppearancePanel() {
           <option value="zh-CN">简体中文</option>
           <option value="en">English</option>
         </select>
-        <span className="settings-hint">{t('settings.appearance.locale_hint')}</span>
+        <span className={s('settings-hint')}>{t('settings.appearance.locale_hint')}</span>
       </div>
-      <div className="settings-field">
-        <label className="settings-label" htmlFor="settings-code-font">
+      <div className={s('settings-field')}>
+        <label className={s('settings-label')} htmlFor="settings-code-font">
           {t('settings.appearance.code_font')}
         </label>
         <select
           id="settings-code-font"
-          className="settings-select"
+          className={s('settings-select')}
           value={appearance.codeFont}
           onChange={(event) => update({ codeFont: event.currentTarget.value })}
         >
@@ -116,16 +123,16 @@ export function AppearancePanel() {
           ))}
         </select>
       </div>
-      <div className="settings-row">
-        <span className="settings-label">{t('settings.appearance.restore_session')}</span>
+      <div className={s('settings-row')}>
+        <span className={s('settings-label')}>{t('settings.appearance.restore_session')}</span>
         <Toggle
           label={t('settings.appearance.restore_session')}
           checked={appearance.restoreSessionOnLaunch}
           onChange={(checked) => update({ restoreSessionOnLaunch: checked })}
         />
       </div>
-      <div className="settings-row">
-        <span className="settings-label">{t('settings.appearance.desktop_notification')}</span>
+      <div className={s('settings-row')}>
+        <span className={s('settings-label')}>{t('settings.appearance.desktop_notification')}</span>
         <Toggle
           label={t('settings.appearance.desktop_notification')}
           checked={appearance.desktopNotification}

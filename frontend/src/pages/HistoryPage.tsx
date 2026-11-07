@@ -14,7 +14,12 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { useOptimizeStore } from '../stores/useOptimizeStore'
 import { useHistoryStore } from '../stores/useHistoryStore'
 import { formatDateTime } from '../utils/format'
-import './HistoryPage.css'
+import sidebarStyles from '../components/history/ProjectSidebar.module.css'
+import styles from './HistoryPage.module.css'
+import { makeS } from '../utils/css'
+
+// 历史页复用侧边栏的 toast 样式，故合并两张类名表
+const s = makeS({ ...sidebarStyles, ...styles })
 
 /** 排序：置顶优先，其次更新时间倒序（与 ProjectSidebar 同口径；仅展示序，非业务判定）。 */
 function sortItems(items: readonly HistoryItemPayload[]): HistoryItemPayload[] {
@@ -192,19 +197,19 @@ export function HistoryPage() {
   const sorted = sortItems(history)
 
   return (
-    <section className="workspace">
-      <div className="workspace__thread">
-        <div className="history-page__head">
+    <section className={s('workspace')}>
+      <div className={s('workspace__thread')}>
+        <div className={s('history-page__head')}>
           <h1>{t('history.title')}</h1>
           <Link to="/">{t('history.back_workbench')}</Link>
         </div>
 
-        {isLoading ? <p className="context-panel__empty">{t('common.loading')}</p> : null}
+        {isLoading ? <p className={s('context-panel__empty')}>{t('common.loading')}</p> : null}
 
         {!isLoading && loadFailed ? (
-          <div className="history-page__notice">
-            <p className="context-panel__empty">{t('history.load_failed_page')}</p>
-            <button type="button" className="button" onClick={() => void load()}>
+          <div className={s('history-page__notice')}>
+            <p className={s('context-panel__empty')}>{t('history.load_failed_page')}</p>
+            <button type="button" className={s('button')} onClick={() => void load()}>
               {t('common.reload')}
             </button>
           </div>
@@ -212,17 +217,17 @@ export function HistoryPage() {
 
         {!isLoading && !loadFailed ? (
           <>
-            <ul className="variant-list">
+            <ul className={s('variant-list')}>
               {sorted.map((item) => {
                 const isRenaming = renamingId === item.session_id
                 const isMenuOpen = openMenuId === item.session_id
                 const isCurrent = useOptimizeStore.getState().sessionId === item.session_id
 
                 return (
-                  <li className="variant-card history-page__item" key={item.session_id}>
+                  <li className={s('variant-card history-page__item')} key={item.session_id}>
                     {isRenaming ? (
                       <input
-                        className="field__input"
+                        className={s('field__input')}
                         aria-label={t('history.aria_rename')}
                         value={renameDraft}
                         autoFocus
@@ -236,36 +241,38 @@ export function HistoryPage() {
                     ) : (
                       <button
                         type="button"
-                        className="history-page__item-main"
+                        className={s('history-page__item-main')}
                         onClick={() => handleOpen(item.session_id)}
                       >
-                        <span className="history-page__item-title">
+                        <span className={s('history-page__item-title')}>
                           {item.pinned ? <span aria-label={t('history.pinned')}>📌 </span> : null}
                           {itemTitle(item)}
                           {isCurrent ? (
-                            <span className="history-page__tag">{t('history.tag_current')}</span>
+                            <span className={s('history-page__tag')}>
+                              {t('history.tag_current')}
+                            </span>
                           ) : null}
                         </span>
-                        <span className="history-page__item-meta">
-                          <span className="session-sidebar__badge">{item.state}</span>
-                          <span className="session-sidebar__project">
+                        <span className={s('history-page__item-meta')}>
+                          <span className={s('session-sidebar__badge')}>{item.state}</span>
+                          <span className={s('session-sidebar__project')}>
                             {projectName(item.project)}
                           </span>
                           <span>{formatDateTime(item.updated_at)}</span>
                         </span>
                       </button>
                     )}
-                    <div className="history-page__actions">
+                    <div className={s('history-page__actions')}>
                       <button
                         type="button"
-                        className="button button--ghost"
+                        className={s('button button--ghost')}
                         onClick={() => handleOpen(item.session_id)}
                       >
                         {t('common.open')}
                       </button>
                       <button
                         type="button"
-                        className="button button--ghost"
+                        className={s('button button--ghost')}
                         aria-label={t('history.aria_more')}
                         aria-expanded={isMenuOpen}
                         onClick={() =>
@@ -297,7 +304,7 @@ export function HistoryPage() {
             {hasMore ? (
               <button
                 type="button"
-                className="button button--ghost"
+                className={s('button button--ghost')}
                 onClick={() => void loadMoreHistory()}
                 disabled={isLoadingMore}
               >
@@ -305,7 +312,7 @@ export function HistoryPage() {
               </button>
             ) : null}
             {sorted.length === 0 ? (
-              <p className="context-panel__empty">{t('history.empty')}</p>
+              <p className={s('context-panel__empty')}>{t('history.empty')}</p>
             ) : null}
           </>
         ) : null}
@@ -323,7 +330,7 @@ export function HistoryPage() {
       ) : null}
 
       {toast !== null ? (
-        <div className="project-sidebar__toast" role="status">
+        <div className={s('project-sidebar__toast')} role="status">
           {toast}
         </div>
       ) : null}

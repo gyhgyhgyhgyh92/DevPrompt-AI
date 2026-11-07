@@ -87,10 +87,10 @@
 
 | 项 | 生产界面 | `src/lab`（dev-only 样张页） |
 |---|---|---|
-| 方案 | **CSS + CSS Variables** | Tailwind CSS v4（utility 仅做 token 桥接） |
+| 方案 | **CSS Modules + CSS Variables**（2026-11-07 全量迁移） | Tailwind CSS v4（utility 仅做 token 桥接） |
 | 预处理器 | 不使用 | 不使用 |
 | CSS-in-JS | 不使用 | 不使用 |
-| 样式入口 | 各组件 `Xxx.css` + `styles/tokens.css` | `src/lab/styles/lab.css` |
+| 样式入口 | 各组件 `Xxx.module.css` + `styles/tokens.css`（token 唯一来源） + `styles/global.css`（reset / 壳层 / 跨组件原语） | `src/lab/styles/lab.css` |
 
 **设计 token 定义**：全部放在 `styles/tokens.css`，用 CSS Variables 表达；样张页不改这个文件，只在 `src/lab/styles/lab-tokens.css` 里**用同名变量覆盖**。
 

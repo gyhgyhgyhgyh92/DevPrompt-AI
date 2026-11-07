@@ -21,7 +21,7 @@ function stubFetch() {
 
 /** 取得抽屉容器（承载 ProjectSidebar 的 div）。 */
 function drawer(container: HTMLElement): HTMLElement {
-  const node = container.querySelector('.app-drawer')
+  const node = container.querySelector('[data-drawer]')
   if (node === null) throw new Error('未找到 .app-drawer 抽屉容器')
   return node as HTMLElement
 }
@@ -93,9 +93,9 @@ describe('App 响应式抽屉（<768 侧边栏折叠）', () => {
     const { container } = render(<App />)
 
     const burger = screen.getByRole('button', { name: '打开侧边栏' })
-    expect(burger.className).toBe('app-titlebar__menu')
+    expect(burger.className).toContain('app-titlebar__menu')
     expect(burger.getAttribute('aria-expanded')).toBe('false')
-    expect(drawer(container).className).toBe('app-drawer')
+    expect(drawer(container).className).not.toContain('app-drawer--open')
     expect(screen.queryByRole('button', { name: '关闭侧边栏' })).toBeNull()
   })
 
@@ -106,12 +106,12 @@ describe('App 响应式抽屉（<768 侧边栏折叠）', () => {
 
     await user.click(screen.getByRole('button', { name: '打开侧边栏' }))
 
-    expect(drawer(container).className).toBe('app-drawer app-drawer--open')
+    expect(drawer(container).className).toContain('app-drawer--open')
     expect(drawer(container).contains(screen.getByRole('complementary', { name: '项目' }))).toBe(
       true,
     )
     const overlay = screen.getByRole('button', { name: '关闭侧边栏' })
-    expect(overlay.className).toBe('app-drawer__overlay')
+    expect(overlay.className).toContain('app-drawer__overlay')
     expect(screen.getByRole('button', { name: '打开侧边栏' }).getAttribute('aria-expanded')).toBe(
       'true',
     )
@@ -125,7 +125,7 @@ describe('App 响应式抽屉（<768 侧边栏折叠）', () => {
     await user.click(screen.getByRole('button', { name: '打开侧边栏' }))
     await user.click(screen.getByRole('button', { name: '关闭侧边栏' }))
 
-    expect(drawer(container).className).toBe('app-drawer')
+    expect(drawer(container).className).not.toContain('app-drawer--open')
     expect(screen.queryByRole('button', { name: '关闭侧边栏' })).toBeNull()
   })
 
@@ -137,7 +137,7 @@ describe('App 响应式抽屉（<768 侧边栏折叠）', () => {
     await user.click(screen.getByRole('button', { name: '打开侧边栏' }))
     fireEvent.keyDown(document, { key: 'Escape' })
 
-    expect(drawer(container).className).toBe('app-drawer')
+    expect(drawer(container).className).not.toContain('app-drawer--open')
     expect(screen.queryByRole('button', { name: '关闭侧边栏' })).toBeNull()
   })
 })
@@ -148,18 +148,18 @@ describe('App 一键收纳（F-602，2026-10-13）', () => {
     stubFetch()
     const { container } = render(<App />)
 
-    const shell = (): HTMLElement => container.querySelector('.app-shell') as HTMLElement
-    expect(shell().className).toBe('app-shell')
+    const shell = (): HTMLElement => container.querySelector('[data-shell]') as HTMLElement
+    expect(shell().className).not.toContain('app-shell--sidebar-collapsed')
 
     await user.click(screen.getByRole('button', { name: '收起侧边栏' }))
 
     // 桌面端折叠：shell 类切换；侧栏节点仍在（隐藏由 CSS ≥768 规则负责，jsdom 不生效）
-    expect(shell().className).toBe('app-shell app-shell--sidebar-collapsed')
-    expect(container.querySelector('.project-sidebar')).not.toBeNull()
-    expect(drawer(container).className).toBe('app-drawer')
+    expect(shell().className).toContain('app-shell--sidebar-collapsed')
+    expect(container.querySelector('[class*="project-sidebar"]')).not.toBeNull()
+    expect(drawer(container).className).not.toContain('app-drawer--open')
 
     await user.click(screen.getByRole('button', { name: '打开侧边栏' }))
-    expect(shell().className).toBe('app-shell')
+    expect(shell().className).not.toContain('app-shell--sidebar-collapsed')
   })
 })
 

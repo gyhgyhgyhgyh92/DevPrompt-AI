@@ -1,6 +1,10 @@
 import type { ThinkingItem } from '../../schemas/stream'
+import { makeS } from '../../utils/css'
+import styles from './ChatStream.module.css'
 import { TraceEntry } from './TraceEntry'
 import { TypewriterText } from './TypewriterText'
+
+const s = makeS(styles)
 
 export interface PhaseRow {
   phase: string
@@ -61,7 +65,7 @@ interface PhaseLedgerProps {
  */
 export function PhaseLedger({ rows, animatingId }: PhaseLedgerProps) {
   return (
-    <ol className="chat-reply__phases">
+    <ol className={s('chat-reply__phases')}>
       {rows.map((row) => {
         const stateClass = row.isCurrent
           ? 'chat-reply__phase chat-reply__phase--current'
@@ -71,34 +75,39 @@ export function PhaseLedger({ rows, animatingId }: PhaseLedgerProps) {
         return (
           <li
             key={row.phase}
-            className={stateClass}
+            className={s(stateClass)}
             aria-current={row.isCurrent ? 'step' : undefined}
           >
-            <div className="chat-reply__phase-head">
+            <div className={s('chat-reply__phase-head')}>
               <span
-                className={
+                className={s(
+                  'chat-reply__phase-mark',
                   row.isCurrent
-                    ? 'chat-reply__phase-mark chat-reply__phase-mark--running'
+                    ? 'chat-reply__phase-mark--running'
                     : row.isDone
-                      ? 'chat-reply__phase-mark chat-reply__phase-mark--done'
-                      : 'chat-reply__phase-mark'
-                }
+                      ? 'chat-reply__phase-mark--done'
+                      : '',
+                )}
                 aria-hidden="true"
               >
                 {row.isCurrent ? <RunningGlyph /> : row.isDone ? <DoneGlyph /> : <PendingGlyph />}
               </span>
-              <span className="chat-reply__phase-label">{row.label}</span>
-              <span className="chat-reply__phase-hint">{row.hint}</span>
-              {row.meta !== '' ? <span className="chat-reply__phase-meta">{row.meta}</span> : null}
-              {row.tag !== null ? <span className="chat-reply__phase-tag">{row.tag}</span> : null}
+              <span className={s('chat-reply__phase-label')}>{row.label}</span>
+              <span className={s('chat-reply__phase-hint')}>{row.hint}</span>
+              {row.meta !== '' ? (
+                <span className={s('chat-reply__phase-meta')}>{row.meta}</span>
+              ) : null}
+              {row.tag !== null ? (
+                <span className={s('chat-reply__phase-tag')}>{row.tag}</span>
+              ) : null}
             </div>
             {row.logs.length > 0 ? (
-              <div className="chat-reply__phase-log">
+              <div className={s('chat-reply__phase-log')}>
                 {row.logs.map((item) =>
                   item.kind === 'text' ? (
                     <TypewriterText
                       key={item.id}
-                      className="chat-reply__phase-text"
+                      className={s('chat-reply__phase-text')}
                       text={item.text}
                       isAnimating={item.id === animatingId}
                     />

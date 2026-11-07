@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import './optimize.css'
+import styles from './optimize.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 interface CopyButtonProps {
   /** 待复制文本（方案 body 原文，前端零加工）。 */
@@ -21,7 +24,7 @@ export function CopyButton({ text, label }: CopyButtonProps) {
   return (
     <button
       type="button"
-      className={isCopied ? 'copy-button copy-button--done' : 'copy-button'}
+      className={s(isCopied ? 'copy-button copy-button--done' : 'copy-button')}
       onClick={() => void handleCopy()}
     >
       {isCopied ? t('common.copied') : (label ?? t('common.copy'))}

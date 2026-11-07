@@ -4,7 +4,10 @@ import type { DeliveryGatePayload, RankingViewPayload, VariantPayload } from '..
 import { ConfidenceNotice } from './ConfidenceNotice'
 import { DeliveryGateCard } from './DeliveryGateCard'
 import { VariantTabs } from './VariantTabs'
-import './ChatStream.css'
+import styles from './ChatStream.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 interface AssistantBlockProps {
   /** 品牌行右侧的元信息（当前轮耗时 / 历史轮次徽章）。 */
@@ -68,10 +71,10 @@ export function AssistantBlock({
   const { t } = useTranslation()
   const variantList = variants ?? []
   return (
-    <article className="chat-reply" aria-label={ariaLabel}>
-      <header className="chat-reply__head">
-        <span className="chat-reply__mark" aria-hidden="true" />
-        <span className="chat-reply__brand">DevPrompt AI</span>
+    <article className={s('chat-reply')} aria-label={ariaLabel}>
+      <header className={s('chat-reply__head')}>
+        <span className={s('chat-reply__mark')} aria-hidden="true" />
+        <span className={s('chat-reply__brand')}>DevPrompt AI</span>
         {header}
       </header>
 
@@ -84,28 +87,28 @@ export function AssistantBlock({
       {planning}
 
       {(steps ?? []).length > 0 ? (
-        <div className="turn-steps">
+        <div className={s('turn-steps')}>
           {(steps ?? []).map((step, index) => (
-            <span className="turn-steps__item" key={`step-${index}`}>
+            <span className={s('turn-steps__item')} key={`step-${index}`}>
               {String(step.action ?? '')}
             </span>
           ))}
         </div>
       ) : null}
 
-      <hr className="chat-reply__divider" />
+      <hr className={s('chat-reply__divider')} />
 
-      <div className="chat-reply__body">
-        {error !== undefined ? <p className="chat-reply__error">{error}</p> : null}
+      <div className={s('chat-reply__body')}>
+        {error !== undefined ? <p className={s('chat-reply__error')}>{error}</p> : null}
         {error === undefined && loading ? (
-          <p className="thread__loading">{t('common.loading')}</p>
+          <p className={s('thread__loading')}>{t('common.loading')}</p>
         ) : null}
 
-        {message !== '' ? <p className="chat-reply__message">{message}</p> : null}
+        {message !== '' ? <p className={s('chat-reply__message')}>{message}</p> : null}
         {replyText !== '' ? (
-          <div className="chat-reply__answer" role="status">
-            <span className="chat-reply__answer-label">{t('chat.answer')}</span>
-            <p className="chat-reply__answer-text">{replyText}</p>
+          <div className={s('chat-reply__answer')} role="status">
+            <span className={s('chat-reply__answer-label')}>{t('chat.answer')}</span>
+            <p className={s('chat-reply__answer-text')}>{replyText}</p>
           </div>
         ) : null}
 
@@ -114,7 +117,7 @@ export function AssistantBlock({
         {variantList.length > 0 ? <VariantTabs variants={variantList} ranking={ranking} /> : null}
 
         {(openItems ?? []).length > 0 ? (
-          <p className="thread__open">
+          <p className={s('thread__open')}>
             {t('chat.open_items', { items: (openItems ?? []).join(t('common.list_sep')) })}
           </p>
         ) : null}

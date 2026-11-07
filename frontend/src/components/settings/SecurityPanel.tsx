@@ -5,7 +5,10 @@ import type { SettingsUpdate } from '../../api/types'
 import { applyAppearanceTheme, useSettingsStore } from '../../stores/useSettingsStore'
 import { Toggle } from '../ui/Toggle'
 import { errorMessage } from './errorMessage'
-import './settings.css'
+import styles from './settings.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 /** 流程与安全面板（F-604 安全标签页）：软护栏调节 + 锁定项只读 + 遥测 + 清除本地数据。 */
 export function SecurityPanel() {
@@ -32,7 +35,7 @@ export function SecurityPanel() {
   }, [settings])
 
   if (!settings) {
-    return <p className="settings-note">{t('settings.loading')}</p>
+    return <p className={s('settings-note')}>{t('settings.loading')}</p>
   }
 
   const saveProcess = async (process: NonNullable<SettingsUpdate['process']>) => {
@@ -70,57 +73,57 @@ export function SecurityPanel() {
   }
 
   return (
-    <section className="settings-panel" aria-label={t('settings.security.title')}>
-      <h3 className="settings-panel__title">{t('settings.security.title')}</h3>
-      <div className="settings-grid">
-        <div className="settings-field">
-          <label className="settings-label" htmlFor="settings-round-guard">
+    <section className={s('settings-panel')} aria-label={t('settings.security.title')}>
+      <h3 className={s('settings-panel__title')}>{t('settings.security.title')}</h3>
+      <div className={s('settings-grid')}>
+        <div className={s('settings-field')}>
+          <label className={s('settings-label')} htmlFor="settings-round-guard">
             {t('settings.security.round_guard')}
           </label>
           <input
             id="settings-round-guard"
-            className="settings-input"
+            className={s('settings-input')}
             value={roundGuard}
             onChange={(event) => setRoundGuard(event.currentTarget.value)}
           />
         </div>
-        <div className="settings-field">
-          <label className="settings-label" htmlFor="settings-cost-budget">
+        <div className={s('settings-field')}>
+          <label className={s('settings-label')} htmlFor="settings-cost-budget">
             {t('settings.security.cost_budget')}
           </label>
           <input
             id="settings-cost-budget"
-            className="settings-input"
+            className={s('settings-input')}
             value={costBudget}
             onChange={(event) => setCostBudget(event.currentTarget.value)}
           />
         </div>
-        <div className="settings-field">
-          <label className="settings-label" htmlFor="settings-candidate-limit">
+        <div className={s('settings-field')}>
+          <label className={s('settings-label')} htmlFor="settings-candidate-limit">
             {t('settings.security.candidate_limit')}
           </label>
           <input
             id="settings-candidate-limit"
-            className="settings-input"
+            className={s('settings-input')}
             value={String(settings.locked.candidate_limit)}
             disabled
             readOnly
           />
-          <span className="settings-hint">{t('settings.security.candidate_limit_hint')}</span>
+          <span className={s('settings-hint')}>{t('settings.security.candidate_limit_hint')}</span>
         </div>
       </div>
-      <div className="settings-actions">
+      <div className={s('settings-actions')}>
         <button
           type="button"
-          className="settings-btn settings-btn--primary"
+          className={s('settings-btn settings-btn--primary')}
           disabled={isBusy}
           onClick={saveGuardParams}
         >
           {t('settings.security.save_params')}
         </button>
       </div>
-      <div className="settings-row">
-        <span className="settings-label">{t('settings.security.telemetry')}</span>
+      <div className={s('settings-row')}>
+        <span className={s('settings-label')}>{t('settings.security.telemetry')}</span>
         <Toggle
           label={t('settings.security.telemetry')}
           checked={settings.process.telemetry}
@@ -128,10 +131,10 @@ export function SecurityPanel() {
           onChange={(checked) => void saveProcess({ telemetry: checked })}
         />
       </div>
-      <div className="settings-actions">
+      <div className={s('settings-actions')}>
         <button
           type="button"
-          className="settings-btn settings-btn--danger"
+          className={s('settings-btn settings-btn--danger')}
           onClick={handleClearLocalData}
         >
           {isConfirmingClear ? t('settings.security.confirm_clear') : t('settings.security.clear')}
@@ -139,21 +142,21 @@ export function SecurityPanel() {
         {isConfirmingClear ? (
           <button
             type="button"
-            className="settings-btn"
+            className={s('settings-btn')}
             onClick={() => setIsConfirmingClear(false)}
           >
             {t('common.cancel')}
           </button>
         ) : null}
       </div>
-      <p className="settings-note">{t('settings.security.clear_note')}</p>
+      <p className={s('settings-note')}>{t('settings.security.clear_note')}</p>
       {status.text !== '' ? (
         <p
-          className={
+          className={s(
             status.ok
               ? 'settings-status settings-status--ok'
-              : 'settings-status settings-status--error'
-          }
+              : 'settings-status settings-status--error',
+          )}
         >
           {status.text}
         </p>

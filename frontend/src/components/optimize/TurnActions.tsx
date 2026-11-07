@@ -1,5 +1,8 @@
 import { useTranslation } from 'react-i18next'
-import './optimize.css'
+import styles from './ChatStream.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 interface TurnActionsProps {
   /** 轮次 id（继续时作为基线轮传给后端；撤销时作为保留边界）。 */
@@ -27,10 +30,10 @@ export function TurnActions({
 }: TurnActionsProps) {
   const { t } = useTranslation()
   return (
-    <div className="turn-actions">
+    <div className={s('turn-actions')}>
       <button
         type="button"
-        className="turn-actions__btn"
+        className={s('turn-actions__btn')}
         onClick={() => onContinueFrom(turnId)}
         disabled={disabled}
         title={t('turn.continue_hint')}
@@ -40,7 +43,7 @@ export function TurnActions({
       {onRollbackTo !== undefined ? (
         <button
           type="button"
-          className="turn-actions__btn turn-actions__btn--danger"
+          className={s('turn-actions__btn turn-actions__btn--danger')}
           onClick={() => {
             // 二次确认：物理删除不可恢复。文案同时说明保留范围。
             if (window.confirm(t('turn.rollback_confirm'))) {

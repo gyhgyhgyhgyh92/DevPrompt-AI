@@ -1,6 +1,9 @@
 import { useEffect, useId, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import './ConfirmDialog.css'
+import styles from './ConfirmDialog.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 export interface ConfirmDialogProps {
   /** 弹窗标题（如「删除项目」）。 */
@@ -58,27 +61,27 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="confirm-overlay"
+      className={s('confirm-overlay')}
       onClick={(event) => {
         if (event.target === event.currentTarget && !isBusy) onClose()
       }}
     >
       <div
-        className="confirm-dialog"
+        className={s('confirm-dialog')}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         ref={panelRef}
         tabIndex={-1}
       >
-        <h2 className="confirm-dialog__title" id={titleId}>
+        <h2 className={s('confirm-dialog__title')} id={titleId}>
           {title}
         </h2>
-        <p className="confirm-dialog__desc">{description}</p>
-        <div className="confirm-dialog__actions">
+        <p className={s('confirm-dialog__desc')}>{description}</p>
+        <div className={s('confirm-dialog__actions')}>
           <button
             type="button"
-            className="button button--ghost"
+            className={s('button button--ghost')}
             disabled={isBusy}
             onClick={onClose}
           >
@@ -86,7 +89,7 @@ export function ConfirmDialog({
           </button>
           <button
             type="button"
-            className="confirm-dialog__confirm"
+            className={s('confirm-dialog__confirm')}
             disabled={isBusy}
             onClick={onConfirm}
           >

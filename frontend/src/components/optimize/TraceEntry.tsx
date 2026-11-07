@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ThinkingItem } from '../../schemas/stream'
-import './optimize.css'
+import styles from './ChatStream.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 type ActionItem = Extract<ThinkingItem, { kind: 'action' }>
 
@@ -70,7 +73,7 @@ export function TraceEntry({ item }: { item: ThinkingItem }) {
 
 /** 思考文字：本阶段正在写的那条由 TypewriterText 渲染，这里只兜底历史数据。 */
 export function TraceThought({ text }: { text: string }) {
-  return <p className="chat-reply__phase-text">{text}</p>
+  return <p className={s('chat-reply__phase-text')}>{text}</p>
 }
 
 /**
@@ -104,39 +107,39 @@ export function TraceAction({ item }: { item: ActionItem }) {
 
   return (
     <div
-      className={
+      className={s(
         isFailed
           ? 'trace-step trace-step--cmd trace-step--failed'
           : isRead
             ? 'trace-step'
-            : 'trace-step trace-step--cmd'
-      }
+            : 'trace-step trace-step--cmd',
+      )}
     >
-      <div className="trace-step__head">
+      <div className={s('trace-step__head')}>
         <button
           type="button"
-          className="trace-step__toggle"
+          className={s('trace-step__toggle')}
           aria-expanded={isOpen}
           onClick={() => setOpen((open) => !open)}
         >
-          <span className="trace-step__icon" aria-hidden="true">
+          <span className={s('trace-step__icon')} aria-hidden="true">
             {isRead ? <ReadIcon /> : <CommandIcon />}
           </span>
-          <span className="trace-step__label">{label}</span>
+          <span className={s('trace-step__label')}>{label}</span>
           {/* 失败命令的 scope 已经并进标题（「命令失败 · Exit code 1」），不再重复 */}
           {item.scope !== '' && !(isFailed && !isRead) ? (
-            <span className="trace-step__scope">{item.scope}</span>
+            <span className={s('trace-step__scope')}>{item.scope}</span>
           ) : null}
           {duration !== undefined ? (
-            <span className="trace-step__duration">{formatDuration(duration)}</span>
+            <span className={s('trace-step__duration')}>{formatDuration(duration)}</span>
           ) : null}
-          <span className="trace-step__caret" aria-hidden="true">
+          <span className={s('trace-step__caret')} aria-hidden="true">
             ›
           </span>
         </button>
         <button
           type="button"
-          className="trace-step__copy"
+          className={s('trace-step__copy')}
           aria-label={isCopied ? t('common.copied') : t('trace.copy_command')}
           onClick={handleCopy}
         >
@@ -146,13 +149,15 @@ export function TraceAction({ item }: { item: ActionItem }) {
 
       {/* 命令正文常显：终端块的信息主体就是这条命令，不该藏在折叠里 */}
       {!isRead ? (
-        <div className="trace-step__cmd">
-          <span className="trace-step__cmd-prompt" aria-hidden="true">
+        <div className={s('trace-step__cmd')}>
+          <span className={s('trace-step__cmd-prompt')} aria-hidden="true">
             $
           </span>
-          <code className="trace-step__cmd-text">{item.detail}</code>
+          <code className={s('trace-step__cmd-text')}>{item.detail}</code>
           <span
-            className={isFailed ? 'trace-step__exit trace-step__exit--failed' : 'trace-step__exit'}
+            className={s(
+              isFailed ? 'trace-step__exit trace-step__exit--failed' : 'trace-step__exit',
+            )}
           >
             {isFailed ? 'exit 1' : 'exit 0'}
           </span>
@@ -160,9 +165,9 @@ export function TraceAction({ item }: { item: ActionItem }) {
       ) : null}
 
       {isOpen ? (
-        <div className="trace-step__body">
+        <div className={s('trace-step__body')}>
           {hasOutput ? (
-            <pre className="trace-step__code trace-step__code--output">{item.output}</pre>
+            <pre className={s('trace-step__code trace-step__code--output')}>{item.output}</pre>
           ) : null}
         </div>
       ) : null}

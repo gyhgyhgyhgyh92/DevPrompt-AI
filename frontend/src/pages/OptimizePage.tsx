@@ -23,6 +23,12 @@ import { i18n } from '../i18n'
 import { useSSE } from '../hooks/useSSE'
 import { useOptimizeStore } from '../stores/useOptimizeStore'
 import { useHistoryStore } from '../stores/useHistoryStore'
+import { makeS } from '../utils/css'
+import chatStyles from '../components/optimize/ChatStream.module.css'
+import styles from './OptimizePage.module.css'
+
+// 页面层与对话层共用少量类（thread__error），合并两张类名表
+const s = makeS({ ...chatStyles, ...styles })
 
 type FlowView = 'input' | 'thinking' | 'asking' | 'result'
 
@@ -375,9 +381,9 @@ export function OptimizePage() {
   const view: FlowView = isThinking ? 'thinking' : resolveFlowView(status)
 
   return (
-    <div className="optimize-page">
+    <div className={s('optimize-page')}>
       {view === 'input' ? (
-        <div className="optimize-page__center">
+        <div className={s('optimize-page__center')}>
           <ConsoleInput
             isSubmitting={isSubmitting || isBusy}
             initialSentence={sentence}
@@ -387,12 +393,12 @@ export function OptimizePage() {
               void handleOptimizeSubmit(nextSentence, nextProject)
             }}
           />
-          {errorMessage !== null ? <p className="thread__error">{errorMessage}</p> : null}
+          {errorMessage !== null ? <p className={s('thread__error')}>{errorMessage}</p> : null}
         </div>
       ) : (
         <>
           {/* 对话流滚动区（2026-11-01）：外壳固定视口，只有这里滚动 */}
-          <div className="optimize-page__thread" ref={threadRef} onScroll={handleThreadScroll}>
+          <div className={s('optimize-page__thread')} ref={threadRef} onScroll={handleThreadScroll}>
             {/* 历史轮次：最后一条即当前 ChatStream 展示的这轮，故从列表里排除 */}
             <TurnList
               turns={
@@ -441,7 +447,7 @@ export function OptimizePage() {
           {/* 多轮：输入区常驻，提交即在同一会话追加一轮。
               思考中不再整块隐藏（2026-11-05 形态层）：改为禁用输入 + 显式「停止生成」，
               用户可随时中断当前轮（后端 CancelledError → ABORTED）。 */}
-          <div className="optimize-page__composer">
+          <div className={s('optimize-page__composer')}>
             <ConsoleInput
               isSubmitting={isSubmitting || isBusy}
               initialProject={project}
@@ -454,7 +460,7 @@ export function OptimizePage() {
             {isThinking ? (
               <button
                 type="button"
-                className="button button--ghost optimize-page__stop"
+                className={s('button button--ghost optimize-page__stop')}
                 onClick={() => {
                   streamRef.current?.abort()
                   // 中断后以服务端为准校对（验收⑤）：后端 CancelledError → ABORTED；

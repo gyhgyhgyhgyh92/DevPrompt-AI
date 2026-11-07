@@ -1170,11 +1170,12 @@ frontend/
 │   └── check-contract.mjs    Zod 与生成类型一致性校验
 └── src/
     ├── main.tsx               入口
-    ├── App.tsx                根组件 + 路由表
+    ├── App.tsx                根组件 + 路由表 + 壳层样式（App.module.css）
     ├── router/
     │   └── index.tsx          路由定义与守卫
     ├── pages/                 路由级组件
     │   ├── OptimizePage.tsx
+    │   ├── OptimizePage.module.css  工作台页面层样式（2026-11-07 从 global.css 迁出）
     │   ├── HistoryPage.tsx         历史页（F-702 独立可用：列表 + 置顶/重命名/删除/复制路径/打开会话）
     │   └── ~~PreferencePage.tsx~~  偏好页（2026-10-21 移除）
     ├── components/
@@ -1240,9 +1241,9 @@ frontend/
     ├── i18n/                  多语言（F-209，2026-11-06）
     │   ├── index.ts           i18next 初始化（资源同步 import；locale 取 appearance 真源）
     │   └── locales/           zh-CN.json / en.json（键集一致由 keys.test.ts 守卫）
-    ├── styles/                全局样式与 token（**生产界面唯一配色来源**）
+    ├── styles/                全局层（token 唯一来源 + reset + 跨组件原语，2026-11-07 起组件样式一律 module）
     │   ├── tokens.css         CSS Variables 设计 token
-    │   ├── global.css
+    │   ├── global.css         reset、基础排版、跨组件原语（.button/.field/.ask-panel/…，故意不隔离）
     │   └── phases.css         阶段指示器样式
     ├── lab/                   风格样张页（**dev-only**，2026-11-07；生产构建 DCE 剔除）
     │   ├── StyleLab.tsx       样张页外壳（风格/配色/主题/流式变体/回放控制，URL 参数可回填）
@@ -1259,6 +1260,7 @@ frontend/
     │   └── specimens/         组件标本（启动页 / 对话线程 / 三种流式 / 工具卡 / 侧边栏 / 配色表）
     ├── utils/                 前端纯工具
     │   ├── format.ts
+    │   ├── css.ts                  CSS Modules 类名映射（makeS：编辑期可读名 → 哈希名，DEV 告警漏迁）
     │   └── diff.ts
     ├── types/                 类型定义
     │   └── index.ts
@@ -1349,7 +1351,12 @@ styles    types      utils     utils     utils
 
 **排版与形状**：字号阶梯 `22 / 16 / 14 / 13 / 12 / 11`（`--text-display` … `--text-micro`），元信息一律 `--font-family-code` + 大写 + 字距（`--track-micro` / `--track-wide`）；圆角 `8 / 8 / 10 / 8`；**卡片零投影**，层级靠 1px 描边与表面递进建立，仅浮层（菜单 / 弹窗）使用 `--shadow-lg` / `--shadow-menu`。
 
-> **与代码现状的偏差（2026-11-07 上报，待批准统一）**：上表写的是 `ComponentName.module.css`（CSS Modules），**代码现状是普通的 `ComponentName.css`**（全局作用域 + BEM 式类名，无 `:local` 隔离）。按宪法「文档与代码冲突时以代码为准并上报」，本轮样张页沿用现状（`.lab-surface[data-lab-style=…]` 这类后代选择器依赖全局作用域），不借机迁移 CSS Modules；是否统一由所有者决定。
+> **2026-11-07 迁移完成**：上表的 `ComponentName.module.css` 已全量落地（10 个组件级样式文件 + `App.module.css` / `pages/OptimizePage.module.css` 壳层与页面层）。规则：
+> - 组件用 `import styles from './X.module.css'` + `const s = makeS(styles)`（`src/utils/css.ts`）包装 className，编辑期类名保持 BEM 可读，运行时映射为哈希名；
+> - **两层语义**：模块内定义的类被隔离；未定义的（`.button` / `.field` / `.ask-panel` 等跨组件原语，仍在 `styles/global.css`）原样透传——原语层是设计系统的一部分，故意不隔离；
+> - **错位检查**：`python scripts/check_css_modules.py frontend/src` 校验「TSX 用到的类名 ⊆ 该组件导入的 module ∪ 全局层」，返回非零即失败（2026-11-07 迁移时据此抓到 25 处挂错文件的类）；
+> - 壳层的跨文件钩子（`lab.css` 隐藏标题栏/侧边栏）改用 `data-shell / data-titlebar / data-drawer` 属性选择器，不依赖哈希类名；
+> - 样张页依赖 `.lab-surface[data-lab-style=…]` 的**模块外**选择器继续用 `:global` 语义（lab 自身是 Tailwind 体系，不受影响）。
 
 **样张页（`src/lab`）的样式例外（2026-11-07，批准人=项目所有者）**：
 

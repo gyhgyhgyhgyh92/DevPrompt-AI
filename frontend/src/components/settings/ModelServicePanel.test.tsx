@@ -109,7 +109,9 @@ describe('ModelServicePanel 供应商中心化配置（F-604）', () => {
   it('渲染供应商卡：厂商名 / Base URL / 密钥脱敏回显', async () => {
     render(<ModelServicePanel />)
 
-    expect(document.querySelector('.settings-model-row__title')?.textContent).toBe('DeepSeek')
+    expect(document.querySelector('[class*="settings-model-row__title"]')?.textContent).toBe(
+      'DeepSeek',
+    )
     expect(screen.getByLabelText('Base URL')).toHaveProperty('value', 'https://api.deepseek.com')
     const key = screen.getByLabelText('API Key') as HTMLInputElement
     expect(key.type).toBe('password')

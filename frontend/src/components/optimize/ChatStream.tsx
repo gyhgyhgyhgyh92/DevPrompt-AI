@@ -11,7 +11,10 @@ import type { ThinkingItem } from '../../schemas/stream'
 import { AskFlow } from './AskFlow'
 import { AssistantBlock } from './AssistantBlock'
 import { PhaseLedger, type PhaseRow } from './PhaseLedger'
-import './ChatStream.css'
+import styles from './ChatStream.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 /** 思考静默多久后提示「正在规划下一步」。 */
 const IDLE_HINT_MS = 1500
@@ -178,10 +181,10 @@ export function ChatStream({
         })
 
   return (
-    <div className="chat-stream">
+    <div className={s('chat-stream')}>
       {sentence.trim() !== '' ? (
-        <div className="chat-stream__row chat-stream__row--user">
-          <div className="chat-user-bubble">{sentence}</div>
+        <div className={s('chat-stream__row chat-stream__row--user')}>
+          <div className={s('chat-user-bubble')}>{sentence}</div>
         </div>
       ) : null}
 
@@ -189,30 +192,30 @@ export function ChatStream({
         ariaLabel={t('chat.aria_reply')}
         header={
           elapsedSeconds !== null ? (
-            <span className="chat-reply__elapsed">
+            <span className={s('chat-reply__elapsed')}>
               {t('chat.elapsed', { seconds: elapsedSeconds })}
             </span>
           ) : null
         }
         processControls={
           hasProcess ? (
-            <div className="chat-reply__process-bar">
-              <span className="chat-reply__process-title">
+            <div className={s('chat-reply__process-bar')}>
+              <span className={s('chat-reply__process-title')}>
                 {t('chat.phases')}
                 {!isProcessOpen && actionCount > 0 ? (
-                  <span className="chat-reply__process-count">
+                  <span className={s('chat-reply__process-count')}>
                     {t('chat.step_count', { steps: stepCount })}
                   </span>
                 ) : null}
               </span>
               <button
                 type="button"
-                className="chat-reply__process-toggle"
+                className={s('chat-reply__process-toggle')}
                 aria-expanded={isProcessOpen}
                 onClick={() => setProcessOpen((open) => !open)}
               >
                 <span>{isProcessOpen ? t('chat.process_fold') : summary}</span>
-                <span className="chat-reply__process-caret" aria-hidden="true">
+                <span className={s('chat-reply__process-caret')} aria-hidden="true">
                   {isProcessOpen ? '▾' : '▸'}
                 </span>
               </button>
@@ -221,7 +224,9 @@ export function ChatStream({
         }
         timeline={isProcessOpen ? <PhaseLedger rows={rows} animatingId={animatingId} /> : null}
         planning={
-          isThinking && isIdle ? <p className="chat-reply__planning">{t('chat.planning')}</p> : null
+          isThinking && isIdle ? (
+            <p className={s('chat-reply__planning')}>{t('chat.planning')}</p>
+          ) : null
         }
         gate={isThinking ? null : deliveryGate}
         variants={isThinking ? [] : variants}

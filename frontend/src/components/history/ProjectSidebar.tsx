@@ -15,7 +15,10 @@ import { useOptimizeStore } from '../../stores/useOptimizeStore'
 import { useHistoryStore } from '../../stores/useHistoryStore'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { SessionMenu } from './SessionMenu'
-import './ProjectSidebar.css'
+import styles from './ProjectSidebar.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 /** 排序：单一既定顺序——置顶优先，其次更新时间倒序（与后端排序口径一致）。 */
 function sortItems(items: readonly HistoryItemPayload[]): HistoryItemPayload[] {
@@ -321,11 +324,11 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
     return (
       <li
         key={item.session_id}
-        className={
+        className={s(
           isSelected
             ? 'project-sidebar__item-row project-sidebar__item-row--selected'
-            : 'project-sidebar__item-row'
-        }
+            : 'project-sidebar__item-row',
+        )}
         onMouseEnter={() => setHoveredId(item.session_id)}
         onMouseLeave={() =>
           setHoveredId((current) => (current === item.session_id ? null : current))
@@ -333,7 +336,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
       >
         {isRenaming ? (
           <input
-            className="project-sidebar__rename-input"
+            className={s('project-sidebar__rename-input')}
             aria-label={t('history.aria_rename')}
             value={renameDraft}
             autoFocus
@@ -347,27 +350,27 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
         ) : (
           <button
             type="button"
-            className="project-sidebar__item"
+            className={s('project-sidebar__item')}
             aria-current={isSelected ? 'true' : undefined}
             onClick={() => handleSelect(item.session_id)}
           >
             {isSelected ? (
-              <span className="project-sidebar__item-icon">
+              <span className={s('project-sidebar__item-icon')}>
                 <DotIcon />
               </span>
             ) : null}
-            <span className="project-sidebar__item-title">{itemTitle(item)}</span>
+            <span className={s('project-sidebar__item-title')}>{itemTitle(item)}</span>
           </button>
         )}
         {item.pinned ? (
-          <span className="project-sidebar__item-pin" aria-label={t('history.pinned')}>
+          <span className={s('project-sidebar__item-pin')} aria-label={t('history.pinned')}>
             <PinIcon />
           </span>
         ) : null}
         {showMenuButton ? (
           <button
             type="button"
-            className="project-sidebar__menu-btn"
+            className={s('project-sidebar__menu-btn')}
             aria-label={t('history.aria_more')}
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => {
@@ -396,34 +399,37 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
   }
 
   return (
-    <aside className="project-sidebar" aria-label={t('history.sidebar_label')}>
-      <div className="project-sidebar__head">
+    <aside className={s('project-sidebar')} aria-label={t('history.sidebar_label')}>
+      <div className={s('project-sidebar__head')}>
         <button
           type="button"
-          className="project-sidebar__collapse"
+          className={s('project-sidebar__collapse')}
           aria-label={t('history.aria_collapse')}
           onClick={onCollapse}
         >
           <CollapseIcon />
         </button>
-        <span className="project-sidebar__title">{t('history.sidebar_label')}</span>
+        <span className={s('project-sidebar__title')}>{t('history.sidebar_label')}</span>
       </div>
 
-      <button type="button" className="project-sidebar__new" onClick={handleNewSession}>
+      <button type="button" className={s('project-sidebar__new')} onClick={handleNewSession}>
         ＋ 新建会话
       </button>
 
-      <div className="project-sidebar__list">
+      <div className={s('project-sidebar__list')}>
         {groupByProject(sorted).map((group) => (
-          <section className="project-sidebar__group" key={group.projectRoot || group.project}>
+          <section className={s('project-sidebar__group')} key={group.projectRoot || group.project}>
             {/* title 用全路径：同名不同路径的项目靠悬停区分 */}
-            <div className="project-sidebar__group-head" title={group.projectRoot || undefined}>
+            <div
+              className={s('project-sidebar__group-head')}
+              title={group.projectRoot || undefined}
+            >
               <FolderIcon />
-              <span className="project-sidebar__group-name">{group.project}</span>
+              <span className={s('project-sidebar__group-name')}>{group.project}</span>
               {group.projectRoot !== '' ? (
                 <button
                   type="button"
-                  className="project-sidebar__group-delete"
+                  className={s('project-sidebar__group-delete')}
                   aria-label={`删除项目 ${group.project}`}
                   onClick={() => {
                     setOpenMenuId(null)
@@ -434,13 +440,13 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
                 </button>
               ) : null}
             </div>
-            <ul className="project-sidebar__items">{group.items.map(renderRow)}</ul>
+            <ul className={s('project-sidebar__items')}>{group.items.map(renderRow)}</ul>
           </section>
         ))}
         {hasMore ? (
           <button
             type="button"
-            className="button button--ghost project-sidebar__more"
+            className={s('button button--ghost project-sidebar__more')}
             onClick={() => void loadMoreHistory()}
             disabled={isLoadingMore}
           >
@@ -448,16 +454,16 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
           </button>
         ) : null}
         {history.length === 0 ? (
-          <p className="project-sidebar__empty">{t('history.empty_sessions')}</p>
+          <p className={s('project-sidebar__empty')}>{t('history.empty_sessions')}</p>
         ) : null}
       </div>
 
-      <nav className="project-sidebar__footer" aria-label={t('history.footer_nav')}>
+      <nav className={s('project-sidebar__footer')} aria-label={t('history.footer_nav')}>
         <Link to="/history">{t('history.link_history')}</Link>
       </nav>
 
       {toast !== null ? (
-        <div className="project-sidebar__toast" role="status">
+        <div className={s('project-sidebar__toast')} role="status">
           {toast}
         </div>
       ) : null}

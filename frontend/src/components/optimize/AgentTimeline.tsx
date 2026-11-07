@@ -18,6 +18,10 @@ interface AgentTimelineProps {
 }
 
 import { useTranslation } from 'react-i18next'
+import { makeS } from '../../utils/css'
+import styles from './ChatStream.module.css'
+
+const s = makeS(styles)
 
 /** 动作名 → 语言包键（纯展示字典；文案在 chat.action.*）。 */
 const ACTION_KEYS: Record<string, string> = {
@@ -46,20 +50,15 @@ export function AgentTimeline({ step, action, elapsedMs }: AgentTimelineProps) {
   const label =
     action === null ? t('chat.deciding') : actionKey === undefined ? action : t(actionKey)
   return (
-    <div
-      className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300"
-      role="status"
-      aria-live="polite"
-    >
-      <span
-        className="inline-block h-2 w-2 animate-pulse rounded-full bg-sky-500"
-        aria-hidden="true"
-      />
-      <span className="font-medium">{label}</span>
-      {step !== null && <span className="text-slate-400">第 {step} 步</span>}
-      {elapsedMs !== null && (
-        <span className="ml-auto tabular-nums text-slate-400">{formatElapsed(elapsedMs)}</span>
-      )}
+    <div className={s('agent-timeline')} role="status" aria-live="polite">
+      <span className={s('agent-timeline__dot')} aria-hidden="true" />
+      <span className={s('agent-timeline__label')}>{label}</span>
+      {step !== null ? (
+        <span className={s('agent-timeline__meta')}>{t('chat.agent_step', { step })}</span>
+      ) : null}
+      {elapsedMs !== null ? (
+        <span className={s('agent-timeline__meta')}>{formatElapsed(elapsedMs)}</span>
+      ) : null}
     </div>
   )
 }

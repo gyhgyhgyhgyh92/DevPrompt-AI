@@ -13,6 +13,10 @@ interface EvidenceStaleNoticeProps {
 }
 
 import { useTranslation } from 'react-i18next'
+import { makeS } from '../../utils/css'
+import styles from './ChatStream.module.css'
+
+const s = makeS(styles)
 
 export function EvidenceStaleNotice({ stale }: EvidenceStaleNoticeProps) {
   const { t } = useTranslation()
@@ -20,10 +24,7 @@ export function EvidenceStaleNotice({ stale }: EvidenceStaleNoticeProps) {
     return null
   }
   return (
-    <div
-      className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
-      role="status"
-    >
+    <div className={s('evidence-stale')} role="status">
       {t('gate.evidence_stale')}
     </div>
   )

@@ -5,7 +5,10 @@ import { nativePickErrorText, pickFolderViaNative } from '../../api/nativeFolder
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { errorMessage } from '../settings/errorMessage'
 import { ModelPicker, type ModelTuning } from './ModelPicker'
-import './ConsoleInput.css'
+import styles from './ConsoleInput.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 /** 启动页主视觉固定文案（逐字，spec Task 3）：作为输入区占位展示，用户输入时隐藏。 */
 const PROMPT_HINT_KEY = 'console.prompt_hint'
@@ -183,18 +186,18 @@ export function ConsoleInput({
   }
 
   return (
-    <div className={isHero ? 'console-input console-input--hero' : 'console-input'}>
+    <div className={s(isHero ? 'console-input console-input--hero' : 'console-input')}>
       {isHero ? (
-        <header className="console-input__hero">
-          <span className="console-input__brand">
-            <span aria-hidden="true" className="console-input__brand-swatch" />
+        <header className={s('console-input__hero')}>
+          <span className={s('console-input__brand')}>
+            <span aria-hidden="true" className={s('console-input__brand-swatch')} />
             <span>{t('console.brand_name')}</span>
           </span>
-          <h1 className="console-input__claim">{t('console.hero_claim')}</h1>
-          <p className="console-input__sub">{t('console.hero_sub')}</p>
-          <div className="console-input__chips">
+          <h1 className={s('console-input__claim')}>{t('console.hero_claim')}</h1>
+          <p className={s('console-input__sub')}>{t('console.hero_sub')}</p>
+          <div className={s('console-input__chips')}>
             {HERO_CHIPS.map((key) => (
-              <span className="console-input__chip" key={key}>
+              <span className={s('console-input__chip')} key={key}>
                 {t(key)}
               </span>
             ))}
@@ -202,7 +205,7 @@ export function ConsoleInput({
         </header>
       ) : null}
       <form
-        className="console-input__card"
+        className={s('console-input__card')}
         onSubmit={(event) => {
           event.preventDefault()
           if (isDisabled) return
@@ -212,15 +215,15 @@ export function ConsoleInput({
         <textarea
           ref={textRef}
           aria-label={t('console.aria_sentence')}
-          className="console-input__text"
+          className={s('console-input__text')}
           value={sentence}
           rows={textRows(sentence, isHero ? 2 : MIN_TEXT_ROWS)}
           placeholder={t(PROMPT_HINT_KEY)}
           disabled={disabled}
           onChange={(event) => setSentence(event.currentTarget.value)}
         />
-        <div className="console-input__tools">
-          <span className="console-input__spacer" />
+        <div className={s('console-input__tools')}>
+          <span className={s('console-input__spacer')} />
           <ModelPicker
             entries={entries}
             providers={settings?.providers}
@@ -231,18 +234,18 @@ export function ConsoleInput({
           />
           <button
             type="submit"
-            className="console-input__send"
+            className={s('console-input__send')}
             aria-label={t('console.aria_send')}
             disabled={isDisabled}
           >
             <span aria-hidden="true">↑</span>
           </button>
         </div>
-        <div className="console-input__divider" />
-        <div className="console-input__folder">
+        <div className={s('console-input__divider')} />
+        <div className={s('console-input__folder')}>
           <button
             type="button"
-            className="console-input__folder-toggle"
+            className={s('console-input__folder-toggle')}
             aria-label={t('console.aria_pick_folder')}
             title={project.trim() !== '' ? project : undefined}
             onClick={() => void handlePickFolder()}
@@ -258,7 +261,7 @@ export function ConsoleInput({
             </span>
           </button>
         </div>
-        {projectError !== null ? <p className="console-input__error">{projectError}</p> : null}
+        {projectError !== null ? <p className={s('console-input__error')}>{projectError}</p> : null}
       </form>
     </div>
   )

@@ -145,6 +145,7 @@ export default function StyleLab() {
   return (
     <div
       className="lab-root lab-surface min-h-dvh bg-canvas text-ink"
+      data-lab-root
       data-lab-style={styleId}
       data-lab-palette={palette}
       data-theme={theme}

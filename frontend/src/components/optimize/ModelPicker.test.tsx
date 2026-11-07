@@ -153,7 +153,7 @@ describe('ModelPicker hover 参数面板', () => {
   it('面板是模型项的 DOM 子节点（指针能移进面板而不消失）', async () => {
     renderPicker()
     await openAndHover('deepseek-flash')
-    const panel = document.querySelector('.model-picker__panel') as HTMLElement
+    const panel = document.querySelector('[class*="model-picker__panel"]') as HTMLElement
     const item = screen.getByRole('button', { name: /deepseek-flash/ }).parentElement as HTMLElement
     expect(item.contains(panel)).toBe(true)
   })

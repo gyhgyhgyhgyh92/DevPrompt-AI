@@ -313,7 +313,7 @@ describe('OptimizePage 三栏工作台', () => {
     renderPage()
 
     const thread = await waitFor(() => {
-      const node = document.querySelector('.optimize-page__thread')
+      const node = document.querySelector('[class*="optimize-page__thread"]')
       if (node === null) throw new Error('对话流滚动区未渲染')
       return node as HTMLElement
     })
@@ -365,7 +365,7 @@ describe('OptimizePage 三栏工作台', () => {
     await user.click(screen.getByRole('button', { name: '发送' }))
 
     // 尚未收到快照：步骤时间轴已出现，过程挂在对应步骤下，反问卡还不该出现
-    expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
+    expect(document.querySelector('[class*="chat-reply__phases"]')).not.toBeNull()
     expect(await screen.findByText(/正在检索相关代码/)).toBeTruthy()
     expect(await screen.findByText('命令已执行')).toBeTruthy()
     expect(screen.queryByText('缺目标定位')).toBeNull()
@@ -374,10 +374,10 @@ describe('OptimizePage 三栏工作台', () => {
 
     expect(await screen.findByText('缺目标定位')).toBeTruthy()
     // 反问出现后过程仍保持展开（2026-11-07 裁定：结束不自动折叠），折叠按钮可用
-    expect(document.querySelector('.chat-reply__phases')).not.toBeNull()
+    expect(document.querySelector('[class*="chat-reply__phases"]')).not.toBeNull()
     const toggle = screen.getByRole('button', { name: /折叠过程/ })
     await user.click(toggle)
-    expect(document.querySelector('.chat-reply__phases')).toBeNull()
+    expect(document.querySelector('[class*="chat-reply__phases"]')).toBeNull()
     expect(screen.getByText(/个动作 ·/)).toBeTruthy()
   })
 })
@@ -407,7 +407,7 @@ describe('OptimizePage 三态容器', () => {
     expect(screen.getByText('scope')).toBeTruthy()
     expect(screen.getByText('target')).toBeTruthy()
     expect(screen.getByRole('button', { name: /直接生成/ })).toBeTruthy()
-    expect(document.querySelector('.chat-suggestions')).toBeNull()
+    expect(document.querySelector('[class*="chat-suggestions"]')).toBeNull()
   })
 
   it('escape 逃生按钮以 escape 模式调用 POST /followup', async () => {
@@ -477,12 +477,14 @@ describe('OptimizePage 三态容器', () => {
 
     // 过程帧到达：文字块可见，阶段高亮由 ASKING 推进到 CONFIRMING（整理答复）
     expect(await screen.findByText('正在根据你的答复重新研判…')).toBeTruthy()
-    expect(document.querySelector('.chat-reply__phase--current')?.textContent).toContain('整理答复')
+    expect(document.querySelector('[class*="chat-reply__phase--current"]')?.textContent).toContain(
+      '整理答复',
+    )
 
     stream.release()
 
     await waitFor(() => expect(useOptimizeStore.getState().status).toBe('done'))
-    expect(document.querySelector('.ask-panel')).toBeNull()
+    expect(document.querySelector('[class*="ask-panel"]')).toBeNull()
   })
 
   it('结果态在后端标记推荐时显示【推荐】与置信度', () => {
@@ -540,9 +542,9 @@ describe('OptimizePage 三态容器', () => {
       expect(call?.[1]?.method).toBe('GET')
     })
     await waitFor(() => {
-      const labels = Array.from(document.querySelectorAll('.chat-reply__phase-label')).map(
-        (el) => el.textContent,
-      )
+      const labels = Array.from(
+        document.querySelectorAll('[class*="chat-reply__phase-label"]'),
+      ).map((el) => el.textContent)
       expect(labels).toContain('整理答复')
     })
   })
@@ -619,14 +621,14 @@ describe('多轮归属（2026-11-04）', () => {
 
     // 生成窗口内：第一轮必须仍是历史轮（此前会被当作「当前轮」过滤掉 → 正文消失）
     expect(await screen.findByText('第一轮结论：复用令牌')).toBeTruthy()
-    expect(document.querySelectorAll('.thread__turn')).toHaveLength(1)
+    expect(document.querySelectorAll('[class*="thread__turn"]')).toHaveLength(1)
 
     gate.release()
 
     await waitFor(() => expect(screen.getByText('第二轮方案正文')).toBeTruthy())
     // 终态：第一轮留在历史，第二轮只由 ChatStream 渲染，两轮都不重复
     expect(screen.getByText('第一轮结论：复用令牌')).toBeTruthy()
-    expect(document.querySelectorAll('.thread__turn')).toHaveLength(1)
+    expect(document.querySelectorAll('[class*="thread__turn"]')).toHaveLength(1)
     expect(useOptimizeStore.getState().currentTurnId).toBe('t2')
   })
 })

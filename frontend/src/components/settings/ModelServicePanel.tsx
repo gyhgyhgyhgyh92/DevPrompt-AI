@@ -9,7 +9,10 @@ import { ApiModeSelect } from './ApiModeSelect'
 import { ModelCapabilityBadge } from './ModelCapabilityBadge'
 import { findProvider, ProviderSelect } from './ProviderSelect'
 import { errorMessage } from './errorMessage'
-import './settings.css'
+import styles from './settings.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 /**
  * 供应商中心化配置面板（2026-10-18 重构，F-604 模型服务标签页）。
@@ -188,7 +191,7 @@ export function ModelServicePanel() {
   }, [savedIds])
 
   if (!settings) {
-    return <p className="settings-note">{t('settings.loading')}</p>
+    return <p className={s('settings-note')}>{t('settings.loading')}</p>
   }
 
   const providerDirectory = settings.providers ?? []
@@ -331,12 +334,12 @@ export function ModelServicePanel() {
   }
 
   return (
-    <section className="settings-panel" aria-label={t('settings.tab.model-service')}>
-      <h3 className="settings-panel__title">{t('settings.tab.model-service')}</h3>
-      <p className="settings-panel__desc">{t('settings.model.lead')}</p>
-      <div className="settings-model-list" aria-label={t('settings.model.provider_list')}>
+    <section className={s('settings-panel')} aria-label={t('settings.tab.model-service')}>
+      <h3 className={s('settings-panel__title')}>{t('settings.tab.model-service')}</h3>
+      <p className={s('settings-panel__desc')}>{t('settings.model.lead')}</p>
+      <div className={s('settings-model-list')} aria-label={t('settings.model.provider_list')}>
         {drafts.length === 0 ? (
-          <p className="settings-note">{t('settings.model.empty_hint')}</p>
+          <p className={s('settings-note')}>{t('settings.model.empty_hint')}</p>
         ) : null}
         {drafts.map((draft) => {
           const pickedProvider = findProvider(providerDirectory, draft.provider)
@@ -345,24 +348,24 @@ export function ModelServicePanel() {
             rows.filter((r) => r.providerId === draft.id).map((r) => [r.modelId, r]),
           )
           return (
-            <div key={draft.key} className="settings-model-row">
-              <div className="settings-model-row__head">
-                <span className="settings-model-row__title">
+            <div key={draft.key} className={s('settings-model-row')}>
+              <div className={s('settings-model-row__head')}>
+                <span className={s('settings-model-row__title')}>
                   {pickedProvider?.label ?? draft.provider ?? t('settings.model.new_provider')}
                 </span>
-                <span className="settings-model-badge">{draft.selected.length} 个模型</span>
-                <span className="settings-model-row__spacer" />
+                <span className={s('settings-model-badge')}>{draft.selected.length} 个模型</span>
+                <span className={s('settings-model-row__spacer')} />
                 <button
                   type="button"
-                  className="settings-btn settings-btn--small settings-btn--danger"
+                  className={s('settings-btn settings-btn--small settings-btn--danger')}
                   onClick={() => removeProvider(draft.key)}
                 >
                   {t('settings.model.delete_provider')}
                 </button>
               </div>
-              <div className="settings-grid">
-                <div className="settings-field">
-                  <label className="settings-label" htmlFor={`${draft.key}-provider`}>
+              <div className={s('settings-grid')}>
+                <div className={s('settings-field')}>
+                  <label className={s('settings-label')} htmlFor={`${draft.key}-provider`}>
                     {t('settings.provider.aria')}
                   </label>
                   <ProviderSelect
@@ -377,29 +380,31 @@ export function ModelServicePanel() {
                     }}
                   />
                 </div>
-                <div className="settings-field">
-                  <label className="settings-label" htmlFor={`${draft.key}-base-url`}>
+                <div className={s('settings-field')}>
+                  <label className={s('settings-label')} htmlFor={`${draft.key}-base-url`}>
                     Base URL
                   </label>
                   <input
                     id={`${draft.key}-base-url`}
-                    className="settings-input"
+                    className={s('settings-input')}
                     value={draft.baseUrl}
                     onChange={(event) =>
                       patchDraft(draft.key, { baseUrl: event.currentTarget.value })
                     }
                   />
                   {pickedProvider?.base_url === '' ? (
-                    <span className="settings-hint">{t('settings.model.endpoint_unknown')}</span>
+                    <span className={s('settings-hint')}>
+                      {t('settings.model.endpoint_unknown')}
+                    </span>
                   ) : null}
                 </div>
-                <div className="settings-field">
-                  <label className="settings-label" htmlFor={`${draft.key}-api-key`}>
+                <div className={s('settings-field')}>
+                  <label className={s('settings-label')} htmlFor={`${draft.key}-api-key`}>
                     API Key
                   </label>
                   <input
                     id={`${draft.key}-api-key`}
-                    className="settings-input"
+                    className={s('settings-input')}
                     type="password"
                     autoComplete="off"
                     placeholder={
@@ -410,17 +415,17 @@ export function ModelServicePanel() {
                       patchDraft(draft.key, { apiKey: event.currentTarget.value })
                     }
                   />
-                  <span className="settings-hint">
+                  <span className={s('settings-hint')}>
                     {t('settings.model.current_key')}：
                     {draft.masked !== '' ? draft.masked : t('settings.model.not_configured')}
                     （回显恒脱敏；留空则保持不变）
                   </span>
                 </div>
               </div>
-              <div className="settings-actions">
+              <div className={s('settings-actions')}>
                 <button
                   type="button"
-                  className="settings-btn"
+                  className={s('settings-btn')}
                   disabled={isBusy || isRefreshing(draft.key)}
                   onClick={() => void refreshCatalog(draft.key)}
                   title={
@@ -435,7 +440,7 @@ export function ModelServicePanel() {
                 </button>
                 <button
                   type="button"
-                  className="settings-btn"
+                  className={s('settings-btn')}
                   disabled={isBusy || isRefreshing(draft.key)}
                   onClick={() => void testConnection(draft.key)}
                 >
@@ -444,40 +449,40 @@ export function ModelServicePanel() {
               </div>
               {testResults[draft.key] ? (
                 <p
-                  className={
+                  className={s(
                     testResults[draft.key]?.ok
                       ? 'settings-status settings-status--ok'
-                      : 'settings-status settings-status--error'
-                  }
+                      : 'settings-status settings-status--error',
+                  )}
                 >
                   {testResults[draft.key]?.detail}
                 </p>
               ) : null}
               {catalog.warning ? (
-                <span className="settings-error" role="alert">
+                <span className={s('settings-error')} role="alert">
                   {catalog.warning}
                 </span>
               ) : null}
-              <div className="settings-field">
-                <div className="settings-label">{t('settings.model.available')}</div>
+              <div className={s('settings-field')}>
+                <div className={s('settings-label')}>{t('settings.model.available')}</div>
                 {catalog.models.length === 0 ? (
-                  <span className="settings-hint">{t('settings.model.refresh_first')}</span>
+                  <span className={s('settings-hint')}>{t('settings.model.refresh_first')}</span>
                 ) : (
-                  <ul className="provider-model-list">
+                  <ul className={s('provider-model-list')}>
                     {catalog.models.map((item) => {
                       const checked = draft.selected.includes(item.model_id)
                       const row = rowByModel.get(item.model_id)
                       return (
-                        <li key={item.model_id} className="provider-model-list__item">
-                          <label className="provider-model-list__label">
+                        <li key={item.model_id} className={s('provider-model-list__item')}>
+                          <label className={s('provider-model-list__label')}>
                             <input
                               type="checkbox"
                               checked={checked}
                               onChange={() => toggleModel(draft.key, item.model_id)}
                             />
-                            <span className="provider-model-list__name">{item.model_id}</span>
+                            <span className={s('provider-model-list__name')}>{item.model_id}</span>
                             {row?.isActive ? (
-                              <span className="settings-model-badge">
+                              <span className={s('settings-model-badge')}>
                                 {t('settings.model.current')}
                               </span>
                             ) : null}
@@ -506,13 +511,13 @@ export function ModelServicePanel() {
           )
         })}
       </div>
-      <div className="settings-actions">
-        <button type="button" className="settings-btn" disabled={isBusy} onClick={addProvider}>
+      <div className={s('settings-actions')}>
+        <button type="button" className={s('settings-btn')} disabled={isBusy} onClick={addProvider}>
           {t('settings.model.add_provider')}
         </button>
         <button
           type="button"
-          className="settings-btn settings-btn--primary"
+          className={s('settings-btn settings-btn--primary')}
           disabled={isBusy}
           onClick={() => void saveAll()}
         >
@@ -521,11 +526,11 @@ export function ModelServicePanel() {
       </div>
       {status.text !== '' ? (
         <p
-          className={
+          className={s(
             status.ok
               ? 'settings-status settings-status--ok'
-              : 'settings-status settings-status--error'
-          }
+              : 'settings-status settings-status--error',
+          )}
         >
           {status.text}
         </p>

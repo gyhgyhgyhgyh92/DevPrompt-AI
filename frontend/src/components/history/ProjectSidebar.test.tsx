@@ -73,7 +73,7 @@ function renderSidebar(onCollapse: () => void = vi.fn()) {
 }
 
 function itemTitles(): string[] {
-  return Array.from(document.querySelectorAll('.project-sidebar__item-title')).map(
+  return Array.from(document.querySelectorAll('[class*="project-sidebar__item-title"]')).map(
     (el) => el.textContent ?? '',
   )
 }
@@ -101,7 +101,7 @@ describe('ProjectSidebar 分组与结构（Task 4）', () => {
     expect(await screen.findByText('会话A')).toBeTruthy()
     expect(screen.getByText('proj-a')).toBeTruthy()
     expect(screen.getByText('proj-b')).toBeTruthy()
-    expect(document.querySelectorAll('.project-sidebar__group')).toHaveLength(2)
+    expect(document.querySelectorAll('section[class*="project-sidebar__group"]')).toHaveLength(2)
   })
 
   it('title 为空回退「项目名 · 状态」', async () => {
@@ -204,7 +204,7 @@ describe('ProjectSidebar 分组与结构（Task 4）', () => {
 
     await screen.findByText('会话A')
     expect(screen.getByText('项目')).toBeTruthy()
-    expect(document.querySelectorAll('.project-sidebar__collapse')).toHaveLength(1)
+    expect(document.querySelectorAll('[class*="project-sidebar__collapse"]')).toHaveLength(1)
 
     await userEvent.setup().click(screen.getByRole('button', { name: '收起侧边栏' }))
     expect(onCollapse).toHaveBeenCalledTimes(1)
@@ -221,7 +221,7 @@ describe('ProjectSidebar 选中与 ⋮ 菜单（Task 5）', () => {
     await user.click(screen.getByText('会话A'))
 
     expect(row?.className).toContain('project-sidebar__item-row--selected')
-    expect(row?.querySelector('.project-sidebar__item-icon')).not.toBeNull()
+    expect(row?.querySelector('[class*="project-sidebar__item-icon"]')).not.toBeNull()
     await waitFor(() => {
       expect(mock.mock.calls.find(([input]) => input.includes('/api/v1/result/s1'))).toBeTruthy()
     })
@@ -393,7 +393,7 @@ describe('ProjectSidebar 项目级删除（2026-11-01）', () => {
 
     await screen.findByText('会话A')
 
-    expect(document.querySelectorAll('.project-sidebar__group')).toHaveLength(2)
+    expect(document.querySelectorAll('section[class*="project-sidebar__group"]')).toHaveLength(2)
     expect(screen.getAllByRole('button', { name: '删除项目 app' })).toHaveLength(2)
   })
 
