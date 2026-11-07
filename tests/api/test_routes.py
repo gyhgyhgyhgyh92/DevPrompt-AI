@@ -486,7 +486,18 @@ async def test_followup_stream_frame_order_and_action_fields(
     action = frames[1]
     assert action["status"] == "failed"
     assert action["scope"] == "Exit code 1"
-    assert set(action) == {"type", "phase", "title", "detail", "scope", "output", "status"}
+    # duration_ms（2026-11-07）：未计时的动作下发 None，前端据此不渲染耗时
+    assert set(action) == {
+        "type",
+        "phase",
+        "title",
+        "detail",
+        "scope",
+        "output",
+        "status",
+        "duration_ms",
+    }
+    assert action["duration_ms"] is None
     # 帧里不得出现绝对路径（MUST-19）
     assert "D:/" not in json.dumps(action, ensure_ascii=False)
 

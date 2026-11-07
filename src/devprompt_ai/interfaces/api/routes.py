@@ -191,6 +191,8 @@ class _QueueSink:
                 "output": event.action.output,
                 # 失败态（2026-11-04）：前端据此渲染错误色与 Exit code，折叠时也看得见
                 "status": event.action.status,
+                # 真实耗时（2026-11-07）：None 表示未计时，前端据此整段不渲染耗时
+                "duration_ms": event.action.duration_ms,
             }
         )
 

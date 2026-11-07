@@ -150,6 +150,27 @@ async def test_action_frame_carries_card_payload(
     assert card["detail"].startswith("rg -n Foo")
 
 
+async def test_action_frame_carries_duration_when_measured(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """真实耗时走同一帧（2026-11-07）：有值就下发，未计时下发 None（前端据此不渲染耗时）。"""
+    _patch(
+        monkeypatch,
+        FakeStreamService(
+            actions=[
+                ActionInfo(title="检索符号", detail="rg -n Foo", scope="命中 1 行", duration_ms=42),
+                ActionInfo(title="读取文件", detail="src/a.ts", scope="L1-1"),
+            ]
+        ),
+    )
+
+    resp = await client.post("/api/v1/optimize/stream", json={"sentence": "改一下", "project": "."})
+
+    cards = [frame for frame in _frames(resp.text) if frame["type"] == "action"]
+    assert cards[0]["duration_ms"] == 42
+    assert cards[1]["duration_ms"] is None
+
+
 async def test_error_frame_carries_code_and_closes_stream(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

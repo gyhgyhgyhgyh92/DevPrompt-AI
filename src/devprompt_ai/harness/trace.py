@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from collections.abc import Callable
 from typing import Final
 
@@ -122,6 +123,7 @@ class TracingRunner:
     ) -> str:
         # 只改展示副本，args 本身绝不能动（否则改变真实 rg 行为）
         shown = [arg for arg in args if not arg.startswith(_ROUTE_KEY_PREFIX)]
+        started = time.monotonic()
         try:
             out = await self._inner.run(
                 args, timeout=timeout, allowed_exit_codes=allowed_exit_codes, cwd=cwd
@@ -140,6 +142,7 @@ class TracingRunner:
                     scope=f"Exit code {exc.code}",
                     output=_output((exc.stderr or str(exc)).splitlines(), self._root),
                     status="failed",
+                    duration_ms=int((time.monotonic() - started) * 1000),
                 )
             )
             return ""
@@ -151,6 +154,7 @@ class TracingRunner:
                 detail=_clip(redact(" ".join(shown), self._root)),
                 scope=f"命中 {hits} 行" if hits else "无匹配",
                 output=_output(lines, self._root),
+                duration_ms=int((time.monotonic() - started) * 1000),
             )
         )
         return out
@@ -178,6 +182,7 @@ class TracingReader:
         self._phase = phase or (lambda: "")
 
     async def read(self, path: str) -> str:
+        started = time.monotonic()
         text = await self._inner.read(path)
         lines = text.splitlines()
         try:
@@ -189,6 +194,7 @@ class TracingReader:
                         detail=_clip(redact(path, self._root)),
                         scope=f"L1-{len(lines)}" if lines else "",
                         output=_output(lines, self._root),
+                        duration_ms=int((time.monotonic() - started) * 1000),
                     ),
                 )
             )

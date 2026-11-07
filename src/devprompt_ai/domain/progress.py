@@ -42,6 +42,9 @@ class ActionInfo:
     status: Literal["ok", "failed"] = "ok"
     """动作结果：failed = 命令以非允许退出码结束（2026-11-04，对齐 CodeBuddy 的失败态可见）。"""
 
+    duration_ms: int | None = None
+    """动作真实耗时（毫秒，2026-11-07）。None = 未计时（旧数据或非观测来源），前端不展示耗时。"""
+
 
 @dataclass(frozen=True, slots=True)
 class ProgressEvent:

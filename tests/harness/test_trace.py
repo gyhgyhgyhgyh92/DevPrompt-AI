@@ -126,6 +126,53 @@ async def test_reader_reports_relative_path_and_line_range() -> None:
     assert action.scope == "L1-3"
 
 
+class FakeClock:
+    """替换 trace 模块里的 `time` 引用（不改进程级 time 模块，避免影响 pytest 自身）。"""
+
+    def __init__(self, *ticks: float) -> None:
+        self._ticks = iter(ticks)
+
+    def monotonic(self) -> float:
+        return next(self._ticks)
+
+
+async def test_runner_measures_duration(monkeypatch: pytest.MonkeyPatch) -> None:
+    """命令真实耗时随卡片下发（2026-11-07）：时钟被替换成两拍固定值。"""
+    monkeypatch.setattr("devprompt_ai.harness.trace.time", FakeClock(100.0, 100.42))
+    sink = FakeSink()
+    runner = TracingRunner(FakeRunner("hit\n"), sink, _ROOT)
+
+    await runner.run(["rg", "-n", "Foo", "."])
+
+    assert sink.actions()[0].duration_ms == 420
+
+
+async def test_reader_measures_duration(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 用二进制可精确表示的差值（0.5s），避免 0.018 这类浮点误差把 int() 截断成 17
+    monkeypatch.setattr("devprompt_ai.harness.trace.time", FakeClock(5.0, 5.5))
+    sink = FakeSink()
+    reader = TracingReader(FakeReader("a\nb\n"), sink, _ROOT)
+
+    await reader.read("D:/proj/src/a.ts")
+
+    assert sink.actions()[0].duration_ms == 500
+
+
+async def test_exit_code_failure_still_measures_duration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """失败分支同样带耗时：只显示失败不显示耗时等于把「跑了多久」藏起来。"""
+    monkeypatch.setattr("devprompt_ai.harness.trace.time", FakeClock(7.0, 7.25))
+    sink = FakeSink()
+    runner = TracingRunner(FakeRunner(fail=ProcessError(["rg", "Foo"], 1, "err")), sink, _ROOT)
+
+    await runner.run(["rg", "-n", "Foo", "."])
+
+    action = sink.actions()[0]
+    assert action.status == "failed"
+    assert action.duration_ms == 250
+
+
 async def test_exists_is_not_reported() -> None:
     """一次取证做 5 次存在性检查，逐条上报只会刷噪音卡。"""
     sink = FakeSink()
