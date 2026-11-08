@@ -556,6 +556,28 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 给出函数参数列表作为排序的判别性上下文。**老版 ctags 不认该字段会直接失败** → harness 侧捕获后
 去掉该字段重试一次（降级为「候选不带签名」，即改造前行为），不引入任何新依赖。
 
+**2026-11-08 天枢接线收口增量：零新依赖。** 阶段 3–10 全部用标准库与既有依赖实现：
+
+| 能力 | 实现方式 | 为何不引依赖 |
+|---|---|---|
+| 多模型路由 / 主备 / 热切换 | `harness/model_candidates.py`（settings 候选链 + 60s 缓存）+ `domain/model/routing.py`（胜率-延迟罚 bandit）+ `FallbackClient` | 模型数个位数、反馈稀疏，线性打分可解释；MAB 库属过度设计 |
+| 检索二次重排 | `domain/retrieval/bm25.py`（BM25+RRF，中文 bigram）+ `salience.py` 路径权重 | n≤25 的 O(n·m) 纯内存计算（MUST-09 只调序） |
+| physarum 访问强化 | `domain/retrieval/physarum.py` 电导方程纯函数 + `repo_edges.weight` 列 | 两行数学，不需要图数据库 |
+| 长会话可靠性 | `run_events.checksum`（标准库 sha256）+ 每 5 步 checkpoint 复用事件表 | SQLite 自身能力 |
+| 工具输出治理 | `output_summary.py` 语义密度阈值 + `output_store.py` 临时目录落盘 | 截断是字符串切片；落盘是 `Path.write_text` |
+| natural-finish 六道闸 / 超窗重发 | `finish_gates.py` / `overflow.py` 纯函数 | 规则链数十行 |
+
+**流程开关现状**（`config.py`，2026-11-08）：
+
+| 开关 | 默认 | 说明 |
+|---|---|---|
+| `multi_model_routing` | `True` | 按 purpose 分档 + bandit 选模型 + 主备；候选 ≤1 时退化为现状（行为对等） |
+| `summary_llm_enabled` | `False` | 压缩触发时调 LLM 摘要（走 summarize 槽），失败回退确定性 handoff |
+| `context_ledger_enabled` | `False` | 认知账本进上下文（避免无谓 prompt 变化） |
+| `repo_graph_enabled` | `False` | Python 符号图与影响半径（首索引成本高，开启前实测） |
+| `claim_strict` | `True` | C 档未声明引用降档（**BREAKING**，2026-11-05 起） |
+| `tool_output_governance`（隐含常开） | — | trace 通道超阈值即落盘+摘要+回读 footer，无开关（行为增量，MUST-19） |
+
 **缓存观测的范围限制**：仅 OpenAI 兼容端点返回 `prompt_tokens_details.cached_tokens`；
 Anthropic / Gemini 原生适配器不返回该字段，此时记 `None`——**不虚报 0**（0 与「无缓存」含义不同）。
 

@@ -1045,23 +1045,27 @@ src/devprompt_ai/
 │   ├── retrieval/
 │   │   ├── ports.py           Protocol 定义（子进程 / 文件读取）
 │   │   ├── symbols.py         符号表构建
-│   │   ├── candidates.py      候选检索
+│   │   ├── candidates.py      候选检索 + 词汇重排（I1–I3：BM25+RRF+路径权重，只调序不减候选）
+│   │   ├── bm25.py            BM25 + RRF 融合名次（零依赖二次排序层；2026-11-08 接线）
+│   │   ├── salience.py        路径权重（实现文件优先、测试/文档降权；2026-11-08 接线）
+│   │   ├── physarum.py        访问强化（I6：边权衰减+强化纯函数；2026-11-08 接 repo_edges.weight）
 │   │   ├── locate.py          全文定位
 │   │   └── facts.py           事实取证（七项 + 适用性判定 + is_evidence_complete）
 │   ├── agent/                  外环监督与状态感知（2026-11-05）
 │   │   ├── ports.py            ActionPlanner 协议（下一步动作）
 │   │   ├── action.py           动作枚举 + 步骤记录 + 循环预算（纯数据）
 │   │   ├── convergence.py      三判据收敛检测（纯函数，命中即止）
+│   │   ├── finish_gates.py     natural-finish 六道闸（A2：DELIVER 前拦截，只拦不加态；2026-11-08 接线）
 │   │   ├── anchor.py           本轮目标锚点（抽取/追加合并/渲染，纯函数，内部状态）
-│   │   ├── sensorium.py        六维状态感知（纯函数；shadow 模式，只观测不熔断）
+│   │   ├── sensorium.py        六维状态感知（纯函数；pressure=max(相对,绝对)，策略映射 2026-11-08 接线）
 │   │   └── memory.py           跨轮继承契约 TurnMemory（纯数据 + 序列化）
 │   ├── decision/
 │   │   ├── port.py            DecisionPort 协议
-│   │   ├── probes.py          事实探针问题定义
 │   │   └── followup.py        自适应反问编排（具体未知驱动 + 软护栏裁决）
 │   ├── delivery/
 │   │   ├── __init__.py        包声明
-│   │   └── gate.py            交付证据门（GREEN/YELLOW/RED 三态，纯函数；只读证据不产出证据）
+│   │   ├── gate.py            交付证据门（GREEN/YELLOW/RED 三态，纯函数；只读证据不产出证据）
+│   │   └── attribution.py     交付归属（E11：影响半径 × file 断言差集 → 三色；2026-11-08 接 gate）
 │   ├── generate/
 │   │   ├── ports.py           Protocol 定义（LLM 调用）
 │   │   ├── variants.py        三套方案编排
@@ -1095,8 +1099,14 @@ src/devprompt_ai/
 │   ├── llm.py               build_model(entry) 工厂：按调用构造 Model，**不用全局开关**                 多供应商客户端（openai-agents Runner/Agent 直接在此封装）
 │   ├── guardrails.py          输出校验
 │   ├── ask_tool.py            AskUserQuestion 工具定义与参数解析（2026-10-22：schema/解析/畸形降级/扩展字段 taskKind）
-│   ├── trace.py               动作观测层（2026-10-20：包装 CommandRunner/FileReader，把真实 rg/读文件上报成卡片并脱敏）
+│   ├── trace.py               动作观测层（2026-10-20：包装 CommandRunner/FileReader，把真实 rg/读文件上报成卡片并脱敏；2026-11-08 接输出治理：超阈值落盘+摘要+回读 footer）
 │   ├── process.py             检索 I/O Protocol 实现（CommandRunner/FileReader）+ 符号表编排（F-101）
+│   ├── model_candidates.py    路由候选解析（G2：settings 注册表→候选链，routing_stats 60s 缓存；2026-11-08）
+│   ├── output_store.py        工具输出落盘（C3：截断前存全量，1 小时过期；2026-11-08 接 trace 通道）
+│   ├── output_summary.py      工具输出摘要（C1–C5：语义密度阈值/头尾策略/回读 footer；2026-11-08 接 trace 通道）
+│   ├── repo_indexer.py        仓库索引器（I4：Python AST 符号图 + 反向依赖；2026-11-08 接 physarum 边权）
+│   ├── overflow.py            超窗「压一次重发一次」（A8；2026-11-08 接生成路径）
+│   └── summarize.py           LLM 摘要（B11：走 summarize 槽，失败回退确定性 handoff；2026-11-08 接压缩链路）
 │   ├── dialog.py        原生文件夹选择器（native host 调用）              目录浏览 I/O（F-601 页内文件夹选择器数据源，GET /project/browse）
 │   └── dialog.py              Windows 原生文件夹对话框（pwsh -STA，零新依赖）
 ├── memory/                    唯一允许出现 SQL 的模块
@@ -1107,6 +1117,16 @@ src/devprompt_ai/
 │   ├── project_note_store.py  L2 结构化记忆（2026-10-20：top-K 检索 + 90 天衰减 + 命中回写）
 │   ├── ~~preference_store.py~~（2026-10-21 移除）    L3 偏好向量
 │   └── project_notes.py       L2 Git notes
+├── runtime/                   多端运行时（2026-11-07；执行与连接解耦）
+│   ├── bootstrap.py           装配单例（写锁→建库→checksum 校验→checkpoint sink 注入）
+│   ├── runs.py                RunManager（run 生命周期 + 看门狗 + 终止原因结构化）
+│   ├── events.py              EventBus（seq 事务内分配 + 重放/补帧）
+│   ├── streams.py             SSE 订阅
+│   ├── sessions.py            SessionPool（同会话单执行）
+│   ├── lock.py                单写者文件锁
+│   ├── interventions.py       审批代理（第一应答获胜）
+│   ├── artifacts.py           工件回读（C3：id 校验 → output_store.read_by_id；2026-11-08）
+│   └── coordinator.py         委派调度（K2：分池信号量+文件占位+去重；2026-11-08 接 _act_delegate）
 ├── common/                    纯工具，无业务语义
 │   ├── text.py
 │   ├── hashing.py
@@ -1186,7 +1206,7 @@ frontend/
     │   │   └── BrandMark.tsx      品牌标识内联 SVG（2026-11-01：气泡 + 火花，颜色随主题 token）
     │   ├── optimize/          优化流程组件
     │   │   ├── ConsoleInput.tsx     启动页主视觉输入卡片（对话式重构；2026-11-01 输入随内容自动增高至 6 行；模型选择器见 ModelPicker）
-    │   │   ├── ModelPicker.tsx       模型选择器（2026-10-18：只列已配置条目；hover 飞出按模型参数面板——上下文长度 / 思考模式 / 思考强度，强度在开关关闭时置灰；档位取自官方静态登记，各模型独立）
+    │   │   ├── ModelPicker.tsx       模型选择器（2026-10-18：只列已配置条目；hover 飞出按模型参数面板——上下文长度 / 思考模式 / 思考强度，强度在开关关闭时置灰；档位取自官方静态登记，各模型独立；2026-11-08 兼会话级热切换入口，POST /sessions/{id}/model）
     │   │   ├── nativeFolder.ts     原生文件夹选择器桥（2026-10-19：页面 postMessage → 扩展 content script → service worker → native host → 系统对话框）
     │   │   ├── ChatStream.tsx       对话流（用户气泡 → 回复块：步骤时间轴（每步下方挂过程）+ 方案正文；2026-10-20 移除目标定位/取证/操作栏）
     │   │   ├── TraceEntry.tsx       工具动作卡（2026-11-07 两形态：命令→终端块 `$`+exit 胶囊+可展开输出；读文件→瘦胶囊行；展示后端实测耗时）
@@ -1222,11 +1242,13 @@ frontend/
     │   └── useSettingsStore.ts    设置状态（含 localStorage 读写封装）
     ├── hooks/                 自定义 Hook
     │   ├── useSSE.ts
+    │   ├── useRunStream.ts        多端运行流（2026-11-07：先 fetchLastSeq → POST /runs → 订阅 /stream；按 seq 去重补帧）
     │   ├── useRequest.ts
     │   └── useDebounce.ts
     ├── api/                   请求封装
     │   ├── client.ts          基础请求层
-    │   ├── endpoints.ts       接口定义
+    │   ├── endpoints.ts       接口定义（2026-11-08 增 setSessionModel：F10 会话级模型热切换，禁重试）
+    │   ├── protocol.ts        运行时帧契约（RunEventSchema 判别联合 + applyRunEvent，2026-11-07）
     │   ├── interceptors.ts    拦截器
     │   ├── errors.ts          错误处理
     │   └── types.ts           请求响应类型

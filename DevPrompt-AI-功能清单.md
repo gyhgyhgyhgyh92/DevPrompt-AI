@@ -665,6 +665,16 @@ git config --get-all remote.origin.push
 | GET | `/settings` | 读取设置（模型服务 + 流程参数），密钥字段恒脱敏返回——**阶段六（T6-11）接入** |
 | PUT | `/settings` | 更新设置：模型配置写入本地设置文件（密钥不入库不进日志，MUST-19 边界见 F-604）；流程参数写 SQLite；2026-10-13 增 `models`（整表替换）/`active_model_id`（切换生效项）多模型段 |
 | DELETE | `/preference/adoptions` | 清空服务端采纳历史，返回清空条数（D-6F-4 关闭；2026-10-12 契约增补） |
+| POST | `/optimize/stream` | 思考过程流式展示（2026-10-19；2026-11-07 起**保留为启动前失败的兼容壳**） |
+| POST | `/followup/{flow_id}/stream` | 答复过程流式化（2026-11-03；同上兼容壳） |
+| GET/POST | `/settings/models/catalog`（+`/refresh`） | 动态模型目录（F-604；2026-10-17） |
+| POST | `/runs` | 启动运行：执行与连接解耦，返回 `run_id`（2026-11-07 多端运行时，MUST-11b） |
+| GET | `/sessions/{session_id}/stream?since=N` | SSE 订阅：seq 增量 + 冷启动回填，断连不影响执行 |
+| GET | `/sessions/{session_id}/events` | 事件分页回填（`before` 游标） |
+| POST | `/interventions/{request_id}/answer` | 审批应答（第一应答获胜） |
+| POST | `/runs/{run_id}/cancel` | 取消运行（有界 drain，工具批次写完再停） |
+| GET | `/artifacts/{artifact_id}` | 回读被截断工具的全量输出（2026-11-08；id 为 sha256 前 24 位，1 小时过期） |
+| POST | `/sessions/{session_id}/model` | 会话级模型热切换（F10，2026-11-08；写会话覆盖，空串=清除；有副作用禁重试） |
 
 **行为**：
 - 全部端点为薄壳：只做参数收拢 → 调 service → 渲染，零业务逻辑（MUST-10）
@@ -672,7 +682,7 @@ git config --get-all remote.origin.push
 - 错误响应仅含 code + message + request_id，不回传堆栈（MUST-19）
 - 涉及状态写入的请求带 `request_id` 便于追溯（MUST-11）
 
-**验收**：13 条路径 / 16 个操作（preference 与 settings 各含 GET/PUT 两个方法，history 含 PATCH/DELETE，另有 DELETE adoptions 与 GET project/browse）均可独立调用；501 端点已全部转正（T6-11）；`/health` 单项探测失败不中断其余检查；settings 端点随阶段六 T6-11 落地并计入契约冒烟。
+**验收**：**23 条路径 / 26 个操作**（2026-11-08；演进：13/16 → 15/18 → 21/24 多端运行时 → 22/25 artifact 回读 → 23/26 热切换），全部可独立调用；501 端点已全部转正（T6-11）；`/health` 单项探测失败不中断其余检查；契约冒烟以入库 `openapi.json` 与 `create_app().openapi()` 一致为准。
 
 ## F-602 Web 交互界面（阶段六 UI）
 
@@ -799,7 +809,7 @@ frontend/src/
 
 ## F-704 HTTP 接口
 
-**端点清单以 F-601 为权威定义**（统一前缀 `/api/v1`，共 15 路径 / 18 操作）。前端侧要点：
+**端点清单以 F-601 为权威定义**（统一前缀 `/api/v1`，共 **23 路径 / 26 操作**，2026-11-08）。前端侧要点：
 
 **行为**：
 - 全部使用 Pydantic v2 定义请求与响应（后端 `schemas.py` 为唯一契约来源）
