@@ -44,7 +44,7 @@ DevPrompt AI 采用四层架构，依赖方向严格单向向下，不可逆向�
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  应用服务层  service.py + state.py          ← 唯一业务入口         │
-│  ForgeService   optimize / ask_followup / confirm / feedback      │
+│  ForgeService   optimize / ask_followup / rollback / settings      │
 │  FlowState      优化流程状态机（持久化于 L1 Session）             │
 │  职责：编排、状态推进、单一形态一致性保证                           │
 └───────────────┬─────────────────────────────────────────────────┘
@@ -279,7 +279,7 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 | 日志输出 | 控制台彩色 | 内存捕获 | 文件（按日切分） |
 | Tracing | 开启 | 关闭 | 关闭 |
 | L1 Session | 真实 SQLite | 内存实现 | 真实 SQLite |
-| L3 偏好 | 真实 SQLite | 临时文件 | 真实 SQLite |
+| 轮次记忆（forge_turns） | 真实 SQLite | 内存实现 | 真实 SQLite |
 | 决策层 | LLM | LLM | LLM |
 | CORS | 允许 `localhost:5173` | 仅本地 | 显式白名单 |
 | 缓存 | 内存 | 禁用 | 内存 |
@@ -851,9 +851,11 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 | 表 | 字段 |
 |---|---|
 | `forge_sessions`（L1 会话） | `session_id` (PK), `user_id`, `state`, `version`, `payload`, `updated_at` |
-| `preference_vectors`（L3 偏好向量） | `user_id` (PK), `detail_level`, `include_diff`, `specify_tests`, `max_files_norm`, `updated_at` |
-| `adoption_history`（采纳历史表） | `id` (PK), `user_id`, `session_id`, `variant`, `edited`, `edited_text_ratio`, `features_json`, `created_at` |
+| ~~`preference_vectors`（L3 偏好向量）~~ | ~~2026-10-21 随偏好层移除~~ |
+| ~~`adoption_history`（采纳历史表）~~ | ~~同上移除~~ |
 | `app_settings`（流程参数，F-604） | `key` (PK), `value`, `updated_at` |
+| `forge_turns`（轮次记忆，2026-10-20） | `turn_id` (PK), `session_id`+`turn_index` 唯一, `state`, `input`, `facts_json`, `clarifications_json`, `output_json`, `summary_json`, `usage_json` |
+| `project_notes`（L2 结构化记忆） | `project_root`+`kind`+`key` (PK), `value`, `confidence`, `hit_count`, `last_hit_at`, `source` |
 
 ### 4.3 ORM 映射
 
@@ -866,12 +868,12 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 **实现方式**：各 `memory/*.py` 存储模块提供明确的方法，不向上层暴露连接对象或游标。
 
 ```python
-class PreferenceStore:
-    """L3 偏好向量存储。所有 SQL 封装于此，上层不接触连接。"""
+class SQLiteProjectNoteStore:
+    """L2 项目笔记存储。所有 SQL 封装于此，上层不接触连接。"""
 
-    def get(self, user_id: str) -> PreferenceVector: ...
-    def upsert(self, user_id: str, vector: PreferenceVector) -> None: ...
-    def reset(self, user_id: str) -> None: ...
+    async def upsert(self, note: ProjectNote) -> None: ...
+    async def search(self, project_root: str, target_key: str) -> list[ProjectNote]: ...
+    async def record_from_session(self, project_root: str, data: dict) -> None: ...
 ```
 
 **事务规则**：
@@ -957,7 +959,7 @@ class PreferenceStore:
 | 可能的定时需求 | 实现方式 | 不引入框架的理由 |
 |---|---|---|
 | 符号表定期刷新 | 惰性刷新即可——访问时检查 mtime，无需定时器 | 惰性更简单，无需常驻任务 |
-| 偏好向量衰减 | 惰性计算即可——读取时按时间戳衰减 | 同上 |
+| 项目笔记置信度衰减 | 惰性计算即可——读取时按 90 天半衰公式计算 | 同上 |
 | 日志清理 | 启动时清理一次 | 无需周期执行 |
 
 **原则**：**惰性优于定时**。除非确实需要「即使无人使用也要执行」，否则用「访问时检查」替代定时任务。
@@ -1229,12 +1231,12 @@ frontend/
     │   │   ├── ProjectSidebar.tsx  固定侧边栏（图三：头部「项目」+一键收纳；2026-11-01 起按 project_root 分组，组头带项目级删除）
     │   │   └── SessionMenu.tsx     会话 ⋮ 菜单（置顶/复制路径/重命名/删除；2026-11-01 删除改为上抛，确认统一走 ConfirmDialog）
     │   ├── ~~preference/~~     偏好页组件（2026-10-21 移除）
-    │   │   └── PreferenceEditor.tsx 四维偏好编辑器（F-702 独立可用：滑杆 + 显式保存 + 放弃修改）
+    │   │   └── ~~PreferenceEditor.tsx~~ 四维偏好编辑器（2026-10-21 随偏好层移除）
     │   └── settings/          设置中心组件（F-604，模态面板）
     │       ├── SettingsModal.tsx      弹窗外壳 + 左侧四项导航
     │       ├── ModelServicePanel.tsx  供应商卡（F-604 供应商中心化：配一次 Base URL/API Key → 刷新模型列表 → 多选 → 一键保存；测试连接与删除均在供应商级）
     │       ├── AppearancePanel.tsx    通用外观（主题/语言/字体/行为开关）
-    │       ├── MemoryPanel.tsx        长期记忆（L3 滑条/采纳历史/数据管理）
+    │       ├── ~~MemoryPanel.tsx~~     长期记忆（2026-10-21 随偏好层移除；设置中心剩外观/模型服务/安全三面板）
     │       └── SecurityPanel.tsx      流程与安全（护栏参数/锁定项/清除数据）
     ├── stores/                Zustand store
     │   ├── useOptimizeStore.ts
@@ -1541,7 +1543,7 @@ export function useProjectLauncher() {
 | 历史记录 | ✅ 持久 | 后端 SQLite | 有查阅价值 |
 | 当前流程阶段 | ⚠️ 部分 | 后端 L1 Session | 服务端持久，页面刷新后从后端恢复 |
 | 三套方案内容 | ⚠️ 部分 | 后端 L1 Session | 同上 |
-| 偏好向量缓存 | ✅ 持久 | `localStorage` | 减少首屏请求 |
+| 外观设置 | ✅ 持久 | `localStorage` | 主题/语言/字体即开即得 |
 | 输入框草稿 | ✅ 持久 | `localStorage` | 防误刷新丢失 |
 | SSE 连接状态 | ❌ 不持久 | 内存 | 连接状态刷新后必然重连 |
 | 折叠展开状态 | ❌ 不持久 | 内存 | 纯 UI 偏好 |
@@ -1552,12 +1554,13 @@ export function useProjectLauncher() {
 **localStorage 键命名规范**：
 
 ```
-devprompt:v1:preference        偏好向量缓存
-devprompt:v1:draft             输入草稿
-devprompt:v1:last-project      最近使用的项目路径
+devprompt:v1:appearance        外观设置（主题/语言/字体；Zod 校验读取）
 ```
 
-统一前缀避免与其他应用冲突。所有 key 必须带版本前缀（如 `devprompt:v1:preference`，2026-10-13 定稿），便于将来变更结构时安全失效；TTL 暂不强制、后续按需补。
+> 其余状态（草稿、最近项目等）权威存储在后端 L1 Session；客户端只镜像。
+> 键前缀 `devprompt:v1:` 结构变更时可整体失效（useSettingsStore.STORAGE_PREFIX）。
+
+统一前缀避免与其他应用冲突。所有 key 必须带版本前缀（如 `devprompt:v1:appearance`，2026-10-13 定稿），便于将来变更结构时安全失效；TTL 暂不强制、后续按需补。
 
 **敏感数据不入 localStorage**：项目路径可存（原句不存，涉及用户代码内容）。
 
@@ -2021,16 +2024,16 @@ useEffect(() => {
 const inflight = new Map<string, Promise<unknown>>()
 ```
 
-适用场景：多个组件同时请求同一份数据（如偏好向量被两个页面读取）。
+适用场景：多个组件同时请求同一份数据（如历史列表被工作台与历史页读取）。
 
 **幂等控制**：
 
 | 操作 | 幂等 | 处理 |
 |---|---|---|
-| `GET /preference` | ✅ | 去重 |
+| `GET /history` | ✅ | 去重 |
 | `POST /optimize` | ❌ | 禁用重复提交 |
-| `PUT /preference` | ✅ | 允许重试 |
-| `POST /feedback` | ❌ | 禁用重复提交 |
+| `PUT /settings` | ✅ | 允许重试 |
+| `POST /runs` | ❌ | 禁用重复提交 |
 
 **`POST /optimize` 的防重**：提交后立即 `setSubmitting(true)`，请求结束前按钮禁用。**不靠时间戳去重**——时钟不可靠。
 

@@ -654,9 +654,9 @@ git config --get-all remote.origin.push
 | GET | `/progress/{flow_id}` | SSE 进度流：1s 轮询推送快照，DONE / ABORTED / 反问 / 护栏态推送后关闭，客户端断开即停 |
 | POST | `/followup/{flow_id}` | 反问交互三模式（互斥，由契约校验保证）：`answers` 批量答复 / `escape` 逃生直接生成 / `guardrail_action` 软护栏裁决 |
 | GET | `/result/{flow_id}` | 获取流程快照（含三套方案与评分，若已生成） |
-| POST | `/feedback` | 提交采纳反馈（session_id + action），写入 L3 偏好信号 |
-| GET | `/preference` | 查询偏好向量 |
-| PUT | `/preference` | 更新偏好向量（部分更新 + clip01 截断；T6-11 转正） |
+| POST | `/feedback` | ~~提交采纳反馈（session_id + action），写入 L3 偏好信号~~（随偏好层 2026-10-21 移除） |
+| GET | `/preference` | ~~查询偏好向量~~（随偏好层移除） |
+| PUT | `/preference` | ~~更新偏好向量（部分更新 + clip01 截断；T6-11 转正）~~（随偏好层移除） |
 | GET | `/history` | 历史会话列表：id/时间/state/项目名/title（原句截断）/pinned/项目全路径（T6-11 转正；2026-10-13 补 project_root） |
 | PATCH | `/history/{session_id}` | 会话管理：重命名 / 置顶（对话式重构契约增补） |
 | DELETE | `/history/{session_id}` | 删除会话（对话式重构契约增补） |
@@ -664,7 +664,7 @@ git config --get-all remote.origin.push
 | GET | `/project/browse` | 文件资源管理器数据源（页内）：path 空=驱动器列表；条目为目录（名称/修改日期，文件不出现——用户裁定），名称升序；返回上级与截断标志；2026-10-13 增可选 `q`：当前目录**子树递归搜索**（仅目录，条目附 `rel_parent` 相对父路径，直接子级为空串；深度 6 / 访问节点 20000 / 命中 500 三重上限，超限置 truncated） |
 | GET | `/settings` | 读取设置（模型服务 + 流程参数），密钥字段恒脱敏返回——**阶段六（T6-11）接入** |
 | PUT | `/settings` | 更新设置：模型配置写入本地设置文件（密钥不入库不进日志，MUST-19 边界见 F-604）；流程参数写 SQLite；2026-10-13 增 `models`（整表替换）/`active_model_id`（切换生效项）多模型段 |
-| DELETE | `/preference/adoptions` | 清空服务端采纳历史，返回清空条数（D-6F-4 关闭；2026-10-12 契约增补） |
+| DELETE | `/preference/adoptions` | ~~清空服务端采纳历史，返回清空条数（D-6F-4 关闭；2026-10-12 契约增补）~~（随偏好层移除） |
 | POST | `/optimize/stream` | 思考过程流式展示（2026-10-19；2026-11-07 起**保留为启动前失败的兼容壳**） |
 | POST | `/followup/{flow_id}/stream` | 答复过程流式化（2026-11-03；同上兼容壳） |
 | GET/POST | `/settings/models/catalog`（+`/refresh`） | 动态模型目录（F-604；2026-10-17） |

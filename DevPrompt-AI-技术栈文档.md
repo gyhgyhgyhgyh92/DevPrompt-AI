@@ -140,7 +140,8 @@
 | Store | 职责 |
 |---|---|
 | `useOptimizeStore` | 当前流程阶段、三套方案、评分明细、置信度、SSE 连接状态 |
-| `usePreferenceStore` | 偏好向量、历史采纳记录 |
+| `useHistoryStore` | 会话历史（分页/置顶/重命名/删除） |
+| `useSettingsStore` | 设置状态（外观进 localStorage，`devprompt:v1:` 前缀） |
 
 **为什么不用 Redux Toolkit**：本项目无跨页面复杂状态，slice/reducer/action 的三层结构是纯开销。Zustand 的 `create` 写法在 TypeScript 下类型推导更直接，且不需要 Provider 嵌套。
 
@@ -160,7 +161,7 @@
 |---|---|---|
 | 路由 | React Router | `^7`（库模式） |
 
-三个路由：`/`（优化主页）、`/history`（历史记录）、`/preference`（偏好管理）。
+两个路由：`/`（优化主页）、`/history`（历史记录）；设置中心为弹窗（`SettingsModal`），不占路由。偏好页已随偏好层于 2026-10-21 移除。
 
 **用库模式而非数据模式**：数据模式（`loader`）适合 SSR/SSG 场景，本项目不需要。
 
@@ -200,14 +201,14 @@
 | `PhaseIndicator` | 流程阶段指示器 | 低 |
 | `VariantTabs` | 三套方案切换（移动端） | 低 |
 | `CopyButton` | 一键复制 | 低 |
-| `PreferenceEditor` | 偏好向量编辑 | 中 |
 | `SessionSidebar` | 会话侧栏（工作台左栏，T6-10 补） | 低 |
-| `ContextPanel` | 上下文面板（工作台右栏，T6-10 补） | 低 |
 | `SettingsModal` | 设置中心弹窗外壳（T6-10 补） | 中 |
 | `ModelServicePanel` | 设置 · 模型服务（T6-10 补） | 中 |
 | `AppearancePanel` | 设置 · 通用外观（T6-10 补） | 低 |
-| `MemoryPanel` | 设置 · 长期记忆（T6-10 补） | 中 |
 | `SecurityPanel` | 设置 · 流程与安全（T6-10 补） | 中 |
+
+> 偏好页组件（`PreferenceEditor`/`MemoryPanel`/`ContextPanel` 等）已随偏好层于 2026-10-21 移除；
+> 现存组件清单以架构文档 §5.1 为唯一权威。
 
 **总量约 17 个组件**（T6-10 核对补齐 6D 与设置中心七件；全清单以架构文档 §5.1 为唯一权威），全部无第三方基元依赖。这是判断「不需要组件库」的核心依据——多数 UI 组件库的复杂度是为了解决表格、日期选择器、复杂表单校验等本项目不存在的问题。
 
@@ -308,7 +309,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 
 | 项 | 选型 | 说明 |
 |---|---|---|
-| 存储 | **SQLite**（单文件，WAL 模式） | 三个记忆层中的 L1（Session）与 L3（偏好向量），落 `DATA_DIR`（默认 `~/.devprompt-ai/devprompt.db`） |
+| 存储 | **SQLite**（单文件，WAL 模式） | 会话/轮次记忆（L1）与项目笔记（L2 结构化轨），另承载事件日志、路由统计、token 账本；落 `DATA_DIR`（默认 `~/.devprompt-ai/devprompt.db`） |
 | 驱动 | Python 标准库 `sqlite3` | **零第三方依赖**（MUST-04 第 2 级）；同步 API 经 `run_in_threadpool` 包异步（MUST-13 允许） |
 | ORM | **不引入** | 两张表用原生 SQL 更直接（见下） |
 | 迁移 | **暂不需要** | 表结构简单，`memory/schema.py` 启动时幂等建表 |
@@ -321,7 +322,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 - 数据即文件：备份/迁移 = 复制文件；MUST-23 已将 `*.db` 排除出 Git
 - 代价：多用户/远程部署需届时更换后端——`SessionStore` Protocol 已隔离，属配置级切换
 
-**为什么不用 JSON 纯文件**：L3 偏好历史表（30 轮滑动平均、聚合查询）需要 SQL 能力，全量读写 JSON 会随历史增长而笨重；SQLite 兼得「零运维」与「查询能力」。
+**为什么不用 JSON 纯文件**：轮次历史与项目笔记（按 key 检索、半衰衰减、聚合统计）需要 SQL 能力，全量读写 JSON 会随历史增长而笨重；SQLite 兼得「零运维」与「查询能力」。
 
 **为什么不用 MySQL / PostgreSQL**：单用户本地场景下提前支付独立数据库服务的运维成本，价值主张（本地工具）优先；多用户态确认后经 `SessionStore` Protocol 切换，影响面可控。
 
@@ -373,15 +374,19 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | GET | `/progress/{flow_id}` | SSE 进度流（1s 轮询推送快照，终态/反问/护栏后关闭） |
 | POST | `/followup/{flow_id}` | 反问交互三模式（互斥）：answers / escape / guardrail_action |
 | GET | `/result/{flow_id}` | 获取流程快照（含三套方案与评分） |
-| POST | `/feedback` | 提交采纳反馈，写入 L3 偏好信号 |
-| GET | `/preference` | 查询偏好向量 |
-| PUT | `/preference` | 更新偏好向量（部分更新 + clip01 截断；T6-11 转正） |
+| POST | `/feedback` | ~~提交采纳反馈，写入 L3 偏好信号~~（随偏好层 2026-10-21 移除） |
+| GET | `/preference` | ~~查询偏好向量~~（同上移除） |
+| PUT | `/preference` | ~~更新偏好向量~~（同上移除） |
 | GET | `/history` | 历史会话摘要（脱敏：id/时间/state/项目名；T6-11 转正） |
 | GET | `/project/scan` | 项目符号表扫描（符号总数 / 文件数 / 类型分布） |
 | GET | `/project/browse` | 文件资源管理器数据源（页内）：path 空=驱动器列表；条目为目录（名称/修改日期），名称升序；可选 `q`=当前目录子树递归搜索（2026-10-13），条目附 `rel_parent` 相对父路径 |
 | GET | `/settings` | 读取设置（模型服务脱敏 + 流程参数 + 锁定项；T6-11） |
 | PUT | `/settings` | 更新设置（模型段 → settings.json 0600；流程段 → app_settings 表）；2026-10-13 增 `models`/`active_model_id` 多模型注册表段（整表替换 + 切换生效项） |
-| DELETE | `/preference/adoptions` | 清空服务端采纳历史，返回清空条数（D-6F-4 关闭） |
+| DELETE | `/preference/adoptions` | ~~清空服务端采纳历史~~（随偏好层移除） |
+
+> 本表为阶段四基线快照；现契约 **23 路径 / 26 操作** 以入库 `openapi.json` 为唯一权威
+> （多端运行时 `/runs`、`/sessions/{id}/stream`、`/artifacts/{id}`、`/sessions/{id}/model` 等
+> 增量端点见功能清单 F-601）。
 
 ## 4.8 配置管理
 
