@@ -286,6 +286,20 @@ class TestOutputGovernance:
         assert await read_tool_artifact("../etc/passwd") is None
         assert await read_tool_artifact("") is None
 
+    async def test_governance_off_falls_back_to_legacy_clip(self) -> None:
+        """tool_output_governance 关闭：退回旧 20 行截断口径，无落盘回读指针。"""
+        sink = FakeSink()
+        raw = "\n".join(f"line{i}" for i in range(2000))
+        runner = TracingRunner(FakeRunner(raw), sink, _ROOT, governance=False)
+
+        await runner.run(["rg", "x"])
+
+        output = sink.actions()[0].output
+        assert "/api/v1/artifacts/" not in output
+        assert "不要重跑命令" not in output
+        assert "line0" in output, "旧口径保留头部"
+        assert "…（已截断）" in output
+
 
 class TestFailureDegrade:
     """失败降级（2026-11-04）：普通退出码降级为「该次取证不通过」，工具缺失/超时仍抛。"""

@@ -560,6 +560,20 @@ class ProjectDeleteResponse(BaseModel):
     deleted: int
 
 
+class ArtifactResponse(BaseModel):
+    """GET /artifacts/{id} 数据体：被截断工具的全量输出（可能含代码正文，MUST-19）。"""
+
+    artifact_id: str
+    content: str
+
+
+class SessionModelResponse(BaseModel):
+    """POST /sessions/{id}/model 数据体：切换后的会话级覆盖；空串表示已清除。"""
+
+    session_id: str
+    model_id: str
+
+
 class ApiResponse(BaseModel, Generic[DataT]):
     """统一响应信封：code=0 成功；非 0 为架构文档 §3.3 错误码。"""
 

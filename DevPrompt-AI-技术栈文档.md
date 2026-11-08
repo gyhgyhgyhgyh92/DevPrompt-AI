@@ -576,7 +576,9 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | `context_ledger_enabled` | `False` | 认知账本进上下文（避免无谓 prompt 变化） |
 | `repo_graph_enabled` | `False` | Python 符号图与影响半径（首索引成本高，开启前实测） |
 | `claim_strict` | `True` | C 档未声明引用降档（**BREAKING**，2026-11-05 起） |
-| `tool_output_governance`（隐含常开） | — | trace 通道超阈值即落盘+摘要+回读 footer，无开关（行为增量，MUST-19） |
+| `context_layers_enabled` | `True` | B1–B4 增量附录（`<context-update>`）；关闭不发 delta（2026-11-08 补灰度闸） |
+| `tool_output_governance` | `True` | trace 通道超阈值落盘+摘要+回读 footer；关闭退回 20 行旧截断（2026-11-08 补灰度闸） |
+| `team_orchestration` | `True` | 委派按波调度（K6 多波流水线）；关闭单工单直连调度闸（2026-11-08 补灰度闸） |
 
 **缓存观测的范围限制**：仅 OpenAI 兼容端点返回 `prompt_tokens_details.cached_tokens`；
 Anthropic / Gemini 原生适配器不返回该字段，此时记 `None`——**不虚报 0**（0 与「无缓存」含义不同）。

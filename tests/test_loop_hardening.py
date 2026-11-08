@@ -190,6 +190,88 @@ def test_request_budget_assertion_trips_on_oversized_prompt() -> None:
     _assert_request_budget(normal, "SYS", "短 prompt")  # noqa: SLF001
 
 
+async def test_context_layers_off_skips_delta() -> None:
+    """context_layers_enabled 关闭：不注入 <context-update>（恢复改造前行为）。"""
+
+    class QuietGenerator(StubGenerator):
+        async def generate_variants(
+            self, ctx: GenerationContext, levels: list[Level], locale: str = "zh-CN"
+        ) -> MultiVariantDraft:
+            self.contexts.append(ctx)
+            return MultiVariantDraft(
+                variants=[
+                    VariantDraft(title="t", body="b", changes=["x"], level=lv) for lv in levels
+                ]
+            )
+
+    gen = QuietGenerator()
+    from devprompt_ai.harness.process import SymbolTableProvider
+
+    svc = ForgeService(
+        cfg=AppConfig(_env_file=None, context_layers_enabled=False),  # type: ignore[call-arg]
+        decider=FakeDecider([0.9] * 7),
+        sessions=FakeStore(),
+        runner=FakeRunner(),
+        reader=FakeReader({"src/ui/button.tsx", "src/ui/button.test.tsx"}),
+        generator=gen,
+        symbols_provider=SymbolTableProvider(FakeRunner(), ttl_seconds=0.0),
+        symbols_override=_symbols(),
+    )
+    await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+
+    assert gen.contexts
+    assert "<context-update" not in gen.contexts[0].history_block
+
+
+async def test_tail_anchor_injected_after_compaction() -> None:
+    """B13/B14：历史被压缩时，权威块出现在 history_block 尾部（与摘要冲突以本块为准）。"""
+
+    class QuietGenerator(StubGenerator):
+        async def generate_variants(
+            self, ctx: GenerationContext, levels: list[Level], locale: str = "zh-CN"
+        ) -> MultiVariantDraft:
+            self.contexts.append(ctx)
+            return MultiVariantDraft(
+                variants=[
+                    VariantDraft(title="t", body="b", changes=["x"], level=lv) for lv in levels
+                ]
+            )
+
+    from devprompt_ai.harness.process import SymbolTableProvider
+
+    gen = QuietGenerator()
+    svc = ForgeService(
+        cfg=AppConfig(_env_file=None, context_window_tokens=400, max_state_tokens=200),  # type: ignore[call-arg]
+        decider=FakeDecider([0.9] * 7),
+        sessions=FakeStore(),
+        runner=FakeRunner(),
+        reader=FakeReader({"src/ui/button.tsx", "src/ui/button.test.tsx"}),
+        generator=gen,
+        symbols_provider=SymbolTableProvider(FakeRunner(), ttl_seconds=0.0),
+        symbols_override=_symbols(),
+    )
+    await svc.optimize(
+        "local", ".", f"把提交按钮改成 primary-500，{'保留现有布局与文案' * 40}", request_id="r1"
+    )
+
+    assert gen.contexts
+    text = gen.contexts[0].history_block
+    assert "以本块为准" in text, "压缩轮必须重注入权威块"
+    assert text.rstrip().endswith("</task-anchor>"), "权威块必须在消息尾部"
+
+
+async def test_append_violation_warns_but_continues() -> None:
+    """MUST-11c 检测面：伪造被改写的历史前缀 → 告警事件但装配照常完成。"""
+    svc, _store = await _service_with_data()
+    session = _session_of(svc)
+    session.data["context_turn_indexes"] = [99]
+
+    payload = await svc._assemble_context(session)  # noqa: SLF001
+
+    assert payload.history_block, "违规只告警，装配不得中断"
+    assert session.data["context_turn_indexes"] != [99], "基线被本轮真实序列覆盖"
+
+
 async def test_checkpoint_sink_receives_step_payload() -> None:
     """阶段7：每 5 步的 checkpoint 经 sink 落 run_events；sink 故障不阻断主循环。"""
     calls: list[tuple[str, dict[str, Any]]] = []

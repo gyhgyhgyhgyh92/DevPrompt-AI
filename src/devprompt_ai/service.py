@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
+    from devprompt_ai.domain.agent.work_order import WorkOrder
     from devprompt_ai.memory.token_ledger import SQLiteTokenLedger
 
 from devprompt_ai.common.cost import take_llm_tokens
@@ -54,9 +55,15 @@ from devprompt_ai.domain.context import (
     build_context,
     summary_from_turn,
 )
+from devprompt_ai.domain.context.build_context import compose_history
 from devprompt_ai.domain.context.compact_policy import CacheKind
 from devprompt_ai.domain.context.compactor import plan_compaction
-from devprompt_ai.domain.context.prompt_layers import render_delta
+from devprompt_ai.domain.context.prompt_layers import assert_append_only, render_delta
+from devprompt_ai.domain.context.task_contract import (
+    ContractStatus,
+    TaskContract,
+    render_tail_anchor,
+)
 from devprompt_ai.domain.context.tokens import estimate_tokens as estimate_ctx_tokens
 from devprompt_ai.domain.decision.direction import detect_direction_conflict
 from devprompt_ai.domain.decision.followup import (
@@ -612,9 +619,10 @@ class ForgeService:
         """
         if progress is None:
             return self._runner, self._reader
+        governance = self._cfg.tool_output_governance
         return (
-            TracingRunner(self._runner, progress, root, phase),
-            TracingReader(self._reader, progress, root, phase),
+            TracingRunner(self._runner, progress, root, phase, governance=governance),
+            TracingReader(self._reader, progress, root, phase, governance=governance),
         )
 
     async def optimize(
@@ -663,6 +671,8 @@ class ForgeService:
             previous_anchor = anchor_from_payload(session.data.get("turn_anchor"))
             # B1–B4 增量基线：data 每轮重建，跨轮对比必须显式带走上一轮的层快照
             previous_layers = session.data.get("prompt_layers")
+            # MUST-11c 检测面：历史前缀比对基线同样要跨轮携带
+            previous_turn_indexes = session.data.get("context_turn_indexes")
             anchor = (
                 extract_anchor(memory.sentence, next_index)
                 if previous_anchor is None
@@ -685,6 +695,9 @@ class ForgeService:
                 "turn_memory": memory.to_payload(),
                 "turn_anchor": anchor_to_payload(anchor),
                 "prompt_layers": previous_layers if isinstance(previous_layers, dict) else {},
+                "context_turn_indexes": (
+                    previous_turn_indexes if isinstance(previous_turn_indexes, list) else []
+                ),
             }
             # 继承的方案与取证直接进本轮 data：agentic 循环据此判断能否跳过检索
             if memory.variants:
@@ -1238,6 +1251,11 @@ class ForgeService:
             objective=str(session.data.get("sentence", "")) or "汇总当前取证",
             scope_files=(path,),
         )
+        # K6 多波流水线：单工单=单波（行为等价）；多工单来源（delegation_orders）就绪后零改动。
+        # team_orchestration 关闭 → 单工单直连调度闸（旧路径）。
+        if self._cfg.team_orchestration:
+            await self._run_delegation_waves(session, [order], progress, execute=_execute)
+            return
         # 阶段9：工单过调度闸（可运行性→文件占位→分池容量）再执行；被拒只降级不阻断。
         try:
             result = await self._coordinator.run(
@@ -1263,6 +1281,68 @@ class ForgeService:
             progress,
             f"委派完成（{result.status}）：{result.output[:200]}",
         )
+
+    async def _run_delegation_waves(
+        self,
+        session: FlowSession,
+        orders: Sequence[WorkOrder],
+        progress: ProgressSink | None = None,
+        *,
+        execute: Callable[[Any], Awaitable[str]],
+    ) -> None:
+        """K6：工单按波次经调度闸执行，结果按 id 落位；被拒/失败只降级不阻断。
+
+        单工单时与直连调度闸行为等价（单波）；多工单逐波串行保证占位闸正确。
+        """
+        from devprompt_ai.domain.agent.delegation import WorkerResult
+        from devprompt_ai.domain.agent.team import merge_results, plan_waves
+        from devprompt_ai.harness.worker_session import run_read_worker
+
+        try:
+            waves = plan_waves(orders)
+        except ValueError as exc:
+            emit(
+                "delegation.rejected",
+                reason=str(exc)[:120],
+                request_id=str(session.data.get("last_request_id", "")),
+            )
+            await _notify(session, progress, f"委派计划被拒：{exc}")
+            return
+        results: dict[str, WorkerResult] = {}
+        for wave in waves:
+            emit(
+                "delegation.wave",
+                wave=wave.index,
+                total=len(waves),
+                orders=[o.id for o in wave.orders],
+                request_id=str(session.data.get("last_request_id", "")),
+            )
+            for order in wave.orders:
+                try:
+                    results[order.id] = await self._coordinator.run(
+                        order, lambda o: run_read_worker(o, execute=execute)
+                    )
+                except ValueError as exc:
+                    emit(
+                        "delegation.rejected",
+                        reason=str(exc)[:120],
+                        request_id=str(session.data.get("last_request_id", "")),
+                    )
+                    await _notify(session, progress, f"委派被调度闸拒绝：{exc}")
+                    continue
+        first = next(iter(results.values()), None)
+        if first is None:
+            await _notify(session, progress, "委派全部被调度闸拒绝")
+            return
+        session.data["delegation"] = {
+            "status": first.status,
+            "summary": first.output[:300],
+            "evidence": list(first.evidence),
+            "salvaged": first.salvaged,
+            "evidence_status": first.evidence_status,
+            "results": merge_results(orders, results),
+        }
+        await _notify(session, progress, f"委派完成（{first.status}）：{first.output[:200]}")
 
     async def _attach_impact(
         self, session: FlowSession, *, project_root: str, request_id: str
@@ -2652,7 +2732,7 @@ class ForgeService:
         summaries = await self._maybe_llm_digest(
             session, summaries, estimated_tokens=estimated, shrunk=shrink
         )
-        return build_context(
+        payload = build_context(
             summaries,
             current,
             notes=notes,
@@ -2663,6 +2743,53 @@ class ForgeService:
             ledger_block=self._render_ledger(session),
             delta_block=self._render_context_delta(session),
         )
+        # B13/B14：历史被压缩时把权威块重新注入消息尾部（与摘要冲突以本块为准）
+        compacted = tuple(t for t in payload.truncated_layers if t.startswith("compacted:"))
+        if compacted:
+            tail = self._render_tail_anchor(session)
+            if tail:
+                payload = dataclasses.replace(
+                    payload, history_block=compose_history(payload.history_block, anchor=tail)
+                )
+            emit(
+                "context.compacted",
+                layers=list(compacted),
+                request_id=str(session.data.get("last_request_id", "")),
+            )
+        # MUST-11c 检测面：历史轮次前缀被改写（异常回滚等）只告警不阻断
+        indexes = tuple(summary.turn_index for summary in summaries)
+        previous_indexes = session.data.get("context_turn_indexes")
+        if isinstance(previous_indexes, list) and not assert_append_only(previous_indexes, indexes):
+            emit(
+                "context.append_violation",
+                request_id=str(session.data.get("last_request_id", "")),
+            )
+        session.data["context_turn_indexes"] = list(indexes)
+        return payload
+
+    def _render_tail_anchor(self, session: FlowSession) -> str:
+        """压缩后的权威块：目标/范围/约束来自锚点，验收标准与已完成事实一并列明。"""
+        anchor = anchor_from_payload(session.data.get("turn_anchor"))
+        contract = TaskContract(
+            objective=(
+                anchor.objective
+                if anchor is not None
+                else str(session.data.get("sentence", ""))[:200]
+            ),
+            scope_paths=anchor.scope_paths if anchor is not None else (),
+            constraints=anchor.constraints if anchor is not None else (),
+            status=(
+                ContractStatus.EXECUTING
+                if session.data.get("facts_complete")
+                else ContractStatus.EXPLORING
+            ),
+        )
+        passed = tuple(
+            str(item.get("key"))
+            for item in session.data.get("facts", [])
+            if isinstance(item, dict) and item.get("passed")
+        )
+        return render_tail_anchor(contract, completed=passed)
 
     async def _maybe_llm_digest(
         self,
@@ -2715,6 +2842,8 @@ class ForgeService:
         shortcut: 每次 LLM 调用都是无状态单发，增量只作「自上次以来的变化」提示，
         缺内容时仍以完整历史为准；会话改为携带消息历史后再改成真正的增量替换。
         """
+        if not self._cfg.context_layers_enabled:
+            return ""
         blocks = {"task_status": "executing" if session.data.get("facts_complete") else "exploring"}
         previous = session.data.get("prompt_layers")
         prev = previous if isinstance(previous, dict) else {}

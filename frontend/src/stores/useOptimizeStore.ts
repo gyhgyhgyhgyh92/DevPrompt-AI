@@ -12,6 +12,13 @@ import { FlowSnapshotSchema } from '../schemas/optimize'
 import type { ActionPayload, ThinkingItem } from '../schemas/stream'
 import type { SseStatus } from '../types'
 import type { RunEvent } from '../api/protocol'
+import {
+  CheckpointPayloadSchema,
+  CompactedPayloadSchema,
+  DelegationRejectedPayloadSchema,
+  DelegationWavePayloadSchema,
+  parseEventPayload,
+} from '../api/protocol'
 
 /** 契约载荷按生成类型派生（F-705：勿在 api/types.ts 之外手写结构）。 */
 type SymbolPayload = NonNullable<FlowSnapshotResponse['target']>
@@ -305,6 +312,23 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
       }
       case 'stop':
         set({ isThinking: false, sseStatus: 'idle' })
+        return
+      case 'agent.checkpoint': {
+        // 每 5 步的执行进度：直写步骤镜像（snapshot 帧之外的增量进度源）
+        const payload = parseEventPayload(CheckpointPayloadSchema, event.data)
+        if (!payload) return
+        set({ agentStep: payload.step, agentAction: payload.action })
+        return
+      }
+      case 'delegation.rejected':
+        // 守卫解析（畸形帧安全丢弃），按裁定不渲染（视觉无新增元素）
+        parseEventPayload(DelegationRejectedPayloadSchema, event.data)
+        return
+      case 'delegation.wave':
+        parseEventPayload(DelegationWavePayloadSchema, event.data)
+        return
+      case 'context.compacted':
+        parseEventPayload(CompactedPayloadSchema, event.data)
         return
       default:
         return

@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale
 from devprompt_ai.domain.errors import DevPromptError, StateError
 from devprompt_ai.interfaces.api.routes import _USER_ID, _snapshot_payload, get_service
-from devprompt_ai.interfaces.api.schemas import ApiResponse
+from devprompt_ai.interfaces.api.schemas import ApiResponse, ArtifactResponse, SessionModelResponse
 from devprompt_ai.runtime.artifacts import read_tool_artifact
 from devprompt_ai.runtime.bootstrap import RuntimeBundle, get_runtime
 from devprompt_ai.runtime.events import EventBus, follow
@@ -192,7 +192,7 @@ async def list_events(
 
 @router.post(
     "/sessions/{session_id}/model",
-    response_model=ApiResponse[dict[str, Any]],
+    response_model=ApiResponse[SessionModelResponse],
     description="会话级模型热切换（F10）：写会话覆盖，下一轮生成即生效；空串清除覆盖。",
 )
 async def switch_session_model(
@@ -200,19 +200,25 @@ async def switch_session_model(
     session_id: str,
     req: SessionModelRequest,
     x_request_id: Annotated[str | None, Header(alias="X-Request-ID")] = None,
-) -> ApiResponse[dict[str, Any]]:
+) -> ApiResponse[SessionModelResponse]:
     service = await get_service()
     data = await service.set_session_model(_USER_ID, session_id, req.model_id)
-    return ApiResponse(data=data, request_id=_request_id(request, x_request_id))
+    return ApiResponse(
+        data=SessionModelResponse(
+            session_id=str(data.get("session_id", session_id)),
+            model_id=str(data.get("model_override", req.model_id)),
+        ),
+        request_id=_request_id(request, x_request_id),
+    )
 
 
 @router.get(
     "/artifacts/{artifact_id}",
-    response_model=ApiResponse[dict[str, Any]],
+    response_model=ApiResponse[ArtifactResponse],
     description="回读被截断工具的全量输出；内容可能含代码正文，禁止写入日志（MUST-19）。",
 )
-async def read_artifact(artifact_id: str) -> ApiResponse[dict[str, Any]]:
+async def read_artifact(artifact_id: str) -> ApiResponse[ArtifactResponse]:
     content = await read_tool_artifact(artifact_id)
     if content is None:
         raise DevPromptError("工件不存在或已过期（1 小时后清理）", code=6003)
-    return ApiResponse(data={"artifact_id": artifact_id, "content": content})
+    return ApiResponse(data=ArtifactResponse(artifact_id=artifact_id, content=content))

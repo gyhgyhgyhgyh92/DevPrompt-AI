@@ -1,6 +1,37 @@
 {
   "components": {
     "schemas": {
+      "ApiResponse_ArtifactResponse_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArtifactResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[ArtifactResponse]",
+        "type": "object"
+      },
       "ApiResponse_FlowSnapshotResponse_": {
         "properties": {
           "code": {
@@ -243,6 +274,37 @@
         "title": "ApiResponse[ScanResponse]",
         "type": "object"
       },
+      "ApiResponse_SessionModelResponse_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionModelResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[SessionModelResponse]",
+        "type": "object"
+      },
       "ApiResponse_SettingsResponse_": {
         "properties": {
           "code": {
@@ -372,6 +434,25 @@
           }
         },
         "title": "ApiResponse[list[dict[str, Any]]]",
+        "type": "object"
+      },
+      "ArtifactResponse": {
+        "description": "GET /artifacts/{id} 数据体：被截断工具的全量输出（可能含代码正文，MUST-19）。",
+        "properties": {
+          "artifact_id": {
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "content"
+        ],
+        "title": "ArtifactResponse",
         "type": "object"
       },
       "AskOptionPayload": {
@@ -1769,6 +1850,25 @@
         "title": "SessionModelRequest",
         "type": "object"
       },
+      "SessionModelResponse": {
+        "description": "POST /sessions/{id}/model 数据体：切换后的会话级覆盖；空串表示已清除。",
+        "properties": {
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "model_id"
+        ],
+        "title": "SessionModelResponse",
+        "type": "object"
+      },
       "SettingsResponse": {
         "description": "GET/PUT /settings 数据体（T6-11）。\n\n``models`` 为多模型注册表脱敏视图（F-604，2026-10-13）；字段无默认值（响应必有值）。\n\n2026-09-17 迁移增 ``providers`` 目录（provider 下拉与窗口档位的数据源）。\n**复用本端点下发而非新增路径**，故契约仍 13 路径 / 16 操作。\n同日移除 ``model_specs``（参数编辑区已下线）。\n2026-10-18 供应商中心化重构新增 ``provider_configs`` 段（**用户自己配置的供应商**：\n端点 + 密钥，一个端点一份）。注意与上面的 ``providers`` **目录段**是两回事：\n前者是静态厂商目录（只读、下拉数据源），后者是用户凭据配置（可写）。",
         "properties": {
@@ -2202,7 +2302,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_dict_str__Any__"
+                  "$ref": "#/components/schemas/ApiResponse_ArtifactResponse_"
                 }
               }
             },
@@ -3095,7 +3195,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_dict_str__Any__"
+                  "$ref": "#/components/schemas/ApiResponse_SessionModelResponse_"
                 }
               }
             },

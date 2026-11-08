@@ -70,3 +70,39 @@ export const InterventionAnswerSchema = z.object({
 export function isTerminalEvent(event: RunEvent): boolean {
   return event.type === 'stop' || event.type === 'error'
 }
+
+/* ---- 事件载荷守卫（2026-11-08）：非终态新帧的安全解析面 ----
+ *
+ * 后端新增 agent.checkpoint / delegation.* / context.compacted 帧；这里只做
+ * 「解析安全不崩」，delegation/compaction 帧解析后不渲染（视觉无新增元素）。
+ */
+
+export const CheckpointPayloadSchema = z.object({
+  step: z.number().int().nonnegative(),
+  action: z.string().default(''),
+  facts_passed: z.number().int().nonnegative().default(0),
+  request_id: z.string().default(''),
+})
+
+export const DelegationRejectedPayloadSchema = z.object({
+  reason: z.string().default(''),
+})
+
+export const DelegationWavePayloadSchema = z.object({
+  wave: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+  orders: z.array(z.string()).default([]),
+})
+
+export const CompactedPayloadSchema = z.object({
+  layers: z.array(z.string()).default([]),
+})
+
+/** 按帧类型安全解析载荷；畸形帧返回 null（MUST-15：校验失败不重试不重发）。 */
+export function parseEventPayload<T extends z.ZodTypeAny>(
+  schema: T,
+  data: Record<string, unknown>,
+): z.infer<T> | null {
+  const parsed = schema.safeParse(data)
+  return parsed.success ? parsed.data : null
+}

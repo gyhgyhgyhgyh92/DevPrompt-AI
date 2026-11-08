@@ -114,13 +114,16 @@ def _clip_card(text: str) -> str:
     return text[:_OUTPUT_MAX_CHARS] + "\n…（已截断）"
 
 
-async def _governed_output(text: str, *, tool: str, success: bool, root: str) -> str:
+async def _governed_output(
+    text: str, *, tool: str, success: bool, root: str, governance: bool = True
+) -> str:
     """C1–C5：超阈值的输出先落盘全量，卡片只给摘要 + 回读指针。
 
     摘要行数按 MUST-19 的 20 行上限反推（footer 占 1 行），截断对用户可见且
     明确提示「不要重跑命令」；落盘内容先脱敏——回读 API 会原样发给前端。
+    `tool_output_governance` 关闭时走改造前的截断口径（灰度闸口）。
     """
-    if len(text) <= threshold_for(tool):
+    if not governance or len(text) <= threshold_for(tool):
         return _output(text.splitlines(), root)
     call_id = f"{tool}:{hashlib.sha256(text.encode('utf-8', 'ignore')).hexdigest()}"
     saved = await persist(call_id, redact(text, root))
@@ -144,11 +147,13 @@ class TracingRunner:
         sink: ProgressSink,
         root: str,
         phase: Callable[[], str] | None = None,
+        governance: bool = True,
     ) -> None:
         self._inner = inner
         self._sink = sink
         self._root = root
         self._phase = phase or (lambda: "")
+        self._governance = governance
 
     async def run(
         self,
@@ -191,7 +196,11 @@ class TracingRunner:
                 detail=_clip(redact(" ".join(shown), self._root)),
                 scope=f"命中 {hits} 行" if hits else "无匹配",
                 output=await _governed_output(
-                    out, tool=_tool_of(args), success=True, root=self._root
+                    out,
+                    tool=_tool_of(args),
+                    success=True,
+                    root=self._root,
+                    governance=self._governance,
                 ),
                 duration_ms=int((time.monotonic() - started) * 1000),
             )
@@ -214,11 +223,13 @@ class TracingReader:
         sink: ProgressSink,
         root: str,
         phase: Callable[[], str] | None = None,
+        governance: bool = True,
     ) -> None:
         self._inner = inner
         self._sink = sink
         self._root = root
         self._phase = phase or (lambda: "")
+        self._governance = governance
 
     async def read(self, path: str) -> str:
         started = time.monotonic()
@@ -233,7 +244,11 @@ class TracingReader:
                         detail=_clip(redact(path, self._root)),
                         scope=f"L1-{len(lines)}" if lines else "",
                         output=await _governed_output(
-                            text, tool="read_file", success=True, root=self._root
+                            text,
+                            tool="read_file",
+                            success=True,
+                            root=self._root,
+                            governance=self._governance,
                         ),
                         duration_ms=int((time.monotonic() - started) * 1000),
                     ),

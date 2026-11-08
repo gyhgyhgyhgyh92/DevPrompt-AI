@@ -130,6 +130,12 @@ class AppConfig(BaseSettings):
     # B11 LLM 摘要：压缩触发时把被丢弃的历史段交给 cheap 槽摘要；失败回退确定性 handoff。
     # 默认关闭——每次压缩多一次 LLM 调用，实测摘要质量优于 80 字规则摘要后再开。
     summary_llm_enabled: bool = False
+    # B1–B4 增量附录（<context-update>）：关闭则不发增量（恢复改造前行为）。
+    context_layers_enabled: bool = True
+    # C1–C5 工具输出治理：关闭则动作卡片退回 20 行/2000 字符旧截断口径。
+    tool_output_governance: bool = True
+    # K6 team 编排：关闭则委派走单工单直连调度闸（不按波分派）。
+    team_orchestration: bool = True
     fact_probe_threshold: float = 0.75
     max_state_tokens: int = 30000
 

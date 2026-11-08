@@ -483,6 +483,25 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ApiResponse[ArtifactResponse] */
+        ApiResponse_ArtifactResponse_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["ArtifactResponse"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
         /** ApiResponse[FlowSnapshotResponse] */
         ApiResponse_FlowSnapshotResponse_: {
             /**
@@ -636,6 +655,25 @@ export interface components {
              */
             request_id: string;
         };
+        /** ApiResponse[SessionModelResponse] */
+        ApiResponse_SessionModelResponse_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["SessionModelResponse"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
         /** ApiResponse[SettingsResponse] */
         ApiResponse_SettingsResponse_: {
             /**
@@ -717,6 +755,16 @@ export interface components {
              * @default
              */
             request_id: string;
+        };
+        /**
+         * ArtifactResponse
+         * @description GET /artifacts/{id} 数据体：被截断工具的全量输出（可能含代码正文，MUST-19）。
+         */
+        ArtifactResponse: {
+            /** Artifact Id */
+            artifact_id: string;
+            /** Content */
+            content: string;
         };
         /**
          * AskOptionPayload
@@ -1427,6 +1475,16 @@ export interface components {
             model_id: string;
         };
         /**
+         * SessionModelResponse
+         * @description POST /sessions/{id}/model 数据体：切换后的会话级覆盖；空串表示已清除。
+         */
+        SessionModelResponse: {
+            /** Model Id */
+            model_id: string;
+            /** Session Id */
+            session_id: string;
+        };
+        /**
          * SettingsResponse
          * @description GET/PUT /settings 数据体（T6-11）。
          *
@@ -1676,7 +1734,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_dict_str__Any__"];
+                    "application/json": components["schemas"]["ApiResponse_ArtifactResponse_"];
                 };
             };
             /** @description Validation Error */
@@ -2294,7 +2352,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_dict_str__Any__"];
+                    "application/json": components["schemas"]["ApiResponse_SessionModelResponse_"];
                 };
             };
             /** @description Validation Error */

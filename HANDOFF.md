@@ -187,6 +187,9 @@
 | 真实 worktree 写工 | **不做**，只保留参数构造 |
 | team/council | **纯调度**，不调 LLM |
 | 无消费方模块 | **维持不接**（用户 2026-11-08 裁定：本项目不需要消费方）——`tool_registry`/`tool_batch`/`task_inferrer`/`artifact_store` 四个模块的孤儿状态是终态，后续会话不得再尝试接线 |
+| `runtime/model_switch.py` | **不建**（用户 2026-11-08 裁定：热切换已由端点+路由链等效达成，不建空壳） |
+| 多用户/多租户 | **暂不做**（用户 2026-11-08 裁定）：新增逻辑不引入用户维度泛化，`user_id` 保持默认 "local" 透传 |
+| 依赖许可 | **放宽**（用户 2026-11-08 裁定）：MUST-04「最后手段」约束解除；出现确有优势的库可提议引入 |
 | 评测基线 | **跳过**，`GAP_SOFT=0.25` 未回测 |
 | `claim_strict` | 默认 **True**（BREAKING） |
 | API 拆分 | `/runs` + `/sessions/{id}/stream` 为正式路径；旧 `/optimize/stream` 保留兼容 |
