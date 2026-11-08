@@ -22,6 +22,8 @@ from dataclasses import dataclass
 
 from devprompt_ai.common.text import split_identifier, tokenize_sentence
 from devprompt_ai.domain.models import Candidate, CandidateSource, Symbol
+from devprompt_ai.domain.retrieval.bm25 import BM25Index, rrf
+from devprompt_ai.domain.retrieval.salience import path_weight
 
 MAX_CANDIDATES = 25  # MUST-09 硬约束：超出按匹配度截断，不报错
 MIN_CANDIDATES = 3  # F-102：少于 3 条触发人工指定流程
@@ -445,6 +447,32 @@ class CandidateResult:
     candidates: list[Candidate]
     total_matched: int
     manual_required: bool
+
+
+def reorder_by_lexicon(candidates: list[Candidate], sentence: str) -> list[Candidate]:
+    """I1–I3 词汇重排：BM25 名次 + 符号分名次做 RRF 融合，再乘路径权重。
+
+    只调整顺序，**不增不减候选**（MUST-09）；单候选或空集原样返回。
+    与 build_candidates 的符号打分互补：同分多候选时用字面证据二次裁决，
+    测试/文档路径在同分时让位给实现文件。
+    """
+    if len(candidates) < 2:
+        return candidates
+    docs = {str(i): f"{c.name} {c.signature}".strip() for i, c in enumerate(candidates)}
+    bm25_rank = BM25Index(docs).search(sentence, limit=len(candidates))
+    base_rank = sorted(range(len(candidates)), key=lambda i: candidates[i].score, reverse=True)
+    fused = rrf(
+        [
+            [str(i) for i in base_rank],
+            [key for key, _score in bm25_rank],
+        ]
+    )
+    order = sorted(
+        range(len(candidates)),
+        key=lambda i: fused.get(str(i), 0.0) * path_weight(candidates[i].path),
+        reverse=True,
+    )
+    return [candidates[i] for i in order]
 
 
 def _bonus_key(symbol: Symbol) -> tuple[str, str]:

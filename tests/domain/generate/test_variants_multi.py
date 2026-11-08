@@ -113,6 +113,7 @@ async def test_generate_variants_requests_exact_levels(
         user: str,
         *,
         timeout: float | None = None,
+        **_kwargs: object,
     ) -> MultiVariantDraft:
         captured["output_type"] = output_type
         captured["system"] = system
@@ -124,8 +125,8 @@ async def test_generate_variants_requests_exact_levels(
     out = await LLMGenerator(_cfg()).generate_variants(_ctx(level="B"), ["A", "B"])
 
     assert captured["output_type"] is MultiVariantDraft
-    # 生成超时委托 cfg.llm_timeout（F-604）：生成器不覆写，chat_structured 缺省取配置值
-    assert captured["timeout"] is None
+    # 流内超时分层（2026-11-07）：生成使用独立的 llm_generate_timeout，不与其他调用共用 60s
+    assert captured["timeout"] == 120.0
     assert [v.level for v in out.variants] == ["A", "B"]
     # 套数与请求档位写入 prompt
     assert "2 套" in captured["system"]
@@ -150,6 +151,7 @@ async def test_generate_variants_prompt_trims_constraints_to_request(
         user: str,
         *,
         timeout: float = 10.0,
+        **_kwargs: object,
     ) -> MultiVariantDraft:
         captured["system"] = system
         return MultiVariantDraft(variants=[_draft("A")])
@@ -177,6 +179,7 @@ async def test_generate_variants_prompt_contains_all_tier_constraints(
         user: str,
         *,
         timeout: float = 10.0,
+        **_kwargs: object,
     ) -> MultiVariantDraft:
         captured["system"] = system
         return MultiVariantDraft(variants=[_draft(lv) for lv in ("A", "B", "C")])
@@ -212,6 +215,7 @@ async def test_generate_variants_sorts_levels_monotonic(
         user: str,
         *,
         timeout: float = 10.0,
+        **_kwargs: object,
     ) -> MultiVariantDraft:
         # 模拟 LLM 乱序返回 C→A→B
         return MultiVariantDraft(variants=[_draft("C"), _draft("A"), _draft("B")])
@@ -233,6 +237,7 @@ async def test_generate_variants_accepts_subset_of_requested(
         user: str,
         *,
         timeout: float = 10.0,
+        **_kwargs: object,
     ) -> MultiVariantDraft:
         return MultiVariantDraft(variants=[_draft("A"), _draft("B")])  # 请求了 C 却少给
 
@@ -253,6 +258,7 @@ async def test_generate_variants_rejects_illegal_prefix_set(
         user: str,
         *,
         timeout: float = 10.0,
+        **_kwargs: object,
     ) -> MultiVariantDraft:
         # MultiVariantDraft 的 model_validator 拒绝 {A,C}；chat_structured 纠偏重试
         # 仍失败的最终形态就是 GenerationError(4003)，这里直接给出该终态。
@@ -293,6 +299,7 @@ async def test_generate_variants_a_without_line_numbers_c_with(
         user: str,
         *,
         timeout: float = 10.0,
+        **_kwargs: object,
     ) -> MultiVariantDraft:
         return MultiVariantDraft(
             variants=[

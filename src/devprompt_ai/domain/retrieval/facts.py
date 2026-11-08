@@ -6,6 +6,7 @@ I/O 全部经 CommandRunner / FileReader Protocol（MUST-06）。
 
 from __future__ import annotations
 
+import asyncio
 import posixpath
 from collections.abc import Sequence
 
@@ -41,6 +42,27 @@ def is_evidence_complete(facts: Sequence[FactResult]) -> bool:
     """
     applicable = [fact for fact in facts if fact.applicable]
     return bool(applicable) and all(fact.passed for fact in applicable)
+
+
+def is_probe_complete(
+    *,
+    evidence_ok: bool,
+    measured: bool,
+    confidence: float | None,
+    threshold: float,
+    has_unknowns: bool,
+    judged: bool,
+) -> bool:
+    """研判结果是否足以升到最高档（2026-11-07 修复静默降质）。
+
+    ``judged`` 必须为真：模型参数畸形时 fallback 返回空 ``judgments``，
+    旧口径把「没有未知」当成「信息足够」，档位会虚高到最高档。
+    """
+    if not evidence_ok or has_unknowns:
+        return False
+    if measured:
+        return confidence is not None and confidence >= threshold
+    return judged
 
 
 def _ev(raw: str) -> str:
@@ -79,40 +101,18 @@ async def verify_facts(
     def applicable(key: str) -> bool:
         return is_applicable(key, ext)
 
-    results: list[FactResult] = []
-
-    # 1) 目标文件存在（文件系统检查经 FileReader）
-    exists = await reader.exists(_fs(path))
-    results.append(
-        FactResult(
-            "target_file_exists",
-            exists,
-            f"file={path}" if exists else f"missing={path}",
-            applicable("target_file_exists"),
-        )
-    )
-
-    # 2) 目标组件在文件中存在（rg 固定串搜索该文件）
-    out = await runner.run(
-        ["rg", "--fixed-strings", "-n", name, "--glob", path, ".", f"--route-key=symbol:{path}"],
-        allowed_exit_codes=_RG_ALLOWED,
-        cwd=_rg_cwd(root),
-    )
-    sym_hit = next((line for line in out.splitlines() if name in line), "")
-    results.append(
-        FactResult("symbol_in_file", bool(sym_hit), _ev(sym_hit), applicable("symbol_in_file"))
-    )
-
-    # 3) 样式 token 已定义（全局搜 token 名的定义处，限定样式文件）
     token = location.tokens[0] if location.tokens else ""
-    tok_out = (
-        await runner.run(
+
+    async def _token_search() -> str:
+        if not token:
+            return ""
+        # token 形如 --color-primary-500，直接当位置参数会被 rg 当成命令行选项
+        # （实测 rg: unrecognized flag），必须用 -e 显式声明「这是模式」
+        return await runner.run(
             [
                 "rg",
                 "--fixed-strings",
                 "-n",
-                # token 形如 --color-primary-500，直接当位置参数会被 rg 当成命令行选项
-                # （实测 rg: unrecognized flag），必须用 -e 显式声明「这是模式」
                 "-e",
                 token,
                 "--glob",
@@ -123,75 +123,111 @@ async def verify_facts(
             allowed_exit_codes=_RG_ALLOWED,
             cwd=_rg_cwd(root),
         )
-        if token
-        else ""
+
+    async def _first_test_path() -> str:
+        """F-103 已定位的 test_paths 逐一存在性检查，命中即返回。"""
+        for tp in location.test_paths:
+            if await reader.exists(_fs(tp)):
+                return tp
+        return ""
+
+    # 互不依赖的只读取证并发启动；结果按固定顺序组装，FactResult 顺序不变。
+    exists, sym_out, tok_out, tid_out, states_out, test_path = await asyncio.gather(
+        reader.exists(_fs(path)),
+        runner.run(
+            [
+                "rg",
+                "--fixed-strings",
+                "-n",
+                name,
+                "--glob",
+                path,
+                ".",
+                f"--route-key=symbol:{path}",
+            ],
+            allowed_exit_codes=_RG_ALLOWED,
+            cwd=_rg_cwd(root),
+        ),
+        _token_search(),
+        runner.run(
+            ["rg", "-n", "data-testid", "--glob", path, ".", f"--route-key=testid:{path}"],
+            allowed_exit_codes=_RG_ALLOWED,
+            cwd=_rg_cwd(root),
+        ),
+        runner.run(
+            [
+                "rg",
+                "-n",
+                "-e",
+                ":hover",
+                "-e",
+                ":focus",
+                "-e",
+                ":active",
+                "--glob",
+                path,
+                ".",
+                f"--route-key=states:{path}",
+            ],
+            allowed_exit_codes=_RG_ALLOWED,
+            cwd=_rg_cwd(root),
+        ),
+        _first_test_path(),
     )
+
+    sym_hit = next((line for line in sym_out.splitlines() if name in line), "")
     tok_hit = next((line for line in tok_out.splitlines() if token and token in line), "")
-    results.append(
-        FactResult("token_defined", bool(tok_hit), _ev(tok_hit), applicable("token_defined"))
-    )
-
-    # 4) 组件含 data-testid（该文件内）
-    out = await runner.run(
-        ["rg", "-n", "data-testid", "--glob", path, ".", f"--route-key=testid:{path}"],
-        allowed_exit_codes=_RG_ALLOWED,
-        cwd=_rg_cwd(root),
-    )
-    tid = next((line for line in out.splitlines() if "data-testid" in line), "")
-    results.append(
-        FactResult("has_data_testid", bool(tid), _ev(tid), applicable("has_data_testid"))
-    )
-
-    # 5) 多状态样式（:hover / :focus / :active 任一）
-    out = await runner.run(
-        [
-            "rg",
-            "-n",
-            "-e",
-            ":hover",
-            "-e",
-            ":focus",
-            "-e",
-            ":active",
-            "--glob",
-            path,
-            ".",
-            f"--route-key=states:{path}",
-        ],
-        allowed_exit_codes=_RG_ALLOWED,
-        cwd=_rg_cwd(root),
-    )
+    tid = next((line for line in tid_out.splitlines() if "data-testid" in line), "")
     st = next(
         (
             line
-            for line in out.splitlines()
-            if any(s in line for s in (":hover", ":focus", ":active"))
+            for line in states_out.splitlines()
+            if any(marker in line for marker in (":hover", ":focus", ":active"))
         ),
         "",
     )
-    results.append(
-        FactResult("has_state_styles", bool(st), _ev(st), applicable("has_state_styles"))
-    )
 
-    # 6) 文件类型匹配预期（后缀在已知前端/样式后缀集内）
-    results.append(
+    return [
+        FactResult(
+            "target_file_exists",
+            exists,
+            f"file={path}" if exists else f"missing={path}",
+            applicable("target_file_exists"),
+        ),
+        FactResult(
+            "symbol_in_file",
+            bool(sym_hit),
+            _ev(sym_hit),
+            applicable("symbol_in_file"),
+        ),
+        FactResult(
+            "token_defined",
+            bool(tok_hit),
+            _ev(tok_hit),
+            applicable("token_defined"),
+        ),
+        FactResult(
+            "has_data_testid",
+            bool(tid),
+            _ev(tid),
+            applicable("has_data_testid"),
+        ),
+        FactResult(
+            "has_state_styles",
+            bool(st),
+            _ev(st),
+            applicable("has_state_styles"),
+        ),
         FactResult(
             "file_type_matches",
             ext in _KNOWN_EXTS,
             f"ext={ext or 'none'}",
             applicable("file_type_matches"),
-        )
-    )
-
-    # 7) 关联测试文件存在（F-103 已定位的 test_paths 逐一存在性检查）
-    test_evidence = "未找到"
-    test_ok = False
-    for tp in location.test_paths:
-        if await reader.exists(_fs(tp)):
-            test_ok, test_evidence = True, f"test={tp}"
-            break
-    results.append(
-        FactResult("test_file_exists", test_ok, test_evidence, applicable("test_file_exists"))
-    )
-
-    return results
+        ),
+        FactResult(
+            "test_file_exists",
+            bool(test_path),
+            f"test={test_path}" if test_path else "未找到",
+            applicable("test_file_exists"),
+        ),
+    ]

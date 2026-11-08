@@ -26,12 +26,19 @@ from devprompt_ai.domain.startup_report import (
     record_report,
 )
 from devprompt_ai.memory.schema import (
+    ARTIFACTS_DDL,
+    INTERVENTIONS_DDL,
     ORPHAN_SESSIONS_SQL,
     ORPHAN_TURNS_SQL,
     PROJECT_NOTES_DDL,
     QUARANTINE_DDL,
+    REPO_GRAPH_DDL,
+    ROUTING_STATS_DDL,
+    RUN_EVENTS_DDL,
+    RUNS_DDL,
     SESSIONS_DDL,
     SETTINGS_DDL,
+    TOKEN_LEDGER_DDL,
     TURNS_DDL,
 )
 from devprompt_ai.observability.logging import emit
@@ -43,6 +50,15 @@ _REQUIRED_TABLES: tuple[tuple[str, str], ...] = (
     ("forge_quarantine", QUARANTINE_DDL),
     ("forge_turns", TURNS_DDL),
     ("project_notes", PROJECT_NOTES_DDL),
+    # 运行时层（2026-11-07）：缺表时同样补建，旧库自动升级
+    ("runs", RUNS_DDL),
+    ("run_events", RUN_EVENTS_DDL),
+    ("interventions", INTERVENTIONS_DDL),
+    ("artifacts", ARTIFACTS_DDL),
+    ("repo_symbols", REPO_GRAPH_DDL),
+    ("repo_edges", REPO_GRAPH_DDL),
+    ("routing_stats", ROUTING_STATS_DDL),
+    ("token_ledger", TOKEN_LEDGER_DDL),
 )
 
 _QUARANTINE_TABLES = ("forge_sessions", "app_settings")

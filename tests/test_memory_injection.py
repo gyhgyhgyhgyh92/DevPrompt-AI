@@ -121,9 +121,26 @@ async def test_l2_project_notes_off_flow_completes() -> None:
             "previous_variants",
             # 2026-11-05 推荐依据：回答「为什么选 B」时必须看到判定结果
             "ranking_summary",
+            # 2026-11-08 F10 会话级模型覆盖
+            "model_override",
         }
         assert dumped["clarifications"] == {}
         assert "note" not in dumped["memory_block"]
+
+
+async def test_context_delta_is_full_on_first_turn_and_incremental_after() -> None:
+    """B1–B4：首轮下发完整 `<context-update>`，后续轮只发变动块（无变动自闭合）。"""
+    gen = RecordingGenerator()
+    svc = _service_with_generator(gen, existing={"src/ui/button.tsx", "src/ui/button.test.tsx"})
+    snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
+    assert 'mode="full"' in gen.contexts[0].history_block
+
+    await svc.optimize(
+        "local", ".", "把提交按钮改成 primary-600", session_id=snap.session_id, request_id="r2"
+    )
+    second = gen.contexts[-1].history_block
+    assert 'mode="full"' not in second, "第二轮不得重发完整上下文"
+    assert '<context-update seq="2"' in second, "seq 必须跨轮递增"
 
 
 async def test_multi_variant_draft_level_sets_stable_under_neutral_memory() -> None:

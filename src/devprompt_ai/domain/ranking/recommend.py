@@ -15,7 +15,8 @@ from devprompt_ai.domain.decision.port import VariantScore
 # MUST-27 阈值：条件①②为置信度门禁（优先于一切分差判定），③④⑤为分差双阈值。
 TOP_CONF_MIN: Final[float] = 0.6
 ANY_CONF_MIN: Final[float] = 0.4
-GAP_SOFT: Final[float] = 0.12
+#: 2026-11-07：打分粒度是 0.25（0~4 五档），0.12 无判别力，改为「一档」。
+GAP_SOFT: Final[float] = 0.25
 GAP_HARD: Final[float] = 0.5
 
 #: 理由文案的键（2026-11-06 双语）：文案在 common/i18n.py，默认 zh-CN。
@@ -101,7 +102,7 @@ def decide_mark(
             reason=tr(_REASON_CLOSE_KEY, locale),
         )
 
-    # ④⑤ 双阈值标记：d ≥ 0.5 正向推荐；0.12 ≤ d < 0.5 标记但附「分差较小」。
+    # ④⑤ 双阈值标记：d ≥ 0.5 正向推荐；0.25 ≤ d < 0.5 标记但附「分差较小」。
     reason = tr(_REASON_SMALL_GAP_KEY, locale) if gap < GAP_HARD else ""
     return RecommendationResult(
         variant=top_score.variant,

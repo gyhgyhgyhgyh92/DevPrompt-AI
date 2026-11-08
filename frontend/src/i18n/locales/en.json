@@ -43,7 +43,9 @@
   "optimize": {
     "stop_generation": "Stop generating",
     "no_variants": "No variants yet",
-    "variant_compare": "Variant comparison"
+    "variant_compare": "Variant comparison",
+    "model_switch": "Model",
+    "model_follow_routing": "Follow routing"
   },
   "validation": {
     "followup_mode_exclusive": "Exactly one of answers / escape / guardrail_action must be set"

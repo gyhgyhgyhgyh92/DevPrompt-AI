@@ -41,6 +41,21 @@
   border-block-start: 1px solid var(--divider);
 }
 
+/* F10 模型切换：输入区上沿一行，占位极小 */
+.optimize-page__model-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  padding-block-end: var(--space-2);
+  font-size: var(--font-size-sm, 0.8125rem);
+  color: var(--color-text-secondary, inherit);
+}
+
+.optimize-page__model-switch select {
+  min-inline-size: 12rem;
+}
+
 /* 流程线程（主区） */
 
 /* 窄屏（<768）：侧边栏折叠为抽屉（汉堡唤出 + 遮罩/Esc 关闭）；三栏塌陷为单列 */

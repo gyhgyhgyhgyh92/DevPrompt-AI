@@ -1,4 +1,4 @@
-import type { z } from 'zod'
+import { z } from 'zod'
 import { i18n } from '../i18n'
 import { EmptyDataSchema, HealthResponseSchema, ScanResponseSchema } from '../schemas/common'
 import {
@@ -21,6 +21,15 @@ import {
   SettingsUpdateSchema,
 } from '../schemas/settings'
 import { StreamEventSchema, type ActionPayload } from '../schemas/stream'
+import {
+  InterventionAnswerSchema,
+  RunEventSchema,
+  StartRunRequestSchema,
+  StartRunResponseSchema,
+  type RunEvent,
+  type StartRunRequest,
+  type StartRunResponse,
+} from './protocol'
 import {
   API_BASE_URL,
   openEventStream,
@@ -87,6 +96,16 @@ export const ENDPOINTS = {
     `${API_BASE_URL}/settings/models/catalog?provider_id=${encodeURIComponent(providerId)}`,
   refreshModelCatalog: `${API_BASE_URL}/settings/models/catalog/refresh`,
   settings: `${API_BASE_URL}/settings`,
+  runs: `${API_BASE_URL}/runs`,
+  runCancel: (runId: string) => `${API_BASE_URL}/runs/${encodeURIComponent(runId)}/cancel`,
+  sessionStream: (sessionId: string, since: number) =>
+    `${API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}/stream?since=${since}`,
+  interventionAnswer: (requestId: string) =>
+    `${API_BASE_URL}/interventions/${encodeURIComponent(requestId)}/answer`,
+  sessionModel: (sessionId: string) =>
+    `${API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}/model`,
+  events: (sessionId: string, before: number, limit = 200) =>
+    `${API_BASE_URL}/events?session_id=${encodeURIComponent(sessionId)}&before=${before}&limit=${limit}`,
 } as const
 
 /** 请求体校验：不合法即抛契约错误（编程错误，不发请求也不重试，MUST-15）。 */
@@ -354,3 +373,113 @@ export async function refreshModelCatalog(
 
 /** 目录响应类型（由 Zod schema 推导，避免与契约生成类型重复维护）。 */
 export type ModelCatalogResponse = z.infer<typeof ModelCatalogResponseSchema>
+
+// ---- 运行时协议（2026-11-07 多端）：先起 run，再订阅会话事件流 ----
+
+const RunCancelSchema = z.object({ run_id: z.string(), cancelled: z.boolean() })
+
+/** POST /runs：启动一次运行并立即返回（有副作用端点，禁重试 MUST-15）。 */
+export function startRun(
+  body: StartRunRequest,
+  signal?: AbortSignal,
+): Promise<StartRunResponse> {
+  return request(ENDPOINTS.runs, {
+    method: 'POST',
+    schema: StartRunResponseSchema,
+    body: parseBody(StartRunRequestSchema, body),
+    hasSideEffect: true,
+    signal,
+  })
+}
+
+export interface RunStreamHandlers {
+  onOpen?: () => void
+  onEvent: (event: RunEvent) => void
+  onError?: () => void
+}
+
+/**
+ * GET /sessions/{id}/stream?since=N：会话事件流。
+ * EventSource 只支持 GET，正好适合订阅；畸形帧直接丢弃（契约破坏不重放）。
+ */
+export function openSessionStream(
+  sessionId: string,
+  since: number,
+  handlers: RunStreamHandlers,
+): () => void {
+  return openEventStream(ENDPOINTS.sessionStream(sessionId, since), {
+    onOpen: handlers.onOpen,
+    onMessage: (raw) => {
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        return
+      }
+      const result = RunEventSchema.safeParse(parsed)
+      if (!result.success) return
+      handlers.onEvent(result.data)
+    },
+    onError: handlers.onError,
+  })
+}
+
+/** POST /interventions/{id}/answer：审批/提问应答（第一应答获胜；重复应答报 6001）。 */
+export async function answerIntervention(
+  requestId: string,
+  decision: 'approve' | 'deny' | 'answer',
+  answer = '',
+  signal?: AbortSignal,
+): Promise<void> {
+  await request(ENDPOINTS.interventionAnswer(requestId), {
+    method: 'POST',
+    schema: z.object({ request_id: z.string(), decision: z.string() }),
+    body: parseBody(InterventionAnswerSchema, { decision, answer }),
+    hasSideEffect: true,
+    signal,
+  })
+}
+
+/** POST /runs/{id}/cancel：取消运行；执行体以 aborted 收尾。 */
+export async function cancelRun(runId: string, signal?: AbortSignal): Promise<void> {
+  await request(ENDPOINTS.runCancel(runId), {
+    method: 'POST',
+    schema: RunCancelSchema,
+    hasSideEffect: true,
+    signal,
+  })
+}
+
+const SessionModelResponseSchema = z.object({
+  session_id: z.string(),
+  model_override: z.string(),
+})
+
+/** POST /sessions/{id}/model：会话级模型热切换（F10）；空串 = 清除覆盖（有副作用，禁重试 MUST-15）。 */
+export async function setSessionModel(
+  sessionId: string,
+  modelId: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const data = await request(ENDPOINTS.sessionModel(sessionId), {
+    method: 'POST',
+    schema: SessionModelResponseSchema,
+    body: JSON.stringify({ model_id: modelId }),
+    hasSideEffect: true,
+    signal,
+  })
+  return data.model_override
+}
+
+/**
+ * 取会话当前最大 seq（提交前调用）。
+ * 用它作为 `since` 起点：run 启动后到订阅建立之间的事件不会被漏掉，旧轮次也不会重放。
+ */
+export async function fetchLastSeq(sessionId: string, signal?: AbortSignal): Promise<number> {
+  const events = await request(ENDPOINTS.events(sessionId, 1 << 30, 1), {
+    method: 'GET',
+    schema: z.array(RunEventSchema),
+    signal,
+  })
+  return events.at(-1)?.seq ?? 0
+}

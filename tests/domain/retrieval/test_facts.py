@@ -3,7 +3,11 @@
 from fakes import FakeCommandRunner, FakeFileReader
 
 from devprompt_ai.domain.models import CodeLocation, FactKey, FactResult
-from devprompt_ai.domain.retrieval.facts import is_evidence_complete, verify_facts
+from devprompt_ai.domain.retrieval.facts import (
+    is_evidence_complete,
+    is_probe_complete,
+    verify_facts,
+)
 
 _LOC_TRUE = CodeLocation(
     symbol_name="SubmitButton",
@@ -167,3 +171,90 @@ def test_is_evidence_complete_ignores_not_applicable_failures() -> None:
     assert is_evidence_complete(facts) is True
     assert is_evidence_complete([]) is False
     assert is_evidence_complete([FactResult("symbol_in_file", False, "")]) is False
+
+
+def test_probe_complete_requires_judgement_when_unmeasured() -> None:
+    """模型没给任何判定时不得判完备——这是静默降质的入口（2026-11-07）。"""
+    assert (
+        is_probe_complete(
+            evidence_ok=True,
+            measured=False,
+            confidence=None,
+            threshold=0.75,
+            has_unknowns=False,
+            judged=False,
+        )
+        is False
+    )
+    assert (
+        is_probe_complete(
+            evidence_ok=True,
+            measured=False,
+            confidence=None,
+            threshold=0.75,
+            has_unknowns=False,
+            judged=True,
+        )
+        is True
+    )
+
+
+def test_probe_complete_requires_confidence_above_threshold() -> None:
+    assert (
+        is_probe_complete(
+            evidence_ok=True,
+            measured=True,
+            confidence=0.8,
+            threshold=0.75,
+            has_unknowns=False,
+            judged=True,
+        )
+        is True
+    )
+    assert (
+        is_probe_complete(
+            evidence_ok=True,
+            measured=True,
+            confidence=0.5,
+            threshold=0.75,
+            has_unknowns=False,
+            judged=True,
+        )
+        is False
+    )
+    assert (
+        is_probe_complete(
+            evidence_ok=True,
+            measured=True,
+            confidence=None,
+            threshold=0.75,
+            has_unknowns=False,
+            judged=True,
+        )
+        is False
+    )
+
+
+def test_probe_complete_rejects_unknowns_or_incomplete_evidence() -> None:
+    assert (
+        is_probe_complete(
+            evidence_ok=False,
+            measured=True,
+            confidence=1.0,
+            threshold=0.75,
+            has_unknowns=False,
+            judged=True,
+        )
+        is False
+    )
+    assert (
+        is_probe_complete(
+            evidence_ok=True,
+            measured=True,
+            confidence=1.0,
+            threshold=0.75,
+            has_unknowns=True,
+            judged=True,
+        )
+        is False
+    )

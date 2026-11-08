@@ -123,3 +123,131 @@ CREATE TABLE IF NOT EXISTS model_catalog (
   PRIMARY KEY (provider_key, base_url)
 );
 """
+
+# ---- 运行时层（2026-11-07）：会话服务化所需的事件/运行/审批/工件 ----
+
+# 一次执行 = 一行。执行体与 HTTP 连接解耦后，连接的生死不再改写本表，
+# 只有执行器自己推进 status（queued/running/done/error/aborted）。
+RUNS_DDL = """
+CREATE TABLE IF NOT EXISTS runs (
+  run_id       TEXT PRIMARY KEY,
+  session_id   TEXT NOT NULL,
+  turn_index   INTEGER NOT NULL,
+  status       TEXT NOT NULL,
+  stop_reason  TEXT NOT NULL DEFAULT '',
+  request_id   TEXT NOT NULL DEFAULT '',
+  model_id     TEXT NOT NULL DEFAULT '',
+  error_code   INTEGER,
+  error_message TEXT NOT NULL DEFAULT '',
+  started_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ended_at     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_runs_session ON runs (session_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_runs_status ON runs (status);
+"""
+
+# 对外可见变化的事实源：先落库再扇出。(session_id, seq) 唯一且在事务内分配，
+# 保证多端订阅看到同一条时间线；重连用 since=N 只补差。
+RUN_EVENTS_DDL = """
+CREATE TABLE IF NOT EXISTS run_events (
+  session_id TEXT NOT NULL,
+  seq        INTEGER NOT NULL,
+  run_id     TEXT NOT NULL DEFAULT '',
+  type       TEXT NOT NULL,
+  payload    TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  checksum   TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (session_id, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_run_events_run ON run_events (run_id, seq);
+"""
+
+# 审批与提问的 pending 注册。decision 首答即定，后续应答返回 false（第一应答获胜）；
+# 缺字段一律视为拒绝，不做默认批准（安全边界）。
+INTERVENTIONS_DDL = """
+CREATE TABLE IF NOT EXISTS interventions (
+  request_id  TEXT PRIMARY KEY,
+  session_id  TEXT NOT NULL,
+  run_id      TEXT NOT NULL DEFAULT '',
+  kind        TEXT NOT NULL,
+  payload     TEXT NOT NULL DEFAULT '{}',
+  status      TEXT NOT NULL DEFAULT 'pending',
+  decision    TEXT NOT NULL DEFAULT '',
+  answer      TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_interventions_pending
+  ON interventions (session_id, status);
+"""
+
+# 工件：被压缩丢弃的历史段与工具全量输出。L2 级内容可能含用户原句，
+# 只在本地落盘、只在显式回读时取出，禁止写入日志（MUST-19）。
+ARTIFACTS_DDL = """
+CREATE TABLE IF NOT EXISTS artifacts (
+  artifact_id TEXT PRIMARY KEY,
+  session_id  TEXT NOT NULL DEFAULT '',
+  run_id      TEXT NOT NULL DEFAULT '',
+  kind        TEXT NOT NULL,
+  content     TEXT NOT NULL,
+  meta_json   TEXT NOT NULL DEFAULT '{}',
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts (session_id, created_at);
+"""
+
+# 仓库符号图：Python 用标准库 ast，其它语言沿用 ctags。落库后支持反向 BFS。
+REPO_GRAPH_DDL = """
+CREATE TABLE IF NOT EXISTS repo_symbols (
+  project_root TEXT NOT NULL,
+  path         TEXT NOT NULL,
+  symbol       TEXT NOT NULL,
+  kind         TEXT NOT NULL,
+  line         INTEGER NOT NULL,
+  end_line     INTEGER NOT NULL DEFAULT 0,
+  signature    TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (project_root, path, symbol, line)
+);
+CREATE INDEX IF NOT EXISTS idx_repo_symbols_project ON repo_symbols (project_root, symbol);
+
+CREATE TABLE IF NOT EXISTS repo_edges (
+  project_root TEXT NOT NULL,
+  src_path     TEXT NOT NULL,
+  dst_path     TEXT NOT NULL,
+  kind         TEXT NOT NULL,
+  symbol       TEXT NOT NULL DEFAULT '',
+  weight       REAL NOT NULL DEFAULT 1.0,
+  updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  PRIMARY KEY (project_root, src_path, dst_path, kind, symbol)
+);
+CREATE INDEX IF NOT EXISTS idx_repo_edges_dst ON repo_edges (project_root, dst_path);
+"""
+
+# 路由统计：bandit 的胜率与延迟来源；只记聚合值，不记原句。
+ROUTING_STATS_DDL = """
+CREATE TABLE IF NOT EXISTS routing_stats (
+  model_id      TEXT NOT NULL,
+  task_kind     TEXT NOT NULL,
+  attempts      INTEGER NOT NULL DEFAULT 0,
+  successes     INTEGER NOT NULL DEFAULT 0,
+  total_latency_ms INTEGER NOT NULL DEFAULT 0,
+  updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  PRIMARY KEY (model_id, task_kind)
+);
+"""
+
+# token 账本：按轮记账，供成本汇总与压缩经济性判断（不记正文）。
+TOKEN_LEDGER_DDL = """
+CREATE TABLE IF NOT EXISTS token_ledger (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id        TEXT NOT NULL,
+  run_id            TEXT NOT NULL DEFAULT '',
+  turn_index        INTEGER NOT NULL DEFAULT 0,
+  model_id          TEXT NOT NULL DEFAULT '',
+  prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+  completion_tokens INTEGER NOT NULL DEFAULT 0,
+  cached_tokens     INTEGER NOT NULL DEFAULT 0,
+  created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_token_ledger_session ON token_ledger (session_id, created_at);
+"""

@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import time
@@ -33,6 +34,8 @@ from devprompt_ai.common.process import (
 )
 from devprompt_ai.domain.progress import ActionInfo, ProgressEvent, ProgressSink, display_path
 from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader
+from devprompt_ai.harness.output_store import persist, raw_path
+from devprompt_ai.harness.output_summary import summarize_output, threshold_for, with_footer
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +101,40 @@ def _title(args: list[str]) -> str:
     return "检索代码"
 
 
+def _tool_of(args: list[str]) -> str:
+    """按可执行名映射语义密度档位（output_summary 阈值系数用）。"""
+    name = (args[0] if args else "").replace("\\", "/").rsplit("/", 1)[-1].lower()
+    return {"rg": "grep", "ctags": "repo_map"}.get(name, name or "bash")
+
+
+def _clip_card(text: str) -> str:
+    """行数已由摘要控制，这里只兜底字符上限（MUST-19 ≤2000 字符）。"""
+    if len(text) <= _OUTPUT_MAX_CHARS:
+        return text
+    return text[:_OUTPUT_MAX_CHARS] + "\n…（已截断）"
+
+
+async def _governed_output(text: str, *, tool: str, success: bool, root: str) -> str:
+    """C1–C5：超阈值的输出先落盘全量，卡片只给摘要 + 回读指针。
+
+    摘要行数按 MUST-19 的 20 行上限反推（footer 占 1 行），截断对用户可见且
+    明确提示「不要重跑命令」；落盘内容先脱敏——回读 API 会原样发给前端。
+    """
+    if len(text) <= threshold_for(tool):
+        return _output(text.splitlines(), root)
+    call_id = f"{tool}:{hashlib.sha256(text.encode('utf-8', 'ignore')).hexdigest()}"
+    saved = await persist(call_id, redact(text, root))
+    summary = summarize_output(
+        "\n".join(redact(line, root) for line in text.splitlines()),
+        success=success,
+        success_lines=_OUTPUT_MAX_LINES - 2,
+        failure_budget=_OUTPUT_MAX_LINES - 11,
+    )
+    # persist 失败返回空串：footer 退化为「不要重跑」提示，不给死指针
+    ref = f"/api/v1/artifacts/{raw_path(call_id).stem}" if saved else ""
+    return _clip_card(with_footer(summary, ref))
+
+
 class TracingRunner:
     """转发真实命令，并对每次调用上报一张动作卡片。"""
 
@@ -153,7 +190,9 @@ class TracingRunner:
                 title=_title(args),
                 detail=_clip(redact(" ".join(shown), self._root)),
                 scope=f"命中 {hits} 行" if hits else "无匹配",
-                output=_output(lines, self._root),
+                output=await _governed_output(
+                    out, tool=_tool_of(args), success=True, root=self._root
+                ),
                 duration_ms=int((time.monotonic() - started) * 1000),
             )
         )
@@ -193,7 +232,9 @@ class TracingReader:
                         title="读取文件",
                         detail=_clip(redact(path, self._root)),
                         scope=f"L1-{len(lines)}" if lines else "",
-                        output=_output(lines, self._root),
+                        output=await _governed_output(
+                            text, tool="read_file", success=True, root=self._root
+                        ),
                         duration_ms=int((time.monotonic() - started) * 1000),
                     ),
                 )

@@ -102,11 +102,34 @@ class AppConfig(BaseSettings):
     followup_cost_budget: float = 50_000.0
     #: 断言对账严格模式（2026-11-05）：C 档要求模型至少声明一条引用，
     #: 一条都没声明时降为 B。默认关闭——先观察真实会话的声明率，再决定是否收紧。
-    claim_strict: bool = False
+    # 2026-11-07 BREAKING：未声明 claims 默认参与门禁（旧默认 False 让「一条都不声明」免检）。
+    claim_strict: bool = True
     telemetry: bool = True  # F-604 遥测开关（T6-11）：关闭后固定事件不落盘
 
     # SQLite 单文件（L1/L3；用户主目录 ~ 由 expanduser 解析，展开归 4B init_schema）
     db_path: str = "~/.devprompt-ai/devprompt.db"
+    # F5 单写者锁（2026-11-07）：多进程写同一库会把运行中会话写成假中断。
+    # 心跳失联超过 stale 秒视为崩溃遗留，可被新进程接管。
+    single_writer_lock: bool = True
+    writer_lock_stale_seconds: float = 120.0
+    # 流内超时分层（A10）：探针/排序用短超时快速失败，生成用长超时。
+    llm_probe_timeout: float = 30.0
+    llm_rank_timeout: float = 30.0
+    llm_generate_timeout: float = 120.0
+    # 看门狗（A9）：单次 run 的硬上限；超时以 watchdog-stall 收尾。
+    run_timeout_seconds: float = 900.0
+    # 上下文窗口（用于压缩档位与相位收敛的轮次门槛）；默认按 1M 模型保守取值。
+    context_window_tokens: int = 1_000_000
+    # 仓库符号图（⑤）：首次检索会扫全仓 Python 文件，默认关闭；在自己的项目上实测后再开。
+    repo_graph_enabled: bool = False
+    # 认知账本（B15）：每轮注入只读状态快照；默认关闭，实测后再开。
+    context_ledger_enabled: bool = False
+    # 多模型路由（G2–G6）：按 purpose 从 settings 注册表选模型，bandit 在线学习，
+    # 失败按注册顺序主备切换。候选 ≤1 时自动退化为现状路径（行为对等）。
+    multi_model_routing: bool = True
+    # B11 LLM 摘要：压缩触发时把被丢弃的历史段交给 cheap 槽摘要；失败回退确定性 handoff。
+    # 默认关闭——每次压缩多一次 LLM 调用，实测摘要质量优于 80 字规则摘要后再开。
+    summary_llm_enabled: bool = False
     fact_probe_threshold: float = 0.75
     max_state_tokens: int = 30000
 

@@ -7,6 +7,10 @@ FACTS_SYSTEM 另加 T-3 Non-Goals（明确不评价代码质量、不提重构�
 """
 
 from devprompt_ai.domain.prompt_guard import (
+    DELIVERY_CONTRACT,
+    EVIDENCE_HYGIENE,
+    EVIDENCE_SCOPE,
+    EXTERNAL_SOURCE_VERIFICATION,
     NON_GOALS_PROBING,
     TASK_NOT_EXECUTE,
     build_evidence_block,
@@ -64,7 +68,13 @@ execution 只在命中这 5 类闸门时问：
 
 {TASK_NOT_EXECUTE}
 
-{NON_GOALS_PROBING}"""
+{NON_GOALS_PROBING}
+
+{EVIDENCE_HYGIENE}
+
+{EVIDENCE_SCOPE}
+
+{EXTERNAL_SOURCE_VERIFICATION}"""
 
 FACTS_USER = """**先判断：信息是否足够？**
 
@@ -108,13 +118,19 @@ NEXT_ACTION_SYSTEM = f"""你是编码助手的调度裁判。给定用户需求�
 - 七项取证全过且无未决项 → 直接 generate。
 - 已生成方案且套数 ≥2 → rank 或 deliver；仅 1 套 → 直接 deliver。
 - 已交付过就不要再来一次。
+- **delegate 的使用边界**：需要「查清某处现状」但本轮不产出方案时用；只读、有明确范围，
+  同一目标不要重复委派；委派结果只是证据，不能替代 generate。
 - **reply 的使用边界**：本轮尚无任何方案（已生成 0 套）时不得用 reply——首轮要产出方案，
   不是聊天。需要产出或**修改**方案时必须用 generate；reply 只解释、不产出。
 
-{TASK_NOT_EXECUTE}"""
+{TASK_NOT_EXECUTE}
+
+{EVIDENCE_HYGIENE}
+
+{DELIVERY_CONTRACT}"""
 
 NEXT_ACTION_USER = """请输出 JSON：
-{{"action": "retrieve|probe|ask|generate|rank|deliver|abort|reply",
+{{"action": "retrieve|probe|ask|generate|rank|deliver|abort|reply|delegate",
  "reason": "一句话说明为什么选它",
  "confidence": 0到1的小数,
  "confidence_source": "measured 或 no_data"}}

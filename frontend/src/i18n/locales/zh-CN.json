@@ -43,7 +43,9 @@
   "optimize": {
     "stop_generation": "停止生成",
     "no_variants": "暂无方案",
-    "variant_compare": "方案对比"
+    "variant_compare": "方案对比",
+    "model_switch": "模型",
+    "model_follow_routing": "跟随路由"
   },
   "validation": {
     "followup_mode_exclusive": "answers / escape / guardrail_action 三种模式必须且只能启用一种"

@@ -13,6 +13,7 @@ from devprompt_ai.common.process import (
 )
 from devprompt_ai.domain.progress import ActionInfo, ProgressEvent
 from devprompt_ai.harness.trace import TracingReader, TracingRunner, redact
+from devprompt_ai.runtime.artifacts import read_tool_artifact
 
 _ROOT = "D:/proj"
 
@@ -248,6 +249,42 @@ class TestOutputCapture:
         await reader.read("D:/proj/src/a.ts")
 
         assert sink.actions()[0].output == "a\nb\nc"
+
+
+class TestOutputGovernance:
+    """C1–C5 接线（2026-11-08）：超阈值先落盘全量，卡片只给摘要 + 回读指针。"""
+
+    async def test_long_output_persists_and_appends_pointer(self) -> None:
+        sink = FakeSink()
+        raw = "\n".join(f"line{i}" for i in range(2000))
+        runner = TracingRunner(FakeRunner(raw), sink, _ROOT)
+
+        await runner.run(["rg", "x"])
+
+        output = sink.actions()[0].output
+        assert "/api/v1/artifacts/" in output
+        assert "不要重跑命令" in output
+        assert len(output.splitlines()) <= 20, "MUST-19：卡片不超过 20 行"
+
+        # 回读 API 能取回全量原文，且已脱敏
+        artifact_id = output.split("/api/v1/artifacts/")[1].split(" ")[0]
+        content = await read_tool_artifact(artifact_id)
+        assert content is not None
+        assert "line1999" in content
+
+    async def test_reader_long_file_also_governed(self) -> None:
+        sink = FakeSink()
+        reader = TracingReader(FakeReader("\n".join(f"row{i}" for i in range(2000))), sink, _ROOT)
+
+        await reader.read("D:/proj/src/big.ts")
+
+        output = sink.actions()[0].output
+        assert "/api/v1/artifacts/" in output
+        assert "row0" not in output, "成功摘要只留尾部，头部让位给回读指针"
+
+    async def test_invalid_artifact_id_is_rejected(self) -> None:
+        assert await read_tool_artifact("../etc/passwd") is None
+        assert await read_tool_artifact("") is None
 
 
 class TestFailureDegrade:

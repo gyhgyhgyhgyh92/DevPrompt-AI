@@ -5,11 +5,16 @@ import type { FollowupRequest } from '../api/types'
 import {
   HISTORY_PAGE_SIZE,
   TURNS_PAGE_SIZE,
+  cancelRun,
+  fetchLastSeq,
   getHistory,
   getResult,
   getSessionTurns,
   getTurn,
+  getSettings,
   rollbackSession,
+  setSessionModel,
+  startRun,
   streamFollowup,
   streamOptimize,
 } from '../api/endpoints'
@@ -21,6 +26,7 @@ import { TurnList } from '../components/optimize/TurnList'
 import { errorMessage } from '../components/settings/errorMessage'
 import { i18n } from '../i18n'
 import { useSSE } from '../hooks/useSSE'
+import { useRunStream } from '../hooks/useRunStream'
 import { useOptimizeStore } from '../stores/useOptimizeStore'
 import { useHistoryStore } from '../stores/useHistoryStore'
 import { makeS } from '../utils/css'
@@ -104,12 +110,54 @@ export function OptimizePage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState<number | null>(null)
+  // F10 会话级模型切换：候选来自设置中心注册表；空串 = 跟随多模型路由
+  const [modelOptions, setModelOptions] = useState<{ id: string; modelId: string }[]>([])
+  const [modelOverride, setModelOverride] = useState('')
   const streamRef = useRef<AbortController | null>(null)
+  const runIdRef = useRef<string | null>(null)
+  const [runSessionId, setRunSessionId] = useState<string | null>(null)
+  const [streamSince, setStreamSince] = useState(0)
   const threadRef = useRef<HTMLDivElement | null>(null)
   // 贴底跟随标志：用户上滚后不再把视口拽回底部（对齐 Codex 的线程滚动行为）
   const isStickToBottomRef = useRef(true)
 
   useSSE(sessionId)
+  // F10：会话存在时拉一次模型候选（设置中心注册表）；失败静默（切换控件隐藏选项）。
+  useEffect(() => {
+    if (!sessionId) return
+    let cancelled = false
+    getSettings()
+      .then((settings) => {
+        if (cancelled) return
+        setModelOptions(settings.models.map((m) => ({ id: m.id, modelId: m.model_id })))
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId])
+
+  const handleModelSwitch = (id: string): void => {
+    setModelOverride(id)
+    if (!sessionId) return
+    setSessionModel(sessionId, id).catch((error: unknown) => {
+      setErrorMessage(toMessage(error))
+    })
+  }
+
+  // 多端协议：订阅本次 run 的会话事件流；快照到达后刷新轮次与历史列表。
+  useRunStream(runSessionId, isThinking, streamSince, (snapshot) => {
+    void getSessionTurns(snapshot.session_id, { limit: TURNS_PAGE_SIZE })
+      .then((page) => {
+        const store = useOptimizeStore.getState()
+        store.setTurns(page.items, page.has_more)
+        store.setCurrentTurnId(snapshot.current_turn_id ?? page.items.at(-1)?.turn_id ?? null)
+      })
+      .catch(() => undefined)
+    void getHistory({ limit: HISTORY_PAGE_SIZE })
+      .then((page) => useHistoryStore.getState().setHistory(page.items, page.has_more))
+      .catch(() => undefined)
+  })
 
   /** 记录用户是否仍在底部附近（滚动容器唯一来源是对话流，状态不上提，MUST-16）。 */
   function handleThreadScroll(): void {
@@ -331,9 +379,46 @@ export function OptimizePage() {
     setElapsedSeconds(0)
     setErrorMessage(null)
 
+    // 多端协议（2026-11-07）：先取起始 seq → 起 run → 订阅事件流。
+    // 执行在服务端独立进行，连接关闭不会中断；重连用 since 只补差。
+    const activeSessionId = useOptimizeStore.getState().sessionId
+    const sessionId = activeSessionId ?? crypto.randomUUID()
+    let started = false
+    try {
+      const since = activeSessionId ? await fetchLastSeq(sessionId) : 0
+      const record = await startRun({
+        session_id: sessionId,
+        project: nextProject,
+        sentence: nextSentence,
+        base_turn_id: baseTurnId,
+      })
+      started = true
+      runIdRef.current = record.run_id
+      setStreamSince(since)
+      setRunSessionId(sessionId)
+      useOptimizeStore.getState().setSubmitting(false)
+    } catch (error) {
+      // run 已启动就不能回退（否则会重复执行）；只有启动前失败才走旧流。
+      if (started) {
+        setErrorMessage(toMessage(error))
+        useOptimizeStore.getState().endThinking()
+        useOptimizeStore.getState().setSubmitting(false)
+        return
+      }
+      // 运行时协议不可用（旧后端 / 契约不匹配）→ 回退旧流式端点。
+      // 这是灰度期的安全网：新协议是主路径，回退不是常态。
+      await runLegacyStream(nextSentence, nextProject, baseTurnId)
+    }
+  }
+
+  /** 旧流式端点回退（POST /optimize/stream），与改造前行为一致。 */
+  async function runLegacyStream(
+    nextSentence: string,
+    nextProject: string,
+    baseTurnId: string,
+  ): Promise<void> {
     const controller = new AbortController()
     streamRef.current = controller
-    // 多轮：带上当前会话 id，后端在同一 session 起新 turn（空则新建会话）
     const activeSessionId = useOptimizeStore.getState().sessionId
     try {
       await streamOptimize(
@@ -341,7 +426,6 @@ export function OptimizePage() {
           sentence: nextSentence,
           project: nextProject,
           session_id: activeSessionId ?? undefined,
-          // 「以此轮继续」：以该历史轮为基线新开一轮（历史轮一条不少）；空串 = 不指定基线
           base_turn_id: baseTurnId,
         },
         {
@@ -353,7 +437,6 @@ export function OptimizePage() {
               .then((page) => {
                 const store = useOptimizeStore.getState()
                 store.setTurns(page.items, page.has_more)
-                // 同上：优先用快照给出的本轮 id，避免把刚产出的这一轮标成历史轮
                 store.setCurrentTurnId(
                   snapshot.current_turn_id ?? page.items.at(-1)?.turn_id ?? null,
                 )
@@ -363,13 +446,12 @@ export function OptimizePage() {
               .then((page) => useHistoryStore.getState().setHistory(page.items, page.has_more))
               .catch(() => undefined)
           },
-          onError: (error) => setErrorMessage(toMessage(error)),
+          onError: (streamError) => setErrorMessage(toMessage(streamError)),
         },
         controller.signal,
       )
-    } catch (error) {
-      // 主动中止（卸载）不提示；其余失败给出降级文案
-      if (!controller.signal.aborted) setErrorMessage(toMessage(error))
+    } catch (streamError) {
+      if (!controller.signal.aborted) setErrorMessage(toMessage(streamError))
     } finally {
       streamRef.current = null
       useOptimizeStore.getState().endThinking()
@@ -448,6 +530,23 @@ export function OptimizePage() {
               思考中不再整块隐藏（2026-11-05 形态层）：改为禁用输入 + 显式「停止生成」，
               用户可随时中断当前轮（后端 CancelledError → ABORTED）。 */}
           <div className={s('optimize-page__composer')}>
+            {sessionId && modelOptions.length > 0 ? (
+              <label className={s('optimize-page__model-switch')}>
+                <span>{t('optimize.model_switch')}</span>
+                <select
+                  value={modelOverride}
+                  disabled={isThinking}
+                  onChange={(e) => handleModelSwitch(e.target.value)}
+                >
+                  <option value="">{t('optimize.model_follow_routing')}</option>
+                  {modelOptions.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.modelId}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <ConsoleInput
               isSubmitting={isSubmitting || isBusy}
               initialProject={project}
@@ -462,7 +561,9 @@ export function OptimizePage() {
                 type="button"
                 className={s('button button--ghost optimize-page__stop')}
                 onClick={() => {
-                  streamRef.current?.abort()
+                  const runId = runIdRef.current
+                  if (runId !== null) void cancelRun(runId).catch(() => undefined)
+                  else streamRef.current?.abort()
                   // 中断后以服务端为准校对（验收⑤）：后端 CancelledError → ABORTED；
                   // 若取消尚未到达后端（仍 running），快照刷新会把界面拉回真实状态，不伪造。
                   const sid = useOptimizeStore.getState().sessionId

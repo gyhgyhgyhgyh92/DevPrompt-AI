@@ -22,6 +22,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
+from devprompt_ai.domain.context.budget import fit_blocks
+from devprompt_ai.domain.context.compact_policy import CacheKind
+from devprompt_ai.domain.context.compactor import plan_compaction
+
 #: 单条摘要的字符上限（三字段合计），避免个别轮次吃掉整层预算。
 _SUMMARY_CHAR_LIMIT: Final = 120
 _DIGEST_CHAR_LIMIT: Final = 80
@@ -200,23 +204,55 @@ def _render_memory(notes: Sequence[str], limit: int, truncated: list[str]) -> st
     return "\n".join(kept)
 
 
+def compose_history(history: str, *, ledger: str = "", anchor: str = "") -> str:
+    """固定顺序拼接：历史 → 认知账本 → 权威锚点；空块跳过。"""
+    parts = [part for part in (history, ledger.strip(), anchor.strip()) if part]
+    return "\n\n".join(parts)
+
+
 def build_context(
     turns: Sequence[TurnSummary],
     current: TurnInput,
     *,
     notes: Sequence[str] = (),
     budget: ContextBudget = DEFAULT_BUDGET,
+    context_window: int = 0,
+    estimated_tokens: int = 0,
+    cache_kind: CacheKind = CacheKind.AUTOMATIC,
+    tail_anchor: str = "",
+    ledger_block: str = "",
+    delta_block: str = "",
 ) -> ContextPayload:
     """按层装配历史上下文（`turns` 为升序，最后一条是最近一轮）。
+
+    传入 `context_window` 与 `estimated_tokens` 时启用压缩：按计划缩放
+    recent/digest/older/memory 四层预算；**current 层永不压**。
 
     返回的 `history_block` 可直接拼进生成 prompt；`memory_block` 单独一块，
     便于调用方在超预算时优先保留记忆或反之。
     """
-    _current_limit, recent_limit, digest_limit, older_limit, memory_limit = budget.layer_limits()
+    limits = budget.layer_limits()
     truncated: list[str] = []
+    if context_window > 0 and estimated_tokens > 0:
+        plan = plan_compaction(
+            estimated_tokens=estimated_tokens,
+            window=context_window,
+            cache_kind=cache_kind,
+        )
+        if plan.should_compact:
+            ratio = plan.budget_ratio
+            limits = (
+                limits[0],
+                int(limits[1] * ratio),
+                int(limits[2] * ratio),
+                int(limits[3] * ratio),
+                int(limits[4] * ratio),
+            )
+            truncated.append(f"compacted:{plan.action.value}")
+    current_limit, recent_limit, digest_limit, older_limit, memory_limit = limits
 
     # current 层永不裁：超出只记录，不截断
-    if estimate_tokens(current.render()) > budget.layer_limits()[0]:
+    if estimate_tokens(current.render()) > current_limit:
         truncated.append("current")
 
     recent_turns = list(turns[-2:])
@@ -229,8 +265,16 @@ def build_context(
         _render_digest(digest_turns, digest_limit, truncated),
         _render_older(very_old_turns, current.target, older_limit, truncated),
     ]
-    history_block = "\n".join(block for block in blocks if block)
-    memory_block = _render_memory(notes, memory_limit, truncated)
+    body = "\n".join(block for block in blocks if block)
+    # B1–B4：增量附录（<context-update>）紧跟历史，仍在账本与权威块之前
+    if delta_block.strip():
+        body = f"{body}\n\n{delta_block.strip()}" if body else delta_block.strip()
+    # B15：认知账本在历史之后；B13/B14：权威块永远最后（不碰冻结前缀，缓存安全）
+    history_block = compose_history(body, ledger=ledger_block, anchor=tail_anchor)
+    # B17：记忆块按块级配额硬裁，防止单块吃光整窗
+    memory_block = fit_blocks(
+        {"project_memory": _render_memory(notes, memory_limit, truncated)}
+    ).get("project_memory", "")
     return ContextPayload(
         history_block=history_block,
         memory_block=memory_block,

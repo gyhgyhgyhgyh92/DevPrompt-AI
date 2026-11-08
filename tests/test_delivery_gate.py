@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
+from devprompt_ai.domain.delivery.attribution import Attribution
 from devprompt_ai.domain.delivery.gate import DeliveryInput, evaluate_delivery
 from devprompt_ai.domain.models import FactKey, FactResult
 
@@ -40,6 +41,39 @@ def test_green_when_evidence_complete() -> None:
     assert verdict.can_mark_c is True
     assert verdict.can_mark_recommend is True
     assert verdict.disclosure == ""
+
+
+def test_attribution_uncovered_impact_forces_yellow() -> None:
+    """E11：影响半径里未被断言引用的文件必须披露，且撤销推荐。"""
+    verdict = evaluate_delivery(
+        DeliveryInput(
+            has_target=True,
+            facts=_green_facts(),
+            claim_coverage=0.9,
+            variant_count=3,
+            recommend_marked=True,
+            attribution=Attribution(uncovered_impact=("src/ui/Icon.tsx", "src/api/useFoo.ts")),
+        )
+    )
+
+    assert verdict.status == "YELLOW"
+    assert verdict.can_mark_recommend is False
+    assert any("影响半径" in reason for reason in verdict.reasons)
+
+
+def test_attribution_absent_keeps_green() -> None:
+    """未开 repo 图时无归属数据，门禁不受影响（不猜）。"""
+    verdict = evaluate_delivery(
+        DeliveryInput(
+            has_target=True,
+            facts=_green_facts(),
+            claim_coverage=0.9,
+            variant_count=3,
+            recommend_marked=True,
+        )
+    )
+
+    assert verdict.status == "GREEN"
 
 
 def test_red_when_no_target() -> None:

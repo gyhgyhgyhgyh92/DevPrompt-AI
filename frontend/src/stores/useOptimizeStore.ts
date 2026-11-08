@@ -11,6 +11,7 @@ import type {
 import { FlowSnapshotSchema } from '../schemas/optimize'
 import type { ActionPayload, ThinkingItem } from '../schemas/stream'
 import type { SseStatus } from '../types'
+import type { RunEvent } from '../api/protocol'
 
 /** 契约载荷按生成类型派生（F-705：勿在 api/types.ts 之外手写结构）。 */
 type SymbolPayload = NonNullable<FlowSnapshotResponse['target']>
@@ -81,6 +82,8 @@ interface OptimizeState {
   applySnapshot: (snapshot: FlowSnapshotResponse) => void
   /** 处理 SSE 原始消息：畸形即丢弃（契约破坏不重试，MUST-15），合法才更新状态。 */
   applySseMessage: (raw: string) => void
+  /** 应用运行时事件（多端协议入口）：按 type 分发到既有动作，状态机仍在后端。 */
+  applyRunEvent: (event: RunEvent) => void
   setSseStatus: (sseStatus: SseStatus) => void
   setSubmitting: (isSubmitting: boolean) => void
   reset: () => void
@@ -258,6 +261,54 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
       return
     }
     get().applySnapshot(result.data)
+  },
+  applyRunEvent: (event) => {
+    const store = get()
+    switch (event.type) {
+      case 'run.started':
+        set({ isThinking: true, sseStatus: 'open' })
+        return
+      case 'thought': {
+        const text = typeof event.data.text === 'string' ? event.data.text : ''
+        const phase = typeof event.data.phase === 'string' ? event.data.phase : ''
+        if (text !== '') store.appendThought(text, phase)
+        return
+      }
+      case 'action': {
+        const title = typeof event.data.title === 'string' ? event.data.title : ''
+        if (title === '') return
+        store.appendAction(
+          {
+            title,
+            detail: typeof event.data.detail === 'string' ? event.data.detail : '',
+            scope: typeof event.data.scope === 'string' ? event.data.scope : '',
+            output: typeof event.data.output === 'string' ? event.data.output : '',
+            status: event.data.status === 'failed' ? 'failed' : 'ok',
+          },
+          typeof event.data.phase === 'string' ? event.data.phase : '',
+        )
+        return
+      }
+      case 'snapshot': {
+        const parsed = FlowSnapshotSchema.safeParse(event.data)
+        if (parsed.success) store.applySnapshot(parsed.data)
+        return
+      }
+      case 'error': {
+        set({
+          message: typeof event.data.message === 'string' ? event.data.message : '运行失败',
+          status: 'aborted',
+          isThinking: false,
+          sseStatus: 'idle',
+        })
+        return
+      }
+      case 'stop':
+        set({ isThinking: false, sseStatus: 'idle' })
+        return
+      default:
+        return
+    }
   },
   setSseStatus: (sseStatus) => set({ sseStatus }),
   setSubmitting: (isSubmitting) => set({ isSubmitting }),

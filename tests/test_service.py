@@ -271,6 +271,9 @@ async def test_delete_project_sessions_rejects_empty_project_root() -> None:
 async def test_optimize_full_flow_with_questions() -> None:
     # 默认 existing 无测试文件 → test_file_exists=False → 1 个未知项
     svc, store = _service()
+    # 2026-11-07：默认 claim_strict 已改 True；本用例只验证打分与推荐链路，
+    # 未声明 claims 的门禁由专门的 strict 用例覆盖。
+    svc._cfg.claim_strict = False
     snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
     assert snap.status == "ask"
     assert [q.key for q in snap.questions] == ["请确认 test_file_exists"]
@@ -1154,3 +1157,48 @@ async def test_snapshot_current_turn_id_none_without_turn_store() -> None:
     snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
 
     assert snap.current_turn_id is None
+
+
+async def test_set_session_model_writes_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """F10：切换写 session.data['model_override']，生成上下文随后可读。"""
+    svc, store = _service()
+    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    monkeypatch.setattr(
+        "devprompt_ai.service.load_candidates",
+        lambda: [{"id": "m1", "model_id": "model-a", "base_url": "https://x"}],
+    )
+
+    out = await svc.set_session_model("local", snap.session_id, "m1")
+
+    assert out == {"session_id": snap.session_id, "model_override": "m1"}
+    assert store.items[snap.session_id].data["model_override"] == "m1"
+
+
+async def test_set_session_model_rejects_unknown_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    svc, _ = _service()
+    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    monkeypatch.setattr("devprompt_ai.service.load_candidates", lambda: [])
+
+    with pytest.raises(StateError) as ei:
+        await svc.set_session_model("local", snap.session_id, "nope")
+    assert ei.value.code == 6003
+
+
+async def test_set_session_model_empty_clears_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """空串 = 清除覆盖（跟随多模型路由），不校验注册表。"""
+    svc, store = _service()
+    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
+    monkeypatch.setattr(
+        "devprompt_ai.service.load_candidates",
+        lambda: [{"id": "m1", "model_id": "model-a", "base_url": "https://x"}],
+    )
+    await svc.set_session_model("local", snap.session_id, "m1")
+
+    out = await svc.set_session_model("local", snap.session_id, "")
+
+    assert out["model_override"] == ""
+    assert store.items[snap.session_id].data["model_override"] == ""

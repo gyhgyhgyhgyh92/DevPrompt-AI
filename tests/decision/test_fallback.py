@@ -36,6 +36,7 @@ async def test_rank_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
         user: str,
         *,
         timeout: float = 10.0,
+        **_kwargs: object,
     ) -> RankComponentsOutput:
         return RankComponentsOutput(order=[1, 0], confidence=0.8)
 
@@ -52,6 +53,7 @@ async def test_rank_count_mismatch_raises(monkeypatch: pytest.MonkeyPatch) -> No
         user: str,
         *,
         timeout: float = 10.0,
+        **_kwargs: object,
     ) -> RankComponentsOutput:
         return RankComponentsOutput(order=[0], confidence=0.8)  # 少排一个
 
@@ -76,6 +78,7 @@ async def test_probe_facts_passthrough_shape(monkeypatch: pytest.MonkeyPatch) ->
         user: str,
         *,
         timeout: float = 10.0,
+        **_kwargs: object,
     ) -> FactProbeOutput:
         return sentinel
 
@@ -102,6 +105,7 @@ async def test_rank_truncates_state_over_limit_and_logs(
         user: str,
         *,
         timeout: float = 10.0,
+        **_kwargs: object,
     ) -> RankComponentsOutput:
         captured["user"] = user
         return RankComponentsOutput(order=[1, 0], confidence=0.8)
@@ -140,6 +144,7 @@ async def test_rank_state_passthrough_within_limit(monkeypatch: pytest.MonkeyPat
         user: str,
         *,
         timeout: float = 10.0,
+        **_kwargs: object,
     ) -> RankComponentsOutput:
         captured["user"] = user
         return RankComponentsOutput(order=[1, 0], confidence=0.8)

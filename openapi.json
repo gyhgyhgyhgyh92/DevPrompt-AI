@@ -305,6 +305,75 @@
         "title": "ApiResponse[TurnDetailPayload]",
         "type": "object"
       },
+      "ApiResponse_dict_str__Any__": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[dict[str, Any]]",
+        "type": "object"
+      },
+      "ApiResponse_list_dict_str__Any___": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[list[dict[str, Any]]]",
+        "type": "object"
+      },
       "AskOptionPayload": {
         "description": "反问选项（对齐 CodeBuddy SDK AskUserQuestion 的 options[]）。",
         "properties": {
@@ -748,6 +817,30 @@
           }
         },
         "title": "HistoryUpdateRequest",
+        "type": "object"
+      },
+      "InterventionAnswerRequest": {
+        "description": "审批/提问的应答；``decision`` 必填，缺字段由 422 拒绝（不默认批准）。",
+        "properties": {
+          "answer": {
+            "default": "",
+            "title": "Answer",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "approve",
+              "deny",
+              "answer"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "InterventionAnswerRequest",
         "type": "object"
       },
       "LockedSettings": {
@@ -1663,6 +1756,19 @@
         "title": "ScanResponse",
         "type": "object"
       },
+      "SessionModelRequest": {
+        "description": "F10 会话级模型切换：``model_id`` 为注册表条目 id；空串 = 清除覆盖。",
+        "properties": {
+          "model_id": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Model Id",
+            "type": "string"
+          }
+        },
+        "title": "SessionModelRequest",
+        "type": "object"
+      },
       "SettingsResponse": {
         "description": "GET/PUT /settings 数据体（T6-11）。\n\n``models`` 为多模型注册表脱敏视图（F-604，2026-10-13）；字段无默认值（响应必有值）。\n\n2026-09-17 迁移增 ``providers`` 目录（provider 下拉与窗口档位的数据源）。\n**复用本端点下发而非新增路径**，故契约仍 13 路径 / 16 操作。\n同日移除 ``model_specs``（参数编辑区已下线）。\n2026-10-18 供应商中心化重构新增 ``provider_configs`` 段（**用户自己配置的供应商**：\n端点 + 密钥，一个端点一份）。注意与上面的 ``providers`` **目录段**是两回事：\n前者是静态厂商目录（只读、下拉数据源），后者是用户凭据配置（可写）。",
         "properties": {
@@ -1770,6 +1876,42 @@
           }
         },
         "title": "SettingsUpdate",
+        "type": "object"
+      },
+      "StartRunRequest": {
+        "description": "启动一次运行。``session_id`` 由前端生成，便于立刻订阅。",
+        "properties": {
+          "base_turn_id": {
+            "default": "",
+            "title": "Base Turn Id",
+            "type": "string"
+          },
+          "locale": {
+            "default": "zh-CN",
+            "title": "Locale",
+            "type": "string"
+          },
+          "project": {
+            "default": "",
+            "title": "Project",
+            "type": "string"
+          },
+          "sentence": {
+            "default": "",
+            "title": "Sentence",
+            "type": "string"
+          },
+          "session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "title": "StartRunRequest",
         "type": "object"
       },
       "SymbolPayload": {
@@ -2040,6 +2182,115 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/artifacts/{artifact_id}": {
+      "get": {
+        "description": "回读被截断工具的全量输出；内容可能含代码正文，禁止写入日志（MUST-19）。",
+        "operationId": "read_artifact_api_v1_artifacts__artifact_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Artifact",
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "description": "冷启动回填：取 seq 之前的事件（分页）。",
+        "operationId": "list_events_api_v1_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "default": 1073741824,
+              "minimum": 1,
+              "title": "Before",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 2000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_dict_str__Any___"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Events",
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
     "/api/v1/followup/{flow_id}": {
       "post": {
         "description": "答复 / 逃生 / 护栏裁决（一次性 JSON，保留给非流式调用方）。",
@@ -2450,6 +2701,59 @@
         "summary": "Get Session Turns"
       }
     },
+    "/api/v1/interventions/{request_id}/answer": {
+      "post": {
+        "description": "审批/提问应答；第一应答获胜，重复应答返回 6001。",
+        "operationId": "answer_intervention_api_v1_interventions__request_id__answer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterventionAnswerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Answer Intervention",
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
     "/api/v1/optimize": {
       "post": {
         "description": "有副作用端点：禁止客户端自动重试（MUST-15，重复提交将产生重复流程）。",
@@ -2640,6 +2944,230 @@
           }
         },
         "summary": "Get Result"
+      }
+    },
+    "/api/v1/runs": {
+      "post": {
+        "description": "启动一次运行；执行在服务端独立进行，连接断开不取消。",
+        "operationId": "start_run_api_v1_runs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Request-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Run",
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
+    "/api/v1/runs/{run_id}/cancel": {
+      "post": {
+        "description": "取消运行；执行体收到 CancelledError 后以 aborted 收尾。",
+        "operationId": "cancel_run_api_v1_runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Run",
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
+    "/api/v1/sessions/{session_id}/model": {
+      "post": {
+        "description": "会话级模型热切换（F10）：写会话覆盖，下一轮生成即生效；空串清除覆盖。",
+        "operationId": "switch_session_model_api_v1_sessions__session_id__model_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Request-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionModelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Switch Session Model",
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
+    "/api/v1/sessions/{session_id}/stream": {
+      "get": {
+        "description": "订阅会话事件流；?since=N 只补差，建连先收 seq=0 合成快照。",
+        "operationId": "stream_session_api_v1_sessions__session_id__stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Since",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream Session",
+        "tags": [
+          "runtime"
+        ]
       }
     },
     "/api/v1/settings": {

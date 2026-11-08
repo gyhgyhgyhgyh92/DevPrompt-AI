@@ -9,10 +9,13 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from devprompt_ai.memory.token_ledger import SQLiteTokenLedger
 
 from devprompt_ai.common.cost import take_llm_tokens
 from devprompt_ai.common.hashing import sha256_hex
@@ -33,10 +36,16 @@ from devprompt_ai.domain.agent.anchor import (
     merge_followup,
     render_anchor,
 )
-from devprompt_ai.domain.agent.convergence import evaluate_convergence
+from devprompt_ai.domain.agent.finish_gates import FinishDecision, GateInput, evaluate_finish
 from devprompt_ai.domain.agent.memory import MAX_INHERITED_VARIANTS, TurnMemory
+from devprompt_ai.domain.agent.phase_convergence import PhaseClass, evaluate_phase
 from devprompt_ai.domain.agent.ports import ActionPlanner
-from devprompt_ai.domain.agent.sensorium import SensoriumInput, compute_sensorium
+from devprompt_ai.domain.agent.sensorium import (
+    SensoriumInput,
+    compute_sensorium,
+    derive_strategy,
+)
+from devprompt_ai.domain.agent.stop_reason import StopReason, snapshot_stop_reason
 from devprompt_ai.domain.context import (
     ContextBudget,
     ContextPayload,
@@ -45,6 +54,10 @@ from devprompt_ai.domain.context import (
     build_context,
     summary_from_turn,
 )
+from devprompt_ai.domain.context.compact_policy import CacheKind
+from devprompt_ai.domain.context.compactor import plan_compaction
+from devprompt_ai.domain.context.prompt_layers import render_delta
+from devprompt_ai.domain.context.tokens import estimate_tokens as estimate_ctx_tokens
 from devprompt_ai.domain.decision.direction import detect_direction_conflict
 from devprompt_ai.domain.decision.followup import (
     GuardrailState,
@@ -56,6 +69,7 @@ from devprompt_ai.domain.decision.followup import (
 )
 from devprompt_ai.domain.decision.port import DecisionPort, FactProbeOutput, VariantScore
 from devprompt_ai.domain.delivery import DeliveryInput, DeliveryVerdict, evaluate_delivery
+from devprompt_ai.domain.delivery.attribution import Attribution
 from devprompt_ai.domain.errors import (
     CatalogFetchError,
     ConfigurationError,
@@ -68,10 +82,11 @@ from devprompt_ai.domain.generate.ports import (
     GeneratePort,
     GenerationContext,
     Level,
+    MultiVariantDraft,
     VariantDraft,
 )
 from devprompt_ai.domain.generate.variants import plan_levels, resolve_level
-from devprompt_ai.domain.hooks.builtin import FactsSummaryHook, summarize_facts
+from devprompt_ai.domain.hooks.builtin import DetectorHook, FactsSummaryHook, summarize_facts
 from devprompt_ai.domain.hooks.pipeline import HookPipeline
 from devprompt_ai.domain.hooks.types import HookContext
 from devprompt_ai.domain.model_catalog import (
@@ -118,16 +133,29 @@ from devprompt_ai.domain.progress import (
 )
 from devprompt_ai.domain.ranking.recommend import decide_mark
 from devprompt_ai.domain.ranking.score import normalize_fit, weighted_total
-from devprompt_ai.domain.retrieval.candidates import MAX_CANDIDATES, build_candidates
-from devprompt_ai.domain.retrieval.facts import is_evidence_complete, verify_facts
+from devprompt_ai.domain.retrieval.candidates import (
+    MAX_CANDIDATES,
+    build_candidates,
+    reorder_by_lexicon,
+)
+from devprompt_ai.domain.retrieval.facts import (
+    is_evidence_complete,
+    is_probe_complete,
+    verify_facts,
+)
 from devprompt_ai.domain.retrieval.locate import locate_symbol
 from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader
 from devprompt_ai.harness.guardrails import validate_claims
 from devprompt_ai.harness.llm import LLMGenerator, last_usage
+from devprompt_ai.harness.model_candidates import load_candidates
+from devprompt_ai.harness.overflow import is_context_overflow
 from devprompt_ai.harness.process import LocalCommandRunner, LocalFileReader, SymbolTableProvider
+from devprompt_ai.harness.repo_indexer import impact_for, index_project
+from devprompt_ai.harness.summarize import summarize_history
 from devprompt_ai.harness.trace import TracingReader, TracingRunner
 from devprompt_ai.memory.model_catalog_store import read_model_catalog, write_model_catalog
 from devprompt_ai.memory.project_note_store import normalize_key
+from devprompt_ai.memory.repo_index import SQLiteRepoIndex
 from devprompt_ai.memory.settings_store import (
     read_model_registry,
     write_model_registry,
@@ -136,6 +164,7 @@ from devprompt_ai.memory.settings_store import (
 )
 from devprompt_ai.memory.turn_store import TurnConflictError
 from devprompt_ai.observability.logging import emit, emit_error, emit_warning, set_telemetry
+from devprompt_ai.runtime.coordinator import DelegationCoordinator
 from devprompt_ai.state import FlowState, hop, start_turn, transition
 
 logger = logging.getLogger("devprompt.flow")
@@ -391,14 +420,23 @@ class ForgeService:
         symbols_override: list[Symbol] | None = None,
         turns: TurnStore | None = None,
         notes: ProjectNoteStore | None = None,
+        token_ledger: SQLiteTokenLedger | None = None,
     ) -> None:
         self._cfg = cfg
         self._decider = decider
+        # 运行时层组装存储时需要 db_path 等配置；暴露只读属性，避免跨层摸私有字段。
+        # （属性定义在类体末尾，见 `config`。）
         self._sessions = sessions
         #: 多轮 turn 存储；None 时跳过双写（旧测试零改动）
         self._turns = turns
         #: L2 项目记忆；None 时不注入也不记录
         self._notes = notes
+        #: H5 token 账本；None 时不落账（旧测试零改动）
+        self._token_ledger = token_ledger
+        #: 阶段7 周期 checkpoint 出口：runtime 装配时注入（写 run_events），None 时跳过
+        self.checkpoint_sink: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None
+        #: 阶段9 委派调度：分池信号量 + 文件占位 + 去重（服务级实例，跨会话共享容量）
+        self._coordinator = DelegationCoordinator()
         self._runner = runner
         self._reader = reader
         self._generator = generator
@@ -414,7 +452,7 @@ class ForgeService:
         #: 被重复计算，是唯一「接入即有收益」的插入点；其余横切点保持内联，
         #: 避免为架构一致性付出回归风险。
         self._hooks = HookPipeline(
-            [FactsSummaryHook()],
+            [FactsSummaryHook(), DetectorHook()],
             on_result=lambda run: emit(
                 "hook.ran",
                 hook=run.name,
@@ -623,6 +661,8 @@ class ForgeService:
             # 旧会话没有这个键，等价于「没有可继承的锚点」，不影响既有流程。
             next_index = previous_index + 1
             previous_anchor = anchor_from_payload(session.data.get("turn_anchor"))
+            # B1–B4 增量基线：data 每轮重建，跨轮对比必须显式带走上一轮的层快照
+            previous_layers = session.data.get("prompt_layers")
             anchor = (
                 extract_anchor(memory.sentence, next_index)
                 if previous_anchor is None
@@ -644,6 +684,7 @@ class ForgeService:
                 "prev_facts_complete": previous_summary.get("facts_complete"),
                 "turn_memory": memory.to_payload(),
                 "turn_anchor": anchor_to_payload(anchor),
+                "prompt_layers": previous_layers if isinstance(previous_layers, dict) else {},
             }
             # 继承的方案与取证直接进本轮 data：agentic 循环据此判断能否跳过检索
             if memory.variants:
@@ -835,6 +876,10 @@ class ForgeService:
         await _notify(session, progress, retrieval_text(_session_locale(session)))
         await _notify(session, progress, symbols_text(len(symbols), _session_locale(session)))
         result = build_candidates(sentence, symbols)
+        # I1–I3：对 ≤25 条候选做 BM25+RRF+路径权重二次排序（只调序不减候选，MUST-09）
+        result = dataclasses.replace(
+            result, candidates=reorder_by_lexicon(result.candidates, sentence)
+        )
         await _notify(
             session,
             progress,
@@ -899,6 +944,8 @@ class ForgeService:
             for f in facts
         ]
         session.data["target"] = {"name": top.name, "path": top.path, "line": top.line}
+        # ⑤ 影响半径：作为取证证据进入本轮 data（失败只记日志，不影响主流程）
+        await self._attach_impact(session, project_root=project_root, request_id=request_id)
         self._validate_inherited_clarifications(session, request_id)
         session.data["facts_mtime_digest"] = digest
         await self._refresh_facts_summary(session)
@@ -979,7 +1026,6 @@ class ForgeService:
         await hop(session, FlowState.AGENTIC, self._sessions)
         steps: list[AgentStep] = []
         budget = AgentBudget()
-        warned = False
 
         while True:
             decision = await planner.next_action(
@@ -1000,7 +1046,7 @@ class ForgeService:
                 AgentStep(
                     index=len(steps),
                     action=action,
-                    outcome=StepOutcome.OK,
+                    outcome=self._step_outcome(action, session),
                     duration_ms=duration_ms,
                     facts_passed=sum(1 for f in session.data.get("facts", []) if f.get("passed")),
                     decided_by_evidence=decision.confidence_source == "measured",
@@ -1008,6 +1054,9 @@ class ForgeService:
                 )
             )
             self._persist_steps(session, steps)
+            # 阶段7 周期 checkpoint：每 5 步把执行进度落 run_events（进程崩溃可归因到步）。
+            if len(steps) % 5 == 0:
+                await self._emit_checkpoint(session, steps, action, request_id)
             emit(
                 "agent.step",
                 action=action.value,
@@ -1017,15 +1066,30 @@ class ForgeService:
             )
             self._record_sensorium(session, steps, budget, request_id)
             if terminal is not None:
+                # 终止原因结构化（A1）：交付/等用户/放弃三种收尾各自可归因。
+                session.data["stop_reason"] = snapshot_stop_reason(
+                    terminal.status, terminal.state
+                ).value
+                emit(
+                    "agent.loop_terminated",
+                    reason=session.data["stop_reason"],
+                    request_id=request_id,
+                )
                 return terminal
+            if self._is_wedged(steps):
+                # A4：连续同动作且无新事实 → 判原地打转，先于收敛熔断收尾。
+                session.data["stop_reason"] = StopReason.WEDGED_LOOP.value
+                await self._act_abort(session, reason="wedged_loop")
+                return self._snapshot(session, "aborted")
             # 外环监督（2026-11-05）：每完成一步先过 post_tool，再回巢。
             # hook 只能建议，终止由这里决定——领域层不碰状态机（MUST-07）。
+            # steps 单独注入：DetectorHook（E9–E10）读的是实时步骤序列，不落会话。
             hook_outcome = await self._hooks.run_phase(
                 "post_tool",
                 HookContext(
                     phase="post_tool",
                     session_state=session.state,
-                    data=session.data,
+                    data={**session.data, "steps": tuple(steps)},
                 ),
             )
             if hook_outcome.data:
@@ -1037,6 +1101,7 @@ class ForgeService:
                     action=action.value,
                     request_id=request_id,
                 )
+                session.data["stop_reason"] = StopReason.CONVERGENCE_ABORT.value
                 await self._act_abort(session, reason=hook_outcome.reason or "hook_halt")
                 return self._snapshot(session, "aborted")
             if hook_outcome.verdict == "correct":
@@ -1047,14 +1112,23 @@ class ForgeService:
             # 回巢：执行态只能经 AGENTIC 再进下一个执行态（星型拓扑不变量）
             await hop(session, FlowState.AGENTIC, self._sessions)
             if budget.is_exhausted(steps):
+                session.data["stop_reason"] = StopReason.MAX_TURNS.value
                 await self._act_abort(session, reason="budget_exhausted")
                 return self._snapshot(session, "aborted")
-            verdict = evaluate_convergence(steps, warned_at_l2=warned)
+            # 2026-11-07：收敛改为相位感知（七信号 + 双门槛 + 反向证据），
+            # 旧的连续三判据保留在 convergence.py 供单测与降级参考。
+            verdict = evaluate_phase(
+                steps,
+                phase=self._phase_for(steps),
+                context_window=int(getattr(self._cfg, "context_window_tokens", 1_000_000)),
+                turn=len(steps),
+                reasoning_active=bool(steps) and steps[-1].action is AgentAction.REPLY,
+            )
             if verdict.should_abort:
+                session.data["stop_reason"] = StopReason.CONVERGENCE_ABORT.value
                 await self._act_abort(session, reason=verdict.reason)
                 return self._snapshot(session, "aborted")
             if verdict.level >= 2:
-                warned = True
                 await _notify(session, progress, verdict.reason)
 
     async def _execute_action(
@@ -1106,12 +1180,189 @@ class ForgeService:
             await self._check_evidence_freshness(session, request_id=request_id, stage="reply")
             return await self._act_reply(session, progress=progress)
 
+        if action is AgentAction.DELEGATE:
+            await self._act_delegate(session, progress=progress)
+            return None
+
         if action is AgentAction.DELIVER:
             await self._check_evidence_freshness(session, request_id=request_id, stage="deliver")
+            # A2 六道闸（本产品可判定的两道）：有纠偏未消化或没有产出时，自然收尾先弹回一次。
+            # 通知后回到循环——纠偏会被下一轮决策消费，弹回有界（不改变状态机，MUST-07）。
+            gate = self._evaluate_finish_gate(session)
+            if not gate.allowed:
+                emit(
+                    "agent.finish_gate_blocked",
+                    gate=gate.blocked_by.value if gate.blocked_by is not None else "",
+                    reason=gate.detail,
+                    request_id=request_id,
+                )
+                await _notify(session, progress, gate.detail)
+                return None
             return await self._act_deliver(session, progress=progress)
 
         await self._act_abort(session, reason="模型放弃本轮")
         return self._snapshot(session, "aborted")
+
+    async def _act_delegate(
+        self, session: FlowSession, *, progress: ProgressSink | None = None
+    ) -> None:
+        """只读委派（2026-11-08）：把「汇总当前取证」交给独立上下文的 worker。
+
+        当前 execute 是确定性的（不调 LLM）：先把 worker 契约、超时与打捞跑通；
+        接真实子 agent 时只替换 execute，调度与结果结构不变。
+        """
+        import json as _json
+
+        from devprompt_ai.domain.agent.work_order import WorkOrder
+        from devprompt_ai.harness.worker_session import run_read_worker
+
+        target = session.data.get("target") or {}
+        path = str(target.get("path") or "")
+        if not path:
+            await _notify(session, progress, "委派需要先定位目标文件")
+            return
+        facts = session.data.get("facts") or []
+        passed = [item for item in facts if item.get("passed")]
+
+        name = str(target.get("name", ""))
+
+        async def _execute(_order: WorkOrder) -> str:
+            summary = f"目标 {name} 已取证 {len(passed)}/{len(facts)} 项"
+            evidence = [str(item.get("evidence", ""))[:120] for item in passed[:5]]
+            return _json.dumps({"summary": summary, "evidence": evidence}, ensure_ascii=False)
+
+        order = WorkOrder(
+            id=f"delegate-{session.session_id[:8]}",
+            parent_turn_id=str(session.data.get("turn_id", "")),
+            profile="code_scout",
+            objective=str(session.data.get("sentence", "")) or "汇总当前取证",
+            scope_files=(path,),
+        )
+        # 阶段9：工单过调度闸（可运行性→文件占位→分池容量）再执行；被拒只降级不阻断。
+        try:
+            result = await self._coordinator.run(
+                order, lambda o: run_read_worker(o, execute=_execute)
+            )
+        except ValueError as exc:
+            emit(
+                "delegation.rejected",
+                reason=str(exc)[:120],
+                request_id=str(session.data.get("last_request_id", "")),
+            )
+            await _notify(session, progress, f"委派被调度闸拒绝：{exc}")
+            return
+        session.data["delegation"] = {
+            "status": result.status,
+            "summary": result.output[:300],
+            "evidence": list(result.evidence),
+            "salvaged": result.salvaged,
+            "evidence_status": result.evidence_status,
+        }
+        await _notify(
+            session,
+            progress,
+            f"委派完成（{result.status}）：{result.output[:200]}",
+        )
+
+    async def _attach_impact(
+        self, session: FlowSession, *, project_root: str, request_id: str
+    ) -> None:
+        """把目标文件的反向依赖写入 session.data['impact_files']（最多 10 条）。
+
+        索引懒建：每会话首次检索时建一次；失败只降级为「无影响信息」，不阻断取证。
+        """
+        if not bool(getattr(self._cfg, "repo_graph_enabled", False)):
+            return
+        target = session.data.get("target") or {}
+        path = str(target.get("path") or "")
+        root = project_root
+        if not path or not root:
+            return
+        # 只在明确的 Python 项目上建图：无 pyproject/setup 的目录（大量测试夹具）跳过，
+        # 否则每次首检索都要扫 800 个文件，把 30s 的测试拖成 3 分钟。
+        marker = Path(root)
+        if not ((marker / "pyproject.toml").exists() or (marker / "setup.py").exists()):
+            return
+        try:
+            if not session.data.get("repo_indexed"):
+                await index_project(self._cfg.db_path, root)
+                session.data["repo_indexed"] = True
+            impact = await impact_for(self._cfg.db_path, root, path)
+        except Exception as exc:  # noqa: BLE001 - 索引是增益信息，失败必须降级
+            logger.debug("retrieval.impact_failed", exc_info=exc)
+            return
+        if not impact:
+            return
+        # I6 访问强化：本次触及的边权重 +（长期不用自然衰减），并作同跳数内的次级排序
+        index = SQLiteRepoIndex(self._cfg.db_path)
+        weights: dict[str, float] = {}
+        try:
+            await index.reinforce_edges(project_root, [(src, path) for src in impact])
+            weights = await index.edge_weights(project_root, path)
+        except Exception as exc:  # noqa: BLE001 - 权重是增益信息，失败不阻断
+            logger.debug("retrieval.edge_weight_failed", exc_info=exc)
+        items = sorted(impact.items(), key=lambda pair: (pair[1], -weights.get(pair[0], 1.0)))[:10]
+        session.data["impact_files"] = [
+            {"path": p, "hops": h, "weight": round(weights.get(p, 1.0), 4)} for p, h in items
+        ]
+        emit("retrieval.impact", count=len(impact), request_id=request_id)
+
+    def _render_ledger(self, session: FlowSession) -> str:
+        """B15：按开关生成只读账本；关闭或失败时返回空串。"""
+        if not bool(getattr(self._cfg, "context_ledger_enabled", False)):
+            return ""
+        from devprompt_ai.domain.context.ledger import LedgerInput, build_ledger
+        from devprompt_ai.domain.context.task_contract import TaskContract
+
+        target = session.data.get("target") or {}
+        sensorium = session.data.get("sensorium") or {}
+        facts = session.data.get("facts") or []
+        try:
+            contract = TaskContract(
+                objective=str(session.data.get("sentence", ""))[:200],
+                scope_paths=(str(target.get("path", "")),) if target.get("path") else (),
+            )
+            return build_ledger(
+                LedgerInput(
+                    contract=contract,
+                    turn_index=int(session.data.get("turn_index", 0) or 0),
+                    files_modified=1 if target.get("path") else 0,
+                    verified=sum(1 for item in facts if item.get("passed")),
+                    sensorium_score=float(sensorium.get("score", 0.0) or 0.0),
+                )
+            )
+        except Exception:  # noqa: BLE001 - 账本是增益信息，失败即不注入
+            return ""
+
+    @staticmethod
+    def _phase_for(steps: list[AgentStep]) -> PhaseClass:
+        """按最近一步动作判定阶段：决定收敛权重（执行期看改动、验证期看错误）。"""
+        if not steps:
+            return PhaseClass.PLAN
+        action = steps[-1].action
+        if action in (AgentAction.RETRIEVE, AgentAction.PROBE):
+            return PhaseClass.EXPLORE
+        if action is AgentAction.GENERATE:
+            return PhaseClass.EXECUTE
+        if action is AgentAction.RANK:
+            return PhaseClass.VERIFY
+        if action is AgentAction.DELIVER:
+            return PhaseClass.DELIVER
+        return PhaseClass.PLAN
+
+    @staticmethod
+    def _is_wedged(steps: list[AgentStep], *, repeats: int = 4) -> bool:
+        """连续 N 步同一动作且事实数无增长 → 原地打转（A4）。
+
+        取 4 而非常见的 3：收敛检测在 3 步时只给 L2 提醒，这里不抢它的预警机会；
+        4 步仍未推进才判卡死，5 步则由收敛熔断兜底。
+        """
+        if len(steps) < repeats:
+            return False
+        tail = steps[-repeats:]
+        if len({step.action for step in tail}) != 1:
+            return False
+        return tail[0].facts_passed == tail[-1].facts_passed
 
     def _persist_steps(self, session: FlowSession, steps: list[AgentStep]) -> None:
         """把动作序列写进 session.data（随 payload 落库，供快照与排障读取）。"""
@@ -1151,12 +1402,20 @@ class ForgeService:
                 max_steps=budget.max_steps,
                 cost_tokens=int(session.data.get("cost_tokens", 0)),
                 cost_budget=int(self._cfg.followup_cost_budget),
+                context_tokens=int(session.data.get("context_tokens", 0)),
+                context_window=int(self._cfg.max_state_tokens),
                 claim_coverage=coverage,
                 notes_hit=int(session.data.get("notes_hit", 0)),
                 turn_index=int(session.data.get("turn_index", 0)),
             )
         )
         session.data["sensorium"] = snapshot.as_payload()
+        # E4 策略映射（shadow）：effort/breadth 只落会话，供生成侧与观测消费
+        strategy = derive_strategy(snapshot)
+        session.data["strategy"] = {
+            "reasoning_effort": strategy.reasoning_effort,
+            "exploration_breadth": round(strategy.exploration_breadth, 4),
+        }
         emit("agent.sensorium", score=snapshot.score, request_id=request_id)
 
     @staticmethod
@@ -1170,11 +1429,76 @@ class ForgeService:
         session.data["cost_tokens"] = int(session.data.get("cost_tokens", 0)) + int(
             usage.get("total_tokens") or 0
         )
+        prompt = usage.get("prompt_tokens")
+        if prompt is not None:
+            session.data["cost_prompt_tokens"] = int(
+                session.data.get("cost_prompt_tokens", 0)
+            ) + int(prompt)
+        completion = usage.get("completion_tokens")
+        if completion is not None:
+            session.data["cost_completion_tokens"] = int(
+                session.data.get("cost_completion_tokens", 0)
+            ) + int(completion)
         cached = usage.get("cached_tokens")
         if cached is not None:
             session.data["cost_cached_tokens"] = int(
                 session.data.get("cost_cached_tokens", 0)
             ) + int(cached)
+
+    async def _record_token_ledger(self, session: FlowSession) -> None:
+        """H5：每轮一次把 LLM 用量落 token_ledger；零用量不记（空行无信息量）。"""
+        if self._token_ledger is None:
+            return
+        if int(session.data.get("cost_tokens", 0)) <= 0:
+            return
+        try:
+            await self._token_ledger.record(
+                session_id=session.session_id,
+                turn_index=int(session.data.get("turn_index", 0) or 0),
+                prompt_tokens=int(session.data.get("cost_prompt_tokens", 0)),
+                completion_tokens=int(session.data.get("cost_completion_tokens", 0)),
+                cached_tokens=int(session.data.get("cost_cached_tokens", 0)),
+            )
+        except Exception:  # noqa: BLE001 - 账本是旁路，失败不阻断收尾
+            logger.warning("ledger.record_failed", exc_info=True)
+
+    @staticmethod
+    def _step_outcome(action: AgentAction, session: FlowSession) -> StepOutcome:
+        """非终态动作失败的落账点（E10 死路检测的数据源）。
+
+        当前唯一非终态失败是委派 blocked/partial（其余失败会终止本轮）；
+        后续动作有了「失败但可继续」的路径在此补记。
+        """
+        if action is AgentAction.DELEGATE:
+            delegation = session.data.get("delegation")
+            if isinstance(delegation, dict) and delegation.get("status") in {"blocked", "partial"}:
+                return StepOutcome.FAILED
+        return StepOutcome.OK
+
+    async def _emit_checkpoint(
+        self,
+        session: FlowSession,
+        steps: list[AgentStep],
+        action: AgentAction,
+        request_id: str,
+    ) -> None:
+        """把执行进度写入 run_events；sink 未装配或写入失败只降级为跳过。"""
+        if self.checkpoint_sink is None:
+            return
+        try:
+            await self.checkpoint_sink(
+                session.session_id,
+                {
+                    "step": len(steps),
+                    "action": action.value,
+                    "facts_passed": sum(
+                        1 for f in session.data.get("facts", []) if f.get("passed")
+                    ),
+                    "request_id": request_id,
+                },
+            )
+        except Exception:  # noqa: BLE001 - checkpoint 是旁路，失败不阻断主循环
+            logger.debug("checkpoint.write_failed", exc_info=True)
 
     async def _abort_quietly(self, session: FlowSession) -> None:
         """失败兜底（6G 遗留①）：异常路径置 ABORTED，避免死会话（如 PROBING）残留污染历史。"""
@@ -1182,6 +1506,12 @@ class ForgeService:
             await transition(session, FlowState.ABORTED, self._sessions)
         except Exception:
             logger.exception("state.abort_failed", extra={"session_id": session.session_id})
+        # 阶段7 记忆沉淀：静默中断同样要收尾（落 turn 记录与 L2 笔记），否则中断轮在
+        # 下一轮「不可回看」。_finish_turn 幂等（重复 finish 只改状态），尽力而为。
+        try:
+            await self._finish_turn(session)
+        except Exception:  # noqa: BLE001 - 收尾失败不得掩盖原始异常
+            logger.debug("turn.finish_failed_on_abort", exc_info=True)
 
     async def list_history(
         self, user_id: str, *, limit: int = 50, offset: int = 0
@@ -1197,6 +1527,35 @@ class ForgeService:
             limit=limit,
             offset=offset,
         )
+
+    async def set_session_model(
+        self, user_id: str, session_id: str, model_id: str
+    ) -> dict[str, Any]:
+        """F10 会话级模型覆盖：写 session.data["model_override"]；空串 = 清除（跟随路由）。
+
+        非空时必须是注册表有效条目（id 或 model_id 匹配），否则 6003（资源不存在）。
+        """
+        session = await self._load_owned(user_id, session_id)
+        wanted = model_id.strip()
+        if wanted:
+            entries = load_candidates()
+            if not any(
+                str(entry.get("id") or "") == wanted or str(entry.get("model_id") or "") == wanted
+                for entry in entries
+            ):
+                raise StateError("未知模型条目：请先在设置中心配置并保存该模型", code=6003)
+        session.data["model_override"] = wanted
+        try:
+            if not await self._sessions.save(session):
+                logger.warning("turn.memory_conflict", extra={"session_id": session.session_id})
+        except Exception:  # noqa: BLE001 - 覆盖落库失败不阻断响应，内存态已生效
+            logger.warning("session.model_save_failed", exc_info=True)
+        emit(
+            "session.model_switch",
+            model_id=wanted,
+            request_id=str(session.data.get("last_request_id", "")),
+        )
+        return {"session_id": session.session_id, "model_override": wanted}
 
     async def list_turns(
         self, user_id: str, session_id: str, *, limit: int = 20, offset: int = 0
@@ -1731,12 +2090,23 @@ class ForgeService:
             unknowns = []
         session.data["unknowns"] = [dataclasses.asdict(u) for u in unknowns]
         self._track_ask_adoption(session, unknowns)
-        # 2026-11-04：模型未给判断（no_data）不再等同于「置信度 0」。
-        # 七项全过且无待答问题时按完备处理；确有未决项仍停在低档（那是真的未知）。
+        # 2026-11-07：`judged` 必须为真。模型参数畸形时 fallback 返回空 judgments，
+        # 旧口径把「没有未知」当成「信息足够」，档位会虚高到最高档（静默降质）。
         evidence_ok = is_evidence_complete(facts)
-        facts_complete = evidence_ok and (
-            (measured and confidence is not None and confidence >= self._cfg.fact_probe_threshold)
-            or (not measured and not unknowns)
+        judged = bool(probe.judgments)
+        if not judged and not unknowns:
+            emit(
+                "decision.probe_empty",
+                reason=str(probe.confidence_source),
+                request_id=request_id,
+            )
+        facts_complete = is_probe_complete(
+            evidence_ok=evidence_ok,
+            measured=measured,
+            confidence=confidence,
+            threshold=self._cfg.fact_probe_threshold,
+            has_unknowns=bool(unknowns),
+            judged=judged,
         )
         has_symbol = bool(session.data.get("target"))
         session.data["facts_complete"] = facts_complete
@@ -1800,14 +2170,15 @@ class ForgeService:
         return await self._generate_and_finish(session, progress=progress)
 
     async def _generation_context(
-        self, session: FlowSession, *, level: Level | None = None
+        self, session: FlowSession, *, level: Level | None = None, shrink: bool = False
     ) -> GenerationContext:
         """装配生成/回答共用的上下文（2026-11-05 抽出，避免两处漂移）。
 
         回答「为什么选 B」所依赖的 ``previous_variants`` 与 ``history_block``
-        与生成完全同源，因此不另建上下文类型。
+        与生成完全同源，因此不另建上下文类型。``shrink``（A8）时同时丢弃
+        上一轮方案正文——超窗最常见的元凶就是它。
         """
-        context_payload = await self._assemble_context(session)
+        context_payload = await self._assemble_context(session, shrink=shrink)
         return GenerationContext(
             sentence=session.data["sentence"],
             project_root=session.data["project_root"],
@@ -1818,14 +2189,40 @@ class ForgeService:
             history_block=context_payload.history_block,
             memory_block=context_payload.memory_block,
             # 迭代轮要让模型看到上一轮原文，否则「把 B 档第 2 条改成 X」无法定位
-            previous_variants=_render_previous_variants(
-                TurnMemory.from_payload(session.data.get("turn_memory")).variants
+            previous_variants=(
+                ""
+                if shrink
+                else _render_previous_variants(
+                    TurnMemory.from_payload(session.data.get("turn_memory")).variants
+                )
             ),
             # 上一轮推荐判定：回答「为什么选 B」的唯一依据来源
             ranking_summary=_render_ranking(
                 session.data.get("ranking"), session.data.get("ranking_details")
             ),
+            # F10 会话级模型覆盖：空串 = 跟随路由
+            model_override=str(session.data.get("model_override", "")),
         )
+
+    async def _generate_variants_guarded(
+        self,
+        session: FlowSession,
+        ctx: GenerationContext,
+        levels: list[Level],
+        locale: Locale,
+    ) -> MultiVariantDraft:
+        """A8 超窗「压一次重发一次」：只对上下文超限降级，其它异常原样抛出。"""
+        try:
+            return await self._generator.generate_variants(ctx, levels, locale)
+        except Exception as exc:
+            if not is_context_overflow(exc):
+                raise
+        emit(
+            "context.overflow_retry",
+            request_id=str(session.data.get("last_request_id", "")),
+        )
+        shrunk = await self._generation_context(session, shrink=True)
+        return await self._generator.generate_variants(shrunk, levels, locale)
 
     async def _act_generate(
         self, session: FlowSession, *, progress: ProgressSink | None = None
@@ -1845,7 +2242,9 @@ class ForgeService:
         await _notify(session, progress, generation_text(levels, _session_locale(session)))
         # U-7：记下期望套数，交付门据实际产出披露「本次仅 N 套」（模型可只给子集）。
         session.data["expected_variant_count"] = len(levels)
-        multi = await self._generator.generate_variants(ctx, levels, _session_locale(session))
+        multi = await self._generate_variants_guarded(
+            session, ctx, levels, _session_locale(session)
+        )
         self._account_llm_usage(session, last_usage())
         # slots dataclass 无 __dict__，序列化必须走 model_dump（计划 §6.2 注意事项）
         session.data["variants"] = [v.model_dump() for v in multi.variants]
@@ -1939,6 +2338,11 @@ class ForgeService:
         ctx = await self._generation_context(session)
         await _notify(session, progress, answering_text(_session_locale(session)))
         text = await self._generator.answer(ctx, _session_locale(session))
+        if not text.strip():
+            # A3 no-answer 闸：空回答不算完成，按放弃收尾并留下结构化原因。
+            session.data["stop_reason"] = StopReason.NO_ANSWER.value
+            await self._act_abort(session, reason="no_answer")
+            return self._snapshot(session, "aborted")
         self._account_llm_usage(session, last_usage())
         session.data["reply_text"] = text
         if FlowState(session.state) is not FlowState.DONE:
@@ -2097,6 +2501,8 @@ class ForgeService:
         anchor_invalid = (
             len(anchor_report.get("invalid", [])) if isinstance(anchor_report, dict) else 0
         )
+        # E11 改动归属：影响半径里未被任一 file 断言引用的文件 → YELLOW 披露
+        attribution = self._build_attribution(session)
         return evaluate_delivery(
             DeliveryInput(
                 has_target=bool(session.data.get("target")),
@@ -2113,8 +2519,44 @@ class ForgeService:
                 ranked_level=ranked_level,
                 ranked_gap=ranked_gap,
                 recommend_reason=reason,
+                attribution=attribution,
             ),
             _session_locale(session),
+        )
+
+    @staticmethod
+    def _build_attribution(session: FlowSession) -> Attribution | None:
+        """影响半径与 file 断言求差集；无影响数据时返回 None（不参与门禁）。"""
+        impact = session.data.get("impact_files")
+        if not isinstance(impact, list) or not impact:
+            return None
+        claimed = {
+            str(claim.get("target"))
+            for variant in session.data.get("variants", [])
+            if isinstance(variant, dict)
+            for claim in (variant.get("claims") or [])
+            if isinstance(claim, dict) and claim.get("kind") == "file"
+        }
+        uncovered = tuple(
+            str(item.get("path"))
+            for item in impact
+            if isinstance(item, dict) and str(item.get("path")) not in claimed
+        )
+        return Attribution(uncovered_impact=uncovered)
+
+    @staticmethod
+    def _evaluate_finish_gate(session: FlowSession) -> FinishDecision:
+        """A2 六道闸取值：本产品只保留 STEER 一道硬拦截。
+
+        其余各道依赖对话式 Agent 的自由文本收尾：NO-ANSWER（空交付）由交付门 RED
+        诚实披露——在这里弹回会与「重发同一动作」的调度器死锁；goal 缺失同样由
+        交付门披露；义务清单不存在。STEER 弹回有界：纠偏会被下一轮决策消费。
+        """
+        return evaluate_finish(
+            GateInput(
+                has_text=True,
+                pending_steer=str(session.data.get("hook_correction", "")),
+            )
         )
 
     async def _act_abort(self, session: FlowSession, *, reason: str) -> None:
@@ -2149,10 +2591,12 @@ class ForgeService:
             return True  # 事实前提失效：上一轮完备、本轮不完备 → 重新展开
         return detect_direction_conflict(str(session.data.get("sentence", "")))
 
-    async def _assemble_context(self, session: FlowSession) -> ContextPayload:
+    async def _assemble_context(
+        self, session: FlowSession, *, shrink: bool = False
+    ) -> ContextPayload:
         """装配多轮上下文（纯函数在 domain/context）：历史摘要 + 偏好投影。
 
-        L2 项目记忆在下一片接入；这里先传空笔记，保证分层与预算逻辑可独立回归。
+        ``shrink``（A8）：超窗重发时把 estimated 拉满窗口，强制走压缩档位出最小历史。
         """
         summaries: list[TurnSummary] = []
         if self._turns is not None:
@@ -2195,11 +2639,91 @@ class ForgeService:
             notes = [note.render() for note in found]
             # 供六维状态感知的「熟悉度」维度读取（shadow 观测，不影响行为）
             session.data["notes_hit"] = len(notes)
+        estimated = (
+            estimate_ctx_tokens(current.render())
+            + sum(estimate_ctx_tokens(summary.render()) for summary in summaries)
+            + sum(estimate_ctx_tokens(note) for note in notes)
+        )
+        # E3：绝对压力的分母数据源（六维 pressure 与压缩决策共用同一估算口径）
+        session.data["context_tokens"] = estimated
+        if shrink:
+            estimated = max(estimated, self._cfg.context_window_tokens)
+        # B11：压缩触发时把窗口外的旧轮折成一段 LLM 摘要（失败回退规则摘要，不阻断）
+        summaries = await self._maybe_llm_digest(
+            session, summaries, estimated_tokens=estimated, shrunk=shrink
+        )
         return build_context(
             summaries,
             current,
             notes=notes,
             budget=ContextBudget(total=self._cfg.max_state_tokens),
+            context_window=self._cfg.context_window_tokens,
+            estimated_tokens=estimated,
+            cache_kind=CacheKind.AUTOMATIC,
+            ledger_block=self._render_ledger(session),
+            delta_block=self._render_context_delta(session),
+        )
+
+    async def _maybe_llm_digest(
+        self,
+        session: FlowSession,
+        summaries: list[TurnSummary],
+        *,
+        estimated_tokens: int,
+        shrunk: bool,
+    ) -> list[TurnSummary]:
+        """B11：压缩触发时把 recent(2)+digest(6) 窗口外的旧轮折成一段 cheap 槽摘要。
+
+        `summary_llm_enabled` 关闭时原样返回（规则摘要路径，现状行为）；
+        摘要失败由 `summarize_history` 兜底为确定性 handoff，本方法不向上抛。
+        """
+        if not self._cfg.summary_llm_enabled or not summaries:
+            return summaries
+        plan = plan_compaction(
+            estimated_tokens=estimated_tokens,
+            window=self._cfg.context_window_tokens,
+            cache_kind=CacheKind.AUTOMATIC,
+        )
+        if not (shrunk or plan.should_compact):
+            return summaries
+        keep = 2 if shrunk else 8  # 弹性收缩时保住 recent 两轮，「接着刚才说的」不能断
+        dropped = summaries[:-keep] if len(summaries) > keep else summaries[:1]
+        if not dropped:
+            return summaries
+        anchor = anchor_from_payload(session.data.get("turn_anchor"))
+        digest, _fell_back = await summarize_history(
+            self._cfg,
+            "\n".join(item.render() for item in dropped),
+            required_terms=(),
+            fallback_context={
+                "objective": anchor.objective if anchor is not None else "",
+                "decisions": [item.decision for item in dropped if item.decision],
+                "files": [item.target for item in dropped if item.target],
+                "current": summaries[-1].conclusion,
+            },
+        )
+        merged = TurnSummary(
+            turn_id=f"digest-{dropped[-1].turn_index}",
+            turn_index=dropped[-1].turn_index,
+            conclusion=digest[:200],
+        )
+        return [merged, *summaries[len(dropped) :]]
+
+    def _render_context_delta(self, session: FlowSession) -> str:
+        """B1–B4 增量附录：只下发本轮变动的上下文块，无变动时自闭合。
+
+        shortcut: 每次 LLM 调用都是无状态单发，增量只作「自上次以来的变化」提示，
+        缺内容时仍以完整历史为准；会话改为携带消息历史后再改成真正的增量替换。
+        """
+        blocks = {"task_status": "executing" if session.data.get("facts_complete") else "exploring"}
+        previous = session.data.get("prompt_layers")
+        prev = previous if isinstance(previous, dict) else {}
+        # seq 用上次快照 +1 递增：turn_index 在没有 turn 存储时不增，靠它算会永远停在首轮
+        seq = int(prev.get("seq", 0) or 0) + 1
+        prev_context = prev.get("context")
+        session.data["prompt_layers"] = {"seq": seq, "context": blocks}
+        return render_delta(
+            prev_context if isinstance(prev_context, dict) else None, blocks, seq=seq
         )
 
     async def _begin_turn(self, session: FlowSession) -> None:
@@ -2348,6 +2872,7 @@ class ForgeService:
         try:
             # 入账必须在落库前：usage.llm_tokens 取自会话累计器，晚一步就恒为 0。
             self._account_usage(session)
+            await self._record_token_ledger(session)
             await self._turns.finish(
                 turn_id,
                 state=session.state,
@@ -2493,6 +3018,11 @@ class ForgeService:
                 int(session.data.get("cost_llm_tokens", 0)) + llm_tokens
             )
 
+    @property
+    def config(self) -> AppConfig:
+        """只读配置：运行时层据此组装存储（不反向依赖 interfaces）。"""
+        return self._cfg
+
     def _snapshot(self, session: FlowSession, status: SnapshotStatus) -> FlowSnapshot:
         self._account_usage(session)
         llm_tokens = int(session.data.get("cost_llm_tokens", 0))
@@ -2614,13 +3144,17 @@ async def build_default(cfg: AppConfig) -> ForgeService:
     """默认组装（CLI/开发态；Web 复用同一函数，MUST-10）。"""
     from devprompt_ai.decision.fallback import create_decider
     from devprompt_ai.harness.models_client import OpenAIModelsFetcher
+    from devprompt_ai.harness.output_store import cleanup as cleanup_raw_outputs
     from devprompt_ai.memory.project_note_store import SQLiteProjectNoteStore
     from devprompt_ai.memory.session_store import SQLiteSessionStore
     from devprompt_ai.memory.startup_safety_check import run_startup_safety_check
+    from devprompt_ai.memory.token_ledger import SQLiteTokenLedger as _TokenLedger
     from devprompt_ai.memory.turn_store import SQLiteTurnStore
 
     # N-1 启动自愈：必须在任何 Manager 打开库之前跑，坏行隔离才有意义
     run_startup_safety_check(cfg.db_path)
+    # C3：清掉上一进程遗留的超时工件（内容已在卡片指针过期后无意义）
+    cleanup_raw_outputs()
 
     sessions = SQLiteSessionStore(cfg.db_path)
     await sessions.init_schema()
@@ -2635,4 +3169,5 @@ async def build_default(cfg: AppConfig) -> ForgeService:
         catalog_fetcher=OpenAIModelsFetcher(),
         turns=SQLiteTurnStore(cfg.db_path),
         notes=SQLiteProjectNoteStore(cfg.db_path),
+        token_ledger=_TokenLedger(cfg.db_path),
     )

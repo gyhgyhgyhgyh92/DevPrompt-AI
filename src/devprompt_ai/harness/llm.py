@@ -15,9 +15,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
+import time
+from collections.abc import Hashable, Mapping
 from contextvars import ContextVar
-from typing import Final, TypeVar
+from typing import Any, Final, Literal, TypeVar, cast
 
 from agents import (
     Agent,
@@ -35,8 +38,10 @@ from pydantic import BaseModel, ValidationError
 from devprompt_ai.common.cost import add_llm_tokens
 from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale, tr
 from devprompt_ai.config import AppConfig
+from devprompt_ai.domain.context.budget import ensure_request_fits, request_budget
+from devprompt_ai.domain.context.tokens import estimate_tokens
 from devprompt_ai.domain.error_codes import registered
-from devprompt_ai.domain.errors import ConfigurationError, GenerationError
+from devprompt_ai.domain.errors import ConfigurationError, DevPromptError, GenerationError
 from devprompt_ai.domain.generate.ports import (
     VALID_LEVEL_SETS,
     GenerationContext,
@@ -44,19 +49,72 @@ from devprompt_ai.domain.generate.ports import (
     MultiVariantDraft,
     VariantDraft,
 )
+from devprompt_ai.domain.model.routing import pick_model
 from devprompt_ai.domain.model_spec import resolve_api_mode
 from devprompt_ai.domain.prompt_guard import (
     JSON_STRICT_RULES,
     build_evidence_block,
+    family_note,
 )
 from devprompt_ai.harness.adapters import adapter_kind_for, build_adapter
 from devprompt_ai.harness.ask_tool import ASK_TOOL_DEFINITION, ASK_TOOL_NAME
+from devprompt_ai.harness.model_candidates import (
+    load_candidates,
+    load_routing_stats,
+)
+from devprompt_ai.harness.model_pool import ModelPool
+from devprompt_ai.harness.retry import (
+    RetryBudget,
+    RetryPolicy,
+    abortable_sleep,
+    next_delay,
+)
+from devprompt_ai.memory.routing_stats import SQLiteRoutingStats
+
+logger = logging.getLogger(__name__)
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 _last_usage: ContextVar[dict[str, int | None] | None] = ContextVar("last_usage", default=None)
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
+
+#: 重试策略与共享预算（A11）：所有结构化调用共用，避免 provider × agent 相乘。
+_RETRY_POLICY: Final[RetryPolicy] = RetryPolicy()
+_RETRY_BUDGET: Final[RetryBudget] = RetryBudget(capacity=5, window_s=60.0)
+_RETRYABLE_MARKERS: Final[tuple[str, ...]] = (
+    "timeout",
+    "429",
+    "500",
+    "502",
+    "503",
+    "504",
+    "rate limit",
+    "connection",
+)
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
+        return True
+    haystack = f"{type(exc).__name__} {exc}".lower()
+    return any(marker in haystack for marker in _RETRYABLE_MARKERS)
+
+
+async def _run_with_retry(agent: Agent, user: str, timeout: float) -> Any:
+    """带退避与共享预算的单次结构化调用（失败抛原始异常，由调用方归类）。"""
+    for attempt in range(1, _RETRY_POLICY.max_attempts + 1):
+        try:
+            return await asyncio.wait_for(Runner.run(agent, user, max_turns=1), timeout=timeout)
+        except Exception as exc:
+            if (
+                attempt >= _RETRY_POLICY.max_attempts
+                or not _is_retryable(exc)
+                or not _RETRY_BUDGET.take()
+            ):
+                raise
+            await abortable_sleep(next_delay(attempt, _RETRY_POLICY))
+    raise RuntimeError("unreachable")
 
 
 def _balanced_object(text: str) -> str | None:
@@ -139,29 +197,49 @@ def _cached_tokens(usage: object) -> int | None:
         return None
 
 
+def _usage_int(usage: object, key: str) -> int:
+    """取用量字段：SDK 对象走属性，原生适配器回 dict，缺字段记 0。"""
+    if isinstance(usage, dict):
+        return int(usage.get(key) or 0)
+    return int(getattr(usage, key, 0) or 0)
+
+
 def _record_usage(usage: object | None) -> None:
     """记录一次调用的 token 用量：last（最近一次，兼容旧调用方）+ 累计待取（F-805）。"""
     if usage is None:
         _last_usage.set(None)
         return
     total_tokens = int(getattr(usage, "total_tokens", 0) or 0)
-    _last_usage.set({"total_tokens": total_tokens, "cached_tokens": _cached_tokens(usage)})
+    _last_usage.set(
+        {
+            "total_tokens": total_tokens,
+            "prompt_tokens": _usage_int(usage, "prompt_tokens"),
+            "completion_tokens": _usage_int(usage, "completion_tokens"),
+            "cached_tokens": _cached_tokens(usage),
+        }
+    )
     add_llm_tokens(total_tokens)
 
 
-_client: AsyncOpenAI | None = None
-#: 已构造 client 的缓存键（model, base_url, api_key）；三者任一变化必重建。
-_client_key: tuple[str, str, str] | None = None
+def _build_client(key: Hashable) -> AsyncOpenAI:
+    """按缓存键构造客户端；池化后同一 (model, endpoint, key) 只建一次。"""
+    model, base_url, api_key = cast(tuple[str, str, str], key)
+    # max_retries=0：SDK 默认重试会被外层 wait_for 一并吞掉，表现为「卡满 60s」；
+    # 重试统一走本模块的 RetryBudget（A11），避免 provider × agent 相乘。
+    return AsyncOpenAI(base_url=base_url, api_key=api_key or "EMPTY", max_retries=0)
+
+
+#: 客户端池（G1）：LRU 4，键含端点与密钥（同一 model id 换端点必须重建）。
+_CLIENTS: Final[ModelPool[AsyncOpenAI]] = ModelPool(_build_client, capacity=4)
 
 
 def _ensure_client(cfg: AppConfig) -> AsyncOpenAI:
-    """惰性初始化 OpenAI 兼容客户端（同一 model 只构造一次）。
+    """惰性获取 OpenAI 兼容客户端（同一 model 复用，切换模型不互相重建）。
 
     **刻意不调 `set_default_openai_api`**：那是进程级单例，Web 并发下按 provider
     反复设置会相互覆盖（A 请求设 responses、B 请求设 chat_completions → 随机 4xx）。
     API 形态改为**按调用注入 Model 实例**，见 :func:`build_model`。
     """
-    global _client, _client_key
     if not cfg.llm_base_url or not cfg.llm_model:
         raise ConfigurationError(
             "LLM 未配置：需要 LLM_BASE_URL / LLM_MODEL 环境变量",
@@ -170,15 +248,10 @@ def _ensure_client(cfg: AppConfig) -> AsyncOpenAI:
                 "llm_model_set": bool(cfg.llm_model),
             },
         )
-    # 缓存键必须含**端点与密钥**：只按 model 键会让「同一 model id 换了端点/密钥」
-    # 复用旧 client（旧代码就有这个缺陷）——api_mode 生效后用户按条目切换端点会直接踩到该处。
-    key = (cfg.llm_model, cfg.llm_base_url, cfg.llm_api_key)
-    if _client is None or _client_key != key:
-        _client = AsyncOpenAI(base_url=cfg.llm_base_url, api_key=cfg.llm_api_key or "EMPTY")
-        set_default_openai_client(_client)
-        set_tracing_disabled(True)  # 第三方 key 走 tracing 会 401
-        _client_key = key
-    return _client
+    client = _CLIENTS.get((cfg.llm_model, cfg.llm_base_url, cfg.llm_api_key))
+    set_default_openai_client(client)
+    set_tracing_disabled(True)  # 第三方 key 走 tracing 会 401
+    return client
 
 
 def build_model(cfg: AppConfig) -> Model:
@@ -208,25 +281,99 @@ def build_model(cfg: AppConfig) -> Model:
     )
 
 
-async def chat_structured(
+def _instructions(cfg: AppConfig, system: str, schema: str) -> str:
+    """B18 模型族校准：按厂商把纠偏一句话插进 system；未知厂商不插（不猜）。
+
+    无校准语句时输出与改造前逐字节一致，保证既有 prompt 测试不受影响。
+    """
+    note = family_note(cfg.llm_provider or "")
+    head = f"{system}\n\n{note}" if note else system
+    return f"{head}\n\n{JSON_STRICT_RULES}\n且必须符合如下 JSON Schema：\n{schema}"
+
+
+#: 路由目的（G3）：决定统计键与账本 task_kind；decide（next_action）与 rank 同为轻活。
+RoutingPurpose = Literal["probe", "rank", "generate", "summarize", "decide"]
+
+_PURPOSE_TASK_KIND: Final[dict[str, str]] = {
+    "probe": "probe",
+    "rank": "rank",
+    "generate": "generate",
+    "summarize": "summarize",
+    "decide": "rank",
+}
+
+
+def _candidate_cfg(cfg: AppConfig, entry: Mapping[str, Any]) -> AppConfig:
+    """把注册表条目落成一个可调用配置（api_mode 空串=按 provider 默认解析）。"""
+    return cfg.model_copy(
+        update={
+            "llm_model": str(entry.get("model_id") or ""),
+            "llm_provider": str(entry.get("provider") or ""),
+            "llm_base_url": str(entry.get("base_url") or ""),
+            "llm_api_key": str(entry.get("api_key") or ""),
+            "api_mode": str(entry.get("api_mode") or ""),
+        }
+    )
+
+
+async def _resolve_chain(cfg: AppConfig, *, purpose: str, model_id: str = "") -> list[AppConfig]:
+    """候选链（G2/G9）：空表或单候选时返回 [cfg]（现状路径，字节级行为对等）。
+
+    顺序 = [bandit 选中的主] + 其余按注册顺序（主备序）。
+    """
+    entries = load_candidates()
+    if model_id:
+        picked = [
+            entry
+            for entry in entries
+            if str(entry.get("id") or "") == model_id
+            or str(entry.get("model_id") or "") == model_id
+        ]
+        return [_candidate_cfg(cfg, picked[0])] if picked else [cfg]
+    if not cfg.multi_model_routing or len(entries) <= 1:
+        return [cfg]
+    task_kind = _PURPOSE_TASK_KIND.get(purpose, "generate")
+    stats = await load_routing_stats(cfg.db_path)
+    primary_id = pick_model(
+        [str(entry.get("model_id")) for entry in entries],
+        stats,
+        task_kind=task_kind,
+    )
+    ordered = sorted(
+        entries,
+        key=lambda entry: str(entry.get("model_id")) != (primary_id or ""),
+    )
+    return [_candidate_cfg(cfg, entry) for entry in ordered]
+
+
+async def _record_routing_stat(
+    cfg: AppConfig, *, task_kind: str, success: bool, latency_ms: int
+) -> None:
+    """路由账本（G9）：旁路，失败只降级为不记账，绝不影响主调用。"""
+    try:
+        await SQLiteRoutingStats(cfg.db_path).record(
+            model_id=cfg.llm_model,
+            task_kind=task_kind,
+            success=success,
+            latency_ms=latency_ms,
+        )
+    except Exception:  # noqa: BLE001 - 账本失败不阻断调用
+        logger.debug("routing.record_failed", exc_info=True)
+
+
+async def _structured_once(
     cfg: AppConfig,
     output_type: type[ModelT],
     system: str,
     user: str,
     *,
-    timeout: float | None = None,
+    timeout: float,
+    purpose: str,
 ) -> ModelT:
-    """单次结构化调用：system+user → output_type 实例（MUST-13：wait_for 超时）。
-
-    timeout 缺省取 cfg.llm_timeout（F-604 可配置；小证据探针等调用方可显式传短超时）；
-    温度/max_tokens 经 ModelSettings 下发（未设则不下发，走供应商默认）。
-    F-004 适配：prompt 注入 JSON Schema，本地解析 + pydantic 校验 + 一次纠偏重试——
-    不依赖供应商 response_format（实测 DeepSeek 400: response_format type unavailable）。
-    """
+    """单候选的一次结构化调用（含纠偏重试），失败转细分错误码（M-9）。"""
     _ensure_client(cfg)
-    effective_timeout = timeout if timeout is not None else cfg.llm_timeout
     schema = json.dumps(output_type.model_json_schema(), ensure_ascii=False)
-    instructions = f"{system}\n\n{JSON_STRICT_RULES}\n且必须符合如下 JSON Schema：\n{schema}"
+    instructions = _instructions(cfg, system, schema)
     agent = Agent(
         name="devprompt-llm",
         instructions=instructions,
@@ -237,17 +384,28 @@ async def chat_structured(
             extra_body=cfg.extra_body_params() or None,
         ),
     )
+    started = time.monotonic()
     try:
-        result = await asyncio.wait_for(
-            Runner.run(agent, user, max_turns=1), timeout=effective_timeout
-        )
+        result = await _run_with_retry(agent, user, timeout)
     except Exception as exc:
         # LLM 调用失败 → 细分错误码（5011~5015），供前端给精确文案（M-9）
+        await _record_routing_stat(
+            cfg,
+            task_kind=_PURPOSE_TASK_KIND.get(purpose, "generate"),
+            success=False,
+            latency_ms=int((time.monotonic() - started) * 1000),
+        )
         raise _llm_failure_error(exc, cfg, output_type) from exc
     _record_usage(getattr(result, "usage", None))
     raw = str(result.final_output)
     parsed = _parse_model(output_type, raw)
     if parsed is not None:
+        await _record_routing_stat(
+            cfg,
+            task_kind=_PURPOSE_TASK_KIND.get(purpose, "generate"),
+            success=True,
+            latency_ms=int((time.monotonic() - started) * 1000),
+        )
         return parsed
     # 纠偏重试一次：把首轮输出与解析失败原因回喂，要求修正为纯 JSON
     retry_input = (
@@ -256,12 +414,24 @@ async def chat_structured(
     )
     try:
         result2 = await asyncio.wait_for(
-            Runner.run(agent, retry_input, max_turns=1), timeout=effective_timeout
+            Runner.run(agent, retry_input, max_turns=1), timeout=timeout
         )
     except Exception as exc:
+        await _record_routing_stat(
+            cfg,
+            task_kind=_PURPOSE_TASK_KIND.get(purpose, "generate"),
+            success=False,
+            latency_ms=int((time.monotonic() - started) * 1000),
+        )
         raise _llm_failure_error(exc, cfg, output_type) from exc
     _record_usage(getattr(result2, "usage", None))
     parsed2 = _parse_model(output_type, str(result2.final_output))
+    await _record_routing_stat(
+        cfg,
+        task_kind=_PURPOSE_TASK_KIND.get(purpose, "generate"),
+        success=parsed2 is not None,
+        latency_ms=int((time.monotonic() - started) * 1000),
+    )
     if parsed2 is None:
         raise GenerationError(
             "LLM 两次输出均无法解析为约定 JSON 结构",
@@ -269,6 +439,65 @@ async def chat_structured(
             context={"model": cfg.llm_model, "output_type": output_type.__name__},
         )
     return parsed2
+
+
+def _assert_request_budget(cfg: AppConfig, system: str, user: str) -> None:
+    """A7 请求级预算断言：system+user+预留输出必须装进窗口，不足即抛。
+
+    `RequestBudgetError` 被 `is_context_overflow` 识别，service 层的
+    `with_overflow_retry` 会压缩一次上下文后重发（A7 与 A8 同一闭环）。
+    """
+    max_output = int(cfg.effective_llm_params().get("max_tokens") or 0)
+    ensure_request_fits(
+        estimate_tokens(f"{system}\n\n{user}"),
+        request_budget(cfg.context_window_tokens, max_output),
+    )
+
+
+async def chat_structured(
+    cfg: AppConfig,
+    output_type: type[ModelT],
+    system: str,
+    user: str,
+    *,
+    timeout: float | None = None,
+    purpose: RoutingPurpose = "generate",
+    model_id: str = "",
+) -> ModelT:
+    """单次结构化调用（多模型路由 + 主备，G2–G6/G9）。
+
+    timeout 缺省取 cfg.llm_timeout（F-604 可配置；小证据探针等调用方可显式传短超时）；
+    温度/max_tokens 经 ModelSettings 下发（未设则不下发，走供应商默认）。
+    F-004 适配：prompt 注入 JSON Schema，本地解析 + pydantic 校验 + 一次纠偏重试——
+    不依赖供应商 response_format（实测 DeepSeek 400: response_format type unavailable）。
+
+    路由：候选 ≤1 或未开 `multi_model_routing` 时链上只有当前配置（行为对等）；
+    可降级失败（超时/限流/上游错误）按链顺次切换，额度/鉴权类直接抛。
+    """
+    _assert_request_budget(cfg, system, user)
+    effective_timeout = timeout if timeout is not None else cfg.llm_timeout
+    chain = await _resolve_chain(cfg, purpose=purpose, model_id=model_id)
+    last_error: DevPromptError | None = None
+    for index, candidate in enumerate(chain):
+        try:
+            return await _structured_once(
+                candidate,
+                output_type,
+                system,
+                user,
+                timeout=effective_timeout,
+                purpose=purpose,
+            )
+        except DevPromptError as exc:
+            last_error = exc
+            if exc.code not in _FAILOVER_CODES or index == len(chain) - 1:
+                raise
+            logger.warning(
+                "llm.failover",
+                extra={"model": candidate.llm_model, "code": exc.code, "purpose": purpose},
+            )
+    assert last_error is not None  # 链恒非空，最后一个候选要么成功要么已 raise
+    raise last_error
 
 
 def _parse_model(output_type: type[ModelT], raw: str) -> ModelT | None:
@@ -374,6 +603,9 @@ class LLMGenerator:
             VariantDraft,
             tpl.system(locale),
             tpl.build_user(ctx, locale),
+            timeout=self._cfg.llm_generate_timeout,
+            purpose="generate",
+            model_id=ctx.model_override,
         )
         validate_variant(draft)
         return draft
@@ -392,6 +624,9 @@ class LLMGenerator:
             ReplyOutput,
             reply_tpl.system_text(locale),
             reply_tpl.build_user(ctx, locale),
+            timeout=self._cfg.llm_generate_timeout,
+            purpose="generate",
+            model_id=ctx.model_override,
         )
         return out.text
 
@@ -418,6 +653,9 @@ class LLMGenerator:
             MultiVariantDraft,
             _build_multi_system(levels, locale),
             _build_multi_user(ctx, levels, locale),
+            timeout=self._cfg.llm_generate_timeout,
+            purpose="generate",
+            model_id=ctx.model_override,
         )
         got = frozenset(v.level for v in draft.variants)
         # U-7（2026-11-06 业主裁定）：套数不足不再整单失败——接受请求档位的非空子集，
@@ -446,6 +684,14 @@ _LLM_FAILURE_CODES: Final[dict[str, int]] = {
     "invalid_api_key": registered(5014),
     "upstream_error": registered(5015),
 }
+
+#: 允许主备降级的失败码：超时/限流/上游错误（复用本表口径）；
+#: 额度/鉴权需用户介入，换模型救不了，直接抛。
+_FAILOVER_CODES: Final[frozenset[int]] = frozenset(
+    code
+    for scenario, code in _LLM_FAILURE_CODES.items()
+    if scenario in {"timeout", "rate_limit", "upstream_error"}
+)
 
 #: 错误文本特征 → 场景（按出现顺序匹配，顺序即优先级：额度/鉴权须先于限流判断）
 _SCENARIO_SIGNALS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
@@ -614,26 +860,13 @@ def parse_structured(output_type: type[ModelT], raw: str) -> ModelT | None:
     return _parse_model(output_type, raw)
 
 
-async def chat_with_tools(
-    cfg: AppConfig,
-    system: str,
-    user: str,
-    *,
-    timeout: float | None = None,
+async def _tools_once(
+    cfg: AppConfig, system: str, user: str, *, timeout: float, purpose: str
 ) -> ToolChatResult:
-    """单次带工具调用：模型可回 function_call（AskUserQuestion），否则回文本。
-
-    刻意**不用 Runner**：``Runner.run(max_turns=1)`` 在模型发起工具调用时会自动执行
-    工具并继续，用满轮数只会抛 ``MaxTurnsExceeded``，拿不到稳定的 call 参数。
-    这里直接调 ``Model.get_response``，工具不会被真正执行（``on_invoke_tool`` 是空桩）。
-
-    四种 provider 都能传 tools 并解析 function_call；但 anthropic/gemini 原生适配器
-    不支持回喂 ``function_call_output``，因此答案不通过 tool result 回传，而是由调用方
-    重建 prompt 携带「已答问题 + 答案」（见 decision/fallback.py）。
-    """
+    """单候选的一次带工具调用（探针专用路径）。"""
     model = build_model(cfg)
     settings = ModelSettings(tool_choice="auto")
-    effective_timeout = timeout if timeout is not None else cfg.llm_timeout
+    started = time.monotonic()
     try:
         response = await asyncio.wait_for(
             model.get_response(
@@ -648,13 +881,66 @@ async def chat_with_tools(
                 conversation_id=None,
                 prompt=None,
             ),
-            timeout=effective_timeout,
+            timeout=timeout,
         )
     except Exception as exc:
+        await _record_routing_stat(
+            cfg,
+            task_kind=_PURPOSE_TASK_KIND.get(purpose, "probe"),
+            success=False,
+            latency_ms=int((time.monotonic() - started) * 1000),
+        )
         raise _llm_failure_error(exc, cfg, ToolChatResult) from exc
 
     _record_usage(getattr(response, "usage", None))
+    await _record_routing_stat(
+        cfg,
+        task_kind=_PURPOSE_TASK_KIND.get(purpose, "probe"),
+        success=True,
+        latency_ms=int((time.monotonic() - started) * 1000),
+    )
     tool_call = _first_function_call(list(response.output))
     if tool_call is not None:
         return ToolChatResult(tool_call=tool_call)
     return ToolChatResult(text=_text_of(response.output))
+
+
+async def chat_with_tools(
+    cfg: AppConfig,
+    system: str,
+    user: str,
+    *,
+    timeout: float | None = None,
+    purpose: RoutingPurpose = "probe",
+    model_id: str = "",
+) -> ToolChatResult:
+    """单次带工具调用：模型可回 function_call（AskUserQuestion），否则回文本。
+
+    刻意**不用 Runner**：``Runner.run(max_turns=1)`` 在模型发起工具调用时会自动执行
+    工具并继续，用满轮数只会抛 ``MaxTurnsExceeded``，拿不到稳定的 call 参数。
+    这里直接调 ``Model.get_response``，工具不会被真正执行（``on_invoke_tool`` 是空桩）。
+
+    四种 provider 都能传 tools 并解析 function_call；但 anthropic/gemini 原生适配器
+    不支持回喂 ``function_call_output``，因此答案不通过 tool result 回传，而是由调用方
+    重建 prompt 携带「已答问题 + 答案」（见 decision/fallback.py）。
+
+    路由与主备语义同 :func:`chat_structured`。
+    """
+    effective_timeout = timeout if timeout is not None else cfg.llm_timeout
+    chain = await _resolve_chain(cfg, purpose=purpose, model_id=model_id)
+    last_error: DevPromptError | None = None
+    for index, candidate in enumerate(chain):
+        try:
+            return await _tools_once(
+                candidate, system, user, timeout=effective_timeout, purpose=purpose
+            )
+        except DevPromptError as exc:
+            last_error = exc
+            if exc.code not in _FAILOVER_CODES or index == len(chain) - 1:
+                raise
+            logger.warning(
+                "llm.failover",
+                extra={"model": candidate.llm_model, "code": exc.code, "purpose": purpose},
+            )
+    assert last_error is not None
+    raise last_error

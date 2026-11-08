@@ -57,6 +57,17 @@ def test_pressure_uses_steps_only_when_budget_is_zero() -> None:
     assert with_budget.pressure > without_budget.pressure
 
 
+def test_pressure_takes_max_of_absolute_and_relative() -> None:
+    """E3/E4：小窗口下绝对占用高时，即使步数占比低压力也必须高。"""
+    few_steps = compute_sensorium(
+        SensoriumInput(steps=[_step(0)], max_steps=24, context_tokens=900, context_window=1000)
+    )
+    none_set = compute_sensorium(SensoriumInput(steps=[_step(0)], max_steps=24))
+
+    assert few_steps.pressure == 0.9
+    assert none_set.pressure < 0.1, "未设窗口时不参与绝对压力判定"
+
+
 def test_coverage_reads_claim_report() -> None:
     assert compute_sensorium(SensoriumInput(claim_coverage=0.75)).coverage == 0.75
     assert compute_sensorium(SensoriumInput(claim_coverage=None)).coverage == 0.0
@@ -81,6 +92,26 @@ def test_familiarity_uses_notes_and_turn_depth() -> None:
 
     assert cold.familiarity == 0.5
     assert warm.familiarity == 1.0
+
+
+def test_quality_marks_fallback_values() -> None:
+    """回退值必须自带标记：零步 / 无断言不能被当成实测良好。"""
+    empty = compute_sensorium(SensoriumInput())
+    assert empty.quality.momentum == "no-data"
+    assert empty.quality.coverage == "no-data"
+    assert empty.quality.stability == "partial"
+
+    measured = compute_sensorium(SensoriumInput(steps=[_step(0)], claim_coverage=0.5))
+    assert measured.quality.momentum == "measured"
+    assert measured.quality.coverage == "measured"
+    assert measured.quality.stability == "measured"
+
+
+def test_quality_does_not_leak_into_payload() -> None:
+    """质量标记不进 payload：下游按 float 消费，混入字符串会破坏契约。"""
+    payload = compute_sensorium(SensoriumInput()).as_payload()
+
+    assert all(isinstance(value, float) for value in payload.values())
 
 
 def test_snapshot_is_deterministic_and_bounded() -> None:

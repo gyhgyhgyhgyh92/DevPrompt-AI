@@ -90,7 +90,17 @@ class NextActionOutput(BaseModel):
     由 service 在分发时做一次转换。
     """
 
-    action: Literal["retrieve", "probe", "ask", "generate", "rank", "deliver", "abort", "reply"]
+    action: Literal[
+        "retrieve",
+        "probe",
+        "ask",
+        "generate",
+        "rank",
+        "deliver",
+        "abort",
+        "reply",
+        "delegate",
+    ]
     reason: str = ""
     #: 本次决策的实测置信度；模型未给判断时为 None（与 FactProbeOutput 同一约定）。
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)

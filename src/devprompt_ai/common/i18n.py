@@ -67,6 +67,7 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "gate.yellow.recommend_revoked": (
             "原推荐 {level} 档已撤销（分差 {gap} 达标，但本轮证据不足以背书）"
         ),
+        "gate.yellow.impact_uncovered": "影响半径内 {count} 个关联文件未被方案覆盖",
         "gate.disclosure.yellow": "本轮证据可用但不足以背书推荐，方案照常提供：{reasons}。",
         "ranking.conf_base": "置信度不足，建议人工选择",
         "ranking.conf_close": "三套适配度接近，建议人工选择",
@@ -244,6 +245,9 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "gate.yellow.recommend_revoked": (
             "The original recommendation (level {level}, gap {gap}) was revoked: "
             "this turn's evidence is not strong enough to endorse it"
+        ),
+        "gate.yellow.impact_uncovered": (
+            "{count} file(s) in the impact radius are not covered by the variants"
         ),
         "gate.disclosure.yellow": (
             "Evidence is usable but not enough to endorse a recommendation; "

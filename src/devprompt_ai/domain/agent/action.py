@@ -31,6 +31,8 @@ class AgentAction(str, Enum):
     #: 用于「为什么选 B」「两套差异是什么」这类讨论性追问——此前所有动作都会
     #: 改动状态，导致这类追问只能把上一轮方案原样返回。
     REPLY = "reply"
+    #: 只读委派：把「查清某处现状」交给独立上下文的 worker，主会话只收结论。
+    DELEGATE = "delegate"
 
 
 #: 终结动作：执行后循环立即结束，不再回到 AGENTIC。

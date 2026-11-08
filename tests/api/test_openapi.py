@@ -24,26 +24,30 @@ def _load_export_module() -> Any:
     return mod
 
 
-def test_openapi_covers_eighteen_operations() -> None:
-    """15 路径 / 18 操作：preference/settings 各 GET+PUT，history PATCH+DELETE。
+def test_openapi_covers_all_operations() -> None:
+    """22 路径 / 25 操作：preference/settings 各 GET+PUT，history PATCH+DELETE。
 
-    2026-10-17 动态模型目录新增 2 操作（读取 + 刷新 `/settings/models/catalog`），
-    下线，改走浏览器扩展 + native messaging），故再改为 **14/17**——BREAKING。
-    2026-10-19 思考过程流式展示新增 `POST /optimize/stream`，改为 **15/18**（向后兼容，
-    旧 `POST /optimize` 保留）。
-    2026-11-01 项目级批量删除在既有 `/history` 路径上新增 DELETE 方法：路径数不变（14），
-    操作数 16 → **17**。
-    2026-11-03 答复过程流式化新增 `POST /followup/{flow_id}/stream`：**15 路径 / 18 操作**。
+    2026-10-19 思考过程流式展示新增 `POST /optimize/stream`，改为 **15/18**；
+    2026-11-03 答复过程流式化新增 `POST /followup/{flow_id}/stream`：**15/18**。
+    2026-11-07 多端运行时协议新增 5 个操作（runs / sessions stream / interventions /
+    cancel / events）：**21 路径 / 24 操作**——BREAKING，旧流式端点保留兼容壳。
+    2026-11-08 工具输出治理新增 `GET /artifacts/{id}` 回读：**22 路径 / 25 操作**。
+    2026-11-08 F10 会话级模型热切换新增 `POST /sessions/{id}/model`：**23 路径 / 26 操作**。
     """
     doc = create_app().openapi()
     paths: dict[str, Any] = doc["paths"]
-    assert len(paths) == 16
+    assert len(paths) == 23
     assert all(p.startswith("/api/v1/") for p in paths)
     operations = sum(
         len([m for m in ops if m in {"get", "put", "post", "patch", "delete"}])
         for ops in paths.values()
     )
-    assert operations == 19
+    assert operations == 26
+    assert "get" in paths["/api/v1/artifacts/{artifact_id}"]
+    assert "post" in paths["/api/v1/sessions/{session_id}/model"]
+    assert "post" in paths["/api/v1/runs"]
+    assert "get" in paths["/api/v1/sessions/{session_id}/stream"]
+    assert "post" in paths["/api/v1/interventions/{request_id}/answer"]
     assert {"get", "delete"} <= set(paths["/api/v1/history"])
     assert "post" in paths["/api/v1/followup/{flow_id}/stream"]
     assert "get" in paths["/api/v1/settings/models/catalog"]
@@ -123,14 +127,16 @@ class TestContextWindowTierContract:
         assert "ParameterDefinitionView" not in doc
 
     def test_path_and_operation_count_unchanged(self) -> None:
-        """档位契约改动**不新增路径**（2026-10-17）；2026-10-19 删除 browse 后为 14/17，
-        同日新增 /optimize/stream 后为 15/18；2026-11-01 项目级批量删除挂在既有
-        `/history` 路径上（14/17）；2026-11-03 新增 /followup/{flow_id}/stream 后
-        为 **15 路径 / 18 操作**。"""
+        """档位契约改动**不新增路径**（2026-10-17）。
+
+        2026-11-07 多端运行时协议新增 5 个操作后为 21 路径 / 24 操作（BREAKING）；
+        2026-11-08 工具输出治理新增 `GET /artifacts/{id}`、F10 新增 `POST /sessions/{id}/model`
+        后为 **23 路径 / 26 操作**。
+        """
         doc = create_app().openapi()
-        assert len(doc["paths"]) == 16
+        assert len(doc["paths"]) == 23
         operations = sum(
             len([k for k in v if k in {"get", "post", "put", "patch", "delete"}])
             for v in doc["paths"].values()
         )
-        assert operations == 19
+        assert operations == 26

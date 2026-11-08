@@ -29,6 +29,8 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "followup.escaped",
         "decision.tools_unsupported",
         "decision.ask_args_invalid",
+        "decision.probe_empty",
+        "retrieval.impact",
         "followup.task_kind",
         "followup.question_lint",
         "followup.question_suppressed",
@@ -49,6 +51,10 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "evidence.anchor_invalid",
         "delivery.gate",
         "session.rolled_back",
+        "session.model_switch",
+        "agent.finish_gate_blocked",
+        "context.overflow_retry",
+        "delegation.rejected",
         "followup.expect_unmet",
         "hook.failed",
         "hook.ran",
@@ -60,6 +66,8 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
 2026-10-15 移除「决策层切换」事件：决策层统一为单一 LLM 实现（无降级切换），该事件已无发射点。
 2026-10-17 新增模型目录两事件：刷新成功（含模型条数）/ 刷新失败（回落旧快照）。
 2026-11-04 星型拓扑新增两事件：每步动作（action/index/duration_ms）与循环终止（reason）。
+2026-11-07 新增 decision.probe_empty：模型未给出任何判定（judgments 为空，参数畸形分支）。
+2026-11-08 新增 session.model_switch：F10 会话级模型热切换。
 """
 
 _telemetry_enabled = True

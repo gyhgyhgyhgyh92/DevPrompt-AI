@@ -77,17 +77,16 @@ def test_case1_beats_case2_priority() -> None:
 
 
 def test_case3_gap_below_soft_no_mark() -> None:
-    # 条件③：置信度充足但 d=0.11 < 0.12 → 不标
+    # 条件③：置信度充足但 d=0.11 < 0.25 → 不标
     entries = [_entry("A", 0.9, 0.91), _entry("B", 0.9, 0.8)]  # gap = 0.10999999999999999
     result = decide_mark(entries)
     assert result.marked is False
     assert result.reason == "三套适配度接近，建议人工选择"
 
 
-def test_boundary_d_0_12_marks_with_small_gap() -> None:
-    # 边界（MUST-27 条件⑤）：0.12 ≤ d < 0.5 含左端点 → d==0.12 标 + 「分差较小」
-    # 注：任务清单「d==0.12 不标」与 MUST-27 条件③（严格小于）冲突，按宪法实现
-    entries = [_entry("A", 0.9, 0.92), _entry("B", 0.9, 0.8)]  # gap == 0.12 精确
+def test_boundary_d_0_25_marks_with_small_gap() -> None:
+    # 边界（2026-11-07：GAP_SOFT 与 0.25 打分粒度对齐）：0.25 ≤ d < 0.5 标 + 「分差较小」
+    entries = [_entry("A", 0.9, 1.0), _entry("B", 0.9, 0.75)]  # gap == 0.25 精确
     result = decide_mark(entries)
     assert result.marked is True
     assert result.reason == "分差较小"

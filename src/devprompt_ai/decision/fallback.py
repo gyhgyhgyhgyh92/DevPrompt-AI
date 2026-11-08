@@ -103,6 +103,8 @@ class LLMFallbackDecider:
             RankComponentsOutput,
             RANK_SYSTEM,
             user,
+            timeout=self._cfg.llm_rank_timeout,
+            purpose="rank",
         )
         validate_ranking(out, len(candidates))
         return out
@@ -131,10 +133,23 @@ class LLMFallbackDecider:
             user = f"{user}\n\n【已确认的问答（不要再问这些）】\n{block}"
 
         try:
-            result = await chat_with_tools(self._cfg, FACTS_SYSTEM, user)
+            result = await chat_with_tools(
+                self._cfg,
+                FACTS_SYSTEM,
+                user,
+                timeout=self._cfg.llm_probe_timeout,
+                purpose="probe",
+            )
         except DevPromptError as exc:
             emit_warning("decision.tools_unsupported", reason=type(exc).__name__)
-            return await chat_structured(self._cfg, FactProbeOutput, FACTS_SYSTEM, user)
+            return await chat_structured(
+                self._cfg,
+                FactProbeOutput,
+                FACTS_SYSTEM,
+                user,
+                timeout=self._cfg.llm_probe_timeout,
+                purpose="probe",
+            )
 
         if result.tool_call is not None:
             ask = parse_ask_call(result.tool_call.arguments)
@@ -162,7 +177,14 @@ class LLMFallbackDecider:
         if parsed is not None:
             return parsed
         # 文本不是合法 JSON：退回结构化调用（自带纠偏重试与错误码细分）
-        return await chat_structured(self._cfg, FactProbeOutput, FACTS_SYSTEM, user)
+        return await chat_structured(
+            self._cfg,
+            FactProbeOutput,
+            FACTS_SYSTEM,
+            user,
+            timeout=self._cfg.llm_probe_timeout,
+            purpose="probe",
+        )
 
     async def score_prompts(
         self, context: str, variants: list[tuple[str, str]]
@@ -177,6 +199,8 @@ class LLMFallbackDecider:
             ScorePromptsOutput,
             SCORE_SYSTEM,
             user,
+            timeout=self._cfg.llm_rank_timeout,
+            purpose="rank",
         )
 
     async def next_action(
@@ -221,6 +245,8 @@ class LLMFallbackDecider:
             NextActionOutput,
             NEXT_ACTION_SYSTEM,
             user,
+            timeout=self._cfg.llm_rank_timeout,
+            purpose="decide",
         )
 
 

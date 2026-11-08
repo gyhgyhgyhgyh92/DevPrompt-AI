@@ -4,6 +4,46 @@
  */
 
 export interface paths {
+    "/api/v1/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Artifact
+         * @description 回读被截断工具的全量输出；内容可能含代码正文，禁止写入日志（MUST-19）。
+         */
+        get: operations["read_artifact_api_v1_artifacts__artifact_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Events
+         * @description 冷启动回填：取 seq 之前的事件（分页）。
+         */
+        get: operations["list_events_api_v1_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/followup/{flow_id}": {
         parameters: {
             query?: never;
@@ -155,6 +195,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/interventions/{request_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Intervention
+         * @description 审批/提问应答；第一应答获胜，重复应答返回 6001。
+         */
+        post: operations["answer_intervention_api_v1_interventions__request_id__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/optimize": {
         parameters: {
             query?: never;
@@ -244,6 +304,86 @@ export interface paths {
         };
         /** Get Result */
         get: operations["get_result_api_v1_result__flow_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Run
+         * @description 启动一次运行；执行在服务端独立进行，连接断开不取消。
+         */
+        post: operations["start_run_api_v1_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Run
+         * @description 取消运行；执行体收到 CancelledError 后以 aborted 收尾。
+         */
+        post: operations["cancel_run_api_v1_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch Session Model
+         * @description 会话级模型热切换（F10）：写会话覆盖，下一轮生成即生效；空串清除覆盖。
+         */
+        post: operations["switch_session_model_api_v1_sessions__session_id__model_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Session
+         * @description 订阅会话事件流；?since=N 只补差，建连先收 seq=0 合成快照。
+         */
+        get: operations["stream_session_api_v1_sessions__session_id__stream_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -534,6 +674,50 @@ export interface components {
              */
             request_id: string;
         };
+        /** ApiResponse[dict[str, Any]] */
+        ApiResponse_dict_str__Any__: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            /** Data */
+            data?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
+        /** ApiResponse[list[dict[str, Any]]] */
+        ApiResponse_list_dict_str__Any___: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            /** Data */
+            data?: {
+                [key: string]: unknown;
+            }[] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
         /**
          * AskOptionPayload
          * @description 反问选项（对齐 CodeBuddy SDK AskUserQuestion 的 options[]）。
@@ -751,6 +935,22 @@ export interface components {
             pinned?: boolean | null;
             /** Title */
             title?: string | null;
+        };
+        /**
+         * InterventionAnswerRequest
+         * @description 审批/提问的应答；``decision`` 必填，缺字段由 422 拒绝（不默认批准）。
+         */
+        InterventionAnswerRequest: {
+            /**
+             * Answer
+             * @default
+             */
+            answer: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "deny" | "answer";
         };
         /**
          * LockedSettings
@@ -1216,6 +1416,17 @@ export interface components {
             total_symbols: number;
         };
         /**
+         * SessionModelRequest
+         * @description F10 会话级模型切换：``model_id`` 为注册表条目 id；空串 = 清除覆盖。
+         */
+        SessionModelRequest: {
+            /**
+             * Model Id
+             * @default
+             */
+            model_id: string;
+        };
+        /**
          * SettingsResponse
          * @description GET/PUT /settings 数据体（T6-11）。
          *
@@ -1268,6 +1479,34 @@ export interface components {
             process?: components["schemas"]["ProcessUpdate"] | null;
             /** Provider Configs */
             provider_configs?: components["schemas"]["ProviderConfigUpdate"][] | null;
+        };
+        /**
+         * StartRunRequest
+         * @description 启动一次运行。``session_id`` 由前端生成，便于立刻订阅。
+         */
+        StartRunRequest: {
+            /**
+             * Base Turn Id
+             * @default
+             */
+            base_turn_id: string;
+            /**
+             * Locale
+             * @default zh-CN
+             */
+            locale: string;
+            /**
+             * Project
+             * @default
+             */
+            project: string;
+            /**
+             * Sentence
+             * @default
+             */
+            sentence: string;
+            /** Session Id */
+            session_id: string;
         };
         /**
          * SymbolPayload
@@ -1420,6 +1659,70 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    read_artifact_api_v1_artifacts__artifact_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_events_api_v1_events_get: {
+        parameters: {
+            query: {
+                session_id: string;
+                before?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_dict_str__Any___"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_followup_api_v1_followup__flow_id__post: {
         parameters: {
             query?: never;
@@ -1708,6 +2011,41 @@ export interface operations {
             };
         };
     };
+    answer_intervention_api_v1_interventions__request_id__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InterventionAnswerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_optimize_api_v1_optimize_post: {
         parameters: {
             query?: never;
@@ -1854,6 +2192,142 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_FlowSnapshotResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_run_api_v1_runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Request-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_run_api_v1_runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    switch_session_model_api_v1_sessions__session_id__model_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Request-ID"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionModelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stream_session_api_v1_sessions__session_id__stream_get: {
+        parameters: {
+            query?: {
+                since?: number;
+            };
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

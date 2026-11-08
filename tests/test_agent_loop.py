@@ -628,8 +628,16 @@ def _probe_session(store: FakeStore, *, all_pass: bool) -> FlowSession:
 
 
 async def test_no_data_with_complete_evidence_reaches_complete() -> None:
-    """模型未给判断（no_data）+ 七项全过 + 无未决 → 视为信息完备（此前被假 0.0 卡住）。"""
-    svc, store = _service(ScriptedDecider(actions=[], probe_output=_no_data_probe()))
+    """模型给了判定但未给置信度（no_data）+ 七项全过 + 无未决 → 视为信息完备。
+
+    2026-11-07：判定的存在是前置条件——空判定见下一条测试。
+    """
+    probe = FactProbeOutput(
+        judgments=[FactJudgment(key="symbol_in_file", passed=True, confidence=1.0)],
+        overall_confidence=None,
+        confidence_source="no_data",
+    )
+    svc, store = _service(ScriptedDecider(actions=[], probe_output=probe))
     session = _probe_session(store, all_pass=True)
 
     has_unknowns = await svc._act_probe(session, request_id="r1")
@@ -638,6 +646,17 @@ async def test_no_data_with_complete_evidence_reaches_complete() -> None:
     assert session.data["facts_complete"] is True
     assert session.data["confidence_source"] == "no_data"
     assert session.data["probe_confidence"] is None
+
+
+async def test_empty_judgements_are_not_complete() -> None:
+    """模型没给出任何判定（参数畸形走空分支）→ 不得判完备（2026-11-07 静默降质修复）。"""
+    svc, store = _service(ScriptedDecider(actions=[], probe_output=_no_data_probe()))
+    session = _probe_session(store, all_pass=True)
+
+    has_unknowns = await svc._act_probe(session, request_id="r1-empty")
+
+    assert has_unknowns is False
+    assert session.data["facts_complete"] is False
 
 
 async def test_no_data_with_pending_questions_is_not_complete() -> None:
@@ -1010,8 +1029,9 @@ def test_inherited_clarifications_invalidated_when_target_changes(
 
 
 def test_undeclared_claims_keep_c_when_strict_off() -> None:
-    """默认灰度关闭：空声明只披露不改档，避免一次性大量降档。"""
+    """strict 关闭时空声明只披露不改档（默认已改为 True，故此处显式关闭）。"""
     svc, store = _service(ScriptedDecider(actions=[]))
+    svc._cfg.claim_strict = False
     session = _probe_session(store, all_pass=True)
     session.state = FlowState.AGENTIC.value
     session.data["level"] = "C"

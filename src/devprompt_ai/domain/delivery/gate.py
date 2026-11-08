@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale, tr
+from devprompt_ai.domain.delivery.attribution import Attribution, GateColor, evaluate_attribution
 from devprompt_ai.domain.generate.claims import CLAIM_COVERAGE_MIN
 from devprompt_ai.domain.models import FactResult
 
@@ -53,6 +54,8 @@ class DeliveryInput:
     #: 打分层的推荐档位与分差，用于把「原推荐 X 已撤销」说清楚。
     ranked_level: str = ""
     ranked_gap: float | None = None
+    #: 改动归属（E11）：None 表示无影响半径数据（未开 repo 图），不参与判定
+    attribution: Attribution | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +107,16 @@ def evaluate_delivery(data: DeliveryInput, locale: Locale = DEFAULT_LOCALE) -> D
         )
 
     yellow: list[str] = []
+    if data.attribution is not None and (
+        evaluate_attribution(data.attribution) is not GateColor.GREEN
+    ):
+        yellow.append(
+            tr(
+                "gate.yellow.impact_uncovered",
+                locale,
+                count=len(data.attribution.uncovered_impact),
+            )
+        )
     if data.claim_coverage is not None and data.claim_coverage < CLAIM_COVERAGE_MIN:
         yellow.append(
             tr(

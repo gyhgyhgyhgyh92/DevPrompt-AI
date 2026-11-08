@@ -18,7 +18,7 @@ from starlette.types import Scope
 from devprompt_ai.common.process import ProcessError, ProcessTimeoutError
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.errors import DevPromptError
-from devprompt_ai.interfaces.api import routes
+from devprompt_ai.interfaces.api import routes, runtime_routes
 from devprompt_ai.interfaces.api.schemas import ApiResponse
 
 
@@ -178,6 +178,7 @@ def create_app() -> FastAPI:
         return response
 
     app.include_router(routes.router)
+    app.include_router(runtime_routes.router)
     for exc_type in (DevPromptError, ProcessError, ProcessTimeoutError, TimeoutError):
         app.add_exception_handler(exc_type, _render_error)
     # py3.10 下 asyncio.TimeoutError 与内建 TimeoutError 非同一类，显式覆盖
