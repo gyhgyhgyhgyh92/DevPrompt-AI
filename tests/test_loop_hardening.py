@@ -272,6 +272,51 @@ async def test_append_violation_warns_but_continues() -> None:
     assert session.data["context_turn_indexes"] != [99], "基线被本轮真实序列覆盖"
 
 
+def test_orders_from_payload_builds_dependency_ids() -> None:
+    """K6 多波来源：草案→工单（序号依赖换工单 id，只读白名单，空目标丢弃）。"""
+    session = _session_stub()
+    session.session_id = "sess-abcdefgh1234"
+    session.data["delegation_orders"] = [
+        {"profile": "verifier", "objective": "审查 A", "scope_files": ["src/a.ts"]},
+        {
+            "profile": "code_scout",
+            "objective": "探查 B",
+            "scope_files": ["src/b.ts"],
+            "dependencies": ["0"],
+        },
+        {"profile": "patcher", "objective": "", "scope_files": []},  # 空目标丢弃
+    ]
+
+    orders = ForgeService._orders_from_payload(session)  # noqa: SLF001
+
+    assert [o.id for o in orders] == ["delegate-sess-abc-0", "delegate-sess-abc-1"]
+    assert orders[0].profile == "verifier"
+    assert orders[1].dependencies == (orders[0].id,), "序号依赖换成工单 id"
+
+
+async def test_delegate_runs_multi_order_waves() -> None:
+    """决策层草案 → 多波执行：两个工单分两波（依赖），结果按 id 落位。"""
+    svc, _store = await _service_with_data()
+    session = _session_of(svc)
+    session.data["delegation_orders"] = [
+        {"objective": "审查 A", "scope_files": ["src/a.ts"], "dependencies": []},
+        {
+            "profile": "verifier",
+            "objective": "探查 B",
+            "scope_files": ["src/b.ts"],
+            "dependencies": ["0"],
+        },
+    ]
+
+    await svc._act_delegate(session, progress=None)  # noqa: SLF001
+
+    delegation = session.data["delegation"]
+    sid = session.session_id[:8]
+    assert set(delegation["results"]) == {f"delegate-{sid}-0", f"delegate-{sid}-1"}
+    assert delegation["results"][f"delegate-{sid}-0"]["status"] == "ok"
+    assert delegation["status"] == "ok", "首工单结果作为委派主状态"
+
+
 async def test_checkpoint_sink_receives_step_payload() -> None:
     """阶段7：每 5 步的 checkpoint 经 sink 落 run_events；sink 故障不阻断主循环。"""
     calls: list[tuple[str, dict[str, Any]]] = []

@@ -160,3 +160,66 @@ describe('useOptimizeStore 快照镜像', () => {
     expect(state.isSubmitting).toBe(false)
   })
 })
+
+describe('useOptimizeStore 运行时事件守卫', () => {
+  it('agent.checkpoint 帧直写执行进度镜像', () => {
+    useOptimizeStore.getState().applyRunEvent({
+      seq: 1,
+      type: 'agent.checkpoint',
+      run_id: 'r1',
+      data: { step: 5, action: 'retrieve', facts_passed: 3, request_id: 'x' },
+      ts: '',
+    })
+    const state = useOptimizeStore.getState()
+    expect(state.agentStep).toBe(5)
+    expect(state.agentAction).toBe('retrieve')
+  })
+
+  it('delegation.wave / rejected / context.compacted 帧进思考时间线', () => {
+    const store = useOptimizeStore.getState()
+    store.setSubmitting(true)
+    useOptimizeStore.setState({ isThinking: true })
+    useOptimizeStore.getState().applyRunEvent({
+      seq: 2,
+      type: 'delegation.wave',
+      run_id: 'r1',
+      data: { wave: 0, total: 2, orders: ['delegate-x-0'] },
+      ts: '',
+    })
+    useOptimizeStore.getState().applyRunEvent({
+      seq: 3,
+      type: 'delegation.rejected',
+      run_id: 'r1',
+      data: { reason: '占位冲突' },
+      ts: '',
+    })
+    useOptimizeStore.getState().applyRunEvent({
+      seq: 4,
+      type: 'context.compacted',
+      run_id: 'r1',
+      data: { layers: ['compacted:micro'] },
+      ts: '',
+    })
+    const thinking = useOptimizeStore.getState().thinking
+    expect(thinking.some((item) => item.kind === 'action' && item.title === '委派波次 1/2')).toBe(
+      true,
+    )
+    expect(thinking.some((item) => item.kind === 'action' && item.status === 'failed')).toBe(true)
+    expect(thinking.some((item) => item.kind === 'text' && item.text.includes('上下文已压缩'))).toBe(
+      true,
+    )
+  })
+
+  it('畸形载荷安全丢弃不崩', () => {
+    expect(() =>
+      useOptimizeStore.getState().applyRunEvent({
+        seq: 5,
+        type: 'agent.checkpoint',
+        run_id: 'r1',
+        data: { step: 'oops' },
+        ts: '',
+      }),
+    ).not.toThrow()
+    expect(useOptimizeStore.getState().agentStep).not.toBe('oops')
+  })
+})

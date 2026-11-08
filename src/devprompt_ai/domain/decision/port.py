@@ -83,6 +83,19 @@ class FactProbeOutput(BaseModel):
         return self
 
 
+class DelegationOrderDraft(BaseModel):
+    """决策层下发的委派工单草案（K6 多波来源）。
+
+    只读两档（K4 边界：patcher 写工不下发）；id 由 service 按序补齐，
+    ``dependencies`` 引用其它草案的**序号**（"0"/"1"…），service 负责换成工单 id。
+    """
+
+    profile: Literal["code_scout", "verifier"] = "code_scout"
+    objective: str = Field(min_length=1, max_length=300)
+    scope_files: tuple[str, ...] = ()
+    dependencies: tuple[str, ...] = ()
+
+
 class NextActionOutput(BaseModel):
     """Agentic 循环的下一步动作（F-201 扩展）。
 
@@ -105,6 +118,8 @@ class NextActionOutput(BaseModel):
     #: 本次决策的实测置信度；模型未给判断时为 None（与 FactProbeOutput 同一约定）。
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     confidence_source: Literal["measured", "no_data"] = "measured"
+    #: K6 多波来源：action=delegate 时可下发工单列表；空缺时 service 走确定性单工单
+    delegation_orders: tuple[DelegationOrderDraft, ...] = ()
 
     @model_validator(mode="after")
     def _measured_requires_value(self) -> NextActionOutput:

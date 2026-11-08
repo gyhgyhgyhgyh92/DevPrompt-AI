@@ -1050,6 +1050,11 @@ class ForgeService:
                 correction=str(session.data.get("hook_correction", "")),
             )
             action = AgentAction(decision.action)
+            if action is AgentAction.DELEGATE and decision.delegation_orders:
+                # K6 多波来源：决策层草案先落会话，_act_delegate 据此构造工单列表
+                session.data["delegation_orders"] = [
+                    item.model_dump() for item in decision.delegation_orders
+                ][:8]
             started = time.monotonic()
             terminal = await self._execute_action(
                 action, session, request_id=request_id, progress=progress
@@ -1251,10 +1256,11 @@ class ForgeService:
             objective=str(session.data.get("sentence", "")) or "汇总当前取证",
             scope_files=(path,),
         )
-        # K6 多波流水线：单工单=单波（行为等价）；多工单来源（delegation_orders）就绪后零改动。
+        orders = self._orders_from_payload(session) or [order]
+        # K6 多波流水线：决策层草案 → 工单列表按波调度（无草案时单工单=单波，行为等价）。
         # team_orchestration 关闭 → 单工单直连调度闸（旧路径）。
         if self._cfg.team_orchestration:
-            await self._run_delegation_waves(session, [order], progress, execute=_execute)
+            await self._run_delegation_waves(session, orders, progress, execute=_execute)
             return
         # 阶段9：工单过调度闸（可运行性→文件占位→分池容量）再执行；被拒只降级不阻断。
         try:
@@ -1281,6 +1287,59 @@ class ForgeService:
             progress,
             f"委派完成（{result.status}）：{result.output[:200]}",
         )
+
+    @staticmethod
+    def _orders_from_payload(session: FlowSession) -> list[WorkOrder]:
+        """决策层草案 → 工单列表（K6 多波来源）。
+
+        空目标草案丢弃；依赖以草案序号引用（"0"/"1"…），换成本单 id；
+        profile 白名单由 `DelegationOrderDraft` 的 Literal 在解析层强制；
+        无有效草案返回空列表（走确定性单工单）。
+        """
+        from devprompt_ai.domain.agent.work_order import WorkOrder
+
+        payload = session.data.get("delegation_orders")
+        if not isinstance(payload, list) or not payload:
+            return []
+        drafts: list[dict[str, Any]] = []
+        for item in payload[:8]:
+            if not isinstance(item, dict):
+                continue
+            objective = str(item.get("objective") or "").strip()
+            if not objective:
+                continue
+            profile = str(item.get("profile") or "code_scout")
+            drafts.append(
+                {
+                    "profile": profile if profile in {"code_scout", "verifier"} else "code_scout",
+                    "objective": objective[:300],
+                    "scope_files": tuple(str(f) for f in (item.get("scope_files") or ()) if str(f))[
+                        :6
+                    ],
+                    "dependencies": tuple(
+                        str(d) for d in (item.get("dependencies") or ()) if str(d)
+                    ),
+                }
+            )
+        if not drafts:
+            return []
+        prefix = f"delegate-{session.session_id[:8]}"
+        ids = [f"{prefix}-{index}" for index in range(len(drafts))]
+        return [
+            WorkOrder(
+                id=ids[index],
+                parent_turn_id=str(session.data.get("turn_id", "")),
+                profile=draft["profile"],
+                objective=draft["objective"],
+                scope_files=draft["scope_files"],
+                dependencies=tuple(
+                    ids[int(dep)]
+                    for dep in draft["dependencies"]
+                    if dep.isdigit() and int(dep) < len(drafts) and int(dep) != index
+                ),
+            )
+            for index, draft in enumerate(drafts)
+        ]
 
     async def _run_delegation_waves(
         self,

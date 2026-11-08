@@ -320,16 +320,36 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
         set({ agentStep: payload.step, agentAction: payload.action })
         return
       }
-      case 'delegation.rejected':
-        // 守卫解析（畸形帧安全丢弃），按裁定不渲染（视觉无新增元素）
-        parseEventPayload(DelegationRejectedPayloadSchema, event.data)
+      case 'delegation.rejected': {
+        const payload = parseEventPayload(DelegationRejectedPayloadSchema, event.data)
+        if (!payload) return
+        store.appendAction(
+          { title: '委派被拒', detail: payload.reason, scope: '', output: '', status: 'failed' },
+          '',
+        )
         return
-      case 'delegation.wave':
-        parseEventPayload(DelegationWavePayloadSchema, event.data)
+      }
+      case 'delegation.wave': {
+        const payload = parseEventPayload(DelegationWavePayloadSchema, event.data)
+        if (!payload) return
+        store.appendAction(
+          {
+            title: `委派波次 ${payload.wave + 1}/${payload.total}`,
+            detail: payload.orders.join('、'),
+            scope: '',
+            output: '',
+            status: 'ok',
+          },
+          '',
+        )
         return
-      case 'context.compacted':
-        parseEventPayload(CompactedPayloadSchema, event.data)
+      }
+      case 'context.compacted': {
+        const payload = parseEventPayload(CompactedPayloadSchema, event.data)
+        if (!payload) return
+        store.appendThought('上下文已压缩：窗口外的旧轮折叠为摘要', 'compaction')
         return
+      }
       default:
         return
     }
