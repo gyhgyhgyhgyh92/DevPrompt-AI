@@ -257,7 +257,7 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 | `FOLLOWUP_SOFT_ROUND_GUARD` | 10 | 反问软护栏：单流程追问轮数达此值时显式询问用户裁决（非静默终止） |
 | `FOLLOWUP_COST_BUDGET` | 空 | 反问软护栏 LLM 成本预算（空=禁用） |
 | `FACT_PROBE_THRESHOLD` | 0.75 | 事实探针通过线 |
-| `MAX_STATE_TOKENS` | 30000 | 决策 state 上限，超限截断 |
+| `MAX_STATE_TOKENS` | 30000 | 上下文装配预算下限；随档位放大至 160K |
 
 **运行时**：
 
@@ -1038,6 +1038,7 @@ src/devprompt_ai/
 │   ├── errors.py              领域异常类型（码取自 error_codes）
 │   ├── error_codes.py         集中错误码表（架构文档 §3.3 权威清单）
 │   ├── model_spec.py          文本模型能力元数据 / API 形态 / 上下文窗口档位（纯领域表，25厂商）
+│   ├── model/tuning.py        运行时模型参数归一（effort 词表 / Anthropic、Gemini thinking budget；纯函数，2026-11-10）
 │   ├── model_migration.py     注册表条目归一化（读时补默认值，永不抛异常）
 │   ├── prompt_guard.py        跨域共用 prompt 边界与安全声明（T-1~T-5）
 │   ├── progress.py            思考过程文案（阶段进度纯函数 + ProgressSink Protocol；2026-10-19 供流式端点）

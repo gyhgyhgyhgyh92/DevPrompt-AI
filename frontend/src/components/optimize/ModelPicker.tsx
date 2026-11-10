@@ -108,8 +108,10 @@ function TuningPanel({
       : meta.maxContextLength === null
         ? []
         : [meta.maxContextLength]
-  const hasEfforts = meta.efforts.length > 0
-  const modeOn = currentEffort !== ''
+  // `none` 是「关闭思考」的显式值，不作为强度按钮展示；开关关闭时由后端解析。
+  const efforts = meta.efforts.filter((effort) => effort !== 'none')
+  const hasEfforts = efforts.length > 0
+  const modeOn = currentEffort !== '' && currentEffort !== 'none'
   if (windows.length === 0 && !hasEfforts) return null
 
   return (
@@ -138,6 +140,7 @@ function TuningPanel({
           {windows.length <= 1 ? (
             <div className={s('model-picker__panel-title')}>{t('model.nominal_only')}</div>
           ) : null}
+          <div className={s('model-picker__panel-title')}>{t('model.context_budget_hint')}</div>
         </>
       ) : null}
       {hasEfforts ? (
@@ -148,7 +151,7 @@ function TuningPanel({
           </div>
           <div className={s('model-picker__panel-title')}>{t('model.thinking_effort')}</div>
           <ul className={s('model-picker__options')}>
-            {meta.efforts.map((effort) => (
+            {efforts.map((effort) => (
               <li key={effort}>
                 <button
                   type="button"
@@ -225,6 +228,7 @@ export function ModelPicker({
         <div className={s('model-picker__menu')}>
           {entries.map((entry) => {
             const meta = resolveMeta(entry, providers)
+            const efforts = meta.efforts.filter((effort) => effort !== 'none')
             return (
               <div
                 key={entry.id}
@@ -253,11 +257,11 @@ export function ModelPicker({
                     onPickWindow={(tokens) => onTune(entry.id, { max_context_length: tokens })}
                     onToggleMode={(on) =>
                       // 开而未选强度：优先取官方标注的默认档（如 DeepSeek 文档写明默认为 high），
-                      // 无登记默认值才取厂商列表第一档；都没有则不下发，交由厂商自己决定
+                      // 无登记默认值才取列表第一档；都没有则不下发，交由厂商自己决定。
+                      // 关闭写空串：后端在模型登记了 none 时解析为显式关闭。
                       onTune(entry.id, {
                         reasoning_effort: on
-                          ? ((entry.reasoning_effort || meta.defaultEffort || meta.efforts[0]) ??
-                            '')
+                          ? ((entry.reasoning_effort || meta.defaultEffort || efforts[0]) ?? '')
                           : '',
                       })
                     }

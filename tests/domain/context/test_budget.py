@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from devprompt_ai.domain.context.budget import (
+    STATE_BUDGET_CAP,
     fit_blocks,
     request_budget,
+    state_budget_for_window,
     turn_token_budget,
 )
 
@@ -47,3 +49,19 @@ def test_fit_blocks_truncates_only_known_quota() -> None:
     assert len(fitted["project_memory"]) == 100
     assert fitted["project_memory"].endswith("…")
     assert len(fitted["unknown"]) == 9000
+
+
+def test_state_budget_scales_with_window() -> None:
+    assert state_budget_for_window(128_000) == 30_000
+    assert state_budget_for_window(307_200) == 30_000
+    assert state_budget_for_window(500_000) == 50_000
+    assert state_budget_for_window(614_400) == 60_000
+    assert state_budget_for_window(1_048_576) == 100_000
+    assert state_budget_for_window(2_000_000) == STATE_BUDGET_CAP
+
+
+def test_state_budget_respects_floor_and_unknown_window() -> None:
+    assert state_budget_for_window(64_000) == 30_000
+    assert state_budget_for_window(0, floor=12_345) == 12_345
+    assert state_budget_for_window(1_048_576, floor=120_000) == 120_000
+    assert state_budget_for_window(1_048_576, floor=999_999) == 999_999

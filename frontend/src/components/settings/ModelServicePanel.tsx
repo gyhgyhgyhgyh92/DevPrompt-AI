@@ -63,10 +63,16 @@ const FALLBACK_CAPABILITIES: ModelCapabilities = {
 
 let draftSeq = 0
 
-/** 预生成供应商引用键：条目必须在同一次请求里引用它，故 id 由前端先给。 */
+/**
+ * 预生成供应商引用键：条目必须在同一次请求里引用它，故 id 由前端先给。
+ *
+ * **必须跨会话唯一**：早期实现用页内序号 `p-new-N`，刷新页面后序号归零，新增供应商
+ * 会与已落盘的 id 撞名；撞名后写侧按 id 去重只留一条供应商，但其实下面挂着两个
+ * 供应商的模型（表现为「MiniMax 名下出现 Kimi 模型」）。故改用时间戳 + 序号。
+ */
 function newProviderId(): string {
   draftSeq += 1
-  return `p-new-${draftSeq}`
+  return `p-${Date.now().toString(36)}${draftSeq}`
 }
 
 function providerDraftsFrom(settings: SettingsResponse): ProviderDraft[] {
@@ -372,11 +378,23 @@ export function ModelServicePanel() {
                     providers={providerDirectory}
                     value={draft.provider}
                     onChange={(value) => {
+                      if (value === draft.provider) return
                       const picked = findProvider(providerDirectory, value)
+                      // 换供应商 = 换端点：原有勾选与目录都属于旧供应商，必须一并清掉，
+                      // 否则会把别家的 model_id 写进新供应商名下（曾出现「MiniMax 有 Kimi 模型」）。
                       patchDraft(draft.key, {
                         provider: value,
-                        ...(picked && picked.base_url !== '' ? { baseUrl: picked.base_url } : {}),
+                        baseUrl: picked?.base_url ?? '',
+                        selected: [],
+                        perModel: {},
                       })
+                      setCatalogs((prev) => {
+                        if (prev[draft.key] === undefined) return prev
+                        const next = { ...prev }
+                        delete next[draft.key]
+                        return next
+                      })
+                      setStatus({ ok: true, text: t('settings.model.provider_switched') })
                     }}
                   />
                 </div>
@@ -484,6 +502,11 @@ export function ModelServicePanel() {
                             {row?.isActive ? (
                               <span className={s('settings-model-badge')}>
                                 {t('settings.model.current')}
+                              </span>
+                            ) : null}
+                            {item.is_stale ? (
+                              <span className={s('settings-model-badge')}>
+                                {t('settings.model.not_in_list')}
                               </span>
                             ) : null}
                             {row !== undefined ? (

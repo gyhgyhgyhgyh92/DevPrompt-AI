@@ -31,6 +31,7 @@ from agents.tool import Tool
 from openai import AsyncOpenAI
 from openai.types.responses import ResponseOutputMessage, ResponseTextDeltaEvent
 
+from devprompt_ai.domain.model.tuning import anthropic_thinking
 from devprompt_ai.harness.adapters.base import BaseNativeModel
 
 #: Anthropic API 版本头（官方要求；缺省会 400）。
@@ -131,9 +132,10 @@ class AnthropicNativeModel(BaseNativeModel):
         model_settings: Any,
     ) -> dict[str, Any]:
         """组装 Anthropic Messages 请求体。"""
+        max_tokens = self._max_tokens(model_settings)
         request: dict[str, Any] = {
             "model": self._model,
-            "max_tokens": self._max_tokens(model_settings),
+            "max_tokens": max_tokens,
             "messages": messages,
         }
         if system:
@@ -141,14 +143,22 @@ class AnthropicNativeModel(BaseNativeModel):
         if tools:
             request["tools"] = tools
             request["tool_choice"] = {"type": "auto"}
+        # 2026-11-10：思考强度映射为 Anthropic 扩展思考预算。
+        extra_body = getattr(model_settings, "extra_body", None) or {}
+        effort = str(extra_body.get("reasoning_effort", "") or "")
+        thinking = anthropic_thinking(effort, max_tokens)
+        if thinking is not None:
+            request["thinking"] = thinking
         # Anthropic 原生不支持 temperature/top_p 时由 model_spec 的 drop_params 剔除，
-        # 此处只透传 model_settings 中确有的值。
-        temperature = getattr(model_settings, "temperature", None)
-        if isinstance(temperature, int | float):
-            request["temperature"] = float(temperature)
-        top_p = getattr(model_settings, "top_p", None)
-        if isinstance(top_p, int | float):
-            request["top_p"] = float(top_p)
+        # 此处只透传 model_settings 中确有的值；启用 thinking 时二者必须省略。
+        thinking_enabled = isinstance(thinking, dict) and thinking.get("type") == "enabled"
+        if not thinking_enabled:
+            temperature = getattr(model_settings, "temperature", None)
+            if isinstance(temperature, int | float):
+                request["temperature"] = float(temperature)
+            top_p = getattr(model_settings, "top_p", None)
+            if isinstance(top_p, int | float):
+                request["top_p"] = float(top_p)
         return request
 
     @staticmethod

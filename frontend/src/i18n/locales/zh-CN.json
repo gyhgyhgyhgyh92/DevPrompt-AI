@@ -83,6 +83,7 @@
     "aria_select": "选择模型",
     "not_configured": "未配置模型",
     "context_length": "上下文长度",
+    "context_budget_hint": "影响本地上下文预算与压缩，不改变供应商窗口参数",
     "nominal_only": "该模型仅支持标称窗口，无可选档位"
   },
   "turn": {
@@ -243,6 +244,8 @@
       "available": "可用模型（勾选即启用，未勾选的将删除）",
       "refresh_first": "先点「刷新模型列表」获取该端点的可用模型",
       "current": "当前",
+      "not_in_list": "不在当前列表",
+      "provider_switched": "已切换供应商，原有模型勾选与目录已清空，请重新刷新并勾选",
       "delete_provider": "删除供应商",
       "save": "保存",
       "add_provider": "新增供应商"

@@ -1,20 +1,13 @@
 import { useTranslation } from 'react-i18next'
 import type { ModelCapabilities } from '../../schemas/modelSpec'
-import styles from './settings.module.css'
 import { makeS } from '../../utils/css'
+import { formatWindow } from './ProviderSelect'
+import styles from './settings.module.css'
 
 const s = makeS(styles)
 
 export interface ModelCapabilityBadgeProps {
   capabilities: ModelCapabilities
-}
-
-/** 上下文长度的展示单位（1K/1M），避免界面出现七位数；null 表示未知（由调用方出文案）。 */
-function formatContextLength(value: number | null | undefined): string | null {
-  if (typeof value !== 'number' || value <= 0) return null
-  if (value >= 1_000_000) return `${Math.round(value / 100_000) / 10}M`
-  if (value >= 1000) return `${Math.round(value / 1000)}K`
-  return String(value)
 }
 
 /**
@@ -57,9 +50,7 @@ export function ModelCapabilityBadge({ capabilities }: ModelCapabilityBadgeProps
       ))}
       <span className={s('model-cap__badge model-cap__badge--info')}>
         {t('settings.capability.context', {
-          length:
-            formatContextLength(capabilities.max_context_length) ??
-            t('settings.capability.unknown'),
+          length: formatWindow(capabilities.max_context_length) ?? t('settings.capability.unknown'),
         })}
       </span>
     </span>

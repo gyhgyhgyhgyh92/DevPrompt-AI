@@ -95,12 +95,27 @@ export function findProvider(
   )
 }
 
-/** 上下文窗口的人类可读形式（1K / 1M）；未知返回 null 由调用方决定展示。 */
+/** 上下文窗口的人类可读形式：只给短标签（`128K` / `300K` / `1M`），不展示精确 token 值。
+ *
+ * 口径：优先按 1K = 1024 识别二进制整档（128K/256K/300K/600K/1M），
+ * 厂商原始十进制值（64K/200K/272K）仍按十进制展示。
+ */
 export function formatWindow(tokens: number | null | undefined): string | null {
   if (typeof tokens !== 'number' || tokens <= 0) return null
-  if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}M`
-  if (tokens >= 1000) return `${Math.round(tokens / 1000)}K`
-  return String(tokens)
+  // 厂商常用十进制整千值（64000/128000/200000/272000）优先按十进制。
+  if (tokens >= 1000 && tokens % 1000 === 0) {
+    return tokens >= 1_000_000
+      ? `${Math.round(tokens / 100_000) / 10}M`
+      : `${Math.round(tokens / 1000)}K`
+  }
+  // 二进制整档：128K=131072、256K=262144、300K=307200、600K=614400、1M=1048576。
+  if (tokens % 1024 === 0) {
+    const kib = tokens / 1024
+    return kib % 1024 === 0 ? `${kib / 1024}M` : `${kib}K`
+  }
+  // 不足 1K 的值没有更粗的刻度可用，直接给精确值。
+  if (tokens < 1000) return String(tokens)
+  return `${Math.round(tokens / 1000)}K`
 }
 
 /** 供外部复用的钩子：目录变化时保持选中项有效（条目被删则回落到空）。 */

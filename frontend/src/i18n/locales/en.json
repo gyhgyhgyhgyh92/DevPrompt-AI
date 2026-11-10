@@ -83,6 +83,7 @@
     "aria_select": "Select model",
     "not_configured": "No model configured",
     "context_length": "Context length",
+    "context_budget_hint": "Affects local context budget and compaction; does not change the provider window",
     "nominal_only": "This model only supports its nominal window; no tiers available"
   },
   "turn": {
@@ -243,6 +244,8 @@
       "available": "Available models (ticked = enabled; unticked will be deleted)",
       "refresh_first": "Click \"Refresh model list\" first to fetch the models of this endpoint",
       "current": "Current",
+      "not_in_list": "Not in current list",
+      "provider_switched": "Provider switched; previous selections and catalog were cleared. Refresh and select again.",
       "delete_provider": "Delete provider",
       "save": "Save",
       "add_provider": "Add provider"

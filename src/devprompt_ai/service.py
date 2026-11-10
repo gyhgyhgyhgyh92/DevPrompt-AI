@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from devprompt_ai.domain.agent.work_order import WorkOrder
     from devprompt_ai.memory.token_ledger import SQLiteTokenLedger
 
-from devprompt_ai.common.cost import take_llm_tokens
+from devprompt_ai.common.cost import take_llm_usage
 from devprompt_ai.common.hashing import sha256_hex
 from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale, tr
 from devprompt_ai.common.process import ProcessError
@@ -96,6 +96,7 @@ from devprompt_ai.domain.generate.variants import plan_levels, resolve_level
 from devprompt_ai.domain.hooks.builtin import DetectorHook, FactsSummaryHook, summarize_facts
 from devprompt_ai.domain.hooks.pipeline import HookPipeline
 from devprompt_ai.domain.hooks.types import HookContext
+from devprompt_ai.domain.model.tuning import resolve_effort
 from devprompt_ai.domain.model_catalog import (
     ModelCatalogFetcher,
     ModelCatalogItem,
@@ -105,6 +106,7 @@ from devprompt_ai.domain.model_catalog import (
     static_catalog,
 )
 from devprompt_ai.domain.model_spec import (
+    model_meta_of,
     providers_projection,
     resolve_api_mode,
     resolve_provider_key,
@@ -153,7 +155,7 @@ from devprompt_ai.domain.retrieval.facts import (
 from devprompt_ai.domain.retrieval.locate import locate_symbol
 from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader
 from devprompt_ai.harness.guardrails import validate_claims
-from devprompt_ai.harness.llm import LLMGenerator, last_usage
+from devprompt_ai.harness.llm import LLMGenerator
 from devprompt_ai.harness.model_candidates import load_candidates
 from devprompt_ai.harness.overflow import is_context_overflow
 from devprompt_ai.harness.process import LocalCommandRunner, LocalFileReader, SymbolTableProvider
@@ -657,6 +659,11 @@ class ForgeService:
                     previous_summary = records[-1].summary
             # 轮次序号跨轮累积（session.data 会被重建，故先取出再写回）
             previous_index = int(session.data.get("turn_index", -1))
+            # 档位变化观测：data 每轮重建，先带走上一轮窗口/预算再写回（2026-11-10）
+            previous_context_window = int(session.data.get("context_window", 0) or 0)
+            previous_state_budget = int(session.data.get("state_budget", 0) or 0)
+            current_context_window = self._cfg.runtime_window()
+            current_state_budget = self._cfg.runtime_state_budget()
             # 多轮继承（2026-11-04）：不再整体丢弃，方案正文/澄清/取证经 TurnMemory 带入。
             # 原句为空时沿用上一轮目标——这就是「不带新原句的追问」入口。
             inherited = TurnMemory.from_payload(session.data.get("turn_memory"))
@@ -690,6 +697,8 @@ class ForgeService:
                 "cost_llm_tokens": 0,  # F-805：LLM 实际用量
                 "started_at": time.time(),  # flow.completed 耗时基准（T6-9）
                 "turn_index": previous_index,
+                "context_window": current_context_window,
+                "state_budget": current_state_budget,
                 "preferred_level": str(previous_summary.get("decision", "")),
                 "prev_facts_complete": previous_summary.get("facts_complete"),
                 "turn_memory": memory.to_payload(),
@@ -700,6 +709,15 @@ class ForgeService:
                 ),
             }
             # 继承的方案与取证直接进本轮 data：agentic 循环据此判断能否跳过检索
+            if previous_context_window and previous_context_window != current_context_window:
+                emit(
+                    "context.tier_changed",
+                    from_window=previous_context_window,
+                    to_window=current_context_window,
+                    from_state_budget=previous_state_budget,
+                    to_state_budget=current_state_budget,
+                    request_id=request_id,
+                )
             if memory.variants:
                 session.data["variants"] = [v.model_dump() for v in memory.variants]
             if memory.facts:
@@ -1529,6 +1547,8 @@ class ForgeService:
         关闭态不存在——它本来就是观测层，参与决策前不需要开关；等真实数据证明
         六维与熔断结果一致，再由 `convergence` 主动消费。
         """
+        # 先入账再读成本：否则本步刚完成的 LLM 调用不会体现在 pressure 里。
+        self._account_usage(session)
         claim_report = session.data.get("claim_report")
         coverage = (
             float(claim_report["coverage"])
@@ -1542,7 +1562,7 @@ class ForgeService:
                 cost_tokens=int(session.data.get("cost_tokens", 0)),
                 cost_budget=int(self._cfg.followup_cost_budget),
                 context_tokens=int(session.data.get("context_tokens", 0)),
-                context_window=int(self._cfg.max_state_tokens),
+                context_window=int(self._cfg.runtime_state_budget()),
                 claim_coverage=coverage,
                 notes_hit=int(session.data.get("notes_hit", 0)),
                 turn_index=int(session.data.get("turn_index", 0)),
@@ -1556,33 +1576,6 @@ class ForgeService:
             "exploration_breadth": round(strategy.exploration_breadth, 4),
         }
         emit("agent.sensorium", score=snapshot.score, request_id=request_id)
-
-    @staticmethod
-    def _account_llm_usage(session: FlowSession, usage: dict[str, int | None] | None) -> None:
-        """累加本轮 token 用量；缓存命中单独记账。
-
-        供应商未返回缓存命中信息时**不写该键**——0 与「没有缓存」含义不同，不虚报。
-        """
-        if not usage:
-            return
-        session.data["cost_tokens"] = int(session.data.get("cost_tokens", 0)) + int(
-            usage.get("total_tokens") or 0
-        )
-        prompt = usage.get("prompt_tokens")
-        if prompt is not None:
-            session.data["cost_prompt_tokens"] = int(
-                session.data.get("cost_prompt_tokens", 0)
-            ) + int(prompt)
-        completion = usage.get("completion_tokens")
-        if completion is not None:
-            session.data["cost_completion_tokens"] = int(
-                session.data.get("cost_completion_tokens", 0)
-            ) + int(completion)
-        cached = usage.get("cached_tokens")
-        if cached is not None:
-            session.data["cost_cached_tokens"] = int(
-                session.data.get("cost_cached_tokens", 0)
-            ) + int(cached)
 
     async def _record_token_ledger(self, session: FlowSession) -> None:
         """H5：每轮一次把 LLM 用量落 token_ledger；零用量不记（空行无信息量）。"""
@@ -1818,7 +1811,22 @@ class ForgeService:
         密钥回落两级：①同 id 旧记录；②**同 (provider, base_url) 的旧记录**。
         第二级是安全网：前端会为新供应商自行生成 id，一旦 id 对不上而密钥又没填，
         只靠①会把密钥静默清空——而同一端点的凭据本就是同一份。
+
+        2026-11-10：**id 必须唯一**。前端曾按页内序号生成 `p-new-N`，刷新页面后会与
+        已落盘的 id 撞名；两个供应商撞名后，写侧按 id 去重只剩一条，模型条目却全部
+        保留，表现为「MiniMax 名下出现 Kimi 模型」。撞名即整单拒绝，不静默合并。
         """
+        ids = [str(raw.get("id") or "").strip() for raw in incoming]
+        duplicates = sorted(
+            {record_id for record_id in ids if record_id and ids.count(record_id) > 1}
+        )
+        if duplicates:
+            raise ConfigurationError(
+                "供应商 id 重复，未写入任何改动："
+                + "、".join(duplicates)
+                + "（每个供应商必须有唯一 id）",
+                context={"duplicate_provider_ids": duplicates},
+            )
         by_id = {str(e.get("id")): e for e in existing if e.get("id")}
         # 同端点索引：安全网，见 docstring 第二级回落
         by_endpoint = {
@@ -1929,6 +1937,27 @@ class ForgeService:
             "locked": {"candidate_limit": MAX_CANDIDATES},  # MUST-09 宪法常量，只读下发
         }
 
+    def _allowed_efforts(self, provider: str, model_id: str, base_url: str) -> set[str]:
+        """该模型可用的 effort 集合：静态能力位 ∪ 动态目录。
+
+        两者都查不到时返回空集（表示「能力位未知」）：此时不拒绝显式值，避免把
+        动态目录先于静态表提供的合法档位误杀。
+        """
+        allowed: set[str] = set()
+        meta = model_meta_of(provider, model_id)
+        if meta is not None:
+            allowed.update(meta.reasoning_efforts)
+        try:
+            items, _ = read_model_catalog(resolve_provider_key(provider), base_url)
+        except Exception:  # noqa: BLE001 - 校验辅助失败按「未知」处理，不阻断保存
+            items = []
+        wanted = model_id.strip().lower()
+        for item in items:
+            if item.model_id.strip().lower() == wanted:
+                allowed.update(item.reasoning_efforts)
+                break
+        return allowed
+
     @staticmethod
     def _validate_registry_entries(merged: list[dict[str, Any]]) -> list[str]:
         """写盘前校验注册表条目。返回问题描述列表（空 = 通过）。
@@ -1936,8 +1965,12 @@ class ForgeService:
         N-5 为什么要这一步：`_merge_registry_entries` 已做到「先算清再一次性写」，
         但它对**内容合法性**不设防——一个 `model_id` 为空的条目会被完整写入并可能成为
         激活项，用户得到的是「已保存」却根本调不通。宁可整单拒绝，也不要半成品。
+
+        仅做**与模型能力无关**的结构校验；思考强度与窗口档位的校验在
+        :meth:`_validate_model_tuning`（需要读取目录/静态表）。
         """
         problems: list[str] = []
+        seen: set[tuple[str, str]] = set()
         for index, entry in enumerate(merged):
             name = str(entry.get("model_id") or entry.get("id") or f"第 {index + 1} 项")
             if not str(entry.get("model_id", "")).strip():
@@ -1947,6 +1980,44 @@ class ForgeService:
             api_key = entry.get("api_key", "")
             if api_key is not None and not isinstance(api_key, str):
                 problems.append(f"{name}：api_key 必须是字符串")
+            # 同一供应商下同一模型只应有一条（前端曾因供应商 id 撞名而重复提交）
+            pair = (
+                str(entry.get("provider_id", "")),
+                str(entry.get("model_id", "")).strip().lower(),
+            )
+            if pair[1]:
+                if pair in seen:
+                    problems.append(f"{name}：同一供应商下重复出现该模型")
+                seen.add(pair)
+        return problems
+
+    def _validate_model_tuning(self, merged: list[dict[str, Any]]) -> list[str]:
+        """校验思考强度与上下文长度（2026-11-10）。
+
+        - effort 非空时必须在该模型登记的集合内；
+        - 窗口非空时必须能被 `effective_window` 原样接受（被回落即说明越界）。
+        """
+        problems: list[str] = []
+        for index, entry in enumerate(merged):
+            name = str(entry.get("model_id") or entry.get("id") or f"第 {index + 1} 项")
+            provider = str(entry.get("provider", ""))
+            model_id = str(entry.get("model_id", ""))
+            effort = str(entry.get("reasoning_effort", "") or "").strip().lower()
+            if effort:
+                allowed = self._allowed_efforts(provider, model_id, str(entry.get("base_url", "")))
+                if allowed and effort not in allowed:
+                    options = "、".join(sorted(allowed))
+                    problems.append(f"{name}：不支持的思考强度 {effort}（可选：{options}）")
+
+            window = entry.get("max_context_length")
+            if isinstance(window, int) and window > 0:
+                effective = self.effective_window(provider, model_id, window)
+                # 窗口完全未知（自定义端点）时不误杀：没有合法集合就无从校验。
+                if effective is not None and effective != window:
+                    problems.append(
+                        f"{name}：上下文长度 {window} 不在该模型可选档位内"
+                        f"（合法值需来自模型窗口档位集合）"
+                    )
         return problems
 
     async def update_settings(
@@ -1987,6 +2058,7 @@ class ForgeService:
                 else registry["models"]
             )
             problems = self._validate_registry_entries(merged)
+            problems.extend(self._validate_model_tuning(merged))
             if problems:
                 raise ConfigurationError(
                     "模型注册表校验未通过，未写入任何改动：\n"
@@ -2010,7 +2082,10 @@ class ForgeService:
                     reasons=skipped,
                     request_id=request_id,
                 )
-            active_entry = next((e for e in merged if str(e.get("id")) == active_id), None)
+            # 2026-11-10：只改 models（如启动页调思考强度/窗口）时也要把**当前激活条目**
+            # 重新镜像进运行配置，否则设置落盘了但运行时仍是旧值（参数形同装饰）。
+            target_active_id = active_id or str(registry.get("active_model_id") or "")
+            active_entry = next((e for e in merged if str(e.get("id")) == target_active_id), None)
             if active_entry is not None:
                 mirror = {
                     "provider": str(active_entry.get("provider", "")),
@@ -2034,13 +2109,20 @@ class ForgeService:
                 }
                 # reasoning_effort 并入 llm_params——这样 extra_body_params() 能读到它，
                 # 无需 AppConfig 再加一个专用字段（KISS）。
+                # 2026-11-10：空值→none 在此解析（需要模型能力位）；显式值原样保留。
                 entry_effort = str(active_entry.get("reasoning_effort", "") or "")
-                if entry_effort:
+                allowed = self._allowed_efforts(
+                    str(active_entry.get("provider", "")),
+                    str(active_entry.get("model_id", "")),
+                    str(active_entry.get("base_url", "")),
+                )
+                resolved_effort = resolve_effort(entry_effort, tuple(allowed))
+                if resolved_effort:
                     current = mirror.get("llm_params")
                     merged_params: dict[str, Any] = (
                         dict(current) if isinstance(current, dict) else {}
                     )
-                    merged_params["reasoning_effort"] = entry_effort
+                    merged_params["reasoning_effort"] = resolved_effort
                     mirror["llm_params"] = merged_params
                 await asyncio.to_thread(write_model_settings, mirror)
                 for src_key, value in mirror.items():
@@ -2363,6 +2445,29 @@ class ForgeService:
         shrunk = await self._generation_context(session, shrink=True)
         return await self._generator.generate_variants(shrunk, levels, locale)
 
+    async def _answer_guarded(
+        self,
+        session: FlowSession,
+        ctx: GenerationContext,
+        locale: Locale,
+    ) -> str:
+        """纯回答的超窗保护：与三套生成同构，压一次重发一次。
+
+        回答轮同样依赖 ``history_block`` 与上一轮方案正文；窗口调小后若不压缩，
+        会以未分类异常中断整轮（2026-11-10）。
+        """
+        try:
+            return await self._generator.answer(ctx, locale)
+        except Exception as exc:
+            if not is_context_overflow(exc):
+                raise
+        emit(
+            "context.overflow_retry",
+            request_id=str(session.data.get("last_request_id", "")),
+        )
+        shrunk = await self._generation_context(session, shrink=True)
+        return await self._generator.answer(shrunk, locale)
+
     async def _act_generate(
         self, session: FlowSession, *, progress: ProgressSink | None = None
     ) -> list[VariantDraft]:
@@ -2384,7 +2489,6 @@ class ForgeService:
         multi = await self._generate_variants_guarded(
             session, ctx, levels, _session_locale(session)
         )
-        self._account_llm_usage(session, last_usage())
         # slots dataclass 无 __dict__，序列化必须走 model_dump（计划 §6.2 注意事项）
         session.data["variants"] = [v.model_dump() for v in multi.variants]
         self._audit_claims(session, multi.variants)
@@ -2476,13 +2580,12 @@ class ForgeService:
         await hop(session, FlowState.GENERATING, self._sessions)
         ctx = await self._generation_context(session)
         await _notify(session, progress, answering_text(_session_locale(session)))
-        text = await self._generator.answer(ctx, _session_locale(session))
+        text = await self._answer_guarded(session, ctx, _session_locale(session))
         if not text.strip():
             # A3 no-answer 闸：空回答不算完成，按放弃收尾并留下结构化原因。
             session.data["stop_reason"] = StopReason.NO_ANSWER.value
             await self._act_abort(session, reason="no_answer")
             return self._snapshot(session, "aborted")
-        self._account_llm_usage(session, last_usage())
         session.data["reply_text"] = text
         if FlowState(session.state) is not FlowState.DONE:
             await transition(session, FlowState.DONE, self._sessions)
@@ -2785,8 +2888,11 @@ class ForgeService:
         )
         # E3：绝对压力的分母数据源（六维 pressure 与压缩决策共用同一估算口径）
         session.data["context_tokens"] = estimated
+        # 2026-11-10：窗口取条目档位（未登记回落全局）；它驱动压缩与请求预算，
+        # 但不硬截断 current 层（MUST-25）。
+        window = self._cfg.runtime_window()
         if shrink:
-            estimated = max(estimated, self._cfg.context_window_tokens)
+            estimated = max(estimated, window)
         # B11：压缩触发时把窗口外的旧轮折成一段 LLM 摘要（失败回退规则摘要，不阻断）
         summaries = await self._maybe_llm_digest(
             session, summaries, estimated_tokens=estimated, shrunk=shrink
@@ -2795,8 +2901,8 @@ class ForgeService:
             summaries,
             current,
             notes=notes,
-            budget=ContextBudget(total=self._cfg.max_state_tokens),
-            context_window=self._cfg.context_window_tokens,
+            budget=ContextBudget(total=self._cfg.runtime_state_budget()),
+            context_window=window,
             estimated_tokens=estimated,
             cache_kind=CacheKind.AUTOMATIC,
             ledger_block=self._render_ledger(session),
@@ -2867,7 +2973,7 @@ class ForgeService:
             return summaries
         plan = plan_compaction(
             estimated_tokens=estimated_tokens,
-            window=self._cfg.context_window_tokens,
+            window=self._cfg.runtime_window(),
             cache_kind=CacheKind.AUTOMATIC,
         )
         if not (shrunk or plan.should_compact):
@@ -3195,15 +3301,30 @@ class ForgeService:
         return candidates[0]
 
     def _account_usage(self, session: FlowSession) -> None:
-        """F-805：把本请求内已发生的外部模型调用用量并入会话（取用后累计器清零）。
+        """F-805：把本请求内已发生的全部 LLM 调用用量并入会话（取用后累计器清零）。
 
-        在快照组装时调用：此刻本请求的全部 LLM 调用均已完成，一次取用即全量入账；
-        只读路径（resume）无新调用，累计器为零，不产生副作用。
+        2026-11-10：从 total-only 改为全字段聚合。探针/排序/打分与生成共用同一个
+        聚合器，prompt/completion/cached 不再只记最后一次生成。
         """
-        llm_tokens = take_llm_tokens()
-        if llm_tokens:
-            session.data["cost_llm_tokens"] = (
-                int(session.data.get("cost_llm_tokens", 0)) + llm_tokens
+        usage = take_llm_usage()
+        total = usage.total
+        if total <= 0 and (usage.prompt or usage.completion):
+            total = usage.prompt + usage.completion
+        if total <= 0 and not usage.prompt and not usage.completion and usage.cached is None:
+            return
+        session.data["cost_llm_tokens"] = int(session.data.get("cost_llm_tokens", 0)) + total
+        session.data["cost_tokens"] = int(session.data.get("cost_tokens", 0)) + total
+        if usage.prompt:
+            session.data["cost_prompt_tokens"] = (
+                int(session.data.get("cost_prompt_tokens", 0)) + usage.prompt
+            )
+        if usage.completion:
+            session.data["cost_completion_tokens"] = (
+                int(session.data.get("cost_completion_tokens", 0)) + usage.completion
+            )
+        if usage.cached is not None:
+            session.data["cost_cached_tokens"] = (
+                int(session.data.get("cost_cached_tokens", 0)) + usage.cached
             )
 
     @property

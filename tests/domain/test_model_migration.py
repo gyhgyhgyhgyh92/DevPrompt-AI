@@ -95,6 +95,80 @@ class TestCapabilitiesNormalisation:
         )
         assert entry["capabilities"]["max_context_length"] == 999
 
+    def test_cross_vendor_model_facts_override_stale_window(self) -> None:
+        """中转场景：Kimi 挂在 MiniMax 供应商下时，历史落盘的 1M 必须按模型事实纠正。"""
+        entry, _ = normalize_entry(
+            {
+                "provider": "minimax",
+                "model_id": "kimi-k2.6",
+                "capabilities": {
+                    "supports_tools": True,
+                    "supports_reasoning": False,
+                    "max_context_length": 1_000_000,
+                },
+            }
+        )
+        assert entry["capabilities"]["max_context_length"] == 262_144
+        assert entry["capabilities"]["supports_reasoning"] is True
+
+    def test_unregistered_model_keeps_stored_capabilities(self) -> None:
+        """没有模型级登记时维持原行为——不擅自改写用户文件里的值。"""
+        entry, _ = normalize_entry(
+            {
+                "provider": "minimax",
+                "model_id": "MiniMax-M3",
+                "capabilities": {
+                    "supports_tools": True,
+                    "supports_reasoning": False,
+                    "max_context_length": 1_000_000,
+                },
+            }
+        )
+        assert entry["capabilities"]["max_context_length"] == 1_000_000
+
+
+class TestContextTierMigration:
+    """旧档位归一到统一四档（2026-11-10）。"""
+
+    @pytest.mark.parametrize(
+        ("old", "expected"),
+        [
+            (262_144, 307_200),
+            (524_288, 614_400),
+            (128_000, 131_072),
+            (131_072, 131_072),
+            (1_048_576, 1_048_576),
+        ],
+    )
+    def test_old_tier_is_mapped_to_nearest(self, old: int, expected: int) -> None:
+        entry, _ = normalize_entry({**_LEGACY_ENTRY, "max_context_length": old})
+        assert entry["max_context_length"] == expected
+
+    def test_nominal_tier_is_kept(self) -> None:
+        entry, _ = normalize_entry(
+            {
+                "provider": "anthropic",
+                "model_id": "claude-x",
+                "max_context_length": 200_000,
+            }
+        )
+        assert entry["max_context_length"] == 200_000
+
+    def test_unknown_nominal_keeps_original(self) -> None:
+        entry, _ = normalize_entry(
+            {
+                "provider": "acme",
+                "model_id": "unknown",
+                "max_context_length": 999_999,
+            }
+        )
+        assert entry["max_context_length"] == 999_999
+
+    def test_normalization_is_idempotent(self) -> None:
+        once, _ = normalize_entry({**_LEGACY_ENTRY, "max_context_length": 262_144})
+        twice, _ = normalize_entry(once)
+        assert twice["max_context_length"] == once["max_context_length"] == 307_200
+
 
 class TestNoLegacyConverter:
     """锁定一项重要偏离：本项目不实现 legacy 结构转换器。

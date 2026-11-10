@@ -35,10 +35,14 @@ from agents.tool import FunctionTool
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ValidationError
 
-from devprompt_ai.common.cost import add_llm_tokens
+from devprompt_ai.common.cost import add_llm_usage
 from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale, tr
 from devprompt_ai.config import AppConfig
-from devprompt_ai.domain.context.budget import ensure_request_fits, request_budget
+from devprompt_ai.domain.context.budget import (
+    RequestBudgetError,
+    ensure_request_fits,
+    request_budget,
+)
 from devprompt_ai.domain.context.tokens import estimate_tokens
 from devprompt_ai.domain.error_codes import registered
 from devprompt_ai.domain.errors import ConfigurationError, DevPromptError, GenerationError
@@ -50,7 +54,12 @@ from devprompt_ai.domain.generate.ports import (
     VariantDraft,
 )
 from devprompt_ai.domain.model.routing import pick_model
-from devprompt_ai.domain.model_spec import resolve_api_mode
+from devprompt_ai.domain.model.tuning import resolve_effort
+from devprompt_ai.domain.model_spec import (
+    max_context_length_of,
+    model_meta_of,
+    resolve_api_mode,
+)
 from devprompt_ai.domain.prompt_guard import (
     JSON_STRICT_RULES,
     build_evidence_block,
@@ -70,6 +79,7 @@ from devprompt_ai.harness.retry import (
     next_delay,
 )
 from devprompt_ai.memory.routing_stats import SQLiteRoutingStats
+from devprompt_ai.observability.logging import emit
 
 logger = logging.getLogger(__name__)
 
@@ -178,12 +188,27 @@ def last_usage() -> dict[str, int | None] | None:
 def _cached_tokens(usage: object) -> int | None:
     """读取供应商返回的缓存命中 token；无该字段返回 None。
 
-    兼容两种形态：SDK 对象（``usage.prompt_tokens_details.cached_tokens``）与
-    原生适配器返回的 dict。
+    兼容三种形态：
+    - OpenAI SDK：``usage.prompt_tokens_details.cached_tokens``；
+    - openai-agents ``Usage``：``usage.input_tokens_details.cached_tokens``；
+    - 原生适配器 dict：顶层 ``cached_tokens`` 或嵌套 details。
     """
-    details = getattr(usage, "prompt_tokens_details", None)
-    if details is None and isinstance(usage, dict):
-        details = usage.get("prompt_tokens_details")
+    nil = object()
+    details: object | None
+    if isinstance(usage, dict):
+        details = usage.get("prompt_tokens_details") or usage.get("input_tokens_details")
+        if details is None:
+            value = usage.get("cached_tokens", nil)
+            if value is nil:
+                return None
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+    else:
+        details = getattr(usage, "prompt_tokens_details", None) or getattr(
+            usage, "input_tokens_details", None
+        )
     if details is None:
         return None
     value = getattr(details, "cached_tokens", None)
@@ -197,28 +222,55 @@ def _cached_tokens(usage: object) -> int | None:
         return None
 
 
+#: token 字段别名：OpenAI 用 prompt/completion，openai-agents Usage 用 input/output。
+_USAGE_KEY_ALIASES: Final[dict[str, tuple[str, ...]]] = {
+    "prompt_tokens": ("prompt_tokens", "input_tokens"),
+    "completion_tokens": ("completion_tokens", "output_tokens"),
+    "total_tokens": ("total_tokens",),
+}
+
+
 def _usage_int(usage: object, key: str) -> int:
-    """取用量字段：SDK 对象走属性，原生适配器回 dict，缺字段记 0。"""
-    if isinstance(usage, dict):
-        return int(usage.get(key) or 0)
-    return int(getattr(usage, key, 0) or 0)
+    """取用量字段：SDK 对象走属性，原生适配器回 dict，缺字段记 0。
+
+    2026-11-10：`agents.usage.Usage` 的字段名是 input_tokens/output_tokens，
+    旧实现只读 prompt_tokens/completion_tokens，导致原生适配器明细恒为 0。
+    """
+    for alias in _USAGE_KEY_ALIASES.get(key, (key,)):
+        value = usage.get(alias) if isinstance(usage, dict) else getattr(usage, alias, None)
+        if value is not None:
+            return int(value or 0)
+    return 0
 
 
 def _record_usage(usage: object | None) -> None:
-    """记录一次调用的 token 用量：last（最近一次，兼容旧调用方）+ 累计待取（F-805）。"""
+    """记录一次调用的 token 用量：last（最近一次，兼容旧调用方）+ 请求级聚合。
+
+    2026-11-10：
+    - dict 形态（原生适配器）也必须取到 total——旧实现用 getattr 对 dict 恒为 0；
+    - total 缺失时用 prompt+completion 兜底；
+    - 所有数值钳到非负，防止供应商脏数据造成负成本。
+    """
     if usage is None:
         _last_usage.set(None)
         return
-    total_tokens = int(getattr(usage, "total_tokens", 0) or 0)
+    prompt = max(0, _usage_int(usage, "prompt_tokens"))
+    completion = max(0, _usage_int(usage, "completion_tokens"))
+    total = max(0, _usage_int(usage, "total_tokens"))
+    if total == 0 and (prompt or completion):
+        total = prompt + completion
+    cached = _cached_tokens(usage)
+    if cached is not None:
+        cached = max(0, cached)
     _last_usage.set(
         {
-            "total_tokens": total_tokens,
-            "prompt_tokens": _usage_int(usage, "prompt_tokens"),
-            "completion_tokens": _usage_int(usage, "completion_tokens"),
-            "cached_tokens": _cached_tokens(usage),
+            "total_tokens": total,
+            "prompt_tokens": prompt,
+            "completion_tokens": completion,
+            "cached_tokens": cached,
         }
     )
-    add_llm_tokens(total_tokens)
+    add_llm_usage(total, prompt, completion, cached)
 
 
 def _build_client(key: Hashable) -> AsyncOpenAI:
@@ -304,14 +356,43 @@ _PURPOSE_TASK_KIND: Final[dict[str, str]] = {
 
 
 def _candidate_cfg(cfg: AppConfig, entry: Mapping[str, Any]) -> AppConfig:
-    """把注册表条目落成一个可调用配置（api_mode 空串=按 provider 默认解析）。"""
+    """把注册表条目落成一个可调用配置（api_mode 空串=按 provider 默认解析）。
+
+    2026-11-10：**按候选条目取参数**，不再继承激活条目的 effort / 窗口。
+    否则主备切到别的模型时，会把激活条目的 reasoning_effort 发给一个没登记该能力的
+    端点（项目记忆中的硬约束：不支持该参数的第三方端点不得下发）。
+
+    空值→``none`` 的解析用静态能力位；动态目录给出的非空 effort 原样保留
+    （写入时已校验，不因静态表缺失而丢弃）。
+    """
+    provider = str(entry.get("provider") or "")
+    model_id = str(entry.get("model_id") or "")
+    meta = model_meta_of(provider, model_id)
+    allowed = meta.reasoning_efforts if meta is not None else ()
+    effort = resolve_effort(str(entry.get("reasoning_effort") or ""), allowed)
+
+    params = {
+        key: value for key, value in (cfg.llm_params or {}).items() if key != "reasoning_effort"
+    }
+    if effort:
+        params["reasoning_effort"] = effort
+    window = entry.get("max_context_length")
+    # 条目未显式选档时回落静态标称窗口（模型级 → 厂商级）；都没有才交给全局默认。
+    # 不能直接写 0：那会让「标称 200K 但未选档」的模型被当成 1M 全局窗口。
+    effective_window = (
+        int(window)
+        if isinstance(window, int) and window > 0
+        else (max_context_length_of(provider, model_id) or 0)
+    )
     return cfg.model_copy(
         update={
-            "llm_model": str(entry.get("model_id") or ""),
-            "llm_provider": str(entry.get("provider") or ""),
+            "llm_model": model_id,
+            "llm_provider": provider,
             "llm_base_url": str(entry.get("base_url") or ""),
             "llm_api_key": str(entry.get("api_key") or ""),
             "api_mode": str(entry.get("api_mode") or ""),
+            "llm_params": params,
+            "max_context_length": effective_window,
         }
     )
 
@@ -374,6 +455,7 @@ async def _structured_once(
     _ensure_client(cfg)
     schema = json.dumps(output_type.model_json_schema(), ensure_ascii=False)
     instructions = _instructions(cfg, system, schema)
+    _emit_request_params(cfg, purpose)
     agent = Agent(
         name="devprompt-llm",
         instructions=instructions,
@@ -441,16 +523,49 @@ async def _structured_once(
     return parsed2
 
 
-def _assert_request_budget(cfg: AppConfig, system: str, user: str) -> None:
+def _assert_request_budget(
+    cfg: AppConfig, system: str, user: str, *, purpose: str = "generate"
+) -> None:
     """A7 请求级预算断言：system+user+预留输出必须装进窗口，不足即抛。
 
     `RequestBudgetError` 被 `is_context_overflow` 识别，service 层的
     `with_overflow_retry` 会压缩一次上下文后重发（A7 与 A8 同一闭环）。
+
+    2026-11-10：窗口取 ``cfg.runtime_window()``（条目档位优先）。
+    生成路径保留原始 `RequestBudgetError` 供 service 压缩重发；其它路径转 3003，
+    避免把「所选窗口太小」暴露成未分类的 500。
     """
     max_output = int(cfg.effective_llm_params().get("max_tokens") or 0)
-    ensure_request_fits(
-        estimate_tokens(f"{system}\n\n{user}"),
-        request_budget(cfg.context_window_tokens, max_output),
+    window = cfg.runtime_window()
+    try:
+        ensure_request_fits(
+            estimate_tokens(f"{system}\n\n{user}"),
+            request_budget(window, max_output),
+        )
+    except RequestBudgetError as exc:
+        if purpose == "generate":
+            raise
+        raise DevPromptError(
+            f"所选上下文窗口不足（{window} token）：{exc}",
+            code=registered(3003),
+            context={"window": window, "purpose": purpose},
+        ) from exc
+
+
+def _emit_request_params(cfg: AppConfig, purpose: str) -> None:
+    """记录本次请求的模型参数（不含 prompt / 密钥，MUST-19）。
+
+    供全链路验证与线上归因：能看到「用户选了 high、实际下发的是 high」，
+    而不是只能相信 UI。
+    """
+    emit(
+        "llm.request_params",
+        model=cfg.llm_model,
+        provider=cfg.llm_provider,
+        api_mode=resolve_api_mode(cfg.llm_provider or "", cfg.api_mode or ""),
+        purpose=purpose,
+        reasoning_effort=cfg.reasoning_effort_value(),
+        context_window=cfg.runtime_window(),
     )
 
 
@@ -474,11 +589,13 @@ async def chat_structured(
     路由：候选 ≤1 或未开 `multi_model_routing` 时链上只有当前配置（行为对等）；
     可降级失败（超时/限流/上游错误）按链顺次切换，额度/鉴权类直接抛。
     """
-    _assert_request_budget(cfg, system, user)
+    _assert_request_budget(cfg, system, user, purpose=purpose)
     effective_timeout = timeout if timeout is not None else cfg.llm_timeout
     chain = await _resolve_chain(cfg, purpose=purpose, model_id=model_id)
     last_error: DevPromptError | None = None
     for index, candidate in enumerate(chain):
+        # 候选级预算：主备模型的窗口可能不同，不能只按激活条目判一次。
+        _assert_request_budget(candidate, system, user, purpose=purpose)
         try:
             return await _structured_once(
                 candidate,
@@ -863,9 +980,18 @@ def parse_structured(output_type: type[ModelT], raw: str) -> ModelT | None:
 async def _tools_once(
     cfg: AppConfig, system: str, user: str, *, timeout: float, purpose: str
 ) -> ToolChatResult:
-    """单候选的一次带工具调用（探针专用路径）。"""
+    """单候选的一次带工具调用（探针专用路径）。
+
+    2026-11-10：**补齐模型参数**——此前只传 ``tool_choice``，导致思考强度与采样参数
+    在探针路径被静默丢弃（与本轮其它调用行为不一致）。
+    """
     model = build_model(cfg)
-    settings = ModelSettings(tool_choice="auto")
+    _emit_request_params(cfg, purpose)
+    settings = ModelSettings(
+        tool_choice="auto",
+        **cfg.effective_llm_params(),
+        extra_body=cfg.extra_body_params() or None,
+    )
     started = time.monotonic()
     try:
         response = await asyncio.wait_for(
@@ -926,10 +1052,12 @@ async def chat_with_tools(
 
     路由与主备语义同 :func:`chat_structured`。
     """
+    _assert_request_budget(cfg, system, user, purpose=purpose)
     effective_timeout = timeout if timeout is not None else cfg.llm_timeout
     chain = await _resolve_chain(cfg, purpose=purpose, model_id=model_id)
     last_error: DevPromptError | None = None
     for index, candidate in enumerate(chain):
+        _assert_request_budget(candidate, system, user, purpose=purpose)
         try:
             return await _tools_once(
                 candidate, system, user, timeout=effective_timeout, purpose=purpose

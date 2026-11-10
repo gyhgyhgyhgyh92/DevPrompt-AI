@@ -62,6 +62,8 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "hook.failed",
         "hook.ran",
         "evidence.stale_on_deliver",
+        "llm.request_params",
+        "context.tier_changed",
     }
 )
 """SHOULD-08 固定事件名全集（made/skipped 同族计一项）。emit 之外的诊断日志用普通 logging。

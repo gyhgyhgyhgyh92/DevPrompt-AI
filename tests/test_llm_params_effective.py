@@ -4,9 +4,8 @@
 → `effective_llm_params()` → `ModelSettings`。本文件锁定合并优先级与两个关键边界：
 
 1. **模型级覆盖全局默认**（裁定 D3）；
-2. **只返回 ModelSettings 原生键** —— `apply_provider_constraints` 会注入
-   `force_params`（如 anthropic 的 reasoning_effort），该键不在 ModelSettings 字段内，
-   放进去会被 pydantic 当 extra 收下，行为不确定（可能静默失效，也可能透传报错）。
+2. **只返回 ModelSettings 原生键** —— 非原生键（如 `reasoning_effort`）走
+   `extra_body_params()`，不能混进 `ModelSettings` 的构造参数。
 """
 
 from __future__ import annotations
@@ -56,7 +55,7 @@ class TestNativeOnly:
         assert result["max_tokens"] == 1024
 
     def test_force_params_never_leak(self) -> None:
-        """force_params（reasoning_effort）不属于 ModelSettings 字段，绝不能混进来。"""
+        """非原生键（reasoning_effort）不能混进 ModelSettings——它走 extra_body。"""
         for provider in ("anthropic", "gemini", "deepseek", "openai", "zhipu"):
             cfg = _cfg(llm_provider=provider, llm_temperature=0.5)
             result = cfg.effective_llm_params()
@@ -73,6 +72,62 @@ class TestNativeOnly:
     @pytest.mark.parametrize("key", ["temperature", "max_tokens", "top_p"])
     def test_native_parameters_are_configurable(self, key: str) -> None:
         assert key in NATIVE_PARAMETERS
+
+
+class TestRuntimeWindowAndEffort:
+    def test_runtime_window_prefers_entry_tier(self) -> None:
+        cfg = _cfg(max_context_length=128_000, context_window_tokens=1_000_000)
+        assert cfg.runtime_window() == 128_000
+
+    def test_runtime_window_falls_back_to_global(self) -> None:
+        cfg = _cfg(max_context_length=0, context_window_tokens=1_000_000)
+        assert cfg.runtime_window() == 1_000_000
+
+    def test_runtime_state_budget_scales_with_tier(self) -> None:
+        assert _cfg(max_context_length=307_200).runtime_state_budget() == 30_000
+        assert _cfg(max_context_length=614_400).runtime_state_budget() == 60_000
+        assert _cfg(max_context_length=1_048_576).runtime_state_budget() == 100_000
+        assert _cfg(max_context_length=2_000_000).runtime_state_budget() == 160_000
+
+    def test_runtime_state_budget_uses_floor_for_small_window(self) -> None:
+        assert _cfg(max_context_length=131_072).runtime_state_budget() == 30_000
+        assert (
+            _cfg(max_context_length=200_000, max_state_tokens=50_000).runtime_state_budget()
+            == 50_000
+        )
+
+    def test_effort_value_is_raw(self) -> None:
+        cfg = _cfg(llm_params={"reasoning_effort": "high"})
+        assert cfg.reasoning_effort_value() == "high"
+
+    def test_responses_api_uses_reasoning_object(self) -> None:
+        cfg = _cfg(
+            llm_provider="openai",
+            api_mode="responses",
+            llm_params={"reasoning_effort": "high"},
+        )
+        assert cfg.extra_body_params() == {"reasoning": {"effort": "high"}}
+
+    def test_chat_completions_uses_top_level_effort(self) -> None:
+        cfg = _cfg(
+            llm_provider="deepseek",
+            api_mode="chat_completions",
+            llm_params={"reasoning_effort": "none"},
+        )
+        assert cfg.extra_body_params() == {"reasoning_effort": "none"}
+
+    def test_native_modes_keep_internal_effort_for_adapter(self) -> None:
+        """原生适配器读同一个内部键，再转换为 thinking / thinking_config。"""
+        for provider, mode in (
+            ("anthropic", "anthropic_messages"),
+            ("gemini", "gemini_generate_content"),
+        ):
+            cfg = _cfg(
+                llm_provider=provider,
+                api_mode=mode,
+                llm_params={"reasoning_effort": "medium"},
+            )
+            assert cfg.extra_body_params() == {"reasoning_effort": "medium"}
 
 
 class TestLoadChain:

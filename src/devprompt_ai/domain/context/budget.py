@@ -19,6 +19,27 @@ _TURN_TOKEN_BY_RSS: Final[tuple[tuple[float, int], ...]] = (
 #: 输出预留的硬上限（避免 max_tokens 配成离谱值把输入挤没）。
 _MAX_OUTPUT_RESERVE: Final[int] = 256_000
 
+#: 上下文装配预算随窗口缩放的比例与上限（2026-11-10）。
+#: 300K→30K、600K→60K、1M→100K、2M→160K；小窗口由 floor 兜底。
+STATE_BUDGET_RATIO: Final[float] = 0.10
+STATE_BUDGET_CAP: Final[int] = 160_000
+STATE_BUDGET_FLOOR: Final[int] = 30_000
+
+
+def state_budget_for_window(window: int, *, floor: int = STATE_BUDGET_FLOOR) -> int:
+    """按窗口档位计算上下文装配总预算。
+
+    窗口越大，保留的历史越多，token 消耗随之上升；上限 160K 控制成本。
+    窗口 ≤0 或未登记时返回 floor。
+    """
+    if window <= 0:
+        return floor
+    # 按 10K 向下取整，避免 1,048,576 × 10% = 104,857.6 这类非整千值；
+    # 结果仍随档位单调：300K→30K、600K→60K、1M→100K、2M→200K（再封顶 160K）。
+    scaled = int(window * STATE_BUDGET_RATIO) // 10_000 * 10_000
+    return max(floor, min(scaled, STATE_BUDGET_CAP))
+
+
 #: 上下文块级配额（字符）：超出即截断，防止单块吃光整窗。
 DEFAULT_BLOCK_QUOTAS: Final[dict[str, int]] = {
     "project_instructions": 8_000,

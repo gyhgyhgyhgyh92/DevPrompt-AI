@@ -11,7 +11,8 @@
 不变量（对应 F-921 验收）：
 
 - 每个档位都 ≤ 该条目的窗口上限——挡住「选 1M 实际 200K」的假安全感；
-- 档位是**告警预算刻度**（`model_spec.window_tiers`：厂商档位 ∪ 128K 起的 2 的幂阶梯），
+- 档位是**系统预算档位**（`model_spec.window_tiers`：300K/600K/1M + 标称值，
+  必要时 128K 补位，最多 4 档），
   因此**允许低于标称窗口**——厂商多半不提供档位，只给标称值用户就调不动告警阈值；
 - 窗口未登记时档位恒为空——没有窗口就没有「可选档位」可言；
 - 本模块**不做超限判定**，那在 `model_spec.context_window_alert`（MUST-08 单一来源）。
@@ -28,7 +29,7 @@ from devprompt_ai.domain.model_spec import (
     MODEL_SPECS,
     PROVIDER_SPECS,
     max_context_length_of,
-    model_meta_of,
+    model_meta_by_id,
     resolve_provider_key,
     window_tiers,
 )
@@ -93,10 +94,7 @@ def static_catalog(provider: str) -> list[ModelCatalogItem]:
                 model_id=meta.model_id,
                 label=meta.label or meta.model_id,
                 max_context_length=window,
-                context_window_tiers=clean_tiers(
-                    window_tiers(window, meta.context_window_tiers or spec.context_window_tiers),
-                    window,
-                ),
+                context_window_tiers=clean_tiers(window_tiers(window), window),
                 reasoning_efforts=meta.reasoning_efforts,
                 default_effort=meta.default_effort,
                 source="static",
@@ -117,12 +115,12 @@ def merge_catalog(
       静态值只用来补远端没给的窗口与档位；
     - **远端为空** → 回落到静态条目（拉不到时下拉仍可用，但来源标注为 ``static``）。
 
-    条目内的窗口回落：远端值 → 静态模型级值 → 静态厂商级值 → None。
+    条目内的窗口回落：远端值 → 静态模型级值（本厂商 → 跨厂商同 id）→ 静态厂商级值 → None。
+    跨厂商一段用于中转/代理：第三方模型挂在自家厂商名下时，模型事实仍按 id 取。
     """
     provider_key = resolve_provider_key(provider)
     spec = PROVIDER_SPECS.get(provider_key)
     provider_window = spec.max_context_length if spec else None
-    provider_tiers = spec.context_window_tiers if spec else ()
 
     if not remote:
         return list(static_items) if static_items is not None else static_catalog(provider)
@@ -134,22 +132,25 @@ def merge_catalog(
         if not model_id:
             continue  # 畸形条目：直接丢弃，不让它污染下拉
         fallback = lookup.get(model_id.lower())
+        # 跨厂商同 id 的登记（中转场景）；本厂商静态条目优先，其次才是它
+        meta = model_meta_by_id(model_id)
         window = info.max_context_length or (fallback.max_context_length if fallback else None)
+        if window is None and meta is not None:
+            window = meta.max_context_length
         if window is None:
             window = provider_window
-        tiers = info.context_window_tiers or (fallback.context_window_tiers if fallback else ())
         merged.append(
             ModelCatalogItem(
                 model_id=model_id,
                 label=info.display_name or (fallback.label if fallback else "") or model_id,
                 max_context_length=window,
-                context_window_tiers=clean_tiers(
-                    window_tiers(window, tiers or provider_tiers), window
-                ),
-                # 强度档位实时优先，静态模型级兜底（官方文档核实过的值）
+                context_window_tiers=clean_tiers(window_tiers(window), window),
+                # 强度档位实时优先，静态模型级兜底（官方文档核实过的值；含跨厂商同 id）
                 reasoning_efforts=_clean_efforts(info.reasoning_efforts)
-                or (fallback.reasoning_efforts if fallback else ()),
-                default_effort=(fallback.default_effort if fallback else ""),
+                or (fallback.reasoning_efforts if fallback else ())
+                or (meta.reasoning_efforts if meta else ()),
+                default_effort=(fallback.default_effort if fallback else "")
+                or (meta.default_effort if meta else ""),
                 source="remote",
             )
         )
@@ -189,7 +190,7 @@ def mark_stale_models(
 def _pick_tier(selected_tier: int | None, tiers: Sequence[int], window: int | None) -> int | None:
     """档位在合法集合内即采用，否则回落标称窗口。
 
-    合法集合恒由 :func:`window_tiers` 算出（厂商档位 ∪ 阶梯），故越界值——包括超过
+    合法集合恒由 :func:`window_tiers` 算出（统一四档策略），故越界值——包括超过
     标称窗口的「假安全感」——一律回落，不在此处二次判定（MUST-08）。
     """
     if selected_tier is not None and selected_tier in tiers:
@@ -211,14 +212,9 @@ def effective_context_window(
     item = find_item(catalog, model_id)
     if item is not None:
         return _pick_tier(selected_tier, item.context_window_tiers, item.max_context_length)
-    # catalog 里没有该模型 → 走静态链（模型级 → 厂商级），档位同样按阶梯补齐
+    # catalog 里没有该模型 → 走静态链（模型级 → 厂商级），档位按统一四档策略生成
     window = max_context_length_of(provider, model_id)
-    spec = PROVIDER_SPECS.get(resolve_provider_key(provider))
-    meta = model_meta_of(provider, model_id)
-    vendor_tiers = (meta.context_window_tiers if meta else ()) or (
-        spec.context_window_tiers if spec else ()
-    )
-    return _pick_tier(selected_tier, window_tiers(window, vendor_tiers), window)
+    return _pick_tier(selected_tier, window_tiers(window), window)
 
 
 def find_item(catalog: Sequence[ModelCatalogItem], model_id: str) -> ModelCatalogItem | None:

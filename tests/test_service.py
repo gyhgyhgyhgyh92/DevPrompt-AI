@@ -911,6 +911,49 @@ async def test_settings_models_registry_roundtrip_and_activation(
     assert read_model_settings()["model_id"] == "gpt-x"  # 镜像已落盘
 
 
+async def test_tuning_active_model_applies_without_switching(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """只改 models（启动页调 effort/窗口）时，当前激活条目必须立即镜像进运行配置。"""
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_FILE", str(tmp_path / "settings.json"))
+    monkeypatch.setenv("DEVPROMPT_SETTINGS_DB", str(tmp_path / "settings.db"))
+    svc, _ = _service()
+
+    view = await svc.update_settings(
+        {
+            "provider_configs": [
+                {
+                    "id": "p-a",
+                    "provider": "DeepSeek",
+                    "base_url": "https://a.example",
+                    "api_key": "sk-aaaa-1234567890",
+                }
+            ],
+            "models": [{"provider_id": "p-a", "model_id": "deepseek-flash"}],
+            "active_model_id": "",
+        }
+    )
+    entry_id = view["models"][0]["id"]
+    await svc.update_settings({"active_model_id": entry_id})
+
+    await svc.update_settings(
+        {
+            "models": [
+                {
+                    "id": entry_id,
+                    "provider_id": "p-a",
+                    "model_id": "deepseek-flash",
+                    "reasoning_effort": "low",
+                    "max_context_length": 131_072,
+                }
+            ]
+        }
+    )
+
+    assert svc._cfg.llm_params["reasoning_effort"] == "low"
+    assert svc._cfg.max_context_length == 131_072
+
+
 async def test_settings_provider_delete_cascades_entries(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1202,3 +1245,138 @@ async def test_set_session_model_empty_clears_override(
 
     assert out["model_override"] == ""
     assert store.items[snap.session_id].data["model_override"] == ""
+
+
+async def test_answer_guarded_retries_once_after_overflow() -> None:
+    """纯回答超窗时压一次重发，不把未分类异常抛给整轮。"""
+    from devprompt_ai.domain.context.budget import RequestBudgetError
+    from devprompt_ai.domain.generate.ports import GenerationContext
+
+    class _FlakyGenerator:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def answer(self, ctx, locale="zh-CN"):  # type: ignore[no-untyped-def]
+            self.calls += 1
+            if self.calls == 1:
+                raise RequestBudgetError("context window exceeded")
+            return "压缩后回答"
+
+    svc, _ = _service()
+    generator = _FlakyGenerator()
+    svc._generator = generator  # type: ignore[assignment]
+    session = FlowSession(
+        session_id="s-answer",
+        user_id="local",
+        state="GENERATING",
+        data={
+            "sentence": "解释一下两套方案差异",
+            "project_root": ".",
+            "level": "B",
+            "facts": [],
+            "clarifications": {},
+        },
+    )
+    ctx = GenerationContext(sentence="解释一下两套方案差异", project_root=".", level="B")
+
+    text = await svc._answer_guarded(session, ctx, "zh-CN")
+
+    assert text == "压缩后回答"
+    assert generator.calls == 2
+
+
+def test_model_tuning_validation_rejects_unknown_effort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """写入前校验：effort 不在模型登记集合内必须整单拒绝。"""
+    svc, _ = _service()
+    monkeypatch.setattr(
+        svc,
+        "_allowed_efforts",
+        lambda *_args: {"none", "low", "high", "max"},
+    )
+    problems = svc._validate_model_tuning(
+        [
+            {
+                "provider": "deepseek",
+                "model_id": "deepseek-flash",
+                "base_url": "https://api.deepseek.com/v1",
+                "reasoning_effort": "medium",
+            }
+        ]
+    )
+    assert any("不支持的思考强度" in item for item in problems)
+
+
+def test_model_tuning_validation_rejects_window_outside_tiers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """写入前校验：窗口被 effective_window 回落即说明不在合法档位。"""
+    svc, _ = _service()
+    monkeypatch.setattr(svc, "effective_window", lambda _p, _m, _w: 1_048_576)
+    problems = svc._validate_model_tuning(
+        [
+            {
+                "provider": "deepseek",
+                "model_id": "deepseek-flash",
+                "base_url": "https://api.deepseek.com/v1",
+                "max_context_length": 128_000,
+            }
+        ]
+    )
+    assert any("不在该模型可选档位内" in item for item in problems)
+
+
+async def test_assemble_context_uses_runtime_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """上下文装配必须把条目档位传给 build_context，而不是固定全局 1M。"""
+    from devprompt_ai.domain.context import ContextPayload
+
+    svc, _ = _service()
+    svc._cfg.max_context_length = 131_072
+    captured: dict[str, object] = {}
+
+    def _fake_build_context(*_args: object, **kwargs: object) -> ContextPayload:
+        captured.update(kwargs)
+        return ContextPayload()
+
+    monkeypatch.setattr("devprompt_ai.service.build_context", _fake_build_context)
+    session = FlowSession(
+        session_id="s-window",
+        user_id="local",
+        state="GENERATING",
+        data={"sentence": "改按钮", "project_root": ".", "facts": [], "clarifications": {}},
+    )
+
+    await svc._assemble_context(session)
+
+    assert captured["context_window"] == 131_072
+    budget = captured["budget"]
+    assert getattr(budget, "total", None) == svc._cfg.runtime_state_budget()
+
+
+def test_account_usage_aggregates_all_fields() -> None:
+    """全字段聚合：一次取用写入 total/prompt/completion/cached，重复调用幂等。"""
+    from devprompt_ai.common.cost import add_llm_usage, take_llm_usage
+
+    take_llm_usage()  # 清空跨用例残留
+    svc, _ = _service()
+    session = FlowSession(
+        session_id="s-cost",
+        user_id="local",
+        state="DONE",
+        data={},
+    )
+    add_llm_usage(30, 20, 10, 5)
+
+    svc._account_usage(session)
+
+    assert session.data["cost_llm_tokens"] == 30
+    assert session.data["cost_tokens"] == 30
+    assert session.data["cost_prompt_tokens"] == 20
+    assert session.data["cost_completion_tokens"] == 10
+    assert session.data["cost_cached_tokens"] == 5
+
+    svc._account_usage(session)
+    assert session.data["cost_llm_tokens"] == 30, "取用即清零，二次调用不得重复入账"

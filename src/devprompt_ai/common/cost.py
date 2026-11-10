@@ -1,25 +1,69 @@
-"""F-805 成本监控：单次优化的 token 用量累计（LLM 实际）。
+"""F-805 成本监控：单次请求内的 token 用量聚合。
 
-累计器以 ContextVar 承载：harness/llm 在每次外部调用后累加，service 在快照组装时
-一次性取用（take）并清零——同一请求内多次调用正确汇总，跨请求不重复计数
-（每次请求在独立上下文中，累计器从 0 起步）。
+累计器以 ContextVar 承载：harness/llm 在每次外部调用后累加 total/prompt/completion/
+cached，service 在快照/收尾时一次性取用并清零——同一请求内多次调用（探针/排序/生成）
+正确汇总，跨请求不重复计数。
+
+2026-11-10：从「只累计 total」扩展为全字段聚合。此前 prompt/completion 只在生成/回答后
+用 `last_usage()` 记一次，探针/排序/打分的明细因此丢失，账本与快照口径不一致。
 """
 
 from __future__ import annotations
 
 from contextvars import ContextVar
+from dataclasses import dataclass
 
-_LLM_TOKENS: ContextVar[int] = ContextVar("cost_llm_tokens", default=0)
+
+@dataclass(frozen=True, slots=True)
+class Usage:
+    """一次请求内累计的 token 用量；cached 为 None 表示供应商从未返回该字段。"""
+
+    total: int = 0
+    prompt: int = 0
+    completion: int = 0
+    cached: int | None = None
+
+
+_USAGE: ContextVar[Usage | None] = ContextVar("llm_usage", default=None)
+
+
+def _non_negative(value: int | None) -> int:
+    return max(0, int(value or 0))
+
+
+def add_llm_usage(
+    total: int | None,
+    prompt: int | None = None,
+    completion: int | None = None,
+    cached: int | None = None,
+) -> None:
+    """累加一次 LLM 调用的 token 用量；负值按 0 处理，cached=None 不覆盖已有值。"""
+    current = _USAGE.get() or Usage()
+    cached_total = current.cached
+    if cached is not None:
+        cached_total = _non_negative(current.cached) + _non_negative(cached)
+    _USAGE.set(
+        Usage(
+            total=current.total + _non_negative(total),
+            prompt=current.prompt + _non_negative(prompt),
+            completion=current.completion + _non_negative(completion),
+            cached=cached_total,
+        )
+    )
+
+
+def take_llm_usage() -> Usage:
+    """取走上一次取用以来的聚合用量并清零。"""
+    usage = _USAGE.get() or Usage()
+    _USAGE.set(None)
+    return usage
 
 
 def add_llm_tokens(total: int) -> None:
-    """累加一次 LLM 调用的 token 用量（来源：SDK usage 实际值）。"""
-    if total:
-        _LLM_TOKENS.set(_LLM_TOKENS.get() + total)
+    """兼容旧调用方：只累计 total。"""
+    add_llm_usage(total)
 
 
 def take_llm_tokens() -> int:
-    """取自上次取用以来累计的 llm token 用量并清零。"""
-    llm_tokens = _LLM_TOKENS.get()
-    _LLM_TOKENS.set(0)
-    return llm_tokens
+    """兼容旧调用方：返回并清零 total。"""
+    return take_llm_usage().total

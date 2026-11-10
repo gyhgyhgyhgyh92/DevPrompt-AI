@@ -41,6 +41,8 @@ import uuid
 from typing import Any
 
 from devprompt_ai.domain.model_spec import (
+    model_meta_by_id,
+    nearest_context_tier,
     resolve_capabilities,
 )
 
@@ -50,8 +52,16 @@ _MAX_TEXT_LENGTH = 128
 
 
 def _normalize_capabilities(raw: Any, provider: str, model_id: str) -> dict[str, Any]:
-    """能力标记归一化：缺失或结构不符时按 provider 默认值补齐。"""
+    """能力标记归一化：缺失或结构不符时按 provider 默认值补齐。
+
+    2026-11-10：模型 id 有跨厂商登记时**以静态表重算为准**，不沿用落盘值——
+    中转站把第三方模型挂在自家厂商名下时，落盘值是按厂商级窗口算出的
+    （kimi-k2.6 曾被记成 1M，真实为 256K），与模型事实不符。三个字段都是只读、
+    由系统计算，重算不丢用户数据。
+    """
     fallback = resolve_capabilities(provider, model_id).to_dict()
+    if model_meta_by_id(model_id) is not None:
+        return fallback
     if not isinstance(raw, dict):
         return fallback
     merged = dict(fallback)
@@ -112,7 +122,13 @@ def normalize_entry(raw: Any) -> tuple[dict[str, Any], list[str]]:
     effort = source.get("reasoning_effort", "")
     entry["reasoning_effort"] = effort if isinstance(effort, str) else ""
     window = source.get("max_context_length")
-    entry["max_context_length"] = window if isinstance(window, int) and window > 0 else None
+    if isinstance(window, int) and window > 0:
+        nominal = entry["capabilities"].get("max_context_length")
+        entry["max_context_length"] = nearest_context_tier(
+            window, nominal if isinstance(nominal, int) else None
+        )
+    else:
+        entry["max_context_length"] = None
     return entry, problems
 
 

@@ -56,4 +56,18 @@ describe('ModelCapabilityBadge', () => {
     )
     expect(screen.getByText(/上下文 1M/)).toBeTruthy()
   })
+
+  it('二进制档位显示为 256K，不四舍五入成 262K、也不带精确值', () => {
+    render(
+      <ModelCapabilityBadge
+        capabilities={{
+          supports_tools: true,
+          supports_reasoning: true,
+          max_context_length: 262_144,
+        }}
+      />,
+    )
+    expect(screen.getByText(/上下文 256K/)).toBeTruthy()
+    expect(screen.queryByText(/262,144/)).toBeNull()
+  })
 })

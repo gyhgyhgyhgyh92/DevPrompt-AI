@@ -44,7 +44,7 @@ class TestCleanTiers:
         )
         tiers = _must(merged, "m-1").context_window_tiers
         assert 1_048_576 not in tiers, "超过窗口上限的档位必须丢弃（防假安全感）"
-        assert tiers == (64_000, 131_072, 200_000), "厂商档位与标准阶梯取并集"
+        assert tiers == (131_072, 200_000), "统一四档策略：128K + 标称值"
 
     def test_unknown_window_yields_no_tiers(self) -> None:
         merged = merge_catalog(
@@ -78,13 +78,30 @@ class TestMergeCatalog:
         item = _must(merged, "deepseek-flash")
         assert item.source == "remote"
         assert item.max_context_length == 1_048_576
-        assert item.context_window_tiers == (131_072, 262_144, 524_288, 1_048_576)
+        assert item.context_window_tiers == (131_072, 307_200, 614_400, 1_048_576)
 
     def test_empty_remote_falls_back_to_static(self) -> None:
         merged = merge_catalog([], provider="deepseek")
         assert merged, "拉不到时静态表必须顶上，下拉不能空"
         assert all(item.source == "static" for item in merged)
         assert {item.model_id for item in merged} == {"deepseek-flash", "deepseek-v4-pro"}
+
+    def test_cross_vendor_model_id_fills_window(self) -> None:
+        """中转场景：MiniMax 供应商下列出 kimi-k2.6，窗口按模型 id 取 256K 而非厂商级 1M。"""
+        merged = merge_catalog(
+            [RemoteModelInfo(model_id="kimi-k2.6"), RemoteModelInfo(model_id="kimi-k3")],
+            provider="minimax",
+        )
+        k26 = _must(merged, "kimi-k2.6")
+        assert k26.max_context_length == 262_144
+        assert k26.context_window_tiers == (131_072, 262_144)
+        k3 = _must(merged, "kimi-k3")
+        assert k3.max_context_length == 1_048_576
+        assert k3.reasoning_efforts == ("low", "high", "max")
+
+    def test_unregistered_model_keeps_provider_window(self) -> None:
+        merged = merge_catalog([RemoteModelInfo(model_id="MiniMax-M3")], provider="minimax")
+        assert _must(merged, "MiniMax-M3").max_context_length == 1_000_000
 
     def test_malformed_entry_is_dropped(self) -> None:
         merged = merge_catalog(
@@ -136,15 +153,15 @@ class TestEffectiveContextWindow:
         )
 
     def test_selected_tier_wins(self) -> None:
-        assert effective_context_window("deepseek", "m-1", 200_000, self._catalog()) == 200_000
+        assert effective_context_window("deepseek", "m-1", 307_200, self._catalog()) == 307_200
 
-    def test_ladder_tier_below_nominal_wins(self) -> None:
-        """阶梯档位低于标称窗口也要生效，否则 DeepSeek 的告警预算永远调不动。"""
-        assert effective_context_window("deepseek", "m-1", 262_144, self._catalog()) == 262_144
+    def test_tier_below_nominal_wins(self) -> None:
+        """低于标称窗口的合法档位要生效，否则预算永远调不动。"""
+        assert effective_context_window("deepseek", "m-1", 614_400, self._catalog()) == 614_400
 
-    def test_ladder_tier_works_on_static_chain(self) -> None:
-        """catalog 里没有该模型时阶梯档位同样生效（回落链两跳口径一致）。"""
-        assert effective_context_window("deepseek", "deepseek-flash", 262_144, []) == 262_144
+    def test_tier_works_on_static_chain(self) -> None:
+        """catalog 里没有该模型时档位同样生效（回落链两跳口径一致）。"""
+        assert effective_context_window("deepseek", "deepseek-flash", 307_200, []) == 307_200
 
     def test_no_selection_uses_nominal(self) -> None:
         assert effective_context_window("deepseek", "m-1", None, self._catalog()) == 1_048_576
@@ -164,4 +181,4 @@ class TestEffectiveContextWindow:
         assert effective_context_window("yi", "m-2", None, catalog) is None
 
     def test_model_id_case_insensitive(self) -> None:
-        assert effective_context_window("deepseek", "M-1", 200_000, self._catalog()) == 200_000
+        assert effective_context_window("deepseek", "M-1", 307_200, self._catalog()) == 307_200

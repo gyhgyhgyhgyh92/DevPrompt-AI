@@ -117,6 +117,7 @@ async def test_rank_truncates_state_over_limit_and_logs(
         llm_base_url="https://fake/v1",
         llm_model="fake-model",
         max_state_tokens=10,
+        max_context_length=100,
     )
     big = "候选名称" * 50
     cands = [

@@ -29,6 +29,7 @@ from agents.tool import Tool
 from openai import AsyncOpenAI
 from openai.types.responses import ResponseOutputMessage, ResponseTextDeltaEvent
 
+from devprompt_ai.domain.model.tuning import gemini_thinking_budget
 from devprompt_ai.harness.adapters.base import BaseNativeModel
 
 
@@ -126,6 +127,16 @@ class GeminiNativeModel(BaseNativeModel):
         max_tokens = getattr(model_settings, "max_tokens", None)
         if isinstance(max_tokens, int) and max_tokens > 0:
             config_kwargs["max_output_tokens"] = int(max_tokens)
+        # 2026-11-10：思考强度映射为 Gemini thinking budget。
+        extra_body = getattr(model_settings, "extra_body", None) or {}
+        effort = str(extra_body.get("reasoning_effort", "") or "")
+        budget = gemini_thinking_budget(effort)
+        thinking_cls = getattr(types, "ThinkingConfig", None)
+        if budget is not None and thinking_cls is not None:
+            config_kwargs["thinking_config"] = thinking_cls(
+                thinking_budget=budget,
+                include_thoughts=False,
+            )
         return types.GenerateContentConfig(**config_kwargs)
 
     @staticmethod

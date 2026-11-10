@@ -200,13 +200,13 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
           default_api_mode: 'chat_completions',
           supported_api_modes: ['chat_completions'],
           max_context_length: 1_048_576,
-          context_window_tiers: [524_288, 1_048_576],
+          context_window_tiers: [307_200, 614_400, 1_048_576],
           models: [
             {
               model_id: 'deepseek-flash',
               label: 'Flash',
               max_context_length: 1_048_576,
-              context_window_tiers: [524_288, 1_048_576],
+              context_window_tiers: [307_200, 614_400, 1_048_576],
               reasoning_efforts: ['low', 'high', 'max'],
               default_effort: 'high',
             },
@@ -227,7 +227,7 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
 
     fireEvent.click(modelTrigger())
     fireEvent.mouseEnter(screen.getByRole('button', { name: /deepseek-flash/ }).parentElement!)
-    fireEvent.click(await screen.findByRole('button', { name: '524K' }))
+    fireEvent.click(await screen.findByRole('button', { name: '300K' }))
 
     await waitFor(() => {
       const putCall = fetchMock.mock.calls.find(
@@ -235,7 +235,7 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
       )
       expect(putCall).toBeTruthy()
       const body = String(putCall?.[1]?.body)
-      expect(body).toContain('"max_context_length":524288')
+      expect(body).toContain('"max_context_length":307200')
       // 凭据在 providers 段，条目只带 provider_id 引用（MUST-19）
       expect(body).toContain('"provider_id":"p-deepseek"')
       // 整表替换语义：另一条目必须一起提交，否则会被后端视为删除

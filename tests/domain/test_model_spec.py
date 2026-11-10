@@ -11,10 +11,12 @@ from __future__ import annotations
 import pytest
 
 from devprompt_ai.domain.model_spec import (
+    MODEL_SPECS,
     apply_provider_constraints,
     context_window_alert,
     max_context_length_of,
     model_meta_of,
+    nearest_context_tier,
     providers_projection,
     resolve_capabilities,
     resolve_provider_key,
@@ -23,8 +25,8 @@ from devprompt_ai.domain.model_spec import (
 
 
 class TestWindowTiers:
-    def test_ladder_from_128k_up(self) -> None:
-        assert window_tiers(1_048_576) == (131_072, 262_144, 524_288, 1_048_576)
+    def test_four_tier_policy_for_1m(self) -> None:
+        assert window_tiers(1_048_576) == (131_072, 307_200, 614_400, 1_048_576)
 
     def test_window_below_floor_yields_nominal_only(self) -> None:
         assert window_tiers(64_000) == (64_000,)
@@ -32,8 +34,24 @@ class TestWindowTiers:
     def test_unknown_window_yields_nothing(self) -> None:
         assert window_tiers(None) == ()
 
-    def test_vendor_tiers_are_unioned_not_replaced(self) -> None:
-        assert window_tiers(200_000, (100_000, 999_999)) == (100_000, 131_072, 200_000)
+    def test_small_window_gets_128k_fallback(self) -> None:
+        assert window_tiers(200_000) == (131_072, 200_000)
+        assert window_tiers(272_000) == (131_072, 272_000)
+
+    def test_partial_presets_are_kept(self) -> None:
+        assert window_tiers(307_200) == (131_072, 307_200)
+        assert window_tiers(500_000) == (131_072, 307_200, 500_000)
+        assert window_tiers(614_400) == (131_072, 307_200, 614_400)
+
+    def test_over_1m_drops_lowest_to_stay_at_four(self) -> None:
+        assert window_tiers(1_500_000) == (307_200, 614_400, 1_048_576, 1_500_000)
+        assert window_tiers(2_000_000) == (307_200, 614_400, 1_048_576, 2_000_000)
+
+    def test_nearest_tier_migrates_old_values(self) -> None:
+        assert nearest_context_tier(262_144, 1_048_576) == 307_200
+        assert nearest_context_tier(524_288, 1_048_576) == 614_400
+        assert nearest_context_tier(128_000, 1_048_576) == 131_072
+        assert nearest_context_tier(200_000, 200_000) == 200_000
 
 
 class TestProviderResolution:
@@ -65,9 +83,10 @@ class TestProviderResolution:
         assert resolve_capabilities("zhipu").supports_reasoning is True
         assert resolve_capabilities("spark").supports_reasoning is False
 
-    def test_anthropic_forces_effort(self) -> None:
+    def test_anthropic_keeps_user_effort(self) -> None:
+        """Anthropic 不再强制 high：强度由用户选择，适配器再映射为 thinking budget。"""
         cleaned = apply_provider_constraints("claude", {"reasoning_effort": "low"})
-        assert cleaned["reasoning_effort"] == "high"
+        assert cleaned["reasoning_effort"] == "low"
 
     def test_gemini_drops_penalties(self) -> None:
         cleaned = apply_provider_constraints(
@@ -134,8 +153,10 @@ class TestModelLevelMetadata:
         assert model_meta_of("deepseek", "   ") is None
         assert model_meta_of("deepseek", "") is None
 
-    def test_unknown_provider_has_no_model_entry(self) -> None:
-        assert model_meta_of("no-such-vendor", "deepseek-v4-pro") is None
+    def test_unknown_provider_matches_only_by_model_id(self) -> None:
+        """未登记厂商不去猜模型；但 id 已在任一厂商登记时按 id 取（中转场景）。"""
+        assert model_meta_of("no-such-vendor", "some-unregistered-model") is None
+        assert model_meta_of("no-such-vendor", "deepseek-v4-pro") is not None
 
     def test_alias_provider_resolves_to_same_model(self) -> None:
         assert model_meta_of("DeepSeek", "deepseek-flash") is not None
@@ -146,15 +167,16 @@ class TestModelLevelMetadata:
         assert caps.supports_reasoning is True
 
     def test_reasoning_efforts_are_per_model_and_doc_backed(self) -> None:
-        """DeepSeek 官方《Thinking Mode》：low/high/max，默认 high（2026-10-18 核实）。
+        """DeepSeek 官方《Thinking Mode》：none/low/high/max，默认 high。
 
-        档位必须按模型粒度独立——不同厂商/模型不可共用一份清单。
+        `none` 是官方定义的关闭语义，2026-11-10 补登记；前端会把它从强度按钮中过滤，
+        只在开关关闭时由后端解析使用。
         """
         flash = model_meta_of("deepseek", "deepseek-flash")
         pro = model_meta_of("deepseek", "deepseek-v4-pro")
         assert flash is not None and pro is not None
-        assert flash.reasoning_efforts == ("low", "high", "max")
-        assert pro.reasoning_efforts == ("low", "high", "max")
+        assert flash.reasoning_efforts == ("none", "low", "high", "max")
+        assert pro.reasoning_efforts == ("none", "low", "high", "max")
         assert flash.default_effort == "high"
         # 未登记模型没有档位：不编占位值，UI 该段整段不渲染
         assert model_meta_of("openai", "gpt-x") is None
@@ -163,8 +185,19 @@ class TestModelLevelMetadata:
         """`providers` 段必须把模型级强度档位下发，否则前端无从按模型配置。"""
         deepseek = next(p for p in providers_projection() if p["id"] == "deepseek")
         flash = next(m for m in deepseek["models"] if m["model_id"] == "deepseek-flash")
-        assert flash["reasoning_efforts"] == ["low", "high", "max"]
+        assert flash["reasoning_efforts"] == ["none", "low", "high", "max"]
         assert flash["default_effort"] == "high"
+
+    def test_kimi_k3_is_1m_and_k2_is_256k(self) -> None:
+        """Kimi K3 系列为 1M；K2.7/K2.6 为 256K（262,144），不能一律按 256K。"""
+        k3 = model_meta_of("moonshot", "kimi-k3")
+        k31 = model_meta_of("moonshot", "kimi-k3.1-pro")
+        k2 = model_meta_of("moonshot", "kimi-k2.7-code")
+        assert k3 is not None and k3.max_context_length == 1_048_576
+        assert k31 is not None and k31.max_context_length == 1_048_576
+        assert k2 is not None and k2.max_context_length == 262_144
+        assert max_context_length_of("moonshot", "kimi-k3") == 1_048_576
+        assert max_context_length_of("moonshot", "kimi-k2.6") == 262_144
 
     def test_tiers_never_exceed_model_window(self) -> None:
         """F-921 不变量：档位恒 ≤ 标称窗口（防「选 1M 实际 200K」）。"""
@@ -177,3 +210,31 @@ class TestModelLevelMetadata:
                 for tier in model["context_window_tiers"]:
                     model_limit = model["max_context_length"]
                     assert model_limit is None or tier <= model_limit
+
+
+class TestCrossVendorModelFacts:
+    """中转/代理场景（2026-11-10）：第三方模型的 id 挂在别家厂商名下时，
+    窗口等模型事实必须按 id 取，不能回落到该厂商的厂商级窗口。"""
+
+    def test_window_falls_back_to_model_id(self) -> None:
+        assert max_context_length_of("minimax", "kimi-k2.6") == 262_144
+        assert max_context_length_of("minimax", "kimi-k2.7-code") == 262_144
+        assert max_context_length_of("minimax", "kimi-k3") == 1_048_576
+
+    def test_capabilities_follow_model_facts(self) -> None:
+        caps = resolve_capabilities("minimax", "kimi-k3")
+        assert caps.max_context_length == 1_048_576
+        assert caps.supports_reasoning is True, "K3 支持推理，不随 MiniMax 厂商标记"
+
+    def test_model_id_match_is_case_insensitive(self) -> None:
+        assert max_context_length_of("minimax", "Kimi-K2.6") == 262_144
+
+    def test_unregistered_id_still_uses_provider_window(self) -> None:
+        """MiniMax 自家模型未登记 → 仍回落厂商级，不受跨厂商回落影响。"""
+        assert max_context_length_of("minimax", "MiniMax-M3") == 1_000_000
+        assert max_context_length_of("minimax", "") == 1_000_000
+
+    def test_model_ids_are_unique_across_vendors(self) -> None:
+        """跨厂商回落无歧义的前提：全表 id 不重名。重名时本用例会拦下。"""
+        ids = [meta.model_id.strip().lower() for metas in MODEL_SPECS.values() for meta in metas]
+        assert len(ids) == len(set(ids))

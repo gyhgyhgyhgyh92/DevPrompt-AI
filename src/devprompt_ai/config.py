@@ -18,6 +18,7 @@ from pydantic_settings import (
 )
 
 from devprompt_ai.common.envhint import ENV_PURPOSE
+from devprompt_ai.domain.context.budget import state_budget_for_window
 from devprompt_ai.domain.model_spec import (
     CONTEXT_ALERT_RATIO,
     NATIVE_PARAMETERS,
@@ -25,6 +26,7 @@ from devprompt_ai.domain.model_spec import (
     context_window_alert,
     is_value_empty,
     max_context_length_of,
+    resolve_api_mode,
 )
 
 # settings.json model_service 段键 → AppConfig 字段名（F-604 契约键与配置键分离）
@@ -38,7 +40,8 @@ MODEL_KEY_MAP: dict[str, str] = {
     "max_tokens": "llm_max_tokens",
     "llm_params": "llm_params",  # 生效模型的参数覆盖（2026-09-17 迁移）
     "api_mode": "api_mode",  # 生效模型的 API 形态（2026-09-17 多供应商扩展）
-    # 条目级上下文窗口覆盖；0 = 沿用 provider 默认。仅用于告警，不做截断（MUST-25）
+    # 条目级上下文窗口覆盖；0 = 沿用全局 context_window_tokens。
+    # 2026-11-10 起用于请求预算与压缩阈值（仍不硬截断本轮取证，MUST-25）
     "max_context_length": "max_context_length",
 }
 
@@ -137,7 +140,7 @@ class AppConfig(BaseSettings):
     # K6 team 编排：关闭则委派走单工单直连调度闸（不按波分派）。
     team_orchestration: bool = True
     fact_probe_threshold: float = 0.75
-    max_state_tokens: int = 30000
+    max_state_tokens: int = 30000  # 上下文装配预算下限（随档位放大，上限 160K）
 
     app_env: Literal["dev", "test", "prod"] = "dev"
     log_level: str = "INFO"
@@ -213,20 +216,59 @@ class AppConfig(BaseSettings):
     def extra_body_params(self) -> dict[str, Any]:
         """需经 `extra_body` 下发的参数（`ModelSettings` 无对应字段的那些）。
 
-        当前唯一成员是 `reasoning_effort`——它属于 Chat Completions 的扩展字段
-        （OpenAI/DeepSeek 等均支持），但 openai-agents 的 `ModelSettings` 未建模它。
-        经 `extra_body` 下发可让它真正生效，而不是被静默丢弃。
+        **`reasoning_effort` 按 API 形态分流**（2026-11-10）：
+
+        - `chat_completions`：顶层 `reasoning_effort`（OpenAI/DeepSeek 等）；
+        - `responses`：`reasoning: {"effort": ...}`（Responses 官方字段形状）；
+        - `anthropic_messages` / `gemini_generate_content`：仍以内部键
+          `reasoning_effort` 传给原生适配器，由适配器转换为 `thinking` /
+          `thinking_config` 后**消费掉**，不会原样发给供应商。
 
         **空值不发**：未设置时不进 extra_body，避免覆盖供应商默认。
         """
         merged: dict[str, Any] = dict(self.llm_params or {})
         provider = self.llm_provider or ""
         cleaned = apply_provider_constraints(provider, merged)
-        return {
+        extras = {
             key: value
             for key, value in cleaned.items()
             if key not in NATIVE_PARAMETERS and not is_value_empty(value)
         }
+        effort = str(extras.pop("reasoning_effort", "") or "").strip().lower()
+        if not effort:
+            return extras
+        api_mode = resolve_api_mode(provider, self.api_mode or "")
+        if api_mode == "responses":
+            extras["reasoning"] = {"effort": effort}
+        else:
+            extras["reasoning_effort"] = effort
+        return extras
+
+    def reasoning_effort_value(self) -> str:
+        """当前生效条目的思考强度原始值（空串 = 未显式选择）。
+
+        **不做空值→`none` 的解析**：那需要模型能力位，由 harness 的候选装配与
+        service 的激活条目镜像负责（2026-11-10）。
+        """
+        return str((self.llm_params or {}).get("reasoning_effort", "") or "")
+
+    def runtime_window(self) -> int:
+        """运行时上下文窗口：条目档位优先，未登记回落全局窗口。
+
+        2026-11-10 起真正参与请求预算与压缩阈值；它**不发给供应商**（各协议都没有
+        标准的「本次请求窗口」字段），也不硬截断本轮取证（MUST-25）。
+        """
+        if isinstance(self.max_context_length, int) and self.max_context_length > 0:
+            return self.max_context_length
+        return int(self.context_window_tokens)
+
+    def runtime_state_budget(self) -> int:
+        """上下文装配总预算：随档位缩放，`max_state_tokens` 为下限。
+
+        300K→30K、600K→60K、1M→100K、2M→160K；窗口越大保留历史越多，
+        token 消耗随之上升（2026-11-10）。
+        """
+        return state_budget_for_window(self.runtime_window(), floor=self.max_state_tokens)
 
     def context_window_warning(self, estimated_tokens: int) -> str | None:
         """上下文窗口告警；**不做任何截断**。
@@ -239,8 +281,10 @@ class AppConfig(BaseSettings):
         :param estimated_tokens: 本次请求的估算 token 数
         :return: 超过比例阈值时给出可操作的中文提示；未超限或窗口未知返回 ``None``
         """
-        limit = self.max_context_length or max_context_length_of(
-            self.llm_provider or "", self.llm_model or ""
+        limit = (
+            self.max_context_length
+            or max_context_length_of(self.llm_provider or "", self.llm_model or "")
+            or self.context_window_tokens
         )
         if limit is None or not context_window_alert(estimated_tokens, limit):
             return None

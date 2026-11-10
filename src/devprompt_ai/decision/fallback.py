@@ -96,7 +96,7 @@ class LLMFallbackDecider:
         # timeout 缺省即 cfg.llm_timeout（F-604 默认 60s；25 候选大 prompt 10s 必超时——实测）
         user = _fit_state(
             RANK_USER.format(evidence=rank_evidence(sentence, listing)),
-            self._cfg.max_state_tokens,
+            self._cfg.runtime_state_budget(),
         )
         out = await chat_structured(
             self._cfg,
@@ -126,7 +126,7 @@ class LLMFallbackDecider:
         )
         user = _fit_state(
             FACTS_USER.format(evidence=facts_evidence(sentence, listing)),
-            self._cfg.max_state_tokens,
+            self._cfg.runtime_state_budget(),
         )
         if answered:
             block = "\n".join(f"- 问：{q}\n  答：{a}" for q, a in answered.items())
@@ -192,7 +192,7 @@ class LLMFallbackDecider:
         listing = "\n\n".join(f"【方案 {key}】\n{body}" for key, body in variants)
         user = _fit_state(
             SCORE_USER.format(evidence=score_evidence(context, listing)),
-            self._cfg.max_state_tokens,
+            self._cfg.runtime_state_budget(),
         )
         return await chat_structured(
             self._cfg,
@@ -238,7 +238,7 @@ class LLMFallbackDecider:
                     correction,
                 )
             ),
-            self._cfg.max_state_tokens,
+            self._cfg.runtime_state_budget(),
         )
         return await chat_structured(
             self._cfg,

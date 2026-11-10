@@ -18,6 +18,23 @@ def test_below_watch_does_nothing() -> None:
     assert plan.reason == "below-watch"
 
 
+def test_smaller_window_triggers_compaction_earlier() -> None:
+    """同一个请求在 128K 档会压缩、在 1M 档不会——窗口必须真实参与判定。"""
+    small = plan_compaction(
+        estimated_tokens=90_000,
+        window=128_000,
+        cache_kind=CacheKind.AUTOMATIC,
+    )
+    large = plan_compaction(
+        estimated_tokens=90_000,
+        window=1_000_000,
+        cache_kind=CacheKind.AUTOMATIC,
+    )
+
+    assert small.should_compact is True
+    assert large.should_compact is False
+
+
 def test_high_ratio_plans_micro_with_budget() -> None:
     # 100K 窗口没有 1M 阶梯与精度带，ratio=0.6 落在 NONE 档的 compact(0.70) 之下
     plan = plan_compaction(
