@@ -52,14 +52,14 @@ DevPrompt AI 采用四层架构，依赖方向严格单向向下，不可逆向�
                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  领域核心层  domain/                          ← 形态无关          │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐            │
-│  │ retrieval│ │ decision │ │ generate │ │ ranking  │            │
-│  │ 阶段一    │ │ 阶段二    │ │ 阶段三    │ │ 阶段四    │            │
-│  │ rg+ctags │ │ Noul探针 │ │ 三套生成  │ │ 加权推荐  │            │
-│  └──────────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘            │
-└───────────────────┼─────────────┼────────────┼──────────────────┘
-                    │             │            │
-                    ▼             ▼            ▼
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐                         │
+│  │ retrieval│ │ decision │ │ generate │                         │
+│  │ 阶段一    │ │ 阶段二    │ │ 阶段三    │                         │
+│  │ rg+ctags │ │ Noul探针 │ │ 单套生成  │                         │
+│  └──────────┘ └────┬─────┘ └────┬─────┘                         │
+└───────────────────┼─────────────┼───────────────────────────────┘
+                    │             │
+                    ▼             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  基础设施层  harness/ + memory/ + decision/                        │
 │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐    │
@@ -90,7 +90,7 @@ DevPrompt AI 采用四层架构，依赖方向严格单向向下，不可逆向�
 ┌─────────────────────────┐
 │       domain/           │  纯领域逻辑，无 I/O
 │  retrieval decision     │
-│  generate   ranking     │
+│  generate               │
 └────────┬────────────────┘
          │  仅通过 Protocol 交互
          ▼
@@ -245,9 +245,6 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 |---|---|---|
 | `PREFER_ADAPT_WEIGHT` | 0.6 | 适配度权重 |
 | `PREFER_HISTORY_WEIGHT` | 0.4 | 偏好权重 |
-| `PREFER_HARD_THRESHOLD` | 0.5 | 推荐硬阈值 |
-| `PREFER_SOFT_THRESHOLD` | 0.12 | 推荐软阈值 |
-| `PREFER_MIN_CONFIDENCE` | 0.6 | 标推荐最低置信度 |
 | `PREFER_LOW_CONFIDENCE` | 0.4 | 低置信度提示线 |
 
 **流程控制**：
@@ -257,7 +254,7 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 | `FOLLOWUP_SOFT_ROUND_GUARD` | 10 | 反问软护栏：单流程追问轮数达此值时显式询问用户裁决（非静默终止） |
 | `FOLLOWUP_COST_BUDGET` | 空 | 反问软护栏 LLM 成本预算（空=禁用） |
 | `FACT_PROBE_THRESHOLD` | 0.75 | 事实探针通过线 |
-| `MAX_STATE_TOKENS` | 30000 | 上下文装配预算下限；随档位放大至 160K |
+| `MAX_STATE_TOKENS` | 30000 | 上下文装配预算下限；随上下文窗口放大 |
 
 **运行时**：
 
@@ -309,7 +306,7 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 | 类型 | 规则 | 示例 |
 |---|---|---|
 | Python 模块 | `snake_case` | `session_store.py` |
-| Python 测试 | `test_<模块>.py` | `test_ranking.py` |
+| Python 测试 | `test_<模块>.py` | `test_claims.py` |
 | Python 模板 | `snake_case` 存放于 `templates/` | `variant_b.py` |
 | 前端组件 | `PascalCase.tsx` | `PromptCard.tsx` |
 | 前端页面 | `PascalCase.tsx` | `OptimizePage.tsx` |
@@ -417,7 +414,6 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 | `retrieval` | `domain/retrieval/` |
 | `decision` | `domain/decision/`、`decision/` |
 | `generate` | `domain/generate/` |
-| `ranking` | `domain/ranking/` |
 | `memory` | `memory/` |
 | `service` | `service.py`、`state.py` |
 | `api` | `interfaces/api/` |
@@ -428,9 +424,9 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 **示例**：
 
 ```
-feat(ranking): 实现双阈值推荐标记
+feat(generate): 单套输出接入交付前锚点核验
 
-分差 ≥ 硬阈值且置信度达标时标记推荐；分差不足时输出原因文案。
+锚点明确无效时由交付门披露原因，判不清不降级，避免误伤。
 
 Closes #23
 ```
@@ -810,10 +806,8 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 | 事件名 | 触发时机 | 关键字段 |
 |---|---|---|
 | `flow.started` | 流程开始 | `flow_id`, `project_path` |
-| `flow.completed` | 流程完成 | `flow_id`, `duration_ms`, `has_recommendation` |
+| `flow.completed` | 流程完成 | `flow_id`, `duration_ms`, `variants` |
 | `retrieval.candidates` | 候选集生成 | `count`, `elapsed_ms` |
-| `recommendation.made` | 标记推荐 | `variant`, `gap`, `confidence` |
-| `recommendation.skipped` | 不标记 | `reason`, `gap` |
 | `state.truncated` | state 截断 | `original_size`, `final_size` |
 | `followup.guardrail` | 反问软护栏触发 | `rounds` / `cost` / `decision` |
 | `followup.escaped` | 用户逃生选择「直接生成」 | `rounds` |
@@ -899,7 +893,7 @@ class SQLiteProjectNoteStore:
 | 符号表 | `符号表:{项目绝对路径}:{mtime 摘要}` |
 | 决策结果 | `决策:{项目路径}:{原句 sha256}:{阈值配置 hash}` |
 
-**把阈值配置纳入键**是关键设计——调阈值后必须失效，否则会读到用旧阈值算出的推荐结果。
+**把阈值配置纳入键**是关键设计——调阈值后必须失效，否则会读到用旧阈值算出的排序结果。
 
 **失效策略**：
 
@@ -907,7 +901,7 @@ class SQLiteProjectNoteStore:
 - 配置热重载 → 清空决策结果缓存
 - 达到 TTL → 自然过期
 
-**不缓存的内容**：用户原句、LLM 生成的三套方案正文、决策层原始响应。理由：这三项体积大且与状态强相关，缓存收益低、失效复杂、正确性风险高。
+**不缓存的内容**：用户原句、LLM 生成的方案正文、决策层原始响应。理由：这三项体积大且与状态强相关，缓存收益低、失效复杂、正确性风险高。
 
 **命中率埋点**：`cache.hit` / `cache.miss` 事件，日志可查，用于判断缓存是否真的有效。**连续低命中应考虑删掉缓存**——无效缓存只增加复杂度。
 
@@ -1071,22 +1065,21 @@ src/devprompt_ai/
 │   │   └── attribution.py     交付归属（E11：影响半径 × file 断言差集 → 三色；2026-11-08 接 gate）
 │   ├── generate/
 │   │   ├── ports.py           Protocol 定义（LLM 调用）
-│   │   ├── variants.py        三套方案编排
+│   │   ├── anchors.py         锚点抽取与核验（C 核验并入 B；纯函数）
 │   │   ├── claims.py          断言对账（claims → 事实覆盖；未声明记 0 并标 undeclared）
-│   │   └── templates/         A/B/C 模板（a_conservative↔A 保守 / b_standard↔B 标准 / c_thorough↔C 激进）
+│   │   └── templates/         B 唯一输出 + A 异常兜底（b_standard 标准 / a_conservative 兜底）
 │   │       ├── a_conservative.py
 │   │       ├── b_standard.py
-│   │       ├── c_thorough.py
 │   │       └── reply.py           纯回答模板（只出文字，不产方案）
 │   ├── hooks/                  外环监督契约（2026-11-05：5 阶段 + 三态 verdict）
 │   │   ├── types.py            HookPhase / HookContext / HookResult / Hook 协议
 │   │   ├── pipeline.py         HookPipeline（halt 短路 / correct 合并 / 超时视为 allow）
 │   │   └── builtin.py          内置 hook 实现
-│   └── ranking/
-│       ├── ports.py            Protocol 定义（偏好读写）
-│       ├── ~~preference.py~~    偏好向量（2026-10-21 移除）
-│       ├── score.py           加权总分
-│       └── recommend.py       双阈值标记
+│   └── obs/                    可观测性共享契约与纯逻辑（2026-11-12 三模块拆分）
+│       ├── contract/           唯一共享层：标准事件模型 / 查询分页 / 端口 Protocol / schema 版本
+│       ├── trace/tree.py       调用链组装与预览扁平化（纯函数）
+│       ├── metrics/            聚合（aggregate）与阈值规则（rules）
+│       └── replay/             录制索引（playback）、快照归一化（normalize）、比对（compare）
 ├── decision/                  决策层实现（单一 LLM 实现）
 │   ├── fallback.py            LLM 决策实现（原 JevDecider 已于 2026-10-15 移除）
 │   └── prompts.py             决策问题模板
@@ -1109,7 +1102,12 @@ src/devprompt_ai/
 │   ├── output_summary.py      工具输出摘要（C1–C5：语义密度阈值/头尾策略/回读 footer；2026-11-08 接 trace 通道）
 │   ├── repo_indexer.py        仓库索引器（I4：Python AST 符号图 + 反向依赖；2026-11-08 接 physarum 边权）
 │   ├── overflow.py            超窗「压一次重发一次」（A8；2026-11-08 接生成路径）
-│   └── summarize.py           LLM 摘要（B11：走 summarize 槽，失败回退确定性 handoff；2026-11-08 接压缩链路）
+│   ├── summarize.py           LLM 摘要（B11：走 summarize 槽，失败回退确定性 handoff；2026-11-08 接压缩链路）
+│   └── obs/                   Trace/Replay 基础设施（2026-11-12）
+│       ├── trace_collector.py  ContextVar 隔离采集 + 批量落库（写失败 fail-open）
+│       ├── traced_ports.py     端口包装器（tool/file/llm/decision/symbols 全量录制）
+│       ├── recorded_ports.py   回放端口（按 call_key 取录制结果，缺失即报错）
+│       └── memory_collector.py 内存采集器（回放自比对，零落库）
 │   ├── dialog.py        原生文件夹选择器（native host 调用）              目录浏览 I/O（F-601 页内文件夹选择器数据源，GET /project/browse）
 │   └── dialog.py              Windows 原生文件夹对话框（pwsh -STA，零新依赖）
 ├── memory/                    唯一允许出现 SQL 的模块
@@ -1118,6 +1116,10 @@ src/devprompt_ai/
 │   ├── session_store.py       L1 会话存储（SQLiteSessionStore，经 SessionStore Protocol 注入；CAS 乐观锁）
 │   ├── turn_store.py          多轮 turn（2026-10-20：append-only，(session_id, turn_index) 唯一索引即乐观锁）
 │   ├── project_note_store.py  L2 结构化记忆（2026-10-20：top-K 检索 + 90 天衰减 + 命中回写）
+│   ├── obs_schema.py          可观测性 DDL（trace_events / metrics_alerts / replay_runs / replay_nodes，2026-11-12）
+│   ├── trace_store.py         Trace 事件存储（批量事务写入 + 查询/聚合/保留期清理）
+│   ├── metrics_alert_store.py 告警历史（活跃去重 + 冷却 + 恢复，2026-11-12）
+│   ├── replay_store.py        回放任务与逐节点结果（2026-11-12）
 │   ├── ~~preference_store.py~~（2026-10-21 移除）    L3 偏好向量
 │   └── project_notes.py       L2 Git notes
 ├── runtime/                   多端运行时（2026-11-07；执行与连接解耦）
@@ -1143,7 +1145,18 @@ src/devprompt_ai/
 │       ├── app.py             FastAPI 实例 + CORS + 统一异常渲染 + 缓存/安全响应头中间件（M-11）
 │       ├── routes.py          路由薄壳（14 路径/17 操作；参数收拢 → 调 service → 渲染）
 │       ├── schemas.py         Pydantic v2 请求/响应契约（XxxRequest/XxxResponse）
+│       ├── obs_common.py      可观测性路由公共薄壳（懒加载模块 / 6004 未启用 / request_id）
+│       ├── obs_trace_routes.py    Trace 只读 API（会话 trace 列表 / 事件分页 / 调用链 / 全量事件，2026-11-12）
+│       ├── obs_metrics_routes.py  Metrics 只读 API（多维聚合 / 告警历史 / 阈值配置，2026-11-12）
+│       ├── obs_replay_routes.py   Replay API（verify / compare 任务，2026-11-12）
 │       └── health.py          环境自检（rg/ctags/git、DB 可写、LLM 配置、storage_repair）
+├── obs/                       可观测性应用编排（2026-11-12；三模块独立启停）
+│   ├── registry.py            模块装配 + 运行期开关同步（ObsModules）
+│   ├── trace_service.py       Trace 查询与回溯
+│   ├── metrics_service.py     指标聚合 / 阈值评估 / 告警历史
+│   ├── replay_service.py      verify（单 Trace 自比对）/ compare（双 Trace 版本对比）
+│   ├── replay_execution.py    确定性 dry-run 执行适配器（录制端口 + 内存存储）
+│   └── memory_stores.py       回放用内存 Session/Turn 存储
 └── observability/
     └── logging.py             结构化事件日志（标准库，T6-9；11 个固定事件见 SHOULD-08）
 ```
@@ -1221,11 +1234,7 @@ frontend/
     │   │   ├── AssistantBlock.tsx  助手块同构渲染器（2026-11-05：历史轮与当前轮共用，时间轴/门禁/方案/回答，缺什么省什么不伪造）
     │   │   ├── AskPanel.tsx         反问面板（2026-10-20 v2：内联于对话流、自适应高度、超 60vh 中部滚动、头尾固定；2026-11-01 头部改折叠栏，收起只留一行摘要）
     │   │   ├── AskFlow.tsx          反问组合层（持有作答草稿，拼装 AskDialog + FollowupForm，2026-10-20）
-        │   │   ├── PromptCard.tsx
-    │   │   ├── VariantTabs.tsx
-    │   │   ├── RecommendBadge.tsx
-    │   │   ├── ScoreDetail.tsx
-    │   │   ├── ConfidenceNotice.tsx
+    │   │   ├── PromptCard.tsx       单方案卡片（title + body + changes；fallback=true 显示降级提示）
     │   │   ├── FollowupForm.tsx
     │   │   └── CopyButton.tsx
     │   ├── history/           历史页组件
@@ -1238,7 +1247,21 @@ frontend/
     │       ├── ModelServicePanel.tsx  供应商卡（F-604 供应商中心化：配一次 Base URL/API Key → 刷新模型列表 → 多选 → 一键保存；测试连接与删除均在供应商级）
     │       ├── AppearancePanel.tsx    通用外观（主题/语言/字体/行为开关）
     │       ├── ~~MemoryPanel.tsx~~     长期记忆（2026-10-21 随偏好层移除；设置中心剩外观/模型服务/安全三面板）
+    │       ├── ObservabilityPanel.tsx 可观测性外壳（2026-11-12：三模块独立开关 + 标签切换，各面板自持数据）
     │       └── SecurityPanel.tsx      流程与安全（护栏参数/锁定项/清除数据）
+    ├── features/              跨页面功能模块（2026-11-12：三模块互不 import）
+    │   └── obs/
+    │       ├── SessionLogPanel.tsx   Session Log：运行时事件台账（run_events，按 run 分段 + 筛选/导出/实时跟随）
+    │       ├── TracePanel.tsx        Trace：会话/trace/事件台账 + 全量事件检查器 + JSON/CSV 导出
+    │       ├── MetricsPanel.tsx      Metrics：多维聚合 + 阈值配置 + 告警历史
+    │       ├── ReplayPanel.tsx       Replay：verify / compare + 时间轴回放
+    │       ├── SessionListView.tsx   会话左栏（Trace/Metrics/Replay 复用）
+    │       ├── ReplayTimeline.tsx    时间轴总览（缩放/选区间/播放头）
+    │       ├── ReplayControls.tsx    回放控制（播放/暂停/步进/速度）
+    │       ├── exportData.ts         浏览器端 JSON/CSV 导出（BOM + 转义）
+    │       ├── format.ts             展示格式化
+    │       ├── types.ts              纯展示类型
+    │       └── observability.module.css 三模块共享样式
     ├── stores/                Zustand store
     │   ├── useOptimizeStore.ts
     │   ├── useHistoryStore.ts     会话历史（2026-10-21 由 usePreferenceStore 改名精简）
@@ -1262,6 +1285,7 @@ frontend/
     │   ├── stream.ts             思考过程流事件契约（thought / snapshot / error 判别联合，2026-10-19）
     │   ├── history.ts            历史会话契约（F-501；自 preference.ts 迁出，2026-11-06）
     │   ├── settings.ts           设置契约校验（F-604）
+    │   ├── obs.ts                可观测性三模块契约校验（2026-11-12）
     │   └── errorCodes.ts         错误码 → i18n 键映射（F-209；文案在 i18n/locales，须覆盖后端全部码）
     ├── i18n/                  多语言（F-209，2026-11-06）
     │   ├── index.ts           i18next 初始化（资源同步 import；locale 取 appearance 真源）
@@ -1367,7 +1391,7 @@ styles    types      utils     utils     utils
 
 | 类别 | token | 允许出现的位置 |
 |---|---|---|
-| 强调（石墨靛蓝） | `--color-primary-500/700/900/soft`、`--brand*` | 主按钮、链接、选中竖线、聚焦环、当前阶段、推荐卡描边 |
+| 强调（石墨靛蓝） | `--color-primary-500/700/900/soft`、`--brand*` | 主按钮、链接、选中竖线、聚焦环、当前阶段、方案卡描边 |
 | 成功 | `--color-success-500/-soft` | 完成对勾、复制成功、API 正常 |
 | 进行中 | `--color-running-500/-soft` | 阶段状态点、「进行中」标签 |
 | 告警 / 失败 | `--color-warning-*` / `--color-danger-*` | 披露条竖线、失败动作描边与 Exit code、破坏性操作 |
@@ -1415,13 +1439,12 @@ styles    types      utils     utils     utils
 | 状态 | 归属 | 说明 |
 |---|---|---|
 | 当前流程阶段 | 全局（`useOptimizeStore`） | 多组件需感知 |
-| 三套方案内容 | 全局 | 多组件需读取 |
-| 评分明细 | 全局 | 评分组件需读取 |
+| 单个方案内容 | 全局 | 多组件需读取 |
+| 交付门状态 | 全局 | 门禁卡片与方案卡需读取 |
 | SSE 连接状态 | 全局（`useOptimizeStore`） | 跨页面共享 |
 | 历史会话列表 | 全局（`useHistoryStore`） | 两页共享（2026-10-21 起承接原 usePreferenceStore 的持久职责） |
 | 输入框内容 | **局部** | 只有输入组件关心 |
 | 折叠展开状态 | **局部** | 每张卡片独立 |
-| 评分明细是否展开 | **局部** | 每张卡片独立 |
 | 加载中的 spinner | **局部** | 组件自己知道 |
 | 表单草稿 | **局部** | 提交后即销毁 |
 
@@ -1456,15 +1479,15 @@ import { useShallow } from 'zustand/react/shallow'
 interface OptimizeState {
   flowId: string | null
   phase: Phase
-  variants: PromptVariant[]
-  ranking: RankingResult | null
+  variant: VariantPayload | null
+  deliveryGate: DeliveryGatePayload | null
   followups: FollowupItem[]
   sseStatus: 'idle' | 'connecting' | 'open' | 'error'
   isSubmitting: boolean
   setFlow: (flowId: string, phase: Phase) => void
   patchPhase: (phase: Phase) => void
-  setVariants: (variants: PromptVariant[]) => void
-  setRanking: (ranking: RankingResult) => void
+  setVariant: (variant: VariantPayload | null) => void
+  setDeliveryGate: (gate: DeliveryGatePayload | null) => void
   setFollowups: (items: FollowupItem[]) => void
   setSseStatus: (s: SseStatus) => void
   setSubmitting: (v: boolean) => void
@@ -1474,15 +1497,15 @@ interface OptimizeState {
 export const useOptimizeStore = create<OptimizeState>()((set) => ({
   flowId: null,
   phase: 'idle',
-  variants: [],
-  ranking: null,
+  variant: null,
+  deliveryGate: null,
   followups: [],
   sseStatus: 'idle',
   isSubmitting: false,
   setFlow: (flowId, phase) => set({ flowId, phase }),
   patchPhase: (phase) => set({ phase }),
-  setVariants: (variants) => set({ variants }),
-  setRanking: (ranking) => set({ ranking }),
+  setVariant: (variant) => set({ variant }),
+  setDeliveryGate: (deliveryGate) => set({ deliveryGate }),
   setFollowups: (followups) => set({ followups }),
   setSseStatus: (sseStatus) => set({ sseStatus }),
   setSubmitting: (isSubmitting) => set({ isSubmitting }),
@@ -1495,11 +1518,11 @@ export const useOptimizeStore = create<OptimizeState>()((set) => ({
 ```typescript
 // 正确：只订阅需要的字段
 const phase = useOptimizeStore((s) => s.phase)
-const variants = useOptimizeStore((s) => s.variants)
+const variant = useOptimizeStore((s) => s.variant)
 
 // 多字段：必须用 useShallow，否则每次渲染都触发
-const { variants, ranking } = useOptimizeStore(
-  useShallow((s) => ({ variants: s.variants, ranking: s.ranking })),
+const { variant, deliveryGate } = useOptimizeStore(
+  useShallow((s) => ({ variant: s.variant, deliveryGate: s.deliveryGate })),
 )
 ```
 
@@ -1543,12 +1566,11 @@ export function useProjectLauncher() {
 |---|---|---|---|
 | 历史记录 | ✅ 持久 | 后端 SQLite | 有查阅价值 |
 | 当前流程阶段 | ⚠️ 部分 | 后端 L1 Session | 服务端持久，页面刷新后从后端恢复 |
-| 三套方案内容 | ⚠️ 部分 | 后端 L1 Session | 同上 |
+| 单个方案内容 | ⚠️ 部分 | 后端 L1 Session | 同上 |
 | 外观设置 | ✅ 持久 | `localStorage` | 主题/语言/字体即开即得 |
 | 输入框草稿 | ✅ 持久 | `localStorage` | 防误刷新丢失 |
 | SSE 连接状态 | ❌ 不持久 | 内存 | 连接状态刷新后必然重连 |
 | 折叠展开状态 | ❌ 不持久 | 内存 | 纯 UI 偏好 |
-| 评分展开状态 | ❌ 不持久 | 内存 | 同上 |
 
 **关键设计**：流程状态的权威存储在**后端**。前端 store 只是镜像。这样页面刷新或服务重启后，能从后端恢复同一状态——这是流程可恢复的必要条件。
 
@@ -1626,12 +1648,8 @@ export const storage = {
 ```typescript
 // 正确
 interface PromptCardProps {
-  variant: PromptVariant
-  isRecommended: boolean
-  confidence: number | null
-  onAdopt: (variantKey: VariantKey) => void
-  onCopy: (content: string) => void
-  disabled?: boolean
+  variant: VariantPayload
+  actions?: ReactNode
 }
 
 // 错误：any 会让类型系统失效
@@ -1648,7 +1666,7 @@ interface PromptCardProps {
 | 全部必填或有默认值 | 可选 prop 必须有默认值语义 |
 | 禁止可变对象 | 传对象时类型为 `Readonly<T>` |
 | 回调用 void 返回 | `(x: T) => void`，不返回 Promise |
-| 布尔 prop 用 is/has/should 前缀 | `isRecommended`、`hasError` |
+| 布尔 prop 用 is/has/should 前缀 | `isThinking`、`hasError` |
 | 避免 boolean prop 过多 | 超过 3 个布尔 prop 说明组件该拆分 |
 | 不传 `undefined` 依赖 | 用可选链处理，不用 `prop !== undefined` 判断 |
 
@@ -1657,7 +1675,7 @@ interface PromptCardProps {
 ```typescript
 // 正确：只读
 interface Props {
-  variants: readonly PromptVariant[]
+  turns: readonly TurnSummaryPayload[]
 }
 ```
 
@@ -1695,7 +1713,7 @@ interface Props {
 </Card>
 
 // 错误：用配置枚举硬编码
-<Card type="variant" variant="a" showHeader showScore />
+<Card type="prompt" level="a" showHeader showFooter />
 ```
 
 **复用门槛**：
@@ -1712,17 +1730,17 @@ interface Props {
 
 ```typescript
 // 抽 Hook：逻辑复用，UI 各异
-// 置信度分级由后端算好，前端只渲染 —— 前端不得出现任何阈值常量
-// （AGENTS.md MUST-08）
-function useConfidenceBadge(level: ConfidenceLevel | null) {
-  return { level, showWarning: level !== 'high' && level !== null }
+// 交付门色阶由后端算好，前端只渲染 —— 前端不得出现任何阈值常量
+// （AGENTS.md MUST-08 / MUST-33）
+function useDeliveryGate(gate: DeliveryGate | null) {
+  return { tone: gate?.tone ?? 'ok', disclosure: gate?.disclosure ?? '' }
 }
 
-// 后端返回的契约（ConfidenceLevel = 'high' | 'low' | 'unknown'）
-// 阈值 0.6 / 0.4 全部在 domain/ranking/ 内判定，前端无感知
+// 后端返回的契约（DeliveryGate = { status, reasons, disclosure, tone }）
+// 判定全部在 domain/delivery/gate.py 内完成，前端无感知
 
 // 抽组件：UI 复用，逻辑封装
-function ConfidenceNotice({ level, detail }: Props) { ... }
+function DeliveryGateCard({ gate }: Props) { ... }
 ```
 
 ### 7.6 样式作用域
@@ -1768,17 +1786,14 @@ function ConfidenceNotice({ level, detail }: Props) { ... }
 /**
  * 单个优化方案展示卡片。
  *
- * 显示方案标题、内容预览、评分摘要与推荐标记，支持展开查看完整内容
- * 与评分明细。
+ * 渲染方案标题、正文与变更点列表；`fallback=true` 时显示降级提示。
+ * 前端零加工，正文原样渲染后端字符串。
  *
  * @example
  * ```tsx
  * <PromptCard
  *   variant={variant}
- *   isRecommended={true}
- *   confidence={0.82}
- *   onAdopt={handleAdopt}
- *   onCopy={handleCopy}
+ *   actions={<button onClick={handleAdopt}>采纳</button>}
  * />
  * ```
  */
@@ -1898,7 +1913,7 @@ return parsed.data
 | 错误码 | 前端行为 |
 |---|---|
 | 2005 候选集为空 | 显示引导，指引用户补充组件名 |
-| 3002 置信度不足 | 显示 `ConfidenceNotice`，不标记推荐 |
+| 3002 置信度不足 | 显示提示文案（不阻断流程） |
 | 3004 决策层速率限制 | 提示稍后重试，禁用提交按钮几秒 |
 | 4002 LLM 不可达 | 提示检查 LLM 配置 |
 | 6001 非法状态转移 | 刷新状态，提示重新开始 |
@@ -2100,8 +2115,8 @@ pnpm check:contract
 
 **破坏一致性的典型做法（禁止）**：
 
-- ❌ HTTP 层（`interfaces/api/`）写一份评分逻辑，`service.py` 里再写一份
-- ❌ 前端自己算总分
+- ❌ HTTP 层（`interfaces/api/`）写一份交付门判定逻辑，`service.py` 里再写一份
+- ❌ 前端自己判定交付门状态
 - ❌ HTTP 层自定义阈值
 - ❌ HTTP 层走缓存、service 不走
 

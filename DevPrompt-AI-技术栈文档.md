@@ -44,7 +44,7 @@
 | `use()` | 在条件分支中读取 Context 与 Promise，避免 `useEffect` 取数 |
 | `useOptimistic` | 采纳反馈的即时 UI 更新 |
 | `startTransition` | 反问步骤切换时的平滑过渡 |
-| Fragment refs | 三套方案卡片展开/收起时管理焦点 |
+| Fragment refs | 方案卡片展开/收起时管理焦点 |
 | Server Components | **不启用**（纯客户端 SPA，无 SSR 需求） |
 
 **不用 Server Components 的理由**：本项目是本地工具，需要访问本地文件系统（ripgrep 执行在 Python 侧），不存在 SEO 需求，也不需要流式首屏。引入 RSC 会让「本地文件系统访问」这个核心能力与渲染模型打架。
@@ -96,7 +96,7 @@
 
 **这个选择与项目本身有呼应关系**：DevPrompt AI 的核心能力之一是识别被优化项目的设计 token（如 `--color-primary-500`）。用同一套 CSS Variables 机制实现自身 UI，既是自证也是约束——我们推荐的 token 命名规范，自己也在用。
 
-**为什么生产界面不用 Tailwind**（结论不变）：本项目 UI 元素种类极少（约 17 个），不需要原子类来加速开发；工具类会让「三套方案并排对比」这类精细布局的意图被淹没在 class 字符串里。
+**为什么生产界面不用 Tailwind**（结论不变）：本项目 UI 元素种类极少（约 17 个），不需要原子类来加速开发；工具类会让「单套方案卡片」这类精细布局的意图被淹没在 class 字符串里。
 
 **为什么样张页用 Tailwind v4**（2026-11-07 新增，MUST-04 逐级说明）：
 - 第 1~3 级不成立：同一份内容要并排试**三套**视觉体系（描边策略、圆角、密度、字重全不同），用原生 CSS 需要三套并行样式表并在推翻时同步维护三处，改动成本远高于一次工具类重排；语言内置（CSS 变量）已用于「同一套骨架换 token」，但无法覆盖「骨架本身也不同」。
@@ -139,7 +139,7 @@
 
 | Store | 职责 |
 |---|---|
-| `useOptimizeStore` | 当前流程阶段、三套方案、评分明细、置信度、SSE 连接状态 |
+| `useOptimizeStore` | 当前流程阶段、单个方案、交付门、SSE 连接状态 |
 | `useHistoryStore` | 会话历史（分页/置顶/重命名/删除） |
 | `useSettingsStore` | 设置状态（外观进 localStorage，`devprompt:v1:` 前缀） |
 
@@ -192,14 +192,10 @@
 
 | 组件 | 职责 | 复杂度 |
 |---|---|---|
-| `PromptCard` | 单套方案展示，可展开评分明细 | 中 |
-| `RecommendBadge` | 【推荐】标记 + 置信度 | 低 |
+| `PromptCard` | 单方案卡片，展示 body 与 changes；`fallback=true` 时显示降级提示 | 中 |
 | `FollowupForm` | 反问卡片，批量填写未确认项 | 中 |
-| `ScoreDetail` | 评分明细（三信号 + 总分计算过程） | 低 |
-| `ConfidenceNotice` | 置信度不足提示区 | 低 |
 | `OptimizeInput` | 原句输入 + 项目路径选择 | 低 |
 | `PhaseIndicator` | 流程阶段指示器 | 低 |
-| `VariantTabs` | 三套方案切换（移动端） | 低 |
 | `CopyButton` | 一键复制 | 低 |
 | `SessionSidebar` | 会话侧栏（工作台左栏，T6-10 补） | 低 |
 | `SettingsModal` | 设置中心弹窗外壳（T6-10 补） | 中 |
@@ -373,7 +369,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | POST | `/optimize` | 启动优化流程，返回流程快照（有副作用，客户端禁重试） |
 | GET | `/progress/{flow_id}` | SSE 进度流（1s 轮询推送快照，终态/反问/护栏后关闭） |
 | POST | `/followup/{flow_id}` | 反问交互三模式（互斥）：answers / escape / guardrail_action |
-| GET | `/result/{flow_id}` | 获取流程快照（含三套方案与评分） |
+| GET | `/result/{flow_id}` | 获取流程快照（含单个方案） |
 | POST | `/feedback` | ~~提交采纳反馈，写入 L3 偏好信号~~（随偏好层 2026-10-21 移除） |
 | GET | `/preference` | ~~查询偏好向量~~（同上移除） |
 | PUT | `/preference` | ~~更新偏好向量~~（同上移除） |
