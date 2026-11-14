@@ -25,7 +25,8 @@ async def test_first_call_miss_then_hit() -> None:
     assert r1.symbols[0].name == "App"
     r2 = await provider.get("C:/proj")
     assert r2.cache_hit is True  # TTL 内命中
-    assert runner.calls == 1  # 第二次未再调 ctags
+    # 每次未命中 = ctags 一次 + 顶层 export 补扫一次（2026-11-11）；命中后不再调用
+    assert runner.calls == 2
 
 
 async def test_mtime_change_invalidates() -> None:
@@ -48,7 +49,8 @@ async def test_different_root_is_cache_miss() -> None:
     provider = SymbolTableProvider(runner, ttl_seconds=3600.0)
     await provider.get("C:/proj")
     await provider.get("C:/other")  # 项目路径是缓存键因子（MUST-14），不得串缓存
-    assert runner.calls == 2
+    # 两个 root 各一次未命中 = 2 ×（ctags + export 补扫）
+    assert runner.calls == 4
 
 
 async def test_excludes_passed_to_ctags() -> None:
@@ -90,12 +92,14 @@ async def test_signature_capability_probed_once() -> None:
     provider = SymbolTableProvider(runner, ttl_seconds=3600.0)
 
     await provider.get("C:/proj")
-    assert len(runner.calls_args) == 2  # 带签名失败 → 去签名重试成功
+    # 带签名失败 → 去签名重试成功 → export 补扫（共 3 次）
+    assert len(runner.calls_args) == 3
 
     provider.mtime_digest_override = "changed"  # 强制缓存失效，触发第二次真实调用
     await provider.get("C:/proj")
-    assert len(runner.calls_args) == 3  # 只多一次，且不带签名
-    assert all("{signature}" not in arg for arg in runner.calls_args[-1])
+    assert len(runner.calls_args) == 5  # 只多一次 ctags，且不带签名（+1 次补扫）
+    last_ctags = next(a for a in reversed(runner.calls_args) if a[0] == "ctags")
+    assert all("{signature}" not in arg for arg in last_ctags)
 
 
 async def test_relative_root_paths_normalized() -> None:

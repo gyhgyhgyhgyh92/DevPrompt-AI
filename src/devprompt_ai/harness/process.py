@@ -19,8 +19,10 @@ from devprompt_ai.domain.retrieval.ports import CommandRunner
 from devprompt_ai.domain.retrieval.symbols import (
     EXCLUDED_DIRS,
     build_ctags_args,
+    build_export_scan_args,
     cache_key,
     parse_ctags_output,
+    parse_export_scan_output,
 )
 
 logger = logging.getLogger("devprompt.cache")
@@ -151,6 +153,18 @@ class SymbolTableProvider:
             self.calls_args.append(args)
             raw = await self._runner.run(args, timeout=30.0)
         symbols = [replace(s, path=_to_rel(s.path, root)) for s in parse_ctags_output(raw)]
+        # ctags 对 TSX 存在漏标（见 symbols.build_export_scan_args 文档）：补扫顶层 export
+        # 声明并按 (path, name) 去重合并。补扫失败不阻断主链——ctags 结果仍可用。
+        try:
+            scan_raw = await self._runner.run(build_export_scan_args("."), timeout=30.0, cwd=root)
+        except Exception:  # noqa: BLE001 - 兜底增强项，失败退回纯 ctags 结果
+            logger.info("symbols.export_scan_failed", extra={"what": "rg"})
+        else:
+            known = {(s.path, s.name) for s in symbols}
+            for extra in parse_export_scan_output(scan_raw):
+                if (extra.path, extra.name) not in known:
+                    known.add((extra.path, extra.name))
+                    symbols.append(extra)
         self._cache_key = key
         self._cache_symbols = symbols
         self._cached_at = now

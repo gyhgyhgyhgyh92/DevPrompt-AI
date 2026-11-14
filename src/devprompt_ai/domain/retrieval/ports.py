@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -31,4 +31,17 @@ class FileReader(Protocol):
 
     async def exists(self, path: str) -> bool:
         """文件存在性。"""
+        ...
+
+
+@runtime_checkable
+class SymbolProvider(Protocol):
+    """符号表提供者（ctags 等实现，2026-11-12 抽为 Protocol 以便 Trace 包装）。
+
+    返回结构由实现定义（`SymbolTableResult`），调用方只消费 ``symbols`` 等字段；
+    这里用 ``Any`` 是为了让 domain 不依赖 harness 的具体结果类型（MUST-06）。
+    """
+
+    async def get(self, root: str) -> Any:
+        """取项目符号表（实现可自带缓存）。"""
         ...

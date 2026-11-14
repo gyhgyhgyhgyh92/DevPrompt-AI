@@ -7,10 +7,10 @@ I/O 全部经 CommandRunner / FileReader Protocol（MUST-06）。
 from __future__ import annotations
 
 import asyncio
-import posixpath
 from collections.abc import Sequence
 
 from devprompt_ai.domain.models import CodeLocation, FactResult
+from devprompt_ai.domain.retrieval.paths import safe_join
 from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader
 
 _RG_ALLOWED = frozenset({0, 1})
@@ -23,6 +23,24 @@ _FRONTEND_EXTS = frozenset({".tsx", ".jsx", ".vue", ".css", ".scss", ".less"})
 #: 仅对前端/样式有意义的三个事实。后端项目里它们恒 False，
 #: 会把 `facts_complete` 永久钉在 False、C 档永远不可达（2026-11-05 修正）。
 _FRONTEND_ONLY = frozenset({"token_defined", "has_data_testid", "has_state_styles"})
+
+#: 已知 UI 组件库的导入特征。这些库的 hover/focus/active 样式定义在库内部，
+#: 业务文件必然零命中；据此判 has_state_styles「不适用」而不是「未通过」。
+_UI_LIB_SIGNALS: dict[str, tuple[str, ...]] = {
+    "antd": ("from 'antd'", 'from "antd"'),
+    "mui": ("@mui/material", "@mui/system"),
+    "element-plus": ("element-plus",),
+    "naive-ui": ("naive-ui",),
+    "chakra": ("@chakra-ui",),
+}
+
+
+def _ui_lib_of(text: str) -> str:
+    """返回目标文件导入的已知 UI 组件库名；未命中返回空串。"""
+    for lib, signals in _UI_LIB_SIGNALS.items():
+        if any(signal in text for signal in signals):
+            return lib
+    return ""
 
 
 def _ext_of(path: str) -> str:
@@ -93,7 +111,8 @@ async def verify_facts(
     """
 
     def _fs(rel: str) -> str:
-        return posixpath.join(root, rel) if root not in (".", "") else rel
+        # MUST-20：越界或非法路径返回空串，等价于「文件不存在」。
+        return safe_join(root, rel)
 
     path, name = location.path, location.symbol_name
     ext = _ext_of(path)
@@ -131,7 +150,23 @@ async def verify_facts(
                 return tp
         return ""
 
+    async def _read_target() -> str:
+        """读目标文件文本，用于识别「状态样式由组件库提供」的项目。
+
+        MUST-20：越界路径返回空串，不读文件；读取失败按无文本处理。
+        """
+        full = _fs(path)
+        if not full:
+            return ""
+        try:
+            return await reader.read(full)
+        except Exception:  # noqa: BLE001 - 读取失败不阻断其它取证项
+            return ""
+
     # 互不依赖的只读取证并发启动；结果按固定顺序组装，FactResult 顺序不变。
+    # 目标文件文本单独起任务再 await：asyncio.gather 的类型重载最多覆盖 6 个参数，
+    # 直接拼成 7 元组会让 mypy 退化为 object。
+    target_task = asyncio.ensure_future(_read_target())
     exists, sym_out, tok_out, tid_out, states_out, test_path = await asyncio.gather(
         reader.exists(_fs(path)),
         runner.run(
@@ -174,9 +209,16 @@ async def verify_facts(
         ),
         _first_test_path(),
     )
+    target_text = await target_task
 
     sym_hit = next((line for line in sym_out.splitlines() if name in line), "")
     tok_hit = next((line for line in tok_out.splitlines() if token and token in line), "")
+    if not tok_hit and location.token_hits:
+        # 2026-11-12：目标文件没有 CSS 自定义属性时，回退到 JS 主题对象证据。
+        # Ant Design 这类项目用 `colorError: '#ff4d4f'` 定义色板，`--xxx` 恒为零命中，
+        # 旧实现会把 token_defined 永久钉在 False（实测实验二项目 3/7 通过即由此而来）。
+        # 主题命中由 locate 阶段的同一次 rg 探得，这里复用，零额外 I/O。
+        tok_hit = f"theme: {location.token_hits[0]}"
     tid = next((line for line in tid_out.splitlines() if "data-testid" in line), "")
     st = next(
         (
@@ -186,6 +228,10 @@ async def verify_facts(
         ),
         "",
     )
+    # 2026-11-12：状态样式零命中且目标文件从已知组件库导入 → 判「不适用」。
+    # AntD/MUI 等库的 hover 定义在库内部，业务文件恒零命中；判「通过」等于伪造证据，
+    # 判「未通过」则会让这类项目的适用项永远差一项。省下的证据里如实记库名。
+    states_lib = "" if st else _ui_lib_of(target_text)
 
     return [
         FactResult(
@@ -215,8 +261,8 @@ async def verify_facts(
         FactResult(
             "has_state_styles",
             bool(st),
-            _ev(st),
-            applicable("has_state_styles"),
+            f"ui_lib={states_lib}" if states_lib else _ev(st),
+            applicable("has_state_styles") and not states_lib,
         ),
         FactResult(
             "file_type_matches",

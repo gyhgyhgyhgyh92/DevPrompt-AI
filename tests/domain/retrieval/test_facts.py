@@ -161,6 +161,116 @@ async def test_frontend_file_keeps_all_facts_applicable() -> None:
     assert all(r.applicable for r in results)
 
 
+_JS_THEME_LOC = CodeLocation(
+    symbol_name="BookListPage",
+    path="src/pages/bookManage/BookListPage.tsx",
+    definition_line=55,
+    tokens=[],  # AntD 项目：目标文件没有 CSS 自定义属性
+    token_hits=("src/styles/antdTheme.ts:10:    colorError: '#ff4d4f',",),
+)
+_JS_THEME_READER_FILES = {"src/pages/bookManage/BookListPage.tsx": _FILE}
+
+
+async def test_token_defined_falls_back_to_js_theme() -> None:
+    """无 CSS 变量时用 locate 阶段探到的 JS 主题键判定，避免 AntD 项目恒为假。"""
+    reader = FakeFileReader(
+        _JS_THEME_READER_FILES,
+        existing={"src/pages/bookManage/BookListPage.tsx"},
+    )
+    runner = FakeCommandRunner(
+        {
+            ("rg", "symbol:src/pages/bookManage/BookListPage.tsx"): (
+                "src/pages/bookManage/BookListPage.tsx:55:export default function BookListPage"
+            )
+        }
+    )
+
+    results = await verify_facts(_JS_THEME_LOC, "把新增图书按钮改为红色", runner, reader)
+
+    token_fact = next(r for r in results if r.key == "token_defined")
+    assert token_fact.passed is True
+    assert token_fact.evidence.startswith("theme: ")
+    assert "colorError" in token_fact.evidence
+    # 目标文件无 CSS 变量时不得发起 css 搜索（零额外子进程）
+    assert not any("tokdef:" in arg for call in runner.calls for arg in call)
+
+
+async def test_token_defined_fails_without_css_or_theme_evidence() -> None:
+    """既无 CSS 变量也无主题命中时仍判失败，不得无条件放行。"""
+    loc = CodeLocation(
+        symbol_name="BookListPage",
+        path="src/pages/bookManage/BookListPage.tsx",
+        definition_line=55,
+        tokens=[],
+        token_hits=(),
+    )
+    reader = FakeFileReader(
+        _JS_THEME_READER_FILES,
+        existing={"src/pages/bookManage/BookListPage.tsx"},
+    )
+    runner = FakeCommandRunner(
+        {
+            ("rg", "symbol:src/pages/bookManage/BookListPage.tsx"): (
+                "src/pages/bookManage/BookListPage.tsx:55:export default function BookListPage"
+            )
+        }
+    )
+
+    results = await verify_facts(loc, "把新增图书按钮改为红色", runner, reader)
+
+    token_fact = next(r for r in results if r.key == "token_defined")
+    assert token_fact.passed is False
+    assert token_fact.evidence == "未找到"
+
+
+async def test_ui_library_project_marks_state_styles_not_applicable() -> None:
+    """AntD 项目：状态样式由组件库提供，目标文件零命中 → 判不适用而非未通过。"""
+    antd_file = "\n".join(
+        [
+            "import { Button } from 'antd';",
+            "export default function BookListPage() {",
+            '  return <Button type="primary">新增图书</Button>;',
+            "}",
+        ]
+    )
+    loc = CodeLocation(
+        symbol_name="BookListPage",
+        path="src/pages/BookListPage.tsx",
+        definition_line=2,
+    )
+    reader = FakeFileReader({loc.path: antd_file}, existing={loc.path})
+    runner = FakeCommandRunner(
+        {("rg", f"symbol:{loc.path}"): (f"{loc.path}:2:export default function BookListPage")}
+    )
+
+    results = await verify_facts(loc, "把新增图书按钮改为红色", runner, reader)
+
+    state_fact = next(r for r in results if r.key == "has_state_styles")
+    assert state_fact.passed is False
+    assert state_fact.applicable is False
+    assert state_fact.evidence == "ui_lib=antd"
+
+
+async def test_non_ui_library_file_keeps_state_styles_applicable() -> None:
+    """未导入已知组件库时保持原判据：零命中即未通过且仍适用。"""
+    loc = CodeLocation(
+        symbol_name="SubmitButton",
+        path="src/ui/Button.tsx",
+        definition_line=1,
+    )
+    reader = FakeFileReader({loc.path: _FILE}, existing={loc.path})
+    routes = _routes(token_defined=True)
+    routes[("rg", f"states:{loc.path}")] = ""
+
+    results = await verify_facts(
+        loc, "把提交按钮改为 primary-500", FakeCommandRunner(routes), reader
+    )
+
+    state_fact = next(r for r in results if r.key == "has_state_styles")
+    assert state_fact.passed is False
+    assert state_fact.applicable is True
+
+
 def test_is_evidence_complete_ignores_not_applicable_failures() -> None:
     facts = [
         FactResult("target_file_exists", True, "file=a.py"),

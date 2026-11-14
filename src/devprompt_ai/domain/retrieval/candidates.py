@@ -201,6 +201,9 @@ ZH_EN_MAP: dict[str, str] = {
     "响应式": "responsive",
     "适配": "adaptive",
     "颜色": "color",
+    "红色": "red danger",
+    "主色": "primary",
+    "危险": "danger",
     "背景": "background",
     # ── UI · 布局与方向 ──
     "移动端": "mobile",
@@ -215,6 +218,7 @@ ZH_EN_MAP: dict[str, str] = {
     "斑马纹": "zebra",
     # ── 页面与结构 ──
     "页面": "page",
+    "界面": "ui interface",
     "首页": "home",
     "主页": "home",
     "个人": "profile",
@@ -244,6 +248,7 @@ ZH_EN_MAP: dict[str, str] = {
     "账号": "account",
     "密码": "password",
     "角色": "role",
+    "管理员": "admin",
     "权限": "permission",
     "鉴权": "auth",
     "认证": "auth",
@@ -268,6 +273,9 @@ ZH_EN_MAP: dict[str, str] = {
     "点赞": "like",
     "评价": "review",
     "评论": "comment",
+    # ── 图书借阅领域 ──
+    "图书": "book",
+    "书籍": "book",
     # ── 数据与接口 ──
     "数据": "data",
     "模型": "model",
