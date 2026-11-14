@@ -84,6 +84,12 @@ const settingsFixture: SettingsResponse = {
     temperature: null,
   },
   process: { followup_cost_budget: 2, followup_soft_round_guard: 12, telemetry: true },
+  observability: {
+    trace_enabled: true,
+    trace_retention_days: 30,
+    metrics_enabled: true,
+    replay_enabled: true,
+  },
   locked: { candidate_limit: 30 },
 }
 

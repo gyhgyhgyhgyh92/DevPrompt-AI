@@ -1,6 +1,69 @@
 {
   "components": {
     "schemas": {
+      "AlertListPayload": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "offset"
+        ],
+        "title": "AlertListPayload",
+        "type": "object"
+      },
+      "ApiResponse_AlertListPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AlertListPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[AlertListPayload]",
+        "type": "object"
+      },
       "ApiResponse_ArtifactResponse_": {
         "properties": {
           "code": {
@@ -92,6 +155,68 @@
           }
         },
         "title": "ApiResponse[HealthResponse]",
+        "type": "object"
+      },
+      "ApiResponse_MetricSummaryPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MetricSummaryPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[MetricSummaryPayload]",
+        "type": "object"
+      },
+      "ApiResponse_MetricsConfigPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MetricsConfigPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[MetricsConfigPayload]",
         "type": "object"
       },
       "ApiResponse_ModelCatalogResponse_": {
@@ -243,6 +368,68 @@
         "title": "ApiResponse[ProjectDeleteResponse]",
         "type": "object"
       },
+      "ApiResponse_ReplayComparePayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplayComparePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[ReplayComparePayload]",
+        "type": "object"
+      },
+      "ApiResponse_ReplayRunPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplayRunPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[ReplayRunPayload]",
+        "type": "object"
+      },
       "ApiResponse_ScanResponse_": {
         "properties": {
           "code": {
@@ -334,6 +521,130 @@
           }
         },
         "title": "ApiResponse[SettingsResponse]",
+        "type": "object"
+      },
+      "ApiResponse_TraceEventPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TraceEventPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[TraceEventPayload]",
+        "type": "object"
+      },
+      "ApiResponse_TraceEventsPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TraceEventsPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[TraceEventsPayload]",
+        "type": "object"
+      },
+      "ApiResponse_TraceListPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TraceListPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[TraceListPayload]",
+        "type": "object"
+      },
+      "ApiResponse_TraceTreePayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TraceTreePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[TraceTreePayload]",
         "type": "object"
       },
       "ApiResponse_TurnDetailPayload_": {
@@ -505,16 +816,6 @@
       "DeliveryGatePayload": {
         "description": "交付证据门结果（2026-11-05，additive）：只披露质量标记，不阻断交付。\n\n``tone`` 由**后端领域层**给出（ok / warn / error），前端只按它选样式，\n不得自行把 status 映射成语义（MUST-08 / MUST-33）。",
         "properties": {
-          "can_mark_c": {
-            "default": true,
-            "title": "Can Mark C",
-            "type": "boolean"
-          },
-          "can_mark_recommend": {
-            "default": true,
-            "title": "Can Mark Recommend",
-            "type": "boolean"
-          },
           "disclosure": {
             "default": "",
             "title": "Disclosure",
@@ -566,7 +867,7 @@
         "type": "object"
       },
       "FlowSnapshotResponse": {
-        "description": "FlowSnapshot 的 HTTP 渲染形态（status 含 SSE 专有扩展值 \"aborted\"）。\n\nv2（BREAKING）：variant 单数字段 → variants 列表 + ranking 推荐视图。",
+        "description": "FlowSnapshot 的 HTTP 渲染形态（status 含 SSE 专有扩展值 \"aborted\"）。\n\nv3（BREAKING，2026-11-11 单套输出）：``variant`` 单对象承载方案；\n``variants`` / ``ranking`` / ``ranking_skip_reason`` 已删除。",
         "properties": {
           "agent_action": {
             "anyOf": [
@@ -663,27 +964,6 @@
             "title": "Questions",
             "type": "array"
           },
-          "ranking": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RankingViewPayload"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "ranking_skip_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ranking Skip Reason"
-          },
           "reply_text": {
             "default": "",
             "title": "Reply Text",
@@ -711,12 +991,15 @@
               }
             ]
           },
-          "variants": {
-            "items": {
-              "$ref": "#/components/schemas/VariantPayload"
-            },
-            "title": "Variants",
-            "type": "array"
+          "variant": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VariantPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -936,6 +1219,47 @@
           "candidate_limit"
         ],
         "title": "LockedSettings",
+        "type": "object"
+      },
+      "MetricSummaryPayload": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "MetricSummaryPayload",
+        "type": "object"
+      },
+      "MetricsConfigPayload": {
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "config"
+        ],
+        "title": "MetricsConfigPayload",
         "type": "object"
       },
       "ModelCapabilitiesView": {
@@ -1421,6 +1745,88 @@
         "title": "ModelServiceUpdate",
         "type": "object"
       },
+      "ObservabilitySettings": {
+        "description": "可观测性三模块开关视图（2026-11-12）：各模块独立启用，互不影响。\n\n只下发「启停 + Trace 保留天数」这类运行级配置；阈值与告警冷却走\n`GET /obs/metrics/config`（Metrics 模块自己的只读端点），避免设置段与\n模块实现细节耦合。",
+        "properties": {
+          "metrics_enabled": {
+            "title": "Metrics Enabled",
+            "type": "boolean"
+          },
+          "replay_enabled": {
+            "title": "Replay Enabled",
+            "type": "boolean"
+          },
+          "trace_enabled": {
+            "title": "Trace Enabled",
+            "type": "boolean"
+          },
+          "trace_retention_days": {
+            "title": "Trace Retention Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "trace_enabled",
+          "trace_retention_days",
+          "metrics_enabled",
+          "replay_enabled"
+        ],
+        "title": "ObservabilitySettings",
+        "type": "object"
+      },
+      "ObservabilityUpdate": {
+        "description": "PUT /settings 可观测性段：None = 保持不变；保存后立即作用于运行中的模块。",
+        "properties": {
+          "metrics_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metrics Enabled"
+          },
+          "replay_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replay Enabled"
+          },
+          "trace_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace Enabled"
+          },
+          "trace_retention_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace Retention Days"
+          }
+        },
+        "title": "ObservabilityUpdate",
+        "type": "object"
+      },
       "OptimizeRequest": {
         "description": "POST /optimize 请求体（该端点有副作用，客户端禁重试，MUST-15）。\n\n``session_id`` 非空表示在同一会话开启新一轮（多轮，2026-10-20）；为空则新建会话。",
         "properties": {
@@ -1752,48 +2158,108 @@
         "title": "ProviderDirectoryEntry",
         "type": "object"
       },
-      "RankingViewPayload": {
-        "description": "service.RankingView 的契约镜像（F-403/F-404 加权推荐视图）。",
+      "ReplayComparePayload": {
         "properties": {
-          "confidence": {
-            "title": "Confidence",
-            "type": "number"
+          "final": {
+            "additionalProperties": true,
+            "title": "Final",
+            "type": "object"
           },
-          "fit": {
-            "title": "Fit",
-            "type": "number"
+          "nodes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Nodes",
+            "type": "array"
           },
-          "gap": {
-            "title": "Gap",
-            "type": "number"
-          },
-          "marked": {
-            "title": "Marked",
-            "type": "boolean"
-          },
-          "reason": {
-            "title": "Reason",
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "nodes",
+          "final"
+        ],
+        "title": "ReplayComparePayload",
+        "type": "object"
+      },
+      "ReplayCompareRequest": {
+        "properties": {
+          "left_trace_id": {
+            "minLength": 1,
+            "title": "Left Trace Id",
             "type": "string"
           },
-          "total": {
-            "title": "Total",
-            "type": "number"
-          },
-          "variant": {
-            "title": "Variant",
+          "right_trace_id": {
+            "minLength": 1,
+            "title": "Right Trace Id",
             "type": "string"
           }
         },
         "required": [
-          "variant",
-          "gap",
-          "confidence",
-          "marked",
-          "reason",
-          "fit",
-          "total"
+          "left_trace_id",
+          "right_trace_id"
         ],
-        "title": "RankingViewPayload",
+        "title": "ReplayCompareRequest",
+        "type": "object"
+      },
+      "ReplayCreateRequest": {
+        "properties": {
+          "left_trace_id": {
+            "minLength": 1,
+            "title": "Left Trace Id",
+            "type": "string"
+          },
+          "mode": {
+            "default": "verify",
+            "enum": [
+              "verify",
+              "compare"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "right_trace_id": {
+            "default": "",
+            "title": "Right Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "left_trace_id"
+        ],
+        "title": "ReplayCreateRequest",
+        "type": "object"
+      },
+      "ReplayRunPayload": {
+        "properties": {
+          "nodes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "run": {
+            "additionalProperties": true,
+            "title": "Run",
+            "type": "object"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run",
+          "nodes"
+        ],
+        "title": "ReplayRunPayload",
         "type": "object"
       },
       "RollbackRequest": {
@@ -1885,6 +2351,9 @@
             "title": "Models",
             "type": "array"
           },
+          "observability": {
+            "$ref": "#/components/schemas/ObservabilitySettings"
+          },
           "process": {
             "$ref": "#/components/schemas/ProcessSettings"
           },
@@ -1907,6 +2376,7 @@
           "models",
           "model_service",
           "process",
+          "observability",
           "locked"
         ],
         "title": "SettingsResponse",
@@ -1949,6 +2419,16 @@
               }
             ],
             "title": "Models"
+          },
+          "observability": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObservabilityUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "process": {
             "anyOf": [
@@ -2036,6 +2516,110 @@
           "path"
         ],
         "title": "SymbolPayload",
+        "type": "object"
+      },
+      "TraceEventPayload": {
+        "properties": {
+          "event": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "title": "TraceEventPayload",
+        "type": "object"
+      },
+      "TraceEventsPayload": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "has_more",
+          "next_cursor"
+        ],
+        "title": "TraceEventsPayload",
+        "type": "object"
+      },
+      "TraceListPayload": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "TraceListPayload",
+        "type": "object"
+      },
+      "TraceTreePayload": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "items"
+        ],
+        "title": "TraceTreePayload",
         "type": "object"
       },
       "TurnDetailPayload": {
@@ -2244,7 +2828,7 @@
         "type": "object"
       },
       "VariantPayload": {
-        "description": "domain VariantDraft 的契约镜像（F-301 结构化方案）。",
+        "description": "domain VariantDraft 的契约镜像（F-301 单套方案）。\n\n``fallback`` 标记本轮由兜底模板（A 保守版）产出，前端须披露「已降级为保守输出」。",
         "properties": {
           "body": {
             "title": "Body",
@@ -2257,9 +2841,18 @@
             "title": "Changes",
             "type": "array"
           },
-          "level": {
-            "title": "Level",
-            "type": "string"
+          "claims": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Claims",
+            "type": "array"
+          },
+          "fallback": {
+            "default": false,
+            "title": "Fallback",
+            "type": "boolean"
           },
           "title": {
             "title": "Title",
@@ -2268,8 +2861,7 @@
         },
         "required": [
           "title",
-          "body",
-          "level"
+          "body"
         ],
         "title": "VariantPayload",
         "type": "object"
@@ -2851,6 +3443,563 @@
         "summary": "Answer Intervention",
         "tags": [
           "runtime"
+        ]
+      }
+    },
+    "/api/v1/obs/metrics/alerts": {
+      "get": {
+        "operationId": "alerts_api_v1_obs_metrics_alerts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "",
+              "enum": [
+                "",
+                "active",
+                "resolved"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_AlertListPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Alerts",
+        "tags": [
+          "obs-metrics"
+        ]
+      }
+    },
+    "/api/v1/obs/metrics/config": {
+      "get": {
+        "operationId": "get_config_api_v1_obs_metrics_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_MetricsConfigPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Config",
+        "tags": [
+          "obs-metrics"
+        ]
+      }
+    },
+    "/api/v1/obs/metrics/summary": {
+      "get": {
+        "operationId": "summary_api_v1_obs_metrics_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trace_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Trace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from_ts",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "From Ts",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_ts",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "To Ts",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "default": "kind",
+              "enum": [
+                "kind",
+                "name",
+                "model",
+                "turn",
+                "status"
+              ],
+              "title": "Group By",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "default": "none",
+              "enum": [
+                "none",
+                "minute",
+                "hour",
+                "day"
+              ],
+              "title": "Bucket",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_MetricSummaryPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Summary",
+        "tags": [
+          "obs-metrics"
+        ]
+      }
+    },
+    "/api/v1/obs/replay/compare": {
+      "post": {
+        "operationId": "compare_api_v1_obs_replay_compare_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayCompareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ReplayComparePayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare",
+        "tags": [
+          "obs-replay"
+        ]
+      }
+    },
+    "/api/v1/obs/replay/runs": {
+      "post": {
+        "operationId": "create_run_api_v1_obs_replay_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ReplayRunPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Run",
+        "tags": [
+          "obs-replay"
+        ]
+      }
+    },
+    "/api/v1/obs/replay/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_api_v1_obs_replay_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ReplayRunPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run",
+        "tags": [
+          "obs-replay"
+        ]
+      }
+    },
+    "/api/v1/obs/trace/events/{event_id}": {
+      "get": {
+        "operationId": "get_event_api_v1_obs_trace_events__event_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TraceEventPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Event",
+        "tags": [
+          "obs-trace"
+        ]
+      }
+    },
+    "/api/v1/obs/trace/sessions/{session_id}/events": {
+      "get": {
+        "operationId": "list_events_api_v1_obs_trace_sessions__session_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Cursor",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TraceEventsPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Events",
+        "tags": [
+          "obs-trace"
+        ]
+      }
+    },
+    "/api/v1/obs/trace/sessions/{session_id}/traces": {
+      "get": {
+        "operationId": "list_traces_api_v1_obs_trace_sessions__session_id__traces_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TraceListPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Traces",
+        "tags": [
+          "obs-trace"
+        ]
+      }
+    },
+    "/api/v1/obs/trace/traces/{trace_id}": {
+      "get": {
+        "operationId": "get_trace_api_v1_obs_trace_traces__trace_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trace_id",
+            "required": true,
+            "schema": {
+              "title": "Trace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "full",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Full",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TraceTreePayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Trace",
+        "tags": [
+          "obs-trace"
         ]
       }
     },

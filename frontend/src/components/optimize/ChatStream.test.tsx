@@ -19,15 +19,13 @@ function baseProps(overrides: Partial<Props> = {}): Props {
     replyText: '',
     questions: [],
     cleared: [],
-    variants: [
-      {
-        title: '标准版',
-        body: '请为列表页新增导出按钮：读取当前筛选结果，导出为 CSV。',
-        level: 'B',
-        changes: ['新增导出按钮'],
-      },
-    ],
-    ranking: null,
+    variant: {
+      title: '标准版',
+      body: '请为列表页新增导出按钮：读取当前筛选结果，导出为 CSV。',
+      changes: ['新增导出按钮'],
+      claims: [],
+      fallback: false,
+    },
     deliveryGate: null,
     elapsedSeconds: null,
     errorMessage: null,
@@ -55,10 +53,13 @@ describe('ChatStream 结构与阶段', () => {
           state: 'GENERATING',
           status: 'ask',
           cleared: ['scope'],
-          variants: [
-            { title: '保守版', body: 'body-A', level: 'A', changes: [] },
-            { title: '标准版', body: 'body-B', level: 'B', changes: [] },
-          ],
+          variant: {
+            title: '标准版',
+            body: 'body-B',
+            changes: [],
+            claims: [],
+            fallback: false,
+          },
         })}
       />,
     )
@@ -73,10 +74,9 @@ describe('ChatStream 结构与阶段', () => {
       '等待确认',
       '整理答复',
       '生成方案',
-      '评估推荐',
       '已完成',
     ])
-    expect(screen.getByText('一次调用产出 1~3 套方案')).toBeTruthy()
+    expect(screen.getByText('一次调用产出 1 套方案')).toBeTruthy()
     expect(screen.getByText('进行中')).toBeTruthy()
   })
 
@@ -92,7 +92,7 @@ describe('ChatStream 结构与阶段', () => {
     expect(screen.getByText('七项取证完成，未发现需要确认的缺口')).toBeTruthy()
   })
 
-  it('单套方案跳过打分时不渲染「评估推荐」', () => {
+  it('单套方案不渲染打分/推荐阶段', () => {
     render(<ChatStream {...baseProps({ state: 'DONE', isThinking: true })} />)
 
     const labels = Array.from(document.querySelectorAll('[class*="chat-reply__phase-label"]')).map(

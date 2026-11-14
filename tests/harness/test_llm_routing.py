@@ -145,9 +145,38 @@ async def test_auth_failure_does_not_failover(monkeypatch: pytest.MonkeyPatch) -
     assert calls == ["model-a"]
 
 
-def test_failover_codes_exclude_auth_and_quota() -> None:
+def test_failover_codes_exclude_auth_only() -> None:
+    """鉴权失败不降级；余额不足降级（条目可能属于不同账户）。"""
     assert 5014 not in _FAILOVER_CODES
-    assert 5013 not in _FAILOVER_CODES
+    assert 5013 in _FAILOVER_CODES
+
+
+async def test_quota_failure_failovers_to_next_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """余额不足（5013）→ 换链上下一个候选；成功后原样返回。"""
+    monkeypatch.setattr(
+        llm_mod, "load_candidates", lambda: [_entry("a", "model-a"), _entry("b", "model-b")]
+    )
+    monkeypatch.setattr(llm_mod, "load_routing_stats", _stats_stub({}))
+    calls: list[str] = []
+
+    async def fake_once(cfg: AppConfig, *_args: object, **_kw: object) -> _Probe:
+        calls.append(cfg.llm_model)
+        if cfg.llm_model == "model-a":
+            code = next(
+                c for s, c in llm_mod._LLM_FAILURE_CODES.items() if s == "insufficient_quota"
+            )
+            raise llm_mod.GenerationError("insufficient balance", code=code, context={})
+        return _Probe()
+
+    monkeypatch.setattr(llm_mod, "_structured_once", fake_once)
+    cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
+
+    result = await chat_structured(cfg, _Probe, "sys", "user")
+
+    assert result.value == "ok"
+    assert calls == ["model-a", "model-b"]
 
 
 async def test_routing_stats_recorded_per_attempt(

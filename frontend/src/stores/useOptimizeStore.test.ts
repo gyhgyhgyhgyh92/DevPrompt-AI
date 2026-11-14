@@ -2,20 +2,18 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { FlowSnapshotResponse } from '../api/types'
 import { useOptimizeStore } from './useOptimizeStore'
 
-const ranking = {
-  variant: 'B',
-  gap: 0.3,
-  confidence: 0.9,
-  marked: true,
-  reason: '分差较大',
-  fit: 0.8,
-  total: 0.76,
+const variant = {
+  title: '标准方案',
+  body: 'b2',
+  changes: ['x'],
+  claims: [],
+  fallback: false,
 }
 
 function snapshotOf(overrides?: Partial<FlowSnapshotResponse>): FlowSnapshotResponse {
   return {
     session_id: 'sess-1',
-    state: 'RANKING',
+    state: 'DONE',
     status: 'done',
     message: 'ok',
     evidence_stale: false,
@@ -32,12 +30,7 @@ function snapshotOf(overrides?: Partial<FlowSnapshotResponse>): FlowSnapshotResp
       },
     ],
     cleared: ['scope'],
-    variants: [
-      { title: '保守', body: 'b1', level: 'A', changes: [] },
-      { title: '标准', body: 'b2', level: 'B', changes: ['x'] },
-      { title: '激进', body: 'b3', level: 'C', changes: [] },
-    ],
-    ranking,
+    variant,
     target: { name: 'build', path: 'src/app.py', line: 12 },
     facts: [{ key: 'fact_a', passed: true, evidence: '定位到 build' }],
     ...overrides,
@@ -49,15 +42,14 @@ beforeEach(() => {
 })
 
 describe('useOptimizeStore 快照镜像', () => {
-  it('applySnapshot 更新当前态、三套方案与 ranking 视图', () => {
+  it('applySnapshot 更新当前态与单套方案', () => {
     useOptimizeStore.getState().applySnapshot(snapshotOf())
 
     const state = useOptimizeStore.getState()
     expect(state.sessionId).toBe('sess-1')
-    expect(state.state).toBe('RANKING')
+    expect(state.state).toBe('DONE')
     expect(state.status).toBe('done')
-    expect(state.variants).toHaveLength(3)
-    expect(state.ranking).toMatchObject({ variant: 'B', marked: true })
+    expect(state.variant).toMatchObject({ title: '标准方案', body: 'b2', fallback: false })
     expect(state.questions).toHaveLength(1)
     expect(state.cleared).toEqual(['scope'])
     expect(state.target).toMatchObject({ name: 'build', path: 'src/app.py', line: 12 })
@@ -69,8 +61,7 @@ describe('useOptimizeStore 快照镜像', () => {
       snapshotOf({
         questions: undefined,
         cleared: undefined,
-        variants: undefined,
-        ranking: undefined,
+        variant: undefined,
         target: undefined,
         facts: undefined,
       }),
@@ -79,8 +70,7 @@ describe('useOptimizeStore 快照镜像', () => {
     const state = useOptimizeStore.getState()
     expect(state.questions).toEqual([])
     expect(state.cleared).toEqual([])
-    expect(state.variants).toEqual([])
-    expect(state.ranking).toBeNull()
+    expect(state.variant).toBeNull()
     expect(state.target).toBeNull()
     expect(state.facts).toEqual([])
   })
@@ -88,8 +78,8 @@ describe('useOptimizeStore 快照镜像', () => {
   it('applySseMessage 合法消息更新状态（SSE 消息在 store 内处理）', () => {
     useOptimizeStore.getState().applySseMessage(JSON.stringify(snapshotOf()))
 
-    expect(useOptimizeStore.getState().state).toBe('RANKING')
-    expect(useOptimizeStore.getState().variants).toHaveLength(3)
+    expect(useOptimizeStore.getState().state).toBe('DONE')
+    expect(useOptimizeStore.getState().variant).toMatchObject({ title: '标准方案' })
   })
 
   it('applySseMessage 非法 JSON 直接丢弃，状态不变', () => {
@@ -128,7 +118,7 @@ describe('useOptimizeStore 快照镜像', () => {
     // 归属释放（2026-11-04）：新轮开始时上一轮不再是「当前轮」，否则会被 TurnList 过滤掉
     expect(next.currentTurnId).toBeNull()
     expect(next.isThinking).toBe(true)
-    expect(next.variants).toEqual([]) // 本轮快照被清
+    expect(next.variant).toBeNull() // 本轮快照被清
     expect(next.status).toBeNull()
   })
 
@@ -205,9 +195,9 @@ describe('useOptimizeStore 运行时事件守卫', () => {
       true,
     )
     expect(thinking.some((item) => item.kind === 'action' && item.status === 'failed')).toBe(true)
-    expect(thinking.some((item) => item.kind === 'text' && item.text.includes('上下文已压缩'))).toBe(
-      true,
-    )
+    expect(
+      thinking.some((item) => item.kind === 'text' && item.text.includes('上下文已压缩')),
+    ).toBe(true)
   })
 
   it('畸形载荷安全丢弃不崩', () => {

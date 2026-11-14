@@ -17,11 +17,11 @@ VARIED_ACTIONS: tuple[AgentAction, ...] = (
     AgentAction.RETRIEVE,
     AgentAction.PROBE,
     AgentAction.GENERATE,
-    AgentAction.RANK,
+    AgentAction.DELIVER,
     AgentAction.RETRIEVE,
     AgentAction.PROBE,
     AgentAction.GENERATE,
-    AgentAction.RANK,
+    AgentAction.DELIVER,
 )
 
 
@@ -71,7 +71,7 @@ def test_fact_stagnation_warns() -> None:
 
 
 def test_fact_growth_is_healthy() -> None:
-    actions = [AgentAction.RETRIEVE, AgentAction.PROBE, AgentAction.GENERATE, AgentAction.RANK]
+    actions = [AgentAction.RETRIEVE, AgentAction.PROBE, AgentAction.GENERATE, AgentAction.DELIVER]
     steps = [make_step(i, actions[i % len(actions)], facts_passed=i) for i in range(4)]
     assert evaluate_convergence(steps, warned_at_l2=False).level == 0
 

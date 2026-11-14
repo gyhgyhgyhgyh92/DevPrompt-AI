@@ -3,7 +3,6 @@ import {
   FeedbackRequestSchema,
   FlowSnapshotSchema,
   FollowupRequestSchema,
-  RankingViewSchema,
   VariantSchema,
 } from './optimize'
 import { PagedHistoryItemSchema } from './history'
@@ -51,7 +50,7 @@ describe('schemas/optimize 契约校验', () => {
       FlowSnapshotSchema.safeParse({ state: 'INIT', status: 'ask', message: '' }).success,
     ).toBe(false)
     expect(
-      FlowSnapshotSchema.safeParse({ session_id: 's', state: 'INIT', status: 'ask', variants: 'x' })
+      FlowSnapshotSchema.safeParse({ session_id: 's', state: 'INIT', status: 'ask', variant: 'x' })
         .success,
     ).toBe(false)
     expect(
@@ -98,19 +97,10 @@ describe('schemas/optimize 契约校验', () => {
     ).toBe(false)
   })
 
-  it('RankingView / Variant 载荷字段类型不匹配即拒绝', () => {
-    expect(
-      RankingViewSchema.safeParse({
-        confidence: 'high',
-        fit: 1,
-        gap: 1,
-        marked: true,
-        reason: '',
-        total: 1,
-        variant: 'A',
-      }).success,
-    ).toBe(false)
+  it('Variant 载荷字段类型不匹配即拒绝，可选项缺省按兜底值', () => {
+    expect(VariantSchema.safeParse({ body: '', title: 'T', changes: 'x' }).success).toBe(false)
     expect(VariantSchema.safeParse({ body: '', level: 'A' }).success).toBe(false)
+    expect(VariantSchema.safeParse({ body: 'b', title: 'T' }).success).toBe(true)
   })
 
   it('FeedbackRequest variant 超出 A/B/C 档位即拒绝', () => {
@@ -156,6 +146,12 @@ describe('schemas/history 与 settings 契约校验', () => {
         followup_cost_budget: 1,
         followup_soft_round_guard: 10,
         telemetry: true,
+      },
+      observability: {
+        trace_enabled: true,
+        trace_retention_days: 30,
+        metrics_enabled: true,
+        replay_enabled: true,
       },
       locked: { candidate_limit: 25 },
     }

@@ -187,20 +187,9 @@ function snapshotFixture(overrides: Partial<FlowSnapshotResponse> = {}): FlowSna
     reply_text: '',
     questions: [],
     cleared: [],
-    variants: [],
-    ranking: null,
+    variant: null,
     ...overrides,
   }
-}
-
-const rankingFixture = {
-  variant: 'B',
-  gap: 0.25,
-  confidence: 0.9,
-  marked: true,
-  reason: '分差明显',
-  fit: 0.8,
-  total: 0.75,
 }
 
 function renderPage() {
@@ -487,40 +476,48 @@ describe('OptimizePage 三态容器', () => {
     expect(document.querySelector('[class*="ask-panel"]')).toBeNull()
   })
 
-  it('结果态在后端标记推荐时显示【推荐】与置信度', () => {
+  it('结果态渲染单套方案的标题、正文与改动清单', () => {
     const seed = snapshotFixture({
       status: 'done',
       state: 'DONE',
-      variants: [
-        { title: '保守方案', body: 'b1', level: 'A', changes: ['改动一'] },
-        { title: '标准方案', body: 'b2', level: 'B', changes: [] },
-      ],
-      ranking: rankingFixture,
+      variant: {
+        title: '标准方案',
+        body: '标准方案正文',
+        changes: ['改动一'],
+        claims: [],
+        fallback: false,
+      },
     })
     useOptimizeStore.getState().applySnapshot(seed)
     stubApi([{ match: '/result', payload: envelope(seed) }])
 
     renderPage()
 
-    expect(screen.getByText('标准方案')).toBeTruthy()
+    expect(screen.getByRole('article', { name: '标准方案' })).toBeTruthy()
+    expect(screen.getByText('标准方案正文')).toBeTruthy()
     expect(screen.getByText('改动一')).toBeTruthy()
-    expect(screen.getByText(/【推荐】B/)).toBeTruthy()
-    expect(screen.getByText(/0.9/)).toBeTruthy()
+    expect(screen.queryByText(/【推荐】/)).toBeNull()
+    expect(screen.queryByText('评分明细')).toBeNull()
   })
 
-  it('结果态未标记推荐时展示后端 reason 文案（不静默）', () => {
+  it('fallback 为真时展示降级提示', () => {
     const seed = snapshotFixture({
       status: 'done',
       state: 'DONE',
-      ranking: { ...rankingFixture, marked: false, reason: '三套适配度接近，建议人工选择' },
+      variant: {
+        title: '保守方案',
+        body: '保守方案正文',
+        changes: [],
+        claims: [],
+        fallback: true,
+      },
     })
     useOptimizeStore.getState().applySnapshot(seed)
     stubApi([{ match: '/result', payload: envelope(seed) }])
 
     renderPage()
 
-    expect(screen.getByText('三套适配度接近，建议人工选择')).toBeTruthy()
-    expect(screen.queryByText(/【推荐】/)).toBeNull()
+    expect(screen.getByText(/已降级为保守输出/)).toBeTruthy()
   })
 
   it('挂载时经 GET /result/{flow_id} 做服务端权威恢复', async () => {
@@ -572,7 +569,15 @@ describe('多轮归属（2026-11-04）', () => {
   const firstDetail = {
     ...firstTurn,
     input: '把提交按钮改成 primary-500',
-    variants: [{ title: '保守版', body: '第一轮方案正文', level: 'A', changes: [] }],
+    variants: [
+      {
+        title: '标准版',
+        body: '第一轮方案正文',
+        changes: [],
+        claims: [],
+        fallback: false,
+      },
+    ],
   }
 
   function stubTwoTurns(secondSnapshot: unknown) {
@@ -609,7 +614,13 @@ describe('多轮归属（2026-11-04）', () => {
           status: 'done',
           state: 'DONE',
           current_turn_id: 't2',
-          variants: [{ title: '第二轮方案', body: '第二轮方案正文', level: 'B', changes: [] }],
+          variant: {
+            title: '第二轮方案',
+            body: '第二轮方案正文',
+            changes: [],
+            claims: [],
+            fallback: false,
+          },
         }),
       ),
     )

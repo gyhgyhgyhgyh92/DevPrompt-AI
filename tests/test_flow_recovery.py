@@ -5,9 +5,9 @@
 ② resume 重复获取路径——**同一 flow_id** 经 ``GET /progress/{flow_id}`` SSE 中断（读首事件即停）
    后改由 ``GET /result/{flow_id}`` 重建，以及反问经 ``POST /followup/{flow_id}`` 后再拉快照。
 
-断言（F-804 验收）：
-① 三套方案正文逐套 diff 为空；
-② ranking 视图 fit/total/confidence/gap/marked/reason 六字段逐字段相等。
+断言（F-804 验收，2026-11-11 单套输出后收敛）：
+① 唯一方案 ``variant`` 的标题/正文逐字相等；
+② 快照其余可序列化字段逐项相等（不含 ranking / variants——它们已从契约删除）。
 
 F-804 豁免：决策层与生成器输出均为**确定性 fake**（不调用真实 LLM），故结果可复现。
 本文件仅测试，不改动生产代码；fake 严格按 Protocol 签名实现（MUST-06 单向依赖）。
@@ -34,12 +34,7 @@ from devprompt_ai.domain.decision.port import (
     ScorePromptsOutput,
     VariantScore,
 )
-from devprompt_ai.domain.generate.ports import (
-    GenerationContext,
-    Level,
-    MultiVariantDraft,
-    VariantDraft,
-)
+from devprompt_ai.domain.generate.ports import GenerationContext, VariantDraft
 from devprompt_ai.domain.models import (
     Candidate,
     FactResult,
@@ -51,16 +46,6 @@ from devprompt_ai.harness.process import SymbolTableProvider
 from devprompt_ai.interfaces.api import routes
 from devprompt_ai.interfaces.api.app import create_app
 from devprompt_ai.service import _RANK_CACHE, ForgeService
-
-# F-804 ②：ranking 视图需逐字段对照的七字段（variant 不在比对项内）。
-_RANKING_FIELDS: tuple[str, ...] = (
-    "fit",
-    "total",
-    "confidence",
-    "gap",
-    "marked",
-    "reason",
-)
 
 _SENTENCE = "把提交按钮改成 primary-500"
 
@@ -153,24 +138,16 @@ class FixedDecider:
 
 
 class FixedGenerator:
-    """GeneratePort 确定性实现：正文随档位/序号固定生成（供 diff 对照）。"""
+    """GeneratePort 确定性实现：正文固定生成（供 diff 对照）。"""
 
-    async def generate_single(self, ctx: GenerationContext, locale: str = "zh-CN") -> VariantDraft:
-        return VariantDraft(title="t", body=f"body-{ctx.level}", changes=["x"], level=ctx.level)
-
-    async def generate_variants(
-        self, ctx: GenerationContext, levels: list[Level], locale: str = "zh-CN"
-    ) -> MultiVariantDraft:
-        return MultiVariantDraft(
-            variants=[
-                VariantDraft(
-                    title=f"方案{level}",
-                    body=f"方案正文-{level}-{idx}",
-                    changes=[f"变更-{idx}"],
-                    level=level,
-                )
-                for idx, level in enumerate(levels)
-            ]
+    async def generate_single(  # type: ignore[no-untyped-def]
+        self, ctx: GenerationContext, locale: str = "zh-CN", *, fallback: bool = False
+    ) -> VariantDraft:
+        return VariantDraft(
+            title="标准版方案",
+            body="方案正文-固定内容",
+            changes=["变更-0"],
+            fallback=fallback,
         )
 
     async def answer(self, ctx: GenerationContext, locale: str = "zh-CN") -> str:
@@ -277,27 +254,25 @@ async def _first_sse_event(client: httpx.AsyncClient, flow_id: str) -> dict[str,
 
 def _assert_recovery_consistent(live: dict[str, Any], recovered: dict[str, Any]) -> None:
     """F-804 ①②：两路径快照逐项对照（不一致即失败，不得静默）。"""
-    # ① 三套方案正文逐套 diff 为空（先校档位集合，再逐套 diff）
-    live_variants = cast(list[dict[str, Any]], live["variants"])
-    rec_variants = cast(list[dict[str, Any]], recovered["variants"])
-    assert [v["level"] for v in live_variants] == [v["level"] for v in rec_variants], (
-        f"档位集合不一致：{live_variants} vs {rec_variants}"
+    # ① 唯一方案：标题与正文逐行 diff 为空
+    live_variant = cast(dict[str, Any] | None, live.get("variant"))
+    rec_variant = cast(dict[str, Any] | None, recovered.get("variant"))
+    assert (live_variant is None) == (rec_variant is None), (
+        f"variant 有无不一致：{live_variant} vs {rec_variant}"
     )
-    for left, right in zip(live_variants, rec_variants, strict=True):
-        diff = list(difflib.unified_diff(left["body"].splitlines(), right["body"].splitlines()))
-        assert diff == [], f"方案 {left['level']} 正文 diff 非空：{diff}"
-
-    # ② ranking 视图七字段逐字段相等
-    live_rank = live["ranking"]
-    rec_rank = recovered["ranking"]
-    assert (live_rank is None) == (rec_rank is None), (
-        f"ranking 有无不一致：{live_rank} vs {rec_rank}"
-    )
-    if live_rank is not None and rec_rank is not None:
-        for name in _RANKING_FIELDS:
-            assert live_rank[name] == rec_rank[name], (
-                f"ranking.{name} 不一致：{live_rank[name]} != {rec_rank[name]}"
+    if live_variant is not None and rec_variant is not None:
+        assert live_variant["title"] == rec_variant["title"]
+        diff = list(
+            difflib.unified_diff(
+                live_variant["body"].splitlines(), rec_variant["body"].splitlines()
             )
+        )
+        assert diff == [], f"方案正文 diff 非空：{diff}"
+
+    # ② 已删除字段不得回归
+    for gone in ("variants", "ranking", "ranking_skip_reason"):
+        assert gone not in live
+        assert gone not in recovered
 
 
 # ---- 用例：resume 重复执行路径 vs HTTP 实时路径 ----
@@ -328,7 +303,8 @@ async def test_followup_recovery_consistency(monkeypatch: pytest.MonkeyPatch) ->
         assert resp.status_code == 200
         live_done = resp.json()["data"]
         assert live_done["status"] == "done"
-        assert live_done["ranking"] is not None  # B 档路径：A/B 两套 → 打分与推荐判定
+        assert live_done["variant"] is not None  # 单套输出：唯一方案
+        assert live_done["variant"]["fallback"] is False
 
         # 路径②：SSE 中断 → GET /result 重建（DONE 阶段对照）
         done_event = await _first_sse_event(client, flow_id)
@@ -339,7 +315,7 @@ async def test_followup_recovery_consistency(monkeypatch: pytest.MonkeyPatch) ->
 
 
 async def test_clean_flow_recovery_consistency(monkeypatch: pytest.MonkeyPatch) -> None:
-    """七项全过（C 档三套）：optimize 实时快照与 SSE 中断后 GET /result 重建快照一致。"""
+    """七项全过：optimize 实时快照与 SSE 中断后 GET /result 重建快照一致。"""
     existing = {"src/ui/button.tsx", "src/ui/button.test.tsx"}
     async with _client(monkeypatch, existing) as client:
         resp = await client.post("/api/v1/optimize", json={"sentence": _SENTENCE, "project": "."})
@@ -347,8 +323,8 @@ async def test_clean_flow_recovery_consistency(monkeypatch: pytest.MonkeyPatch) 
         live = resp.json()["data"]
         flow_id = live["session_id"]
         assert live["status"] == "done"  # 零提问（MUST-26 ①）
-        assert [v["level"] for v in live["variants"]] == ["A", "B", "C"]  # 三套同调
-        assert live["ranking"] is not None
+        assert live["variant"] is not None  # 单套输出
+        assert live["variant"]["title"] == "标准版方案"
 
         recovered = (await client.get(f"/api/v1/result/{flow_id}")).json()["data"]
         _assert_recovery_consistent(live, recovered)

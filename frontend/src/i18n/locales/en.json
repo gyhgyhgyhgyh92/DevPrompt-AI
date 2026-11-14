@@ -42,18 +42,12 @@
   },
   "optimize": {
     "stop_generation": "Stop generating",
-    "no_variants": "No variants yet",
-    "variant_compare": "Variant comparison",
+    "fallback_notice": "Generation failed this turn and fell back to a conservative draft; the result may be incomplete — retry for a full plan.",
     "model_switch": "Model",
     "model_follow_routing": "Follow routing"
   },
   "validation": {
     "followup_mode_exclusive": "Exactly one of answers / escape / guardrail_action must be set"
-  },
-  "ranking": {
-    "skip_single_variant": "Only one variant was produced this turn, so scoring and recommendation were skipped by rule; add a component name or file path and run another turn to get a comparison.",
-    "skip_score_failed": "The scoring service was unavailable this turn; variants are still provided. Retry to get a recommendation and score details.",
-    "skip_unknown": "The backend produced no recommendation view; please choose manually"
   },
   "trace": {
     "read_file": "Read file",
@@ -88,7 +82,7 @@
   },
   "turn": {
     "continue": "Continue from here",
-    "continue_hint": "Start a new turn from this turn's variants",
+    "continue_hint": "Start a new turn from this turn's plan",
     "rollback": "Roll back to here",
     "rollback_hint": "Restore the state at the end of this turn and delete all later turns",
     "rollback_confirm": "Roll back to this turn? All later turns will be permanently deleted and cannot be recovered.",
@@ -104,10 +98,10 @@
     "aria_sentence": "Requirement sentence",
     "brand_name": "DevPrompt AI",
     "hero_claim": "Turn a vague sentence into a prompt an agent can actually run",
-    "hero_sub": "Read real code, ask only the unknowns, then propose three plans with reasons",
+    "hero_sub": "Read real code, ask only the unknowns, then deliver one executable plan",
     "chip_retrieval": "Code retrieval",
     "chip_probing": "Clarifying questions",
-    "chip_plans": "Three plans",
+    "chip_plans": "Single plan",
     "aria_send": "Send",
     "aria_pick_folder": "Choose folder (local)",
     "opening": "Opening…",
@@ -137,8 +131,7 @@
       "retrieve": "Retrieving target",
       "probe": "Probing facts",
       "ask": "Asking you",
-      "generate": "Generating variants",
-      "rank": "Scoring & ranking",
+      "generate": "Generating variant",
       "deliver": "Delivering",
       "abort": "Aborting turn"
     },
@@ -164,12 +157,8 @@
         "hint": "Re-probing to see if gaps are filled"
       },
       "GENERATING": {
-        "label": "Generating plans",
-        "hint": "One call produces 1–3 variants"
-      },
-      "RANKING": {
-        "label": "Scoring variants",
-        "hint": "Rank by fit score and mark recommendation"
+        "label": "Generating plan",
+        "hint": "One call produces a single variant"
       },
       "DONE": {
         "label": "Completed",
@@ -300,10 +289,156 @@
     "tab": {
       "model-service": "Model service",
       "appearance": "Appearance",
+      "observability": "Observability",
       "security": "Flow & security"
     },
     "api_mode": "API mode",
     "api_mode_only": "{{mode}} (this provider only supports this mode)"
+  },
+  "observability": {
+    "title": "Observability",
+    "subtitle": "Session Log runtime ledger plus Trace / Metrics / Replay as three independent modules (read-only)",
+    "tips": {
+      "sections": {
+        "definition": "Definition",
+        "features": "Core features",
+        "scenarios": "Use cases"
+      },
+      "session-log": {
+        "title": "Session Log: runtime event ledger",
+        "definition": "Records what happened during a run in time order: start, thoughts, tool actions, results, and finish.",
+        "features": "Keeps the full event stream, filters by session and event type, and supports export.",
+        "scenarios": "Debug interruptions or errors, and replay the steps of a previous run."
+      },
+      "trace": {
+        "title": "Trace: call-chain tracing",
+        "definition": "Links decisions, retrieval, tools, file reads, and model calls of one optimization into a single call chain.",
+        "features": "Shows hierarchy, ordering, and duration, with full input and output for each node.",
+        "scenarios": "Find which step is slow, and confirm whether a step actually ran."
+      },
+      "metrics": {
+        "title": "Metrics: indicators and alerts",
+        "definition": "Aggregates run events into counts, latency, failure rate, and token usage.",
+        "features": "Trends by type, model, or turn, with graded alerts when thresholds are exceeded.",
+        "scenarios": "Watch overall performance, spot abnormal latency or failures, and estimate model cost."
+      },
+      "replay": {
+        "title": "Replay: deterministic re-execution",
+        "definition": "Re-runs a recorded call chain to check whether the result matches the original run.",
+        "features": "Self-verifies one call chain and compares two call chains node by node.",
+        "scenarios": "Run regression checks after changes, and investigate why two runs differ."
+      }
+    },
+    "loading": "Loading…",
+    "empty": "No data",
+    "retry": "Retry",
+    "module": {
+      "session_log": "Session Log",
+      "trace_replay": "Trace Metrics Replay"
+    },
+    "sessions": {
+      "title": "Sessions",
+      "search_placeholder": "Search session title or project",
+      "all_projects": "All projects",
+      "load_more": "Load more",
+      "no_match": "No matching sessions"
+    },
+    "modules": {
+      "title": "Modules",
+      "trace": "Trace capture",
+      "metrics": "Metrics",
+      "replay": "Replay",
+      "retention": "Trace retention (days)",
+      "save": "Save",
+      "saved": "Saved, effective immediately",
+      "save_failed": "Save failed",
+      "disabled": "This module is disabled. Turn it on in the switches above.",
+      "none_enabled": "All three modules are disabled. Enable any module to view its data."
+    },
+    "toolbar": {
+      "aria": "Session log toolbar",
+      "search_placeholder": "Search records",
+      "fold_turns": "Fold all turns",
+      "unfold_turns": "Unfold all turns",
+      "fold_calls": "Fold all calls",
+      "unfold_calls": "Unfold all calls",
+      "live_follow": "Live follow",
+      "refresh": "Refresh",
+      "export_json": "Export JSON",
+      "export_csv": "Export CSV",
+      "export_all": "Export all",
+      "exporting": "Exporting…",
+      "back_to_latest": "Back to latest"
+    },
+    "record": {
+      "user": "User",
+      "assistant": "Assistant",
+      "tool": "Tool",
+      "thought": "Thought",
+      "phase": "Phase",
+      "ask": "Ask",
+      "approval": "Approval",
+      "stop": "Stop",
+      "error": "Error",
+      "system": "System",
+      "checkpoint": "Checkpoint",
+      "delegation": "Delegation"
+    },
+    "inspector": {
+      "title": "Record details",
+      "raw": "Raw payload",
+      "copy": "Copy",
+      "copied": "Copied",
+      "close": "Close details",
+      "seq": "Seq",
+      "phase": "Phase",
+      "duration": "Duration",
+      "tokens": "Tokens"
+    },
+    "log": {
+      "load_older": "Load older",
+      "no_events": "No records under current filters",
+      "no_session": "Select a session on the left to inspect its log",
+      "unassigned": "Unassigned"
+    },
+    "replay": {
+      "play": "Play",
+      "pause": "Pause",
+      "restart": "Restart",
+      "step_back": "Step back",
+      "step_forward": "Step forward",
+      "speed": "Speed",
+      "clear_filters": "Clear range",
+      "no_events": "This session has no runtime events to replay (legacy or never executed)",
+      "open_in_log": "Open in Session Log",
+      "quality_truncated": "Events exceed the metrics cap; metrics cover the latest 5000 events",
+      "quality_no_timestamps": "Some events lack timestamps; wall clock and timeline are indicative only"
+    },
+    "metrics": {
+      "title": "Trace metrics and timeline",
+      "events": "Events",
+      "actions": "Actions",
+      "failures": "Failed actions",
+      "tokens": "Tokens",
+      "wall_clock": "Wall clock",
+      "p50": "P50 duration",
+      "p95": "P95 duration",
+      "distribution": "Event type distribution",
+      "slowest": "Slowest actions",
+      "token_series": "Tokens per turn",
+      "sensorium": "Sensorium",
+      "score": "Score",
+      "no_data": "No data",
+      "alerts": "Alert history",
+      "note_unfiltered": "Metrics cover the whole session and do not follow the filters below"
+    },
+    "timeline": {
+      "aria": "Event timeline",
+      "hint": "Click to seek · drag to select · wheel to zoom · right-click to clear/pan"
+    },
+    "export": {
+      "all_truncated": "Export hit the paging cap (2000 events); older records are not included"
+    }
   },
   "errors": {
     "1001": "Missing required parameters, please check your input",
@@ -333,6 +468,7 @@
     "6001": "This action is not allowed in the current state, refresh and retry",
     "6002": "Follow-up round limit reached, choose to continue asking or generate directly",
     "6003": "This flow does not exist or has expired",
+    "6004": "This observability module is disabled. Enable it in settings and retry.",
     "9001": "Internal error, please retry",
     "9002": "Configuration incomplete or failed validation, please check the settings",
     "kind": {
@@ -341,12 +477,6 @@
       "timeout": "Request timed out, please retry later",
       "aborted": "Request cancelled"
     }
-  },
-  "score": {
-    "detail": "Score details",
-    "fit": "Fit {{value}}",
-    "total": "Total {{value}}",
-    "note": "Total = fit score (preference memory removed)"
   },
   "gate": {
     "evidence_stale": "Project files changed before delivery; this plan is based on the previous turn's evidence, so the referenced line numbers and tokens may be stale. Submit again to refresh the evidence."

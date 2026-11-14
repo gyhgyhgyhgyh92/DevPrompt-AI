@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from devprompt_ai.common.cost import take_llm_usage
-from devprompt_ai.harness.llm import _record_usage, last_usage
+from devprompt_ai.harness.llm import _record_usage, _usage_of, last_usage
 
 
 def test_dict_usage_total_is_read() -> None:
@@ -67,3 +67,21 @@ def test_negative_usage_is_clamped() -> None:
 
     usage = take_llm_usage()
     assert (usage.total, usage.prompt, usage.completion) == (0, 0, 0)
+
+
+def test_usage_of_reads_raw_responses_when_result_has_no_usage() -> None:
+    """D-06：当前 agents RunResult 无 usage 属性，必须回落到 raw_responses[*].usage。"""
+    from agents.usage import Usage as AgentsUsage
+
+    usage = AgentsUsage(input_tokens=40, output_tokens=2, total_tokens=42)
+    result = SimpleNamespace(raw_responses=[SimpleNamespace(usage=usage)])
+
+    assert _usage_of(result) is usage
+    assert _usage_of(SimpleNamespace(raw_responses=[])) is None
+
+
+def test_usage_of_prefers_result_usage_when_present() -> None:
+    direct = {"total_tokens": 9}
+    result = SimpleNamespace(usage=direct, raw_responses=[])
+
+    assert _usage_of(result) is direct

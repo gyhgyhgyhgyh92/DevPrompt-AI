@@ -24,11 +24,10 @@ class AgentAction(str, Enum):
     PROBE = "probe"
     ASK = "ask"
     GENERATE = "generate"
-    RANK = "rank"
     DELIVER = "deliver"
     ABORT = "abort"
     #: 纯回答（2026-11-05）：只产出文字，不生成方案、不改档位、不改取证。
-    #: 用于「为什么选 B」「两套差异是什么」这类讨论性追问——此前所有动作都会
+    #: 用于「为什么这样改」「两版差异是什么」这类讨论性追问——此前所有动作都会
     #: 改动状态，导致这类追问只能把上一轮方案原样返回。
     REPLY = "reply"
     #: 只读委派：把「查清某处现状」交给独立上下文的 worker，主会话只收结论。
@@ -36,7 +35,7 @@ class AgentAction(str, Enum):
 
 
 #: 终结动作：执行后循环立即结束，不再回到 AGENTIC。
-#: reply 与 deliver 的区别：deliver 交付方案，reply 只回答，不产出 variants。
+#: reply 与 deliver 的区别：deliver 交付方案，reply 只回答，不产出方案。
 TERMINAL_ACTIONS: Final[frozenset[AgentAction]] = frozenset(
     {AgentAction.DELIVER, AgentAction.ABORT, AgentAction.REPLY}
 )

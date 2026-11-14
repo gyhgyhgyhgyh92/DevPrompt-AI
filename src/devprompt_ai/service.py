@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import difflib
 import json
@@ -65,7 +66,6 @@ from devprompt_ai.domain.context.task_contract import (
     render_tail_anchor,
 )
 from devprompt_ai.domain.context.tokens import estimate_tokens as estimate_ctx_tokens
-from devprompt_ai.domain.decision.direction import detect_direction_conflict
 from devprompt_ai.domain.decision.followup import (
     GuardrailState,
     UnknownItem,
@@ -74,25 +74,23 @@ from devprompt_ai.domain.decision.followup import (
     build_unknowns,
     lint_questions,
 )
-from devprompt_ai.domain.decision.port import DecisionPort, FactProbeOutput, VariantScore
+from devprompt_ai.domain.decision.port import DecisionPort, FactProbeOutput
 from devprompt_ai.domain.delivery import DeliveryInput, DeliveryVerdict, evaluate_delivery
 from devprompt_ai.domain.delivery.attribution import Attribution
 from devprompt_ai.domain.errors import (
     CatalogFetchError,
     ConfigurationError,
     DevPromptError,
+    GenerationError,
     StateError,
 )
 from devprompt_ai.domain.generate.anchors import Anchor, extract_anchors, verify_anchors
-from devprompt_ai.domain.generate.claims import CLAIM_COVERAGE_MIN, ClaimReport
+from devprompt_ai.domain.generate.claims import CLAIM_COVERAGE_MIN
 from devprompt_ai.domain.generate.ports import (
     GeneratePort,
     GenerationContext,
-    Level,
-    MultiVariantDraft,
     VariantDraft,
 )
-from devprompt_ai.domain.generate.variants import plan_levels, resolve_level
 from devprompt_ai.domain.hooks.builtin import DetectorHook, FactsSummaryHook, summarize_facts
 from devprompt_ai.domain.hooks.pipeline import HookPipeline
 from devprompt_ai.domain.hooks.types import HookContext
@@ -123,6 +121,7 @@ from devprompt_ai.domain.models import (
     TurnRecord,
     TurnStore,
 )
+from devprompt_ai.domain.obs.contract.trace import to_plain
 from devprompt_ai.domain.progress import (
     ProgressEvent,
     ProgressSink,
@@ -131,17 +130,11 @@ from devprompt_ai.domain.progress import (
     clarification_text,
     facts_text,
     generation_text,
-    level_text,
     manual_required_text,
-    recommendation_text,
     retrieval_text,
-    scoring_text,
-    single_variant_text,
     symbols_text,
     target_text,
 )
-from devprompt_ai.domain.ranking.recommend import decide_mark
-from devprompt_ai.domain.ranking.score import normalize_fit, weighted_total
 from devprompt_ai.domain.retrieval.candidates import (
     MAX_CANDIDATES,
     build_candidates,
@@ -153,7 +146,8 @@ from devprompt_ai.domain.retrieval.facts import (
     verify_facts,
 )
 from devprompt_ai.domain.retrieval.locate import locate_symbol
-from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader
+from devprompt_ai.domain.retrieval.paths import safe_join
+from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader, SymbolProvider
 from devprompt_ai.harness.guardrails import validate_claims
 from devprompt_ai.harness.llm import LLMGenerator
 from devprompt_ai.harness.model_candidates import load_candidates
@@ -189,48 +183,10 @@ def _render_previous_variants(variants: Sequence[VariantDraft]) -> str:
     """把上一轮方案压成一段供迭代轮引用；超限截断并标注省略号，不静默丢弃。"""
     if not variants:
         return ""
-    text = "\n\n".join(f"【{v.level} 档】{v.title}\n{v.body}" for v in variants)
+    text = "\n\n".join(f"{v.title}\n{v.body}" for v in variants)
     if len(text) <= PREVIOUS_VARIANTS_LIMIT:
         return text
     return text[: PREVIOUS_VARIANTS_LIMIT - 1] + "…"
-
-
-def _render_ranking(ranking: object, details: object = None) -> str:
-    """把推荐判定压成一段可解释文本（2026-11-05）。
-
-    除被选中档位的明细外，还带各档 fit/total（2026-11-05 补）——否则模型能解释
-    「为什么选 B」，却答不出「C 差多少」，落选原因仍然说不清。
-    """
-    if not isinstance(ranking, dict) or not ranking.get("variant"):
-        return ""
-
-    def _num(source: object, key: str) -> str:
-        if not isinstance(source, dict):
-            return "未知"
-        value = source.get(key)
-        if isinstance(value, int | float):
-            return f"{float(value):.2f}"
-        return "未知"
-
-    parts = [
-        f"推荐档位 {ranking['variant']}",
-        f"是否标记推荐 {'是' if ranking.get('marked') else '否'}",
-        f"与次优差距 {_num(ranking, 'gap')}",
-        f"置信度 {_num(ranking, 'confidence')}",
-        f"适配度 {_num(ranking, 'fit')}",
-        f"综合分 {_num(ranking, 'total')}",
-    ]
-    reason = str(ranking.get("reason", "")).strip()
-    if reason:
-        parts.append(f"判定理由 {reason}")
-    if isinstance(details, dict) and details:
-        rows = [
-            f"{level} 适配度 {_num(details[level], 'fit')} 综合分 {_num(details[level], 'total')}"
-            for level in sorted(details)
-        ]
-        if rows:
-            parts.append("各档明细 " + "、".join(rows))
-    return "；".join(parts)
 
 
 _RANK_CACHE_TTL_SECONDS: float = 30.0 * 60.0
@@ -243,6 +199,29 @@ _RANK_CACHE: dict[tuple[str, str, str, str], tuple[float, list[int]]] = {}
 第四段是 2026-11-04 补的：此前只有前三段，代码改动导致候选集变化后 30 分钟内
 仍会命中旧 order，唯一保护是越界检查（只防越界，防不了错位）。
 值 = (过期时刻 monotonic, 候选索引顺序)。禁存原句与决策原始响应。
+"""
+
+
+def reset_run_cache() -> None:
+    """清空进程内决策缓存（Replay 必须从干净状态执行）。
+
+    回放断言的是「同一输入产生同一条执行链」；若命中运行期缓存，决策调用会被
+    跳过、节点流与录制不一致（2026-11-12 集成测试实测）。清空只造成一次缓存
+    未命中，不影响任何业务语义。
+    """
+    _RANK_CACHE.clear()
+
+
+_OBS_SETTING_KEYS: dict[str, str] = {
+    "trace_enabled": "obs_trace_enabled",
+    "trace_retention_days": "obs_trace_retention_days",
+    "metrics_enabled": "obs_metrics_enabled",
+    "replay_enabled": "obs_replay_enabled",
+}
+"""PUT /settings observability 段键 → AppConfig 字段（持久化键直接用字段名）。
+
+2026-11-12：三模块各自独立启停。持久化进 app_settings 表（与流程段同表），
+由 config 的本地设置源在重启后读回；运行期则同步到 ``ObsModules`` 即时生效。
 """
 
 
@@ -259,27 +238,6 @@ async def _notify(session: FlowSession, progress: ProgressSink | None, text: str
         await progress.emit(ProgressEvent(text=text, phase=session.state))
     except Exception:
         logger.debug("progress.emit_failed", exc_info=True)
-
-
-@dataclass(frozen=True, slots=True)
-class RankingView:
-    """F-403/F-404 加权推荐视图：字段与 RecommendationResult/加权结果一一对应。
-
-    fit/pref/total 均为 variant 所指档位（最高总分档）的加权明细。
-    """
-
-    variant: str
-    gap: float
-    confidence: float
-    marked: bool
-    reason: str
-    fit: float
-    total: float
-
-
-# 旧会话（2026-10-21 偏好记忆移除前）的 ranking 带已废弃的 pref 字段。
-# 重建时按字段白名单过滤，否则 RankingView(**data) 抛 TypeError，历史会话整体 500。
-_RANKING_KEYS = frozenset(f.name for f in dataclasses.fields(RankingView))
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,8 +263,6 @@ class DeliveryGateView:
     status: str
     tone: str = "ok"
     reasons: tuple[str, ...] = ()
-    can_mark_c: bool = True
-    can_mark_recommend: bool = True
     disclosure: str = ""
 
 
@@ -319,8 +275,8 @@ class FlowSnapshot:
     state: str
     questions: list[UnknownItem] = field(default_factory=list)
     cleared: list[str] = field(default_factory=list)
-    variants: list[VariantDraft] = field(default_factory=list)
-    ranking: RankingView | None = None
+    #: 唯一方案（2026-11-11 单套输出）：未生成为 None。
+    variant: VariantDraft | None = None
     target: Symbol | None = None  # 上下文面板（设计 §1.2）：目标定位 symbol@path:line
     facts: list[FactResult] = field(default_factory=list)  # 取证事实只读透出
     cost: CostBreakdown | None = None  # F-805：token 用量明细（LLM）
@@ -338,8 +294,6 @@ class FlowSnapshot:
     reply_text: str = ""
     #: 交付证据门结果（2026-11-05）：只披露质量标记，不阻断交付。
     delivery_gate: DeliveryGateView | None = None
-    #: 未产生推荐视图的原因（2026-11-06）：single-variant（正常）/ score-failed（可重试）。
-    ranking_skip_reason: str | None = None
     """本轮归属（2026-11-04）：前端据此决定该轮进历史列表还是当前对话区。
 
     此前前端用「轮次列表末位」推断当前轮，导致新一轮提交瞬间把上一轮从历史里过滤掉
@@ -363,22 +317,8 @@ def _gate_view(raw: object) -> DeliveryGateView | None:
             if isinstance(raw_reasons, (list, tuple))
             else ()
         ),
-        can_mark_c=bool(raw.get("can_mark_c", True)),
-        can_mark_recommend=bool(raw.get("can_mark_recommend", True)),
         disclosure=str(raw.get("disclosure", "")),
     )
-
-
-def _preferred_level(session: FlowSession) -> Literal["A", "B", "C"] | None:
-    """上一轮选定的档位（非 A/B/C 的脏数据一律忽略）。"""
-    value = str(session.data.get("preferred_level", ""))
-    if value == "A":
-        return "A"
-    if value == "B":
-        return "B"
-    if value == "C":
-        return "C"
-    return None
 
 
 def _unknown_from(raw: dict[str, Any]) -> UnknownItem:
@@ -424,15 +364,24 @@ class ForgeService:
         runner: CommandRunner,
         reader: FileReader,
         generator: GeneratePort,
-        symbols_provider: SymbolTableProvider,
+        symbols_provider: SymbolProvider,
         catalog_fetcher: ModelCatalogFetcher | None = None,
         symbols_override: list[Symbol] | None = None,
         turns: TurnStore | None = None,
         notes: ProjectNoteStore | None = None,
         token_ledger: SQLiteTokenLedger | None = None,
+        trace: Any | None = None,
     ) -> None:
         self._cfg = cfg
         self._decider = decider
+        #: Trace 采集器（2026-11-12）：默认空实现，测试/关闭模块零改动
+        if trace is None:
+            from devprompt_ai.harness.obs.trace_collector import NullTraceCollector
+
+            trace = NullTraceCollector()
+        self._trace = trace
+        #: 可观测性模块集合（trace/metrics/replay services），由 build_default 注入
+        self.obs: Any = None
         # 运行时层组装存储时需要 db_path 等配置；暴露只读属性，避免跨层摸私有字段。
         # （属性定义在类体末尾，见 `config`。）
         self._sessions = sessions
@@ -638,14 +587,18 @@ class ForgeService:
         session_id: str | None = None,
         base_turn_id: str = "",
         locale: Locale = DEFAULT_LOCALE,
+        create_session: bool = False,
     ) -> FlowSnapshot:
         """F-001：创建/恢复会话，执行阶段一至二（检索+探针），路由 ask/done。
 
         ``progress`` 为可选的思考过程出口（流式端点传入）；缺省 None 时旧调用方零改动。
         ``session_id`` 非空表示**在同一会话开启新一轮**（多轮，2026-10-20）。
         ``base_turn_id`` 非空表示**以某一历史轮为基线**新开一轮（2026-11-05）。
+        ``create_session`` 仅 /runs 使用：按前端预生成的 session_id 建容器（D-04）。
         """
-        session = await start_turn(self._sessions, user_id, session_id)
+        session = await start_turn(
+            self._sessions, user_id, session_id, create_missing=create_session
+        )
         try:
             # 多轮：本轮可以只给原句，项目路径沿用它所在会话的既有值
             project_root = project_root or str(session.data.get("project_root", ""))
@@ -667,6 +620,10 @@ class ForgeService:
             # 多轮继承（2026-11-04）：不再整体丢弃，方案正文/澄清/取证经 TurnMemory 带入。
             # 原句为空时沿用上一轮目标——这就是「不带新原句的追问」入口。
             inherited = TurnMemory.from_payload(session.data.get("turn_memory"))
+            # 上一轮原句必须在 inherit_for_next_turn 之前取出：该函数会把 sentence
+            # 换成本轮原句（原句为空才沿用上一轮），之后就拿不到上一轮内容了。
+            # 锚点选取依赖它区分「这个按钮」与「编辑按钮」两类指代（2026-11-12）。
+            previous_sentence = inherited.sentence
             memory = inherited.inherit_for_next_turn(sentence)
             if base_turn_id:
                 memory = await self._inherit_from_base_turn(user_id, memory, base_turn_id)
@@ -699,7 +656,6 @@ class ForgeService:
                 "turn_index": previous_index,
                 "context_window": current_context_window,
                 "state_budget": current_state_budget,
-                "preferred_level": str(previous_summary.get("decision", "")),
                 "prev_facts_complete": previous_summary.get("facts_complete"),
                 "turn_memory": memory.to_payload(),
                 "turn_anchor": anchor_to_payload(anchor),
@@ -719,7 +675,8 @@ class ForgeService:
                     request_id=request_id,
                 )
             if memory.variants:
-                session.data["variants"] = [v.model_dump() for v in memory.variants]
+                # 单套输出（2026-11-11）：继承最近一套作为上一轮方案起点。
+                session.data["variant"] = memory.variants[-1].model_dump()
             if memory.facts:
                 session.data["facts"] = [
                     {"key": f.key, "passed": f.passed, "evidence": f.evidence} for f in memory.facts
@@ -727,7 +684,20 @@ class ForgeService:
                 session.data["facts_mtime_digest"] = memory.facts_mtime_digest
             if memory.target is not None:
                 session.data["target"] = dict(memory.target)
+                # 2026-11-11：继承 target 时必须一并刷新「代码片段 + 设计令牌」。
+                # 本轮若跳过检索（取证未变时调度层会直接 generate），生成层拿不到这两路
+                # 证据，只能写「未取证到代码片段」，定位段与一致性检查段整段空转。
+                # 2026-11-12：本轮句与上一轮句分开传，由 locate 内部决定是否合并
+                # （本轮只命中泛化词时改用上一轮上下文，避免锚到无关按钮）。
+                await self._refresh_inherited_evidence(
+                    session,
+                    project_root,
+                    sentence=memory.sentence,
+                    previous_sentence=previous_sentence,
+                    progress=progress,
+                )
             await self._begin_turn(session)
+            await self._start_trace(session, request_id)
             if self._planner is None:
                 # 旧调用方 / 测试桩未实现 next_action：保持线性编排（零回归）
                 return await self._optimize_linear(
@@ -745,6 +715,38 @@ class ForgeService:
         except Exception:
             await self._abort_quietly(session)
             raise
+        finally:
+            await self._end_trace(session)
+
+    async def _start_trace(self, session: FlowSession, request_id: str) -> None:
+        """开启本轮 Trace（每次请求一个 segment；同一 turn 的追问是独立 segment）。"""
+        target = session.data.get("target")
+        await self._trace.start_turn(
+            session_id=session.session_id,
+            turn_id=str(session.data.get("current_turn_id", "") or "turn"),
+            turn_index=int(session.data.get("turn_index", 0) or 0),
+            sentence=str(session.data.get("sentence", "")),
+            project_root=str(session.data.get("project_root", "")),
+            inherited_target=str(target.get("path", "")) if isinstance(target, dict) else "",
+            clarifications=dict(session.data.get("clarifications", {})),
+            run_id=request_id,
+            request_id=request_id,
+            session_data=dict(session.data),
+        )
+
+    async def _end_trace(self, session: FlowSession) -> None:
+        """结束 Trace；快照与状态全量落库，失败不影响业务。"""
+        try:
+            snapshot = to_plain(
+                self._snapshot(session, "done" if session.state == FlowState.DONE.value else "ask")
+            )
+        except Exception:  # noqa: BLE001 - 快照构造失败时仍以空快照收尾
+            snapshot = {}
+        status = "failed" if session.state == FlowState.ABORTED.value else "ok"
+        try:
+            await self._trace.end_turn(state=session.state, status=status, snapshot=snapshot)
+        except Exception:  # noqa: BLE001 - 观测失败不阻断业务
+            logger.warning("trace.end_failed", exc_info=True)
 
     async def _inherit_from_base_turn(
         self, user_id: str, memory: TurnMemory, base_turn_id: str
@@ -778,6 +780,7 @@ class ForgeService:
     ) -> FlowSnapshot:
         """F-204：批量答复 → 重新研判 → ask/guardrail/done（progress 供流式端点推送过程）。"""
         session = await self._require(user_id, session_id, {FlowState.ASKING, FlowState.CONFIRMING})
+        await self._start_trace(session, request_id)
         try:
             session.data.setdefault("clarifications", {}).update(answers)
             session.data["last_request_id"] = request_id
@@ -787,6 +790,8 @@ class ForgeService:
         except Exception:
             await self._abort_quietly(session)
             raise
+        finally:
+            await self._end_trace(session)
 
     async def resume(self, user_id: str, session_id: str, *, request_id: str) -> FlowSnapshot:
         """--session 恢复入口：只读加载既有会话并重建快照，不做任何状态转移。
@@ -809,7 +814,6 @@ class ForgeService:
                 FlowState.ASKING,
                 FlowState.CONFIRMING,
                 FlowState.GENERATING,
-                FlowState.RANKING,
                 FlowState.DONE,
             },
         )
@@ -835,7 +839,6 @@ class ForgeService:
                 rounds=session.data.get("rounds", 0),
                 request_id=request_id,
             )
-            session.data["level"] = "A"
             session.data["conservative"] = True
             return await self._generate_and_finish(session)
         except Exception:
@@ -853,7 +856,6 @@ class ForgeService:
                 await hop(session, FlowState.ASKING, self._sessions)
                 await self._finish_turn(session)
                 return self._snapshot(session, "ask")
-            session.data["level"] = "A"
             session.data["conservative"] = True
             return await self._generate_and_finish(session)
         except Exception:
@@ -934,7 +936,6 @@ class ForgeService:
                 ask=tr("clarify.manual_ask", _session_locale(session)),
             )
             session.data["unknowns"] = [dataclasses.asdict(item)]
-            session.data["level"] = "A"
             await _notify(
                 session,
                 progress,
@@ -947,7 +948,7 @@ class ForgeService:
         top = await self._rank_top(session, result.candidates)
         symbol = Symbol(name=top.name, path=top.path, line=top.line, kind="function")
         runner, reader = self._traced(progress, project_root, lambda: session.state)
-        location = await locate_symbol(symbol, runner, reader, root=project_root)
+        location = await locate_symbol(symbol, runner, reader, root=project_root, sentence=sentence)
         await _notify(
             session,
             progress,
@@ -975,6 +976,10 @@ class ForgeService:
             for f in facts
         ]
         session.data["target"] = {"name": top.name, "path": top.path, "line": top.line}
+        # 四段式方案的两路证据（2026-11-11）：目标代码片段与设计令牌。
+        # 只走生成层，不进 facts_summary —— 后者同时被研判与打分消费（MUST-09）。
+        session.data["target_excerpt"] = location.excerpt
+        session.data["design_tokens"] = list(location.token_hits)
         # ⑤ 影响半径：作为取证证据进入本轮 data（失败只记日志，不影响主流程）
         await self._attach_impact(session, project_root=project_root, request_id=request_id)
         self._validate_inherited_clarifications(session, request_id)
@@ -1034,13 +1039,97 @@ class ForgeService:
         progress: ProgressSink | None = None,
     ) -> FlowSnapshot:
         """固定流水线（无 planner 时的回落路径）：检索 → 研判 → 生成 → 打分 → 交付。"""
-        ok = await self._act_retrieve(
-            session, sentence, project_root, request_id=request_id, progress=progress
+        ok = await self._trace_span(
+            "retrieve",
+            {"sentence": sentence, "project_root": project_root},
+            self._act_retrieve(
+                session, sentence, project_root, request_id=request_id, progress=progress
+            ),
         )
         if not ok:
             return self._snapshot(session, "ask")
         await hop(session, FlowState.PROBING, self._sessions)
-        return await self._probe_and_route(session, request_id=request_id, progress=progress)
+        snapshot: FlowSnapshot = await self._trace_span(
+            "probe_and_route",
+            {"state": session.state},
+            self._probe_and_route(session, request_id=request_id, progress=progress),
+        )
+        return snapshot
+
+    async def _trace_span(self, name: str, input_data: dict[str, Any], call: Any) -> Any:
+        """包裹一次线性流水线动作，保证非 agentic 路径也有 action.start/end。"""
+        started = time.monotonic()
+        event_id = await self._trace.record("action.start", name, input=input_data)
+        self._trace.set_action_parent(event_id)
+        try:
+            result = await call
+        except Exception as exc:
+            await self._trace.record(
+                "action.end",
+                name,
+                output={},
+                status="failed",
+                error={"type": type(exc).__name__, "message": str(exc)},
+                attributes={"duration_ms": int((time.monotonic() - started) * 1000)},
+                parent_id=event_id,
+            )
+            raise
+        else:
+            await self._trace.record(
+                "action.end",
+                name,
+                output={"result": str(result)[:200]},
+                attributes={"duration_ms": int((time.monotonic() - started) * 1000)},
+                parent_id=event_id,
+            )
+            return result
+        finally:
+            self._trace.reset_action_parent()
+
+    async def _refresh_inherited_evidence(
+        self,
+        session: FlowSession,
+        project_root: str,
+        *,
+        sentence: str,
+        previous_sentence: str = "",
+        progress: ProgressSink | None = None,
+    ) -> None:
+        """继承 target 时刷新目标代码片段与设计令牌（2026-11-11）。
+
+        为什么必须在轮次开始时做：取证未变时调度层会直接 generate 而不 retrieve，
+        片段与令牌就不会落进 ``session.data``；生成层于是只能写「未取证到代码片段」，
+        四段式里的定位段与一致性检查段全部空转（实测 R2/R3 三轮均如此）。
+
+        失败只记日志：这是证据增强项，不得阻断本轮。
+        """
+        raw = session.data.get("target")
+        if not isinstance(raw, dict) or not raw.get("path"):
+            return
+        # MUST-20：继承来的目标路径先过越界校验，不安全则本轮不做证据刷新。
+        if not safe_join(project_root, str(raw["path"])):
+            logger.info("evidence.unsafe_target_path", extra={"what": "inherited_target"})
+            return
+        try:
+            runner, reader = self._traced(progress, project_root, lambda: session.state)
+            location = await locate_symbol(
+                Symbol(
+                    name=str(raw.get("name", "")),
+                    path=str(raw["path"]),
+                    line=int(raw.get("line", 0) or 0),
+                    kind="function",
+                ),
+                runner,
+                reader,
+                root=project_root,
+                sentence=sentence,
+                previous_sentence=previous_sentence,
+            )
+        except Exception:  # noqa: BLE001 - 增强项失败不阻断主流程
+            logger.info("evidence.inherited_refresh_failed", extra={"what": "locate"})
+            return
+        session.data["target_excerpt"] = location.excerpt
+        session.data["design_tokens"] = list(location.token_hits)
 
     async def run_agent_loop(
         self, session: FlowSession, *, request_id: str, progress: ProgressSink | None = None
@@ -1059,13 +1148,20 @@ class ForgeService:
         budget = AgentBudget()
 
         while True:
+            variant_now = session.data.get("variant")
+            variants_total = 1 if isinstance(variant_now, dict) else 0
+            generated_now = int(session.data.get("generated_variant_count", 0) or 0)
             decision = await planner.next_action(
                 sentence=str(session.data.get("sentence", "")),
                 facts=[FactResult(**f) for f in session.data.get("facts", [])],
                 steps=tuple(steps),
-                variant_count=len(session.data.get("variants", []) or []),
+                variant_count=variants_total,
                 clarifications=dict(session.data.get("clarifications", {})),
                 correction=str(session.data.get("hook_correction", "")),
+                # 2026-11-11：区分「本轮已生成」与「只有上一轮继承来的旧方案」。
+                # 不区分时调度层会看到「已生成 2 套」而直接 deliver，把第二轮的新指令
+                # 整个跳过（实测 R2/R3 正文与 R1 逐字相同、tokens=0）。
+                inherited_variant_count=max(0, variants_total - generated_now),
             )
             action = AgentAction(decision.action)
             if action is AgentAction.DELEGATE and decision.delegation_orders:
@@ -1175,6 +1271,64 @@ class ForgeService:
         request_id: str,
         progress: ProgressSink | None = None,
     ) -> FlowSnapshot | None:
+        """执行一个动作并记录 Trace（action.start/end 包裹完整输入输出）。"""
+        started = time.monotonic()
+        event_id = await self._trace.record(
+            "action.start",
+            action.value,
+            input={
+                "action": action.value,
+                "state": session.state,
+                "target": session.data.get("target"),
+                "facts_passed": sum(
+                    1 for item in session.data.get("facts", []) if item.get("passed") is True
+                ),
+                "turn_index": session.data.get("turn_index"),
+            },
+        )
+        self._trace.set_action_parent(event_id)
+        try:
+            snapshot = await self._execute_action_inner(
+                action, session, request_id=request_id, progress=progress
+            )
+        except Exception as exc:
+            await self._trace.record(
+                "action.end",
+                action.value,
+                output={"state": session.state, "status": "raised"},
+                status="failed",
+                error={"type": type(exc).__name__, "message": str(exc)},
+                attributes={"duration_ms": int((time.monotonic() - started) * 1000)},
+                parent_id=event_id,
+            )
+            raise
+        else:
+            await self._trace.record(
+                "action.end",
+                action.value,
+                output={
+                    "state": session.state,
+                    "status": snapshot.status if snapshot is not None else "continue",
+                    "target": session.data.get("target"),
+                    "facts_passed": sum(
+                        1 for item in session.data.get("facts", []) if item.get("passed") is True
+                    ),
+                },
+                attributes={"duration_ms": int((time.monotonic() - started) * 1000)},
+                parent_id=event_id,
+            )
+            return snapshot
+        finally:
+            self._trace.reset_action_parent()
+
+    async def _execute_action_inner(
+        self,
+        action: AgentAction,
+        session: FlowSession,
+        *,
+        request_id: str,
+        progress: ProgressSink | None = None,
+    ) -> FlowSnapshot | None:
         """执行一个动作。返回非 None 表示本轮就地结束（等用户 / 交付 / 放弃）。"""
         if action is AgentAction.RETRIEVE:
             # 已定位且取证新鲜时 _act_retrieve 内部直接复用，不会重跑 ripgrep
@@ -1202,13 +1356,6 @@ class ForgeService:
             if "facts_complete" not in session.data:
                 await self._act_probe(session, request_id=request_id, progress=progress)
             await self._act_generate(session, progress=progress)
-            return None
-
-        if action is AgentAction.RANK:
-            variants = [VariantDraft(**item) for item in session.data.get("variants", [])]
-            if len(variants) < 2:
-                return None  # MUST-28：单套不打分，也不计算 d
-            await self._act_rank(session, variants, progress=progress)
             return None
 
         if action is AgentAction.REPLY:
@@ -1501,8 +1648,6 @@ class ForgeService:
             return PhaseClass.EXPLORE
         if action is AgentAction.GENERATE:
             return PhaseClass.EXECUTE
-        if action is AgentAction.RANK:
-            return PhaseClass.VERIFY
         if action is AgentAction.DELIVER:
             return PhaseClass.DELIVER
         return PhaseClass.PLAN
@@ -1934,6 +2079,12 @@ class ForgeService:
                 "followup_cost_budget": cfg.followup_cost_budget,
                 "telemetry": cfg.telemetry,
             },
+            "observability": {
+                "trace_enabled": cfg.obs_trace_enabled,
+                "trace_retention_days": cfg.obs_trace_retention_days,
+                "metrics_enabled": cfg.obs_metrics_enabled,
+                "replay_enabled": cfg.obs_replay_enabled,
+            },
             "locked": {"candidate_limit": MAX_CANDIDATES},  # MUST-09 宪法常量，只读下发
         }
 
@@ -2036,6 +2187,12 @@ class ForgeService:
         """
         model_in: dict[str, Any] = dict(update.get("model_service") or {})
         process_in: dict[str, Any] = dict(update.get("process") or {})
+        obs_in: dict[str, Any] = dict(update.get("observability") or {})
+        obs_write = {
+            cfg_key: value
+            for api_key, cfg_key in _OBS_SETTING_KEYS.items()
+            if (value := obs_in.get(api_key)) is not None
+        }
         providers_in = update.get("provider_configs")
         models_in = update.get("models")
         active_in = update.get("active_model_id")
@@ -2135,14 +2292,23 @@ class ForgeService:
         process_write = {k: v for k, v in process_in.items() if v is not None}
         if model_write:
             await asyncio.to_thread(write_model_settings, model_write)
-        if process_write:
-            await asyncio.to_thread(write_process_settings, process_write)
+        if process_write or obs_write:
+            await asyncio.to_thread(write_process_settings, {**process_write, **obs_write})
         for src_key, value in model_write.items():
             setattr(self._cfg, MODEL_KEY_MAP[src_key], value)
         for key, value in process_write.items():
             setattr(self._cfg, key, value)
+        for key, value in obs_write.items():
+            setattr(self._cfg, key, value)
         self._cfg.validate()
         set_telemetry(self._cfg.telemetry)
+        if obs_write:
+            modules = getattr(self, "obs", None)
+            if modules is not None:
+                # 即时生效（独立启停）：采集器/三服务各自读自己的开关
+                modules.apply_settings(self._cfg)
+                # 保留天数变更立即回收过期 Trace（启动时也做一次，此处是运行期入口）
+                await modules.trace.startup(self._cfg.obs_trace_retention_days)
         settings = await self.get_settings()
         if skipped:
             # N-6：响应契约不变（不加字段），但把「跳过了什么」放进 context 供日志/测试检索
@@ -2276,7 +2442,7 @@ class ForgeService:
         progress: ProgressSink | None = None,
         answered: dict[str, str] | None = None,
     ) -> bool:
-        """研判取证结果，写入 unknowns / facts_complete / level，返回「是否有未决问题」。
+        """研判取证结果，写入 unknowns / facts_complete，返回「是否有未决问题」。
 
         只做研判、不做路由：转不转 ASKING 由调用方决定——agentic 循环据此回 AGENTIC，
         线性路径直接进 ASKING。两条路径共用这一份研判逻辑（MUST-10 单一实现）。
@@ -2329,14 +2495,7 @@ class ForgeService:
             has_unknowns=bool(unknowns),
             judged=judged,
         )
-        has_symbol = bool(session.data.get("target"))
         session.data["facts_complete"] = facts_complete
-        session.data["level"] = resolve_level(has_symbol=has_symbol, facts_complete=facts_complete)
-        await _notify(
-            session,
-            progress,
-            level_text(str(session.data["level"]), confidence, _session_locale(session)),
-        )
         if unknowns:
             await _notify(
                 session,
@@ -2391,25 +2550,24 @@ class ForgeService:
         return await self._generate_and_finish(session, progress=progress)
 
     async def _generation_context(
-        self, session: FlowSession, *, level: Level | None = None, shrink: bool = False
+        self, session: FlowSession, *, shrink: bool = False
     ) -> GenerationContext:
         """装配生成/回答共用的上下文（2026-11-05 抽出，避免两处漂移）。
 
-        回答「为什么选 B」所依赖的 ``previous_variants`` 与 ``history_block``
-        与生成完全同源，因此不另建上下文类型。``shrink``（A8）时同时丢弃
-        上一轮方案正文——超窗最常见的元凶就是它。
+        回答追问所依赖的 ``previous_variants`` 与 ``history_block`` 与生成完全同源，
+        因此不另建上下文类型。``shrink``（A8）时同时丢弃上一轮方案正文——超窗最
+        常见的元凶就是它。
         """
         context_payload = await self._assemble_context(session, shrink=shrink)
         return GenerationContext(
             sentence=session.data["sentence"],
             project_root=session.data["project_root"],
-            level=level or session.data.get("level", "A"),
             facts_summary=session.data.get("facts_summary", _summarize_facts(session)),
             clarifications=session.data.get("clarifications", {}),
             conservative=bool(session.data.get("conservative", False)),
             history_block=context_payload.history_block,
             memory_block=context_payload.memory_block,
-            # 迭代轮要让模型看到上一轮原文，否则「把 B 档第 2 条改成 X」无法定位
+            # 迭代轮要让模型看到上一轮原文，否则「把第 2 条改成 X」无法定位
             previous_variants=(
                 ""
                 if shrink
@@ -2417,24 +2575,25 @@ class ForgeService:
                     TurnMemory.from_payload(session.data.get("turn_memory")).variants
                 )
             ),
-            # 上一轮推荐判定：回答「为什么选 B」的唯一依据来源
-            ranking_summary=_render_ranking(
-                session.data.get("ranking"), session.data.get("ranking_details")
-            ),
             # F10 会话级模型覆盖：空串 = 跟随路由
             model_override=str(session.data.get("model_override", "")),
+            # 四段式方案的两路证据（2026-11-11）：超窗压缩时**保留**——
+            # 它们是最小充分证据，比上一轮方案正文更不可替代。
+            target_excerpt=str(session.data.get("target_excerpt", "")),
+            design_tokens=tuple(session.data.get("design_tokens") or ()),
         )
 
-    async def _generate_variants_guarded(
+    async def _generate_single_guarded(
         self,
         session: FlowSession,
         ctx: GenerationContext,
-        levels: list[Level],
         locale: Locale,
-    ) -> MultiVariantDraft:
+        *,
+        fallback: bool = False,
+    ) -> VariantDraft:
         """A8 超窗「压一次重发一次」：只对上下文超限降级，其它异常原样抛出。"""
         try:
-            return await self._generator.generate_variants(ctx, levels, locale)
+            return await self._generator.generate_single(ctx, locale, fallback=fallback)
         except Exception as exc:
             if not is_context_overflow(exc):
                 raise
@@ -2443,7 +2602,7 @@ class ForgeService:
             request_id=str(session.data.get("last_request_id", "")),
         )
         shrunk = await self._generation_context(session, shrink=True)
-        return await self._generator.generate_variants(shrunk, levels, locale)
+        return await self._generator.generate_single(shrunk, locale, fallback=fallback)
 
     async def _answer_guarded(
         self,
@@ -2470,48 +2629,119 @@ class ForgeService:
 
     async def _act_generate(
         self, session: FlowSession, *, progress: ProgressSink | None = None
-    ) -> list[VariantDraft]:
-        """生成方案并写入 ``session.data["variants"]``。
+    ) -> VariantDraft:
+        """生成唯一方案并写入 ``session.data["variant"]``（2026-11-11 单套输出）。
 
-        只做生成，不做交付判定——是否打分、是否收尾由调用方决定
-        （线性路径串联，agentic 循环由模型选下一步）。
+        主流程用 B 标准版；抛 ``GenerationError`` 或产出非法（标题/正文为空）时
+        用 A 保守版兜底一次，产物 ``fallback=True``。兜底同样失败则抛原异常——
+        不得伪造正文（spec「兜底仍失败」）。
         """
         await hop(session, FlowState.GENERATING, self._sessions)
+        locale = _session_locale(session)
+        # 先清零：生成失败抛出时不得残留上一轮/继承态让调度层误判「本轮已生成」。
+        session.data["generated_variant_count"] = 0
         ctx = await self._generation_context(session)
-        levels = plan_levels(
-            ctx.level,
-            max_versions=3 if self._should_offer_three(session) else 1,
-            preferred=_preferred_level(session),
-        )
-        await _notify(session, progress, generation_text(levels, _session_locale(session)))
-        # U-7：记下期望套数，交付门据实际产出披露「本次仅 N 套」（模型可只给子集）。
-        session.data["expected_variant_count"] = len(levels)
-        multi = await self._generate_variants_guarded(
-            session, ctx, levels, _session_locale(session)
-        )
+        await _notify(session, progress, generation_text(locale))
+        try:
+            draft = await self._generate_single_guarded(session, ctx, locale)
+            self._require_valid_draft(draft)
+        except GenerationError as first_error:
+            emit(
+                "generate.fallback",
+                reason=str(first_error),
+                request_id=session.data.get("last_request_id", ""),
+            )
+            try:
+                draft = await self._generate_single_guarded(session, ctx, locale, fallback=True)
+                self._require_valid_draft(draft)
+            except Exception:
+                # 兜底也失败：抛原异常，不产出半个方案（错误信息保留主流程原因）
+                raise first_error from None
         # slots dataclass 无 __dict__，序列化必须走 model_dump（计划 §6.2 注意事项）
-        session.data["variants"] = [v.model_dump() for v in multi.variants]
-        self._audit_claims(session, multi.variants)
-        return list(multi.variants)
+        session.data["variant"] = draft.model_dump()
+        # 记录本轮实际生成套数，供调度层区分「继承的旧方案」与「本轮成果」。
+        session.data["generated_variant_count"] = 1
+        if draft.fallback:
+            # 兜底披露（spec）：文案走既有 message 字段，不新增 i18n 键。
+            session.data["message"] = "已降级为保守输出"
+        await self._audit_claims(session, draft)
+        return draft
 
-    def _audit_claims(self, session: FlowSession, variants: Sequence[VariantDraft]) -> None:
-        """C 档断言对账（2026-11-04）：覆盖率不足则降档并留痕，不重新生成。
+    @staticmethod
+    def _require_valid_draft(draft: VariantDraft) -> None:
+        """结构非法（标题/正文为空）视同生成失败，交由兜底路径处理。"""
+        if not draft.title.strip() or not draft.body.strip():
+            raise GenerationError(
+                "生成方案标题或正文为空",
+                code=4003,
+                context={"title_len": len(draft.title), "body_len": len(draft.body)},
+            )
 
-        只改本轮可输出档位，不改各套自身的 level 字段——那等于篡改模型原文。
-        缺口经 ``claim_report.summary`` 如实披露（MUST-27 的诚实原则）。
+    @staticmethod
+    def _claim_evidence_text(session: FlowSession) -> str:
+        """断言对账的证据源（2026-11-11）：目标路径 + 代码片段 + 令牌 + 事实证据。
+
+        只用 ``FactResult.evidence`` 时，引用组件、跨文件路径、行号与 AntD 类 token 的
+        断言恒判未覆盖（账本失真）；这几路证据拼在一起后覆盖判据才与正文实际引用对齐。
+        """
+        parts: list[str] = []
+        target = session.data.get("target")
+        if isinstance(target, dict) and target.get("path"):
+            parts.append(str(target["path"]))
+        excerpt = str(session.data.get("target_excerpt", "") or "")
+        if excerpt:
+            parts.append(excerpt)
+        tokens = session.data.get("design_tokens") or ()
+        if tokens:
+            parts.append("\n".join(str(item) for item in tokens))
+        for item in session.data.get("facts", []) or []:
+            if isinstance(item, dict):
+                evidence = str(item.get("evidence", "") or "")
+                if evidence:
+                    parts.append(evidence)
+        return "\n".join(parts)
+
+    async def _verified_file_claims(self, session: FlowSession, draft: VariantDraft) -> list[str]:
+        """``file`` 断言引用的第三个文件做有界存在性核对（去重、上限 5 个）。
+
+        为什么需要：证据源只含目标文件与片段，模型引用工具函数/父组件时必然判未覆盖
+        （假阴性）。存在性核对把「确实存在的文件」补进证据源，不改 ``match_claims``。
+        上限 5 防止模型声明几十条路径导致每轮几十次 stat。
+        """
+        root = str(session.data.get("project_root", ""))
+        targets: list[str] = []
+        for claim in draft.claims:
+            if claim.kind != "file":
+                continue
+            target = claim.target.strip().replace("\\", "/")
+            if target and target not in targets:
+                targets.append(target)
+        hits: list[str] = []
+        for target in targets[:5]:
+            full = safe_join(root, target)
+            if not full:
+                continue
+            try:
+                exists = await self._reader.exists(full)
+            except Exception:  # noqa: BLE001 - 核对失败按「未命中」处理，不影响对账
+                exists = False
+            if exists:
+                hits.append(f"file={target}")
+        return hits
+
+    async def _audit_claims(self, session: FlowSession, draft: VariantDraft) -> None:
+        """断言对账（2026-11-04）：覆盖率与缺口如实留痕，不重新生成。
+
+        2026-11-11：单套方案不再跨档累加，证据源见 :meth:`_claim_evidence_text`。
+        2026-11-12：``file`` 断言先对引用文件做有界存在性核对，消除假阴性。
+        覆盖不足由交付门披露（claim_strict 决定「未声明」是否计入 RED）。
         """
         facts = [FactResult(**f) for f in session.data.get("facts", [])]
-        reports = [validate_claims(v, facts) for v in variants]
-        total = sum(r.total for r in reports)
-        covered = sum(r.covered for r in reports)
-        uncovered = tuple(item for r in reports for item in r.uncovered)
-        report = ClaimReport(
-            total=total,
-            covered=covered,
-            uncovered=uncovered,
-            coverage=(covered / total) if total else 0.0,
-            undeclared=(total == 0),
-        )
+        evidence = self._claim_evidence_text(session)
+        extra = await self._verified_file_claims(session, draft)
+        if extra:
+            evidence = f"{evidence}\n{' '.join(extra)}" if evidence else " ".join(extra)
+        report = validate_claims(draft, facts, evidence)
         session.data["claim_report"] = {
             "total": report.total,
             "covered": report.covered,
@@ -2520,54 +2750,21 @@ class ForgeService:
             "undeclared": report.undeclared,
             "summary": report.render(_session_locale(session)),
         }
-        if session.data.get("level") != "C":
-            return
         if report.undeclared:
-            # 一条引用都没声明：默认只披露（灰度），claim_strict 打开后才降档。
-            # 不声明不等于没有引用，这是对账唯一可被绕过的口子。
-            if not self._cfg.claim_strict:
-                return
-            session.data["level"] = "B"
-            emit(
-                "evidence.claim_undeclared",
-                request_id=session.data.get("last_request_id", ""),
-            )
+            if self._cfg.claim_strict:
+                emit(
+                    "evidence.claim_undeclared",
+                    request_id=session.data.get("last_request_id", ""),
+                )
             return
         if report.coverage >= CLAIM_COVERAGE_MIN:
             return
-        session.data["level"] = "B"
         emit(
             "evidence.claim_uncovered",
             total=report.total,
             covered=report.covered,
             request_id=session.data.get("last_request_id", ""),
         )
-
-    async def _act_rank(
-        self,
-        session: FlowSession,
-        variants: list[VariantDraft],
-        *,
-        progress: ProgressSink | None = None,
-    ) -> RankingView | None:
-        """对多套方案打分并写入 ``session.data["ranking"]``。"""
-        await transition(session, FlowState.RANKING, self._sessions)
-        await _notify(session, progress, scoring_text(_session_locale(session)))
-        ranking = await self._rank_and_mark(session, variants)
-        session.data["ranking"] = dataclasses.asdict(ranking) if ranking is not None else None
-        if ranking is not None:
-            await _notify(
-                session,
-                progress,
-                recommendation_text(
-                    ranking.marked,
-                    ranking.variant,
-                    ranking.gap,
-                    ranking.reason,
-                    _session_locale(session),
-                ),
-            )
-        return ranking
 
     async def _act_reply(
         self, session: FlowSession, *, progress: ProgressSink | None = None
@@ -2589,75 +2786,26 @@ class ForgeService:
         session.data["reply_text"] = text
         if FlowState(session.state) is not FlowState.DONE:
             await transition(session, FlowState.DONE, self._sessions)
-        self._emit_completed(
-            session, variants=len(session.data.get("variants", []) or []), marked=None
-        )
+        self._emit_completed(session, variants=0)
         await self._finish_turn(session)
         return self._snapshot(session, "done")
 
     async def _act_deliver(
         self, session: FlowSession, *, progress: ProgressSink | None = None
     ) -> FlowSnapshot:
-        """交付：过证据门 → 转 DONE 并回填产出。单套按 MUST-28 跳过推荐判定。
+        """交付：锚点核验 → 证据门 → 转 DONE 并回填产出。
 
-        门禁只降质量标记（C 档 / 推荐），**不阻断交付**：RED 时方案照常返回，
-        只是不标推荐并附披露文案（MUST-27：不标记必须给具体原因）。
+        顺序固定（spec「统一核验并入 B」）：写方案与断言对账在 ``_act_generate``
+        内完成，这里只做锚点核验与门禁判定。门禁只降质量标记，**不阻断交付**。
         """
-        variants = list(session.data.get("variants", []) or [])
-        # 交付前置不变量（2026-11-06）：多套必须有 ranking。agentic 调度下 RANK 与 DELIVER
-        # 是模型可选的并行动作，模型可能跳过打分直接交付——前端就只剩「未产生推荐视图」
-        # 兜底且用户拿不到「为什么不推荐」（违背 MUST-27）。放在这里而非分派处：
-        # 线性路径与 agentic 路径共用同一保证，将来新增调用路径也不会漏。
-        # 已记录跳过原因（打分失败）时不重试，避免同一次失败在交付时再打一次分。
-        if (
-            len(variants) >= 2
-            and not isinstance(session.data.get("ranking"), dict)
-            and "ranking_skip_reason" not in session.data
-        ):
-            emit(
-                "recommendation.recovered",
-                variant_count=len(variants),
-                request_id=session.data.get("last_request_id", ""),
-            )
-            await self._act_rank(
-                session,
-                [VariantDraft(**item) for item in variants],
-                progress=progress,
-            )
-        ranking_data = session.data.get("ranking")
-        marked: bool | None = None
-        if isinstance(ranking_data, dict) and "marked" in ranking_data:
-            marked = bool(ranking_data["marked"])
-        if len(variants) < 2:
-            # MUST-28：单套（仅 A 档）跳过打分与推荐，ranking=None，不计算 d
-            session.data["ranking_skip_reason"] = "single-variant"
-            emit(
-                "recommendation.skipped",
-                reason="single-variant",
-                gap=None,
-                confidence=None,
-                request_id=session.data.get("last_request_id", ""),
-            )
-            await _notify(session, progress, single_variant_text(_session_locale(session)))
-
-        await self._verify_c_anchors(session)
-        verdict = self._evaluate_delivery_gate(session, len(variants), marked)
+        await self._verify_anchors(session)
+        verdict = self._evaluate_delivery_gate(session)
         session.data["delivery_gate"] = {
             "status": verdict.status,
             "tone": verdict.tone,
             "reasons": list(verdict.reasons),
-            "can_mark_c": verdict.can_mark_c,
-            "can_mark_recommend": verdict.can_mark_recommend,
             "disclosure": verdict.disclosure,
         }
-        if not verdict.can_mark_c and session.data.get("level") == "C":
-            # 与 _audit_claims 同一规则：只改本轮可输出档位，不动方案正文
-            session.data["level"] = "B"
-        if verdict.can_mark_recommend is False and marked:
-            marked = False
-            if isinstance(ranking_data, dict):
-                ranking_data["marked"] = False
-                ranking_data["reason"] = verdict.disclosure
         if verdict.disclosure:
             emit(
                 "delivery.gate",
@@ -2669,16 +2817,19 @@ class ForgeService:
 
         if FlowState(session.state) is not FlowState.DONE:
             await transition(session, FlowState.DONE, self._sessions)
-        self._emit_completed(session, variants=len(variants), marked=marked)
+        variant = session.data.get("variant")
+        self._emit_completed(session, variants=1 if isinstance(variant, dict) else 0)
         await self._finish_turn(session)
         return self._snapshot(session, "done")
 
-    async def _verify_c_anchors(self, session: FlowSession) -> None:
-        """U-2：C 档正文锚点后端校验——明确无效则降 B 并披露，判不清不降档。"""
-        if session.data.get("level") != "C":
-            return
-        variants = [v for v in session.data.get("variants", []) if isinstance(v, dict)]
-        body = next((str(v.get("body", "")) for v in variants if v.get("level") == "C"), "")
+    async def _verify_anchors(self, session: FlowSession) -> None:
+        """正文锚点后端核验（2026-11-06 U-2，2026-11-11 并入单套常规链路）。
+
+        对唯一方案执行：明确无效的锚点（文件不存在/行号越界）计入交付门并披露；
+        判不清（读取失败、路径无法在项目内核验）保守不降级。
+        """
+        raw = session.data.get("variant")
+        body = str(raw.get("body", "")) if isinstance(raw, dict) else ""
         anchors = extract_anchors(body)
         if not anchors:
             return
@@ -2701,8 +2852,10 @@ class ForgeService:
 
     async def _probe_anchor(self, root: str, anchor: Anchor) -> bool | None:
         """单锚点核验：False=明确无效；None=判不清（保守不降档）。路径为仓库相对形态。"""
-        rel = anchor.path.replace("\\", "/")
-        full = f"{root}/{rel}" if root else rel
+        # MUST-20：越界/非法路径等价于「目标不存在」，判明确无效（不读任何文件）。
+        full = safe_join(root, anchor.path)
+        if not full:
+            return False
         try:
             if not await self._reader.exists(full):
                 return False
@@ -2711,9 +2864,7 @@ class ForgeService:
             return None
         return 1 <= anchor.line <= len(text.splitlines())
 
-    def _evaluate_delivery_gate(
-        self, session: FlowSession, variant_count: int, marked: bool | None
-    ) -> DeliveryVerdict:
+    def _evaluate_delivery_gate(self, session: FlowSession) -> DeliveryVerdict:
         """把会话里的证据字段喂给领域判定（这里只做取值与类型归一，不做判定）。"""
         facts = [FactResult(**item) for item in session.data.get("facts", [])]
         claim_report = session.data.get("claim_report")
@@ -2725,20 +2876,9 @@ class ForgeService:
             undeclared = bool(claim_report.get("undeclared", False))
         if undeclared:
             # 未声明时 coverage 恒 0，与「声明了但没取证」是两件事：
-            # 灰度关闭（claim_strict=False）时整条不参与门禁，保持改造前行为。
+            # 灰度关闭（claim_strict=False）时整条不参与门禁，保留披露不降档。
             coverage = None
             undeclared = self._cfg.claim_strict
-        ranking_data = session.data.get("ranking")
-        reason = str(ranking_data.get("reason", "")) if isinstance(ranking_data, dict) else ""
-        ranked_level = ""
-        ranked_gap: float | None = None
-        ranking_marked: bool | None = None
-        if isinstance(ranking_data, dict):
-            ranked_level = str(ranking_data.get("variant", ""))
-            raw_gap = ranking_data.get("gap")
-            ranked_gap = float(raw_gap) if isinstance(raw_gap, (int, float)) else None
-            ranking_marked = bool(ranking_data.get("marked", False))
-        expected = session.data.get("expected_variant_count")
         anchor_report = session.data.get("anchor_report")
         anchor_invalid = (
             len(anchor_report.get("invalid", [])) if isinstance(anchor_report, dict) else 0
@@ -2751,16 +2891,7 @@ class ForgeService:
                 facts=facts,
                 claim_coverage=coverage,
                 claims_undeclared=undeclared,
-                variant_count=variant_count,
-                expected_variant_count=int(expected)
-                if isinstance(expected, (int, float))
-                else None,
                 anchor_invalid_count=anchor_invalid,
-                recommend_marked=marked,
-                ranking_marked=ranking_marked,
-                ranked_level=ranked_level,
-                ranked_gap=ranked_gap,
-                recommend_reason=reason,
                 attribution=attribution,
             ),
             _session_locale(session),
@@ -2772,11 +2903,11 @@ class ForgeService:
         impact = session.data.get("impact_files")
         if not isinstance(impact, list) or not impact:
             return None
+        variant = session.data.get("variant")
+        claims = variant.get("claims") if isinstance(variant, dict) else None
         claimed = {
             str(claim.get("target"))
-            for variant in session.data.get("variants", [])
-            if isinstance(variant, dict)
-            for claim in (variant.get("claims") or [])
+            for claim in (claims or [])
             if isinstance(claim, dict) and claim.get("kind") == "file"
         }
         uncovered = tuple(
@@ -2790,13 +2921,13 @@ class ForgeService:
     def _evaluate_finish_gate(session: FlowSession) -> FinishDecision:
         """A2 六道闸取值：本产品只保留 STEER 一道硬拦截。
 
-        其余各道依赖对话式 Agent 的自由文本收尾：NO-ANSWER（空交付）由交付门 RED
-        诚实披露——在这里弹回会与「重发同一动作」的调度器死锁；goal 缺失同样由
-        交付门披露；义务清单不存在。STEER 弹回有界：纠偏会被下一轮决策消费。
+        其余各道依赖对话式 Agent 的自由文本收尾：goal 缺失由交付门披露；义务清单
+        不存在。STEER 弹回有界：纠偏会被下一轮决策消费。交付准入按 spec 收敛为
+        「方案已生成」——没有 ``variant`` 时不允许收尾。
         """
         return evaluate_finish(
             GateInput(
-                has_text=True,
+                has_text=isinstance(session.data.get("variant"), dict),
                 pending_steer=str(session.data.get("hook_correction", "")),
             )
         )
@@ -2815,23 +2946,9 @@ class ForgeService:
     async def _generate_and_finish(
         self, session: FlowSession, *, progress: ProgressSink | None = None
     ) -> FlowSnapshot:
-        """线性路径：GENERATING→(RANKING)→DONE，与 agentic 循环共用同一批动作方法。"""
-        variants = await self._act_generate(session, progress=progress)
-        if len(variants) >= 2:
-            await self._act_rank(session, variants, progress=progress)
+        """线性路径：GENERATING→DONE，与 agentic 循环共用同一批动作方法。"""
+        await self._act_generate(session, progress=progress)
         return await self._act_deliver(session, progress=progress)
-
-    def _should_offer_three(self, session: FlowSession) -> bool:
-        """三套只在「方向未定」时给（2026-10-20）：首轮 / 信息不完备 / 用户表达分歧。"""
-        if int(session.data.get("turn_index", 0)) <= 0:
-            return True
-        if not bool(session.data.get("facts_complete", False)):
-            return True
-        if session.data.get("prev_facts_complete") is True and not session.data.get(
-            "facts_complete", False
-        ):
-            return True  # 事实前提失效：上一轮完备、本轮不完备 → 重新展开
-        return detect_direction_conflict(str(session.data.get("sentence", "")))
 
     async def _assemble_context(
         self, session: FlowSession, *, shrink: bool = False
@@ -3097,14 +3214,14 @@ class ForgeService:
             "turn_memory": memory.to_payload(),
             # turn_anchor 是跨轮追加演进的派生数据，不随撤销回退（被删轮次的 scope 残留）。
             "turn_anchor": session.data.get("turn_anchor"),
-            "preferred_level": str(previous_summary.get("decision", "")),
             "prev_facts_complete": previous_summary.get("facts_complete"),
             "cost_tokens": 0,
             "cost_llm_tokens": 0,
             "rounds": 0,
         }
         if memory.variants:
-            session.data["variants"] = [v.model_dump() for v in memory.variants]
+            # 单套输出：撤销重建时只保留最近一套。
+            session.data["variant"] = memory.variants[-1].model_dump()
         if memory.facts:
             session.data["facts"] = [
                 {"key": f.key, "passed": f.passed, "evidence": f.evidence} for f in memory.facts
@@ -3132,12 +3249,10 @@ class ForgeService:
                 except TypeError:
                     continue
         variants: list[VariantDraft] = []
-        for item in session.data.get("variants", []):
-            if isinstance(item, dict):
-                try:
-                    variants.append(VariantDraft(**item))
-                except (TypeError, ValueError):
-                    continue
+        raw_variant = session.data.get("variant")
+        if isinstance(raw_variant, dict):
+            with contextlib.suppress(TypeError, ValueError):
+                variants.append(VariantDraft(**raw_variant))
         target_data = session.data.get("target")
         memory = TurnMemory(
             sentence=str(session.data.get("sentence", "")),
@@ -3167,12 +3282,13 @@ class ForgeService:
             # 入账必须在落库前：usage.llm_tokens 取自会话累计器，晚一步就恒为 0。
             self._account_usage(session)
             await self._record_token_ledger(session)
+            variant = session.data.get("variant")
             await self._turns.finish(
                 turn_id,
                 state=session.state,
                 facts=[dict(item) for item in session.data.get("facts", [])],
                 clarifications=dict(session.data.get("clarifications", {})),
-                output=[dict(item) for item in session.data.get("variants", [])],
+                output=[dict(variant)] if isinstance(variant, dict) else [],
                 summary=summary_from_turn(session.data),
                 usage={"llm_tokens": int(session.data.get("cost_llm_tokens", 0))},
             )
@@ -3186,7 +3302,7 @@ class ForgeService:
             except Exception:  # noqa: BLE001 - 记忆写入失败不阻断生成
                 logger.warning("notes.record_failed", exc_info=True)
 
-    def _emit_completed(self, session: FlowSession, *, variants: int, marked: bool | None) -> None:
+    def _emit_completed(self, session: FlowSession, *, variants: int) -> None:
         """flow.completed（T6-9）：耗时 = 会话起点至生成收尾（跨反问轮次的真实全程）。"""
         started_at = float(session.data.get("started_at", 0.0))
         elapsed_ms = int((time.time() - started_at) * 1000) if started_at else None
@@ -3194,73 +3310,8 @@ class ForgeService:
             "flow.completed",
             flow_id=session.session_id,
             variants=variants,
-            marked=marked,
             elapsed_ms=elapsed_ms,
             request_id=session.data.get("last_request_id", ""),
-        )
-
-    async def _rank_and_mark(
-        self, session: FlowSession, variants: list[VariantDraft]
-    ) -> RankingView | None:
-        """F-401~404 RANKING 态编排：score_prompts → 归一化 → 匹配度 → 加权总分 → 判定。
-
-        决策层任何异常（LLM 故障/输出缺档位）→ 诚实降级 ranking=None 不阻断流程
-        （宁缺勿假，比崩溃好）；不缓存三套方案正文与决策原始响应（MUST-14）。
-        """
-        request_id = session.data.get("last_request_id", "")
-        try:
-            context = str(session.data.get("facts_summary") or _summarize_facts(session))
-            scores = await self._decider.score_prompts(
-                context, [(v.level, v.body) for v in variants]
-            )
-            by_level = {s.variant: s for s in scores.scores}
-            entries: list[tuple[VariantScore, float]] = []
-            details: dict[str, tuple[float, float]] = {}
-            for v in variants:
-                score = by_level[v.level]
-                fit = normalize_fit(score.score)
-                # 2026-10-21：偏好记忆移除，总分 = 纯适配度（MUST-27 已同步修订）
-                total = weighted_total(fit)
-                entries.append((score, total))
-                details[v.level] = (fit, total)
-            rec = decide_mark(entries, _session_locale(session))
-        except Exception:
-            # 记录跳过原因：交付前的不变量据此**不重试**打分（同一次失败不打两次），
-            # 前端也据此区分「打分失败（可重试）」与「单套跳过（正常）」（2026-11-06）。
-            session.data["ranking_skip_reason"] = "score-failed"
-            emit_error(
-                "recommendation.skipped",
-                reason="score-failed",
-                gap=None,
-                confidence=None,
-                request_id=request_id,
-            )
-            return None
-        # 打分成功：清掉可能残留的跳过原因（例如上一轮失败后本会话被复用）
-        session.data.pop("ranking_skip_reason", None)
-        top_fit, top_total = details[rec.variant]
-        # 逐档明细（2026-11-05）：回答「为什么没选 C」需要各档实际分数，
-        # 而 RankingView 只装得下被选中的那一档。
-        session.data["ranking_details"] = {
-            level: {"fit": fit, "total": total} for level, (fit, total) in details.items()
-        }
-        emit(
-            "recommendation.made" if rec.marked else "recommendation.skipped",
-            gap=rec.gap,
-            confidence=rec.confidence,
-            marked=rec.marked,
-            variant=rec.variant,
-            reason=rec.reason,
-            request_id=request_id,
-        )
-        return RankingView(
-            variant=rec.variant,
-            gap=rec.gap,
-            confidence=rec.confidence,
-            marked=rec.marked,
-            reason=rec.reason,
-            fit=top_fit,
-            total=top_total,
         )
 
     async def _rank_top(self, session: FlowSession, candidates: list[Candidate]) -> Candidate:
@@ -3341,7 +3392,7 @@ class ForgeService:
             llm_source="actual" if llm_tokens > 0 else "no_call",
         )
         questions = [_unknown_from(raw) for raw in session.data.get("unknowns", [])]
-        ranking_data = session.data.get("ranking")
+        variant_data = session.data.get("variant")
         target_data = session.data.get("target")
         target = (
             Symbol(
@@ -3364,20 +3415,11 @@ class ForgeService:
             state=session.state,
             questions=questions,
             cleared=sorted(session.data.get("clarifications", {}).keys()),
-            variants=[VariantDraft(**v) for v in session.data.get("variants", [])],
-            ranking=(
-                RankingView(**{k: v for k, v in ranking_data.items() if k in _RANKING_KEYS})
-                if isinstance(ranking_data, dict)
-                else None
-            ),
+            variant=VariantDraft(**variant_data) if isinstance(variant_data, dict) else None,
             target=target,
             facts=facts,
             cost=cost,
-            ranking_skip_reason=(
-                str(session.data["ranking_skip_reason"])
-                if isinstance(session.data.get("ranking_skip_reason"), str)
-                else None
-            ),
+            message=str(session.data.get("message", "")),
             current_turn_id=str(turn_id) if turn_id else None,
             agent_step=len(agent_steps) if agent_steps else None,
             agent_action=str(last_step.get("action")) if isinstance(last_step, dict) else None,
@@ -3453,12 +3495,20 @@ async def build_default(cfg: AppConfig) -> ForgeService:
     """默认组装（CLI/开发态；Web 复用同一函数，MUST-10）。"""
     from devprompt_ai.decision.fallback import create_decider
     from devprompt_ai.harness.models_client import OpenAIModelsFetcher
+    from devprompt_ai.harness.obs.traced_ports import (
+        TracedDecider,
+        TracedGenerator,
+        TracedReader,
+        TracedRunner,
+        TracedSymbolProvider,
+    )
     from devprompt_ai.harness.output_store import cleanup as cleanup_raw_outputs
     from devprompt_ai.memory.project_note_store import SQLiteProjectNoteStore
     from devprompt_ai.memory.session_store import SQLiteSessionStore
     from devprompt_ai.memory.startup_safety_check import run_startup_safety_check
     from devprompt_ai.memory.token_ledger import SQLiteTokenLedger as _TokenLedger
     from devprompt_ai.memory.turn_store import SQLiteTurnStore
+    from devprompt_ai.obs import registry as obs_registry
 
     # N-1 启动自愈：必须在任何 Manager 打开库之前跑，坏行隔离才有意义
     run_startup_safety_check(cfg.db_path)
@@ -3467,16 +3517,23 @@ async def build_default(cfg: AppConfig) -> ForgeService:
 
     sessions = SQLiteSessionStore(cfg.db_path)
     await sessions.init_schema()
-    return ForgeService(
+    obs = obs_registry.build_obs_modules(cfg)
+    await obs.startup()
+    service = ForgeService(
         cfg=cfg,
-        decider=create_decider(cfg),
+        decider=TracedDecider(create_decider(cfg), obs.collector),
         sessions=sessions,
-        runner=LocalCommandRunner(),
-        reader=LocalFileReader(),
-        generator=LLMGenerator(cfg),
-        symbols_provider=SymbolTableProvider(LocalCommandRunner()),
+        runner=TracedRunner(LocalCommandRunner(), obs.collector),
+        reader=TracedReader(LocalFileReader(), obs.collector),
+        generator=TracedGenerator(LLMGenerator(cfg), obs.collector),
+        symbols_provider=TracedSymbolProvider(
+            SymbolTableProvider(LocalCommandRunner()), obs.collector
+        ),
         catalog_fetcher=OpenAIModelsFetcher(),
         turns=SQLiteTurnStore(cfg.db_path),
         notes=SQLiteProjectNoteStore(cfg.db_path),
         token_ledger=_TokenLedger(cfg.db_path),
+        trace=obs.collector,
     )
+    service.obs = obs
+    return service

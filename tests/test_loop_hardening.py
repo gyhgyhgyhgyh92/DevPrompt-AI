@@ -7,12 +7,7 @@ from typing import Any
 import pytest
 
 from devprompt_ai.config import AppConfig
-from devprompt_ai.domain.generate.ports import (
-    GenerationContext,
-    Level,
-    MultiVariantDraft,
-    VariantDraft,
-)
+from devprompt_ai.domain.generate.ports import GenerationContext, VariantDraft
 from devprompt_ai.service import ForgeService
 from test_service import FakeDecider, FakeGenerator, FakeReader, FakeRunner, FakeStore, _symbols
 
@@ -23,15 +18,13 @@ class StubGenerator(FakeGenerator):
     def __init__(self) -> None:
         self.contexts: list[GenerationContext] = []
 
-    async def generate_variants(
-        self, ctx: GenerationContext, levels: list[Level], locale: str = "zh-CN"
-    ) -> MultiVariantDraft:
+    async def generate_single(  # type: ignore[no-untyped-def]
+        self, ctx: GenerationContext, locale: str = "zh-CN", *, fallback: bool = False
+    ) -> VariantDraft:
         self.contexts.append(ctx)
         if len(self.contexts) == 1:
             raise RuntimeError("prompt is too long: context length exceeded")
-        return MultiVariantDraft(
-            variants=[VariantDraft(title="t", body="b", changes=["x"], level=lv) for lv in levels]
-        )
+        return VariantDraft(title="t", body="b", changes=["x"], fallback=fallback)
 
 
 def _service(gen: ForgeService | StubGenerator) -> ForgeService:
@@ -65,9 +58,9 @@ async def test_non_overflow_error_is_not_retried() -> None:
     """非超窗错误原样抛出（optimize 兜底转 ABORTED），不得当超窗重试。"""
 
     class BoomGenerator(FakeGenerator):
-        async def generate_variants(
-            self, ctx: GenerationContext, levels: list[Level], locale: str = "zh-CN"
-        ) -> MultiVariantDraft:
+        async def generate_single(  # type: ignore[no-untyped-def]
+            self, ctx: GenerationContext, locale: str = "zh-CN", *, fallback: bool = False
+        ) -> VariantDraft:
             raise RuntimeError("boom: invalid api key")
 
     svc = _service(BoomGenerator())
@@ -79,6 +72,8 @@ async def test_finish_gate_bounces_deliver_while_steer_pending() -> None:
     """A2：纠偏未消化时 DELIVER 被弹回；纠偏清空后放行。"""
     svc, _store = await _service_with_data()
     session = _session_of(svc)
+    # 交付闸只看「本轮是否已产出正文」；该用例只验证 STEER 弹回，手动补一个方案。
+    session.data["variant"] = {"title": "t", "body": "b", "changes": []}
 
     blocked = svc._evaluate_finish_gate(session)
     session.data["hook_correction"] = "先补取证再生成"
@@ -194,15 +189,11 @@ async def test_context_layers_off_skips_delta() -> None:
     """context_layers_enabled 关闭：不注入 <context-update>（恢复改造前行为）。"""
 
     class QuietGenerator(StubGenerator):
-        async def generate_variants(
-            self, ctx: GenerationContext, levels: list[Level], locale: str = "zh-CN"
-        ) -> MultiVariantDraft:
+        async def generate_single(  # type: ignore[no-untyped-def]
+            self, ctx: GenerationContext, locale: str = "zh-CN", *, fallback: bool = False
+        ) -> VariantDraft:
             self.contexts.append(ctx)
-            return MultiVariantDraft(
-                variants=[
-                    VariantDraft(title="t", body="b", changes=["x"], level=lv) for lv in levels
-                ]
-            )
+            return VariantDraft(title="t", body="b", changes=["x"], fallback=fallback)
 
     gen = QuietGenerator()
     from devprompt_ai.harness.process import SymbolTableProvider
@@ -227,15 +218,11 @@ async def test_tail_anchor_injected_after_compaction() -> None:
     """B13/B14：历史被压缩时，权威块出现在 history_block 尾部（与摘要冲突以本块为准）。"""
 
     class QuietGenerator(StubGenerator):
-        async def generate_variants(
-            self, ctx: GenerationContext, levels: list[Level], locale: str = "zh-CN"
-        ) -> MultiVariantDraft:
+        async def generate_single(  # type: ignore[no-untyped-def]
+            self, ctx: GenerationContext, locale: str = "zh-CN", *, fallback: bool = False
+        ) -> VariantDraft:
             self.contexts.append(ctx)
-            return MultiVariantDraft(
-                variants=[
-                    VariantDraft(title="t", body="b", changes=["x"], level=lv) for lv in levels
-                ]
-            )
+            return VariantDraft(title="t", body="b", changes=["x"], fallback=fallback)
 
     from devprompt_ai.harness.process import SymbolTableProvider
 
@@ -356,9 +343,9 @@ async def test_quiet_abort_settles_turn_memory() -> None:
     """阶段7：异常中断也要沉淀——turn_memory 已写入（下一轮可回看）。"""
 
     class BoomGenerator(FakeGenerator):
-        async def generate_variants(
-            self, ctx: GenerationContext, levels: list[Level], locale: str = "zh-CN"
-        ) -> MultiVariantDraft:
+        async def generate_single(  # type: ignore[no-untyped-def]
+            self, ctx: GenerationContext, locale: str = "zh-CN", *, fallback: bool = False
+        ) -> VariantDraft:
             raise RuntimeError("boom")
 
     from devprompt_ai.harness.process import SymbolTableProvider

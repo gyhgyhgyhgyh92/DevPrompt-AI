@@ -1,12 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import type {
-  DeliveryGatePayload,
-  RankingViewPayload,
-  UnknownItemPayload,
-  VariantPayload,
-} from '../../api/types'
+import type { DeliveryGatePayload, UnknownItemPayload, VariantPayload } from '../../api/types'
 import type { ThinkingItem } from '../../schemas/stream'
 import { AskFlow } from './AskFlow'
 import { AssistantBlock } from './AssistantBlock'
@@ -26,7 +21,6 @@ const PHASES = [
   'ASKING',
   'CONFIRMING',
   'GENERATING',
-  'RANKING',
   'DONE',
   'ABORTED',
 ] as const
@@ -39,7 +33,6 @@ const PHASE_META: Record<(typeof PHASES)[number], { labelKey: string; hintKey: s
   ASKING: { labelKey: 'chat.phase.ASKING.label', hintKey: 'chat.phase.ASKING.hint' },
   CONFIRMING: { labelKey: 'chat.phase.CONFIRMING.label', hintKey: 'chat.phase.CONFIRMING.hint' },
   GENERATING: { labelKey: 'chat.phase.GENERATING.label', hintKey: 'chat.phase.GENERATING.hint' },
-  RANKING: { labelKey: 'chat.phase.RANKING.label', hintKey: 'chat.phase.RANKING.hint' },
   DONE: { labelKey: 'chat.phase.DONE.label', hintKey: 'chat.phase.DONE.hint' },
   ABORTED: { labelKey: 'chat.phase.ABORTED.label', hintKey: 'chat.phase.ABORTED.hint' },
 }
@@ -56,14 +49,12 @@ interface ChatStreamProps {
   /** 思考流进行中：正文区暂不渲染反问/结果。 */
   isThinking: boolean
   message: string
-  /** 纯回答轮正文（2026-11-05）：本轮只回答、不产出方案，与 variants 互斥。 */
+  /** 纯回答轮正文（2026-11-05）：本轮只回答、不产出方案，与 variant 互斥。 */
   replyText: string
   questions: readonly UnknownItemPayload[]
   cleared: readonly string[]
-  variants: readonly VariantPayload[]
-  ranking: RankingViewPayload | null
-  /** 未产生推荐的原因（2026-11-06）：透传给 ConfidenceNotice 区分「单套跳过」与「打分失败」。 */
-  rankingSkipReason?: string | null
+  /** 本轮唯一方案（契约 variant；null 表示未产出）。 */
+  variant: VariantPayload | null
   /** 交付证据门结果（2026-11-05 形态层）：null 表示本轮未过门。 */
   deliveryGate: DeliveryGatePayload | null
   elapsedSeconds: number | null
@@ -91,9 +82,7 @@ export function ChatStream({
   replyText,
   questions,
   cleared,
-  variants,
-  ranking,
-  rankingSkipReason = null,
+  variant,
   deliveryGate,
   elapsedSeconds,
   errorMessage,
@@ -117,12 +106,10 @@ export function ChatStream({
   }, [isThinking, thinking.length])
 
   // 阶段按**实际走过的路径**渲染（2026-11-04）：没问过就不出现「等待确认 / 整理答复」，
-  // 单套方案按 MUST-28 跳过打分故不出现「评估推荐」，中止行只在真中止时出现。
+  // 中止行只在真中止时出现。
   const hadAsk = questions.length > 0 || cleared.length > 0
-  const willRank = ranking !== null || variants.length > 1
   const visiblePhases = PHASES.filter((phase) => {
     if (phase === 'ASKING' || phase === 'CONFIRMING') return hadAsk
-    if (phase === 'RANKING') return willRank
     if (phase === 'ABORTED') return state === 'ABORTED'
     return true
   })
@@ -229,9 +216,7 @@ export function ChatStream({
           ) : null
         }
         gate={isThinking ? null : deliveryGate}
-        variants={isThinking ? [] : variants}
-        ranking={isThinking ? null : ranking}
-        rankingSkipReason={isThinking ? null : rankingSkipReason}
+        variant={isThinking ? null : variant}
         replyText={isThinking ? '' : replyText}
         message={!isThinking && isResult ? message : ''}
         error={errorMessage ?? undefined}

@@ -107,6 +107,7 @@ async def test_run_manager_decouples_execution_from_caller(tmp_path: Path) -> No
     assert finished.status == "done"
     events = await bus.replay("s1", 0)
     assert [e.type for e in events] == ["run.started", "thought", "snapshot", "stop"]
+    assert service.calls[-1]["create_session"] is True, "/runs 必须允许创建前端新会话"
     assert pool.active_run("s1") is None
 
 

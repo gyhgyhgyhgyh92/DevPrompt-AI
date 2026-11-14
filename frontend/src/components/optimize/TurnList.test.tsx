@@ -22,7 +22,9 @@ function detail(index: number): TurnDetailPayload {
   return {
     ...summary(index),
     input: `第 ${index + 1} 轮原句`,
-    variants: [{ title: `方案${index}`, body: `正文${index}`, level: 'A', changes: [] }],
+    variants: [
+      { title: `方案${index}`, body: `正文${index}`, changes: [], claims: [], fallback: false },
+    ],
     facts: [],
   }
 }

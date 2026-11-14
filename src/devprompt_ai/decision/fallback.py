@@ -212,6 +212,7 @@ class LLMFallbackDecider:
         variant_count: int,
         clarifications: Mapping[str, str],
         correction: str = "",
+        inherited_variant_count: int = 0,
     ) -> NextActionOutput:
         """Agentic 调度：给定已发生的事实与动作序列，决定下一步做什么。
 
@@ -236,6 +237,7 @@ class LLMFallbackDecider:
                     variant_count,
                     clarification_listing,
                     correction,
+                    inherited_variant_count,
                 )
             ),
             self._cfg.runtime_state_budget(),

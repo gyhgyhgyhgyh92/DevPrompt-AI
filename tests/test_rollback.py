@@ -50,7 +50,7 @@ async def test_rollback_deletes_later_turns_and_rebuilds_data(tmp_path: Any) -> 
     session = store.items[session_id]
     assert session.data["turn_index"] == 0
     assert session.data["sentence"] == "第一轮：把提交按钮改成 primary-500"
-    assert session.data["variants"], "第 1 轮的方案应作为本轮 data 起点"
+    assert session.data["variant"], "第 1 轮的方案应作为本轮 data 起点"
     assert session.data["turn_memory"]["facts"], "第 1 轮取证应进 turn_memory"
 
 

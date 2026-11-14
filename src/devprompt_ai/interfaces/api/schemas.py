@@ -117,24 +117,16 @@ class UnknownItemPayload(BaseModel):
 
 
 class VariantPayload(BaseModel):
-    """domain VariantDraft 的契约镜像（F-301 结构化方案）。"""
+    """domain VariantDraft 的契约镜像（F-301 单套方案）。
+
+    ``fallback`` 标记本轮由兜底模板（A 保守版）产出，前端须披露「已降级为保守输出」。
+    """
 
     title: str
     body: str
     changes: list[str] = Field(default_factory=list)
-    level: str
-
-
-class RankingViewPayload(BaseModel):
-    """service.RankingView 的契约镜像（F-403/F-404 加权推荐视图）。"""
-
-    variant: str
-    gap: float
-    confidence: float
-    marked: bool
-    reason: str
-    fit: float
-    total: float
+    claims: list[dict[str, Any]] = Field(default_factory=list)
+    fallback: bool = False
 
 
 class SymbolPayload(BaseModel):
@@ -166,8 +158,6 @@ class DeliveryGatePayload(BaseModel):
     status: str = ""
     tone: str = "ok"
     reasons: list[str] = Field(default_factory=list)
-    can_mark_c: bool = True
-    can_mark_recommend: bool = True
     disclosure: str = ""
 
 
@@ -186,7 +176,8 @@ class CostDetailPayload(BaseModel):
 class FlowSnapshotResponse(BaseModel):
     """FlowSnapshot 的 HTTP 渲染形态（status 含 SSE 专有扩展值 "aborted"）。
 
-    v2（BREAKING）：variant 单数字段 → variants 列表 + ranking 推荐视图。
+    v3（BREAKING，2026-11-11 单套输出）：``variant`` 单对象承载方案；
+    ``variants`` / ``ranking`` / ``ranking_skip_reason`` 已删除。
     """
 
     session_id: str
@@ -194,11 +185,7 @@ class FlowSnapshotResponse(BaseModel):
     state: str
     questions: list[UnknownItemPayload] = Field(default_factory=list)
     cleared: list[str] = Field(default_factory=list)
-    variants: list[VariantPayload] = Field(default_factory=list)
-    ranking: RankingViewPayload | None = None
-    #: ranking 为 null 的原因（2026-11-06，additive）：
-    #: single-variant（正常）/ score-failed（可重试）。
-    ranking_skip_reason: str | None = None
+    variant: VariantPayload | None = None
     target: SymbolPayload | None = None
     facts: list[FactPayload] = Field(default_factory=list)
     cost: CostDetailPayload | None = None  # F-805 成本明细（additive，无新增契约路径）
@@ -347,6 +334,29 @@ class LockedSettings(BaseModel):
     candidate_limit: int
 
 
+class ObservabilitySettings(BaseModel):
+    """可观测性三模块开关视图（2026-11-12）：各模块独立启用，互不影响。
+
+    只下发「启停 + Trace 保留天数」这类运行级配置；阈值与告警冷却走
+    `GET /obs/metrics/config`（Metrics 模块自己的只读端点），避免设置段与
+    模块实现细节耦合。
+    """
+
+    trace_enabled: bool
+    trace_retention_days: int
+    metrics_enabled: bool
+    replay_enabled: bool
+
+
+class ObservabilityUpdate(BaseModel):
+    """PUT /settings 可观测性段：None = 保持不变；保存后立即作用于运行中的模块。"""
+
+    trace_enabled: bool | None = None
+    trace_retention_days: int | None = Field(default=None, ge=1, le=3650)
+    metrics_enabled: bool | None = None
+    replay_enabled: bool | None = None
+
+
 class ModelDirectoryEntry(BaseModel):
     """模型目录条目（2026-10-17 窗口/能力下沉到模型级）。
 
@@ -462,6 +472,7 @@ class SettingsResponse(BaseModel):
     providers: list[ProviderDirectoryEntry] = Field(default_factory=list)
     model_service: ModelServiceSettings
     process: ProcessSettings
+    observability: ObservabilitySettings
     locked: LockedSettings
 
 
@@ -510,6 +521,7 @@ class SettingsUpdate(BaseModel):
     active_model_id: str | None = None
     model_service: ModelServiceUpdate | None = None
     process: ProcessUpdate | None = None
+    observability: ObservabilityUpdate | None = None
 
 
 class HistoryItemPayload(BaseModel):

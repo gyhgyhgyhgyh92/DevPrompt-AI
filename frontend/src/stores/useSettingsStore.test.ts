@@ -19,6 +19,12 @@ const settingsFixture: SettingsResponse = {
     followup_soft_round_guard: 10,
     telemetry: true,
   },
+  observability: {
+    trace_enabled: true,
+    trace_retention_days: 30,
+    metrics_enabled: true,
+    replay_enabled: true,
+  },
   locked: { candidate_limit: 25 },
 }
 

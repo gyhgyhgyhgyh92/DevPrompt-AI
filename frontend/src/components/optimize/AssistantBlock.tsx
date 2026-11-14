@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { DeliveryGatePayload, RankingViewPayload, VariantPayload } from '../../api/types'
-import { ConfidenceNotice } from './ConfidenceNotice'
+import type { DeliveryGatePayload, VariantPayload } from '../../api/types'
 import { DeliveryGateCard } from './DeliveryGateCard'
-import { VariantTabs } from './VariantTabs'
+import { PromptCard } from './PromptCard'
 import styles from './ChatStream.module.css'
 import { makeS } from '../../utils/css'
 
@@ -24,11 +23,8 @@ interface AssistantBlockProps {
   steps?: readonly Record<string, unknown>[]
   /** 交付证据门结果；undefined/null 表示本轮未过门。 */
   gate?: DeliveryGatePayload | null
-  variants?: readonly VariantPayload[]
-  /** 历史轮无落库的推荐视图，传 null 时由 ConfidenceNotice 自行省略。 */
-  ranking?: RankingViewPayload | null
-  /** 未产生推荐的原因（2026-11-06）：single-variant / score-failed。 */
-  rankingSkipReason?: string | null
+  /** 本轮唯一方案；null 表示未产出（反问中 / 纯回答轮）。 */
+  variant?: VariantPayload | null
   /** 纯回答轮正文。 */
   replyText?: string
   /** 系统提示文案 / 历史轮结论。 */
@@ -57,9 +53,7 @@ export function AssistantBlock({
   planning,
   steps,
   gate,
-  variants,
-  ranking = null,
-  rankingSkipReason = null,
+  variant = null,
   replyText = '',
   message = '',
   openItems,
@@ -69,7 +63,6 @@ export function AssistantBlock({
   children,
 }: AssistantBlockProps) {
   const { t } = useTranslation()
-  const variantList = variants ?? []
   return (
     <article className={s('chat-reply')} aria-label={ariaLabel}>
       <header className={s('chat-reply__head')}>
@@ -112,9 +105,8 @@ export function AssistantBlock({
           </div>
         ) : null}
 
-        <ConfidenceNotice ranking={ranking} skipReason={rankingSkipReason} />
         <DeliveryGateCard gate={gate ?? null} />
-        {variantList.length > 0 ? <VariantTabs variants={variantList} ranking={ranking} /> : null}
+        {variant !== null ? <PromptCard variant={variant} /> : null}
 
         {(openItems ?? []).length > 0 ? (
           <p className={s('thread__open')}>

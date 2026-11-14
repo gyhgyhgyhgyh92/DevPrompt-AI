@@ -2,7 +2,6 @@ import { create } from 'zustand'
 import type {
   DeliveryGatePayload,
   FlowSnapshotResponse,
-  RankingViewPayload,
   TurnDetailPayload,
   TurnSummaryPayload,
   UnknownItemPayload,
@@ -38,12 +37,8 @@ interface OptimizeState {
   message: string
   questions: readonly UnknownItemPayload[]
   cleared: readonly string[]
-  /** 三套方案（契约 variants 列表）。 */
-  variants: readonly VariantPayload[]
-  /** 推荐视图（契约 ranking；null 表示后端未产生推荐）。 */
-  ranking: RankingViewPayload | null
-  /** 未产生推荐的原因（2026-11-06）：single-variant / score-failed；null 表示有推荐。 */
-  rankingSkipReason: string | null
+  /** 本轮唯一方案（契约 variant；null 表示尚未产出）。 */
+  variant: VariantPayload | null
   /** 目标定位镜像（契约 target；null 表示未定位，MUST-07 只镜像不判定）。 */
   target: SymbolPayload | null
   /** 取证事实镜像（契约 facts，F-104 判定结果只读透出）。 */
@@ -104,9 +99,7 @@ const initialState: Pick<
   | 'message'
   | 'questions'
   | 'cleared'
-  | 'variants'
-  | 'ranking'
-  | 'rankingSkipReason'
+  | 'variant'
   | 'target'
   | 'facts'
   | 'sseStatus'
@@ -130,9 +123,7 @@ const initialState: Pick<
   message: '',
   questions: [],
   cleared: [],
-  variants: [],
-  ranking: null,
-  rankingSkipReason: null,
+  variant: null,
   target: null,
   facts: [],
   sseStatus: 'idle',
@@ -236,9 +227,7 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
       message: snapshot.message,
       questions: snapshot.questions ?? [],
       cleared: snapshot.cleared ?? [],
-      variants: snapshot.variants ?? [],
-      ranking: snapshot.ranking ?? null,
-      rankingSkipReason: snapshot.ranking_skip_reason ?? null,
+      variant: snapshot.variant ?? null,
       target: snapshot.target ?? null,
       facts: snapshot.facts ?? [],
       // 归属以服务端为准（2026-11-04）；老后端/测试夹具无该字段时保留现值，不误清

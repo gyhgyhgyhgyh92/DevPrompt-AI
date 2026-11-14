@@ -61,6 +61,12 @@ class CodeLocation:
     selectors: list[str] = field(default_factory=list)
     tokens: list[str] = field(default_factory=list)
     test_paths: list[str] = field(default_factory=list)
+    #: 带行号的代码片段（形如 "233|<Button ...>"）。仅供生成层：四段式方案的
+    #: 「定位」与「实施」两段要写出组件属性与「原代码 → 新代码」，没有片段只能编。
+    #: 刻意不进 ``facts_summary``——后者同时被研判与打分消费（MUST-09）。
+    excerpt: str = ""
+    #: 设计令牌证据（rg 命中行，≤3 条）。供「一致性检查」段引用路径与色值。
+    token_hits: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

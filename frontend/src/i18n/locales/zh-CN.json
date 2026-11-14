@@ -42,18 +42,12 @@
   },
   "optimize": {
     "stop_generation": "停止生成",
-    "no_variants": "暂无方案",
-    "variant_compare": "方案对比",
+    "fallback_notice": "本轮生成异常，已降级为保守输出；内容可能不完整，建议重试。",
     "model_switch": "模型",
     "model_follow_routing": "跟随路由"
   },
   "validation": {
     "followup_mode_exclusive": "answers / escape / guardrail_action 三种模式必须且只能启用一种"
-  },
-  "ranking": {
-    "skip_single_variant": "本轮只产出 1 套方案，按规则跳过打分与推荐；补充组件名或文件路径后再来一轮即可获得多套对比。",
-    "skip_score_failed": "打分服务本轮不可用，方案已照常提供；重试即可获得推荐与评分明细。",
-    "skip_unknown": "后端未产生推荐视图，请人工选择"
   },
   "trace": {
     "read_file": "读取文件",
@@ -100,10 +94,10 @@
     "prompt_hint": "帮你优化每一段提示词，从理清需求到上线-端到端交付生产级结果",
     "brand_name": "DevPrompt AI",
     "hero_claim": "把一句模糊需求，变成 Agent 能直接执行的提示词",
-    "hero_sub": "先读真实代码，再问关键未知，最后给三套方案与推荐理由",
+    "hero_sub": "先读真实代码，再问关键未知，最后给出一套可直接执行的方案",
     "chip_retrieval": "代码检索",
     "chip_probing": "澄清追问",
-    "chip_plans": "三案对比",
+    "chip_plans": "单方案交付",
     "save_failed": "参数保存失败，请稍后重试",
     "switch_failed": "模型切换失败，请稍后重试",
     "scan_failed": "项目路径不存在或无法扫描",
@@ -138,7 +132,6 @@
       "probe": "研判取证",
       "ask": "向你提问",
       "generate": "生成方案",
-      "rank": "打分与推荐",
       "deliver": "交付",
       "abort": "中止本轮"
     },
@@ -165,11 +158,7 @@
       },
       "GENERATING": {
         "label": "生成方案",
-        "hint": "一次调用产出 1~3 套方案"
-      },
-      "RANKING": {
-        "label": "评估推荐",
-        "hint": "按适配度与偏好打分、标推荐"
+        "hint": "一次调用产出 1 套方案"
       },
       "DONE": {
         "label": "已完成",
@@ -300,10 +289,156 @@
     "tab": {
       "model-service": "模型服务",
       "appearance": "通用外观",
+      "observability": "可观测性",
       "security": "流程与安全"
     },
     "api_mode": "API 形态",
     "api_mode_only": "{{mode}}（该供应商仅支持这一种形态）"
+  },
+  "observability": {
+    "title": "可观测性",
+    "subtitle": "Session Log 运行时台账 + Trace / Metrics / Replay 三个独立模块（只读）",
+    "tips": {
+      "sections": {
+        "definition": "定义",
+        "features": "核心功能",
+        "scenarios": "使用场景"
+      },
+      "session-log": {
+        "title": "Session Log：运行事件台账",
+        "definition": "把一次运行中发生的事按时间顺序记下来，包括开始、思考、工具动作、结果与结束。",
+        "features": "保留完整事件流水，可按会话和事件类型筛选，也支持导出。",
+        "scenarios": "排查运行中断、报错，或想复现某次操作步骤时使用。"
+      },
+      "trace": {
+        "title": "Trace：调用链追踪",
+        "definition": "把一次优化内部的决策、检索、工具、文件读取和大模型调用串成一条调用链。",
+        "features": "展示每一步的层级、先后顺序和耗时，点击节点可查看完整输入输出。",
+        "scenarios": "定位慢在哪一步，确认某一步是否真的被调用。"
+      },
+      "metrics": {
+        "title": "Metrics：指标与告警",
+        "definition": "把大量运行事件汇总成数量、耗时、失败率和 token 用量等指标。",
+        "features": "按类型、模型或轮次查看趋势，超过阈值时自动生成分级告警。",
+        "scenarios": "观察整体性能、发现异常耗时或失败率、评估模型成本。"
+      },
+      "replay": {
+        "title": "Replay：确定性回放",
+        "definition": "用已记录的调用链把一次运行重跑一遍，检查结果是否与当时一致。",
+        "features": "支持单条调用链自校验，也支持两条调用链逐步对比差异。",
+        "scenarios": "改动后做回归验证，排查两次运行结果为什么不一致。"
+      }
+    },
+    "loading": "加载中…",
+    "empty": "暂无数据",
+    "retry": "重试",
+    "module": {
+      "session_log": "Session Log",
+      "trace_replay": "Trace Metrics Replay"
+    },
+    "sessions": {
+      "title": "会话",
+      "search_placeholder": "搜索会话标题或项目",
+      "all_projects": "全部项目",
+      "load_more": "加载更多",
+      "no_match": "没有匹配的会话"
+    },
+    "modules": {
+      "title": "模块开关",
+      "trace": "Trace 采集",
+      "metrics": "Metrics 指标",
+      "replay": "Replay 回放",
+      "retention": "Trace 保留天数",
+      "save": "保存",
+      "saved": "已保存，立即生效",
+      "save_failed": "保存失败",
+      "disabled": "该模块未启用，可在上方开关中开启",
+      "none_enabled": "三个模块均已停用。开启任一模块后即可查看对应数据。"
+    },
+    "toolbar": {
+      "aria": "会话日志工具栏",
+      "search_placeholder": "搜索记录内容",
+      "fold_turns": "折叠全部轮次",
+      "unfold_turns": "展开全部轮次",
+      "fold_calls": "折叠全部调用",
+      "unfold_calls": "展开全部调用",
+      "live_follow": "实时跟随",
+      "refresh": "刷新",
+      "export_json": "导出 JSON",
+      "export_csv": "导出 CSV",
+      "export_all": "导出全部",
+      "exporting": "导出中…",
+      "back_to_latest": "回到最新"
+    },
+    "record": {
+      "user": "用户",
+      "assistant": "助手",
+      "tool": "工具",
+      "thought": "思考",
+      "phase": "阶段",
+      "ask": "提问",
+      "approval": "审批",
+      "stop": "结束",
+      "error": "错误",
+      "system": "系统",
+      "checkpoint": "检查点",
+      "delegation": "委派"
+    },
+    "inspector": {
+      "title": "记录详情",
+      "raw": "原始数据",
+      "copy": "复制",
+      "copied": "已复制",
+      "close": "关闭详情",
+      "seq": "序号",
+      "phase": "阶段",
+      "duration": "耗时",
+      "tokens": "Tokens"
+    },
+    "log": {
+      "load_older": "加载更早",
+      "no_events": "当前筛选下没有记录",
+      "no_session": "请选择左侧会话查看日志",
+      "unassigned": "未归属"
+    },
+    "replay": {
+      "play": "播放",
+      "pause": "暂停",
+      "restart": "重播",
+      "step_back": "上一步",
+      "step_forward": "下一步",
+      "speed": "速度",
+      "clear_filters": "清除区间",
+      "no_events": "该会话没有可回放的运行时事件（旧会话或未执行）",
+      "open_in_log": "在 Session Log 中查看",
+      "quality_truncated": "事件超过指标上限，指标按最近 5000 条计算",
+      "quality_no_timestamps": "部分事件缺少时间戳，墙钟时长与时间轴仅供参考"
+    },
+    "metrics": {
+      "title": "链路指标与时间轴",
+      "events": "事件",
+      "actions": "动作",
+      "failures": "失败动作",
+      "tokens": "Tokens",
+      "wall_clock": "墙钟时长",
+      "p50": "P50 耗时",
+      "p95": "P95 耗时",
+      "distribution": "事件类型分布",
+      "slowest": "最慢动作",
+      "token_series": "每轮 Token",
+      "sensorium": "六维感知",
+      "score": "总分",
+      "no_data": "暂无数据",
+      "alerts": "告警历史",
+      "note_unfiltered": "指标为整会话口径，不随下方筛选变化"
+    },
+    "timeline": {
+      "aria": "事件时间轴",
+      "hint": "单击定位 · 拖动选区间 · 滚轮缩放 · 右键清除/拖拽平移"
+    },
+    "export": {
+      "all_truncated": "导出已达到分页上限（2000 条事件），更早的记录未包含"
+    }
   },
   "errors": {
     "1001": "缺少必填参数，请检查输入",
@@ -333,6 +468,7 @@
     "6001": "当前状态不允许该操作，请刷新页面后重试",
     "6002": "追问轮次已达上限，请选择继续追问或直接生成",
     "6003": "该流程不存在或已过期",
+    "6004": "该可观测性模块未启用，请在设置中心开启后重试",
     "9001": "内部错误，请重试",
     "9002": "配置不完整或校验未通过，请检查设置",
     "kind": {
@@ -341,12 +477,6 @@
       "timeout": "请求超时，请稍后重试",
       "aborted": "请求已取消"
     }
-  },
-  "score": {
-    "detail": "评分明细",
-    "fit": "适配度 {{value}}",
-    "total": "总分 {{value}}",
-    "note": "总分 = 适配度（偏好记忆已移除）"
   },
   "gate": {
     "evidence_stale": "交付前检测到目标项目文件已变更，本方案基于上一轮取证结果，引用的行号与 token 出处可能已过期。建议重新提交一次以获得最新证据。"

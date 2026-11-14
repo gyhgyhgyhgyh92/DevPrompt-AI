@@ -27,7 +27,8 @@ from devprompt_ai.domain.decision.port import (
     ScorePromptsOutput,
     VariantScore,
 )
-from devprompt_ai.domain.generate.ports import Claim, Level, MultiVariantDraft, VariantDraft
+from devprompt_ai.domain.errors import GenerationError
+from devprompt_ai.domain.generate.ports import Claim, VariantDraft
 from devprompt_ai.domain.hooks.types import Hook, HookContext, HookPhase, HookResult
 from devprompt_ai.domain.models import (
     FactResult,
@@ -123,15 +124,10 @@ class FakeReader:
 
 
 class FakeGenerator:
-    async def generate_single(self, ctx: Any, locale: str = "zh-CN") -> VariantDraft:
-        return VariantDraft(title="t", body="b", changes=["x"], level=ctx.level)
-
-    async def generate_variants(
-        self, ctx: Any, levels: Sequence[Level], locale: str = "zh-CN"
-    ) -> MultiVariantDraft:
-        return MultiVariantDraft(
-            variants=[VariantDraft(title="t", body="b", changes=["x"], level=lv) for lv in levels]
-        )
+    async def generate_single(  # type: ignore[no-untyped-def]
+        self, ctx: Any, locale: str = "zh-CN", *, fallback: bool = False
+    ) -> VariantDraft:
+        return VariantDraft(title="t", body="b", changes=["x"], fallback=fallback)
 
     async def answer(self, ctx: Any, locale: str = "zh-CN") -> str:
         return "默认回答"
@@ -148,6 +144,9 @@ class ScriptedDecider:
     score_calls: int = 0
     #: 每次决策收到的外环纠偏提示，供「correct 是否传到下一轮」断言
     corrections: list[str] = field(default_factory=list)
+    #: 每次决策收到的可用方案套数与其中继承套数（2026-11-11）
+    variant_counts: list[int] = field(default_factory=list)
+    inherited_counts: list[int] = field(default_factory=list)
 
     async def next_action(
         self,
@@ -158,10 +157,14 @@ class ScriptedDecider:
         variant_count: int,
         clarifications: Mapping[str, str],
         correction: str = "",
+        inherited_variant_count: int = 0,
     ) -> NextActionOutput:
         out = self.actions[min(self.calls, len(self.actions) - 1)]
         self.calls += 1
         self.corrections.append(correction)
+        # 2026-11-11：继承方案数透传（真实实现据此区分「本轮生成」与「上一轮旧方案」）
+        self.variant_counts.append(variant_count)
+        self.inherited_counts.append(inherited_variant_count)
         return out
 
     async def probe_facts(
@@ -248,33 +251,8 @@ async def test_loop_delivers_and_records_steps() -> None:
     assert [s["action"] for s in steps] == ["retrieve", "probe", "generate", "deliver"]
 
 
-class _TwoVariantGenerator:
-    """固定按请求档位产出前两套：用于复现「模型跳过 RANK 直接 DELIVER」。"""
-
-    async def generate_single(self, ctx: Any, locale: str = "zh-CN") -> VariantDraft:
-        return VariantDraft(title="t", body="b", changes=["x"], level=ctx.level)
-
-    async def generate_variants(
-        self, ctx: Any, levels: Sequence[Level], locale: str = "zh-CN"
-    ) -> MultiVariantDraft:
-        picked = list(levels)[:2]
-        return MultiVariantDraft(
-            variants=[
-                VariantDraft(title=f"t-{lv}", body=f"body-{lv}", changes=["x"], level=lv)
-                for lv in picked
-            ]
-        )
-
-    async def answer(self, ctx: Any, locale: str = "zh-CN") -> str:
-        return "答"
-
-
-async def test_deliver_recovers_missing_ranking() -> None:
-    """模型跳过 RANK 直接 DELIVER 时，交付前必须补打分（2026-11-06 不变量）。
-
-    为什么测这条：agentic 调度下 RANK 与 DELIVER 都是模型可选的并行动作，跳过打分会让
-    前端只剩「未产生推荐视图」兜底，用户拿不到「为什么不推荐」（违背 MUST-27）。
-    """
+async def test_loop_produces_single_variant_object() -> None:
+    """单套输出路径：快照只有 ``variant`` 一个对象，session 里不存在 ``variants``。"""
     decider = ScriptedDecider(
         actions=[
             _action(AgentAction.RETRIEVE),
@@ -283,18 +261,53 @@ async def test_deliver_recovers_missing_ranking() -> None:
             _action(AgentAction.DELIVER),
         ]
     )
-    svc, store = _service(decider, generator=_TwoVariantGenerator())
+    svc, store = _service(decider)
 
     snapshot = await svc.optimize("local", "C:/proj", "把 SubmitButton 改成蓝色", request_id="r1")
 
     assert snapshot.state == FlowState.DONE.value
+    assert snapshot.variant is not None
+    assert snapshot.variant.fallback is False
     session = next(iter(store.items.values()))
-    # 补算生效：ranking 非空，且没有被标记为「打分失败」
-    assert isinstance(session.data.get("ranking"), dict)
-    assert session.data["ranking"]["variant"] in {"A", "B"}
-    assert "ranking_skip_reason" not in session.data
-    # 打分确实发生过：档位明细已写入
-    assert session.data.get("ranking_details")
+    assert "variants" not in session.data
+    assert "ranking" not in session.data
+
+
+class _FlakyGenerator(FakeGenerator):
+    """主流程抛 GenerationError，兜底调用返回保守方案。"""
+
+    def __init__(self) -> None:
+        self.calls: list[bool] = []
+
+    async def generate_single(  # type: ignore[no-untyped-def]
+        self, ctx: Any, locale: str = "zh-CN", *, fallback: bool = False
+    ) -> VariantDraft:
+        self.calls.append(fallback)
+        if not fallback:
+            raise GenerationError("主流程生成失败", code=4003, context={})
+        return VariantDraft(title="保守版", body="保守正文", changes=[], fallback=fallback)
+
+
+async def test_generation_error_triggers_conservative_fallback_once() -> None:
+    """主流程失败 → 用 A 模板兜底一次，且快照标记 fallback=True 并披露降级。"""
+    decider = ScriptedDecider(
+        actions=[
+            _action(AgentAction.RETRIEVE),
+            _action(AgentAction.PROBE),
+            _action(AgentAction.GENERATE),
+            _action(AgentAction.DELIVER),
+        ]
+    )
+    gen = _FlakyGenerator()
+    svc, _store = _service(decider, generator=gen)
+
+    snapshot = await svc.optimize("local", "C:/proj", "把 SubmitButton 改成蓝色", request_id="r1")
+
+    assert snapshot.state == FlowState.DONE.value
+    assert gen.calls == [False, True], "主流程一次 + 兜底一次"
+    assert snapshot.variant is not None
+    assert snapshot.variant.fallback is True
+    assert "已降级为保守输出" in snapshot.message
 
 
 async def test_loop_stops_at_asking_when_questions_pending() -> None:
@@ -434,18 +447,19 @@ async def test_post_tool_correct_reaches_next_decision() -> None:
 
 async def test_turn_anchor_merges_across_turns() -> None:
     """目标锚点跨轮追加：objective 不被第二轮重写，范围与约束累加。"""
-    decider = ScriptedDecider(actions=[_action(AgentAction.DELIVER)])
+    decider = ScriptedDecider(actions=[_action(AgentAction.GENERATE), _action(AgentAction.DELIVER)])
     svc, store = _service(decider, with_override=False)
 
     first = await svc.optimize(
         "local", "C:/proj", "把 SubmitButton 改成蓝色，不要动布局", request_id="r1"
     )
     session_id = first.session_id
+    assert first.state == FlowState.DONE.value
     anchor = store.items[session_id].data["turn_anchor"]
     assert anchor["objective"] == "把 SubmitButton 改成蓝色，不要动布局"
     assert anchor["created_at_turn"] == 0
 
-    decider.actions = [_action(AgentAction.DELIVER)]
+    decider.actions = [_action(AgentAction.GENERATE), _action(AgentAction.DELIVER)]
     decider.calls = 0
     second = await svc.optimize(
         "local", "", "src/ui/button.tsx 也要保持兼容", request_id="r2", session_id=session_id
@@ -496,29 +510,24 @@ async def test_second_turn_reprobes_when_code_changed(
 
 
 class ClaimGenerator(FakeGenerator):
-    """三套方案，claims 覆盖率可控（用于验证 C 档降档）。"""
+    """claims 覆盖率可控（用于验证断言账本与交付门披露）。"""
 
     def __init__(self, *, covered: int, total: int) -> None:
         self.covered = covered
         self.total = total
 
-    async def generate_variants(
-        self, ctx: Any, levels: Sequence[Level], locale: str = "zh-CN"
-    ) -> MultiVariantDraft:
+    async def generate_single(  # type: ignore[no-untyped-def]
+        self, ctx: Any, locale: str = "zh-CN", *, fallback: bool = False
+    ) -> VariantDraft:
         claims = [
             Claim(kind="file", target="src/ui/button.tsx" if i < self.covered else f"nope_{i}.tsx")
             for i in range(self.total)
         ]
-        return MultiVariantDraft(
-            variants=[
-                VariantDraft(title="t", body="b", changes=[], level=lv, claims=claims)
-                for lv in levels
-            ]
-        )
+        return VariantDraft(title="t", body="b", changes=[], claims=claims, fallback=fallback)
 
 
-async def test_c_level_downgrades_when_claims_uncovered() -> None:
-    """C 档断言覆盖率不足 → 降到 B 并留痕，不重新生成。"""
+async def test_uncovered_claims_are_recorded_and_disclosed() -> None:
+    """断言覆盖率不足：如实写入 claim_report 并由交付门披露（不再改档位）。"""
     decider = ScriptedDecider(
         actions=[
             _action(AgentAction.RETRIEVE),
@@ -529,37 +538,17 @@ async def test_c_level_downgrades_when_claims_uncovered() -> None:
     )
     svc, store = _service(decider, generator=ClaimGenerator(covered=0, total=2))
 
-    await svc.optimize("local", "C:/proj", "把 SubmitButton 改成蓝色", request_id="r1")
+    snapshot = await svc.optimize("local", "C:/proj", "把 SubmitButton 改成蓝色", request_id="r1")
 
     session = next(iter(store.items.values()))
     report = session.data["claim_report"]
     assert report["total"] > 0
     assert report["coverage"] < 0.8
-    assert session.data["level"] == "B"
     assert report["summary"].startswith("已核对断言")
-
-
-async def test_b_level_keeps_level_even_with_uncovered_claims() -> None:
-    """只有 C 档受约束：B 档记录报告但不降档（本就非激进输出）。"""
-    decider = ScriptedDecider(
-        actions=[
-            _action(AgentAction.RETRIEVE),
-            _action(AgentAction.PROBE),
-            _action(AgentAction.GENERATE),
-            _action(AgentAction.DELIVER),
-        ],
-        probe_output=FactProbeOutput(
-            judgments=[],
-            overall_confidence=0.5,  # 低于 fact_probe_threshold → facts_complete=False → B 档
-        ),
-    )
-    svc, store = _service(decider, generator=ClaimGenerator(covered=0, total=1))
-
-    await svc.optimize("local", "C:/proj", "把 SubmitButton 改成蓝色", request_id="r2")
-
-    session = next(iter(store.items.values()))
-    assert session.data["level"] == "B"
-    assert session.data["claim_report"]["total"] > 0
+    assert snapshot.delivery_gate is not None
+    assert snapshot.delivery_gate.status == "YELLOW"
+    assert "断言覆盖率" in snapshot.delivery_gate.disclosure
+    assert "level" not in session.data
 
 
 # ── confidence_source 拆分与追问采纳（2026-11-04）────────────────────
@@ -773,7 +762,7 @@ async def test_deliver_flags_stale_evidence() -> None:
 
 
 async def test_generate_without_probe_still_runs_judgment() -> None:
-    """agentic 跳过 PROBE 时 GENERATE 前补跑研判——否则档位落到隐式默认 A。"""
+    """agentic 跳过 PROBE 时 GENERATE 前补跑研判——否则完备度从未被判定。"""
     decider = ScriptedDecider(
         actions=[
             _action(AgentAction.RETRIEVE),
@@ -787,7 +776,7 @@ async def test_generate_without_probe_still_runs_judgment() -> None:
 
     session = next(iter(store.items.values()))
     assert "facts_complete" in session.data
-    assert session.data.get("level") in {"A", "B", "C"}
+    assert "level" not in session.data
 
 
 def test_best_guess_skips_not_found_placeholder() -> None:
@@ -863,13 +852,13 @@ async def test_reply_context_carries_previous_variants() -> None:
     session.data["project_root"] = "C:/proj"
     session.data["turn_memory"] = {
         "sentence": "把按钮改主色",
-        "variants": [{"title": "最小改动", "body": "只改颜色", "changes": [], "level": "B"}],
+        "variants": [{"title": "最小改动", "body": "只改颜色", "changes": []}],
         "clarifications": {},
     }
 
     await svc._act_reply(session)
 
-    assert "【B 档】最小改动" in gen.contexts[0].previous_variants
+    assert "最小改动\n只改颜色" in gen.contexts[0].previous_variants
 
 
 def test_summary_carries_reply() -> None:
@@ -883,95 +872,17 @@ def test_summary_carries_reply() -> None:
     assert "回答" in rendered
 
 
-def test_render_ranking_summarizes_decision() -> None:
-    """推荐判定要压成可读一段，否则回答「为什么选 B」没有依据。"""
-    from devprompt_ai.service import _render_ranking
-
-    text = _render_ranking(
-        {
-            "variant": "B",
-            "gap": 0.18,
-            "confidence": 0.72,
-            "marked": True,
-            "reason": "B 档适配度最高且明显领先",
-            "fit": 0.81,
-            "total": 0.78,
-        }
-    )
-
-    assert "推荐档位 B" in text
-    assert "是否标记推荐 是" in text
-    assert "与次优差距 0.18" in text
-    assert "判定理由 B 档适配度最高且明显领先" in text
-
-
-def test_render_ranking_is_empty_without_decision() -> None:
-    from devprompt_ai.service import _render_ranking
-
-    assert _render_ranking(None) == ""
-    assert _render_ranking({}) == ""
-
-
-async def test_reply_context_carries_ranking() -> None:
-    """判定标准补充：回答「为什么选 B」时上下文里必须有推荐判定。"""
+async def test_reply_context_has_no_ranking_summary() -> None:
+    """推荐层已删除：回答轮的上下文不再承载推荐判定。"""
     gen = ReplyGenerator()
     svc, store = _service(ScriptedDecider(actions=[]), generator=gen)
     session = _probe_session(store, all_pass=True)
     session.state = FlowState.AGENTIC.value
     session.data["project_root"] = "C:/proj"
-    session.data["ranking"] = {
-        "variant": "B",
-        "gap": 0.18,
-        "confidence": 0.72,
-        "marked": True,
-        "reason": "B 档适配度最高",
-        "fit": 0.81,
-        "total": 0.78,
-    }
 
     await svc._act_reply(session)
 
-    assert "推荐档位 B" in gen.contexts[0].ranking_summary
-
-
-def test_render_ranking_includes_per_level_details() -> None:
-    """解释「为什么没选 C」需要各档实际分数，不能只有被选中的那一档。"""
-    from devprompt_ai.service import _render_ranking
-
-    text = _render_ranking(
-        {
-            "variant": "B",
-            "gap": 0.21,
-            "confidence": 0.74,
-            "marked": True,
-            "reason": "差距超过硬阈值",
-            "fit": 0.82,
-            "total": 0.79,
-        },
-        {
-            "A": {"fit": 0.40, "total": 0.40},
-            "B": {"fit": 0.82, "total": 0.79},
-            "C": {"fit": 0.61, "total": 0.61},
-        },
-    )
-
-    assert "各档明细" in text
-    assert "B 适配度 0.82" in text
-    assert "C 适配度 0.61" in text
-
-
-async def test_rank_and_mark_records_per_level_details() -> None:
-    """逐档明细要落进 session.data，否则回答轮拿不到落选档的分数。"""
-    svc, store = _service(ScriptedDecider(actions=[]))
-    session = _probe_session(store, all_pass=True)
-    session.state = FlowState.AGENTIC.value
-    session.data["project_root"] = "C:/proj"
-    variants = [VariantDraft(title="t", body="b", changes=[], level=level) for level in ("A", "B")]
-
-    await svc._rank_and_mark(session, variants)
-
-    assert set(session.data["ranking_details"]) == {"A", "B"}
-    assert "fit" in session.data["ranking_details"]["A"]
+    assert gen.contexts[0].ranking_summary == ""
 
 
 def _clarification_session(
@@ -1028,40 +939,73 @@ def test_inherited_clarifications_invalidated_when_target_changes(
     assert "改哪个页面" not in record.getMessage()
 
 
-def test_undeclared_claims_keep_c_when_strict_off() -> None:
-    """strict 关闭时空声明只披露不改档（默认已改为 True，故此处显式关闭）。"""
+async def test_undeclared_claims_are_recorded_without_level() -> None:
+    """strict 关闭时：空声明只披露，claim_report 记 undeclared 且 coverage 为 0。"""
     svc, store = _service(ScriptedDecider(actions=[]))
     svc._cfg.claim_strict = False
     session = _probe_session(store, all_pass=True)
     session.state = FlowState.AGENTIC.value
-    session.data["level"] = "C"
-    variants = [
-        VariantDraft(title="t", body="b", changes=[], level=level) for level in ("A", "B", "C")
-    ]
+    draft = VariantDraft(title="t", body="b", changes=[])
 
-    svc._audit_claims(session, variants)
+    await svc._audit_claims(session, draft)
 
-    assert session.data["level"] == "C"
     assert session.data["claim_report"]["undeclared"] is True
     assert session.data["claim_report"]["coverage"] == 0.0
     assert session.data["claim_report"]["summary"] == "未声明引用，证据链无法核对"
+    assert "level" not in session.data
 
 
-def test_claim_strict_downgrades_undeclared_c(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """claim_strict 打开：空声明 C 档降为 B 并留痕。"""
+async def test_claim_strict_emits_undeclared_event(caplog: pytest.LogCaptureFixture) -> None:
+    """claim_strict 打开：空声明记事件留痕（不再改档位，交由交付门判定 RED）。"""
     svc, store = _service(ScriptedDecider(actions=[]))
     svc._cfg = svc._cfg.model_copy(update={"claim_strict": True})
     session = _probe_session(store, all_pass=True)
     session.state = FlowState.AGENTIC.value
-    session.data["level"] = "C"
-    variants = [
-        VariantDraft(title="t", body="b", changes=[], level=level) for level in ("A", "B", "C")
-    ]
+    draft = VariantDraft(title="t", body="b", changes=[])
 
     with caplog.at_level(logging.INFO, logger="devprompt.events"):
-        svc._audit_claims(session, variants)
+        await svc._audit_claims(session, draft)
 
-    assert session.data["level"] == "B"
     assert any(record.getMessage() == "evidence.claim_undeclared" for record in caplog.records)
+
+
+async def test_file_claim_on_third_existing_file_is_covered() -> None:
+    """引用第三个真实文件的 file 断言不再假阴性（2026-11-12 有界存在性核对）。"""
+    svc, store = _service(ScriptedDecider(actions=[]))
+    session = _probe_session(store, all_pass=True)
+    session.data["project_root"] = "C:/proj"
+    session.data["target"] = {"name": "Card", "path": "src/ui/card.tsx", "line": 3}
+    draft = VariantDraft(
+        title="t",
+        body="b",
+        changes=[],
+        claims=[Claim(kind="file", target="src/ui/button.tsx")],
+    )
+
+    await svc._audit_claims(session, draft)
+
+    report = session.data["claim_report"]
+    assert report["covered"] == 1
+    assert report["coverage"] == 1.0
+
+
+async def test_file_claim_on_missing_or_unsafe_path_stays_uncovered() -> None:
+    """不存在的路径与越界路径都不得被存在性核对放行。"""
+    svc, store = _service(ScriptedDecider(actions=[]))
+    session = _probe_session(store, all_pass=True)
+    session.data["project_root"] = "C:/proj"
+    session.data["target"] = {"name": "Card", "path": "src/ui/card.tsx", "line": 3}
+    draft = VariantDraft(
+        title="t",
+        body="b",
+        changes=[],
+        claims=[
+            Claim(kind="file", target="src/ui/missing.tsx"),
+            Claim(kind="file", target="../../etc/passwd"),
+        ],
+    )
+
+    await svc._audit_claims(session, draft)
+
+    assert session.data["claim_report"]["covered"] == 0
+    assert session.data["claim_report"]["coverage"] == 0.0

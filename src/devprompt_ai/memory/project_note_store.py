@@ -111,6 +111,7 @@ class SQLiteProjectNoteStore:
             )
         )
 
+        # 仅用于 2026-11-11 之前的历史轮次回放：新轮次为单套输出，不再写入 ranking。
         ranking = data.get("ranking")
         decision = ""
         if isinstance(ranking, dict) and ranking.get("variant"):

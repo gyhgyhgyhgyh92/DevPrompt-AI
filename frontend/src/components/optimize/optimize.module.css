@@ -1,5 +1,6 @@
 /* optimize 组件组样式（T6-5）：颜色/间距全部取 tokens.css 变量，禁硬编码色值。 */
 
+/* 单方案卡片（2026-11-11 单套输出） */
 .prompt-card {
   display: flex;
   flex-direction: column;
@@ -10,12 +11,6 @@
   border-radius: var(--radius-md);
 }
 
-/* 推荐卡只用 1px 靛蓝描边 + 极浅底（渲染门，MUST-08：是否推荐由后端标记） */
-.prompt-card--recommended {
-  background: var(--color-primary-soft);
-  border-color: var(--color-primary-500);
-}
-
 .prompt-card__header {
   display: flex;
   flex-wrap: wrap;
@@ -23,16 +18,13 @@
   align-items: center;
 }
 
-/* 档位是分类信息，不是动作：中性底 + 等宽小字，不用强调色 */
-.prompt-card__level {
-  padding: 0 var(--space-2);
-  font: var(--font-code-medium);
-  font-size: var(--text-micro);
-  letter-spacing: var(--track-micro);
+/* 兜底降级提示：左侧 2px 琥珀竖线 + 透明底（与披露类提示一致） */
+.prompt-card__fallback {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-body-xs);
   color: var(--color-text-secondary);
-  background: var(--color-surface-code);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
+  background: transparent;
+  border-inline-start: 2px solid var(--color-warning-500);
 }
 
 .prompt-card__body {
@@ -63,59 +55,6 @@
   align-items: center;
 }
 
-/* 推荐标记：浅底 + 描边 + 深靛蓝字（小字不用实心填充，避免压在长文本旁抢视线） */
-.recommend-badge {
-  padding: 0 var(--space-2);
-  font: var(--font-code-medium);
-  font-size: var(--text-micro);
-  letter-spacing: var(--track-micro);
-  color: var(--color-primary-700);
-  background: var(--color-primary-soft);
-  border: 1px solid var(--color-primary-500);
-  border-radius: var(--radius-full);
-}
-
-.score-detail {
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-surface-code);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
-}
-
-.score-detail__summary {
-  cursor: pointer;
-  font-size: var(--text-body-sm);
-  color: var(--color-text-secondary);
-}
-
-.score-detail__list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  margin: var(--space-2) 0 0;
-  padding: 0;
-  list-style: none;
-  font: var(--font-code-regular);
-  font-size: var(--text-body-sm);
-}
-
-.score-detail__note {
-  margin-block-start: var(--space-2);
-  font-size: var(--text-caption-sm);
-  color: var(--color-text-muted);
-}
-
-/* 披露类提示：左侧 2px 琥珀竖线 + 透明底（整块填色会在日志流里过于抢眼） */
-.confidence-notice {
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-body-xs);
-  color: var(--color-text-secondary);
-  background: transparent;
-  border: none;
-  border-inline-start: 2px solid var(--color-warning-500);
-  border-radius: 0;
-}
-
 .copy-button {
   padding: var(--space-1) var(--space-3);
   font: var(--font-body-medium);
@@ -130,12 +69,4 @@
 .copy-button--done {
   color: var(--color-success-500);
   border-color: var(--color-success-500);
-}
-
-/* 三套方案上下堆叠：对话流列宽 820px 下并排会把提示词正文压成窄条，
- * 堆叠后每张卡都能按 68ch 阅读（终端工具风格优先「可读」而不是「同屏比」）。 */
-.variant-tabs {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
 }

@@ -6,13 +6,8 @@ from devprompt_ai.domain.progress import (
     display_path,
     facts_text,
     generation_text,
-    level_label,
-    level_text,
     manual_required_text,
-    recommendation_text,
     retrieval_text,
-    scoring_text,
-    single_variant_text,
     symbols_text,
     target_text,
 )
@@ -55,39 +50,6 @@ class TestNodeTexts:
     def test_facts_counts(self) -> None:
         assert "7 项中 5 项通过" in facts_text(5, 7)
 
-    def test_level_text_uses_chinese_label(self) -> None:
-        text = level_text("C", 0.83)
-
-        assert "C 激进" in text
-        assert "0.83" in text
-
     def test_clarification_and_generation(self) -> None:
         assert "2 处" in clarification_text(2)
-        assert "A 保守、B 标准" in generation_text(["A", "B"])
-
-    def test_single_variant_and_scoring(self) -> None:
-        assert "跳过打分" in single_variant_text()
-        assert scoring_text()
-
-
-class TestRecommendationText:
-    def test_marked_without_reason(self) -> None:
-        text = recommendation_text(True, "B", 0.62, "")
-
-        assert "推荐 B 标准" in text
-        assert "0.62" in text
-
-    def test_marked_with_small_gap_reason(self) -> None:
-        text = recommendation_text(True, "A", 0.21, "分差较小")
-
-        assert "分差较小" in text
-
-    def test_unmarked_keeps_backend_reason(self) -> None:
-        text = recommendation_text(False, "A", 0.03, "三套适配度接近，建议人工选择")
-
-        assert "三套适配度接近" in text
-        assert "推荐 A" not in text
-
-
-def test_level_label_unknown_passthrough() -> None:
-    assert level_label("D") == "D"
+        assert generation_text() == "正在生成方案。"

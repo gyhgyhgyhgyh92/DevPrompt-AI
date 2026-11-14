@@ -18,14 +18,13 @@ class FlowState(str, Enum):
     ASKING = "ASKING"
     CONFIRMING = "CONFIRMING"
     GENERATING = "GENERATING"
-    RANKING = "RANKING"
     DONE = "DONE"
     ABORTED = "ABORTED"
 
 
 # 星型拓扑（2026-11-04）：AGENTIC 是唯一枢纽，执行态完成后一律回到它，
-# 再由它决定下一个动作。保留两条既有快速路径，它们不经过决策态：
-#   GENERATING→RANKING（阶段五推荐接入）、GENERATING→DONE（阶段四单套交付）。
+# 再由它决定下一个动作。保留一条既有快速路径，它不经过决策态：
+#   GENERATING→DONE（2026-11-11 单套交付）。
 # DONE / ABORTED 出边为空：一轮结束由 start_turn 重置容器，不经转移边。
 TRANSITIONS: dict[FlowState, frozenset[FlowState]] = {
     FlowState.INIT: frozenset({FlowState.AGENTIC, FlowState.ABORTED}),
@@ -36,7 +35,6 @@ TRANSITIONS: dict[FlowState, frozenset[FlowState]] = {
             FlowState.ASKING,
             FlowState.CONFIRMING,
             FlowState.GENERATING,
-            FlowState.RANKING,
             FlowState.DONE,
             FlowState.ABORTED,
         }
@@ -48,12 +46,10 @@ TRANSITIONS: dict[FlowState, frozenset[FlowState]] = {
     FlowState.GENERATING: frozenset(
         {
             FlowState.AGENTIC,
-            FlowState.RANKING,
             FlowState.DONE,
             FlowState.ABORTED,
         }
     ),
-    FlowState.RANKING: frozenset({FlowState.AGENTIC, FlowState.DONE, FlowState.ABORTED}),
     FlowState.DONE: frozenset(),
     FlowState.ABORTED: frozenset(),
 }
@@ -67,7 +63,6 @@ ACTIVE_STATES: frozenset[FlowState] = frozenset(
         FlowState.RETRIEVING,
         FlowState.PROBING,
         FlowState.GENERATING,
-        FlowState.RANKING,
     }
 )
 
@@ -123,8 +118,18 @@ async def load_or_create(
     return session
 
 
-async def start_turn(store: SessionStore, user_id: str, session_id: str | None) -> FlowSession:
+async def start_turn(
+    store: SessionStore,
+    user_id: str,
+    session_id: str | None,
+    *,
+    create_missing: bool = False,
+) -> FlowSession:
     """开始新一轮（2026-10-20 多轮）：无 id 新建会话；有 id 则复用容器并重置到 INIT。
+
+    ``create_missing``：/runs 的前端会话由 ``crypto.randomUUID()`` 预先生成，
+    执行侧需要按该 id 建容器（2026-11-14 D-04）。默认 False——旧入口传未知 id
+    仍按 6003 拒绝，契约不变。
 
     **为什么不经 transition**：状态机作用域属于 turn（MUST-07 语义调整，非新增态）。
     DONE / ABORTED 是**上一轮 turn** 的终态，session 只是容器——容器重开一轮不需要
@@ -137,7 +142,17 @@ async def start_turn(store: SessionStore, user_id: str, session_id: str | None) 
     if session_id is None:
         return await load_or_create(store, user_id)
     session = await store.load(session_id)
-    if session is None or session.user_id != user_id:
+    if session is None:
+        if not create_missing:
+            raise StateError("流程 ID 不存在", code=6003, context={"session_id": session_id})
+        session = FlowSession(
+            session_id=session_id,
+            user_id=user_id,
+            state=FlowState.DONE.value,
+            data={},
+        )
+        await store.create(session)
+    elif session.user_id != user_id:
         raise StateError("流程 ID 不存在", code=6003, context={"session_id": session_id})
     current = FlowState(session.state)
     if current not in {FlowState.DONE, FlowState.ABORTED}:

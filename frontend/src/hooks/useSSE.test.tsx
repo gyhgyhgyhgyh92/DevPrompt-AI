@@ -22,8 +22,7 @@ function snapshot(overrides: Record<string, unknown>): string {
     message: '',
     questions: [],
     cleared: [],
-    variants: [],
-    ranking: null,
+    variant: null,
     ...overrides,
   })
 }

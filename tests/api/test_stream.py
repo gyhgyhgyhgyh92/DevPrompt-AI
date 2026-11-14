@@ -112,6 +112,31 @@ async def test_thoughts_then_snapshot(
     assert frames[-1]["data"]["status"] == "done"
 
 
+async def test_stream_writes_session_log(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    """D-05：/optimize/stream 也写 run_events，且不影响 SSE 帧。"""
+    from types import SimpleNamespace
+
+    from devprompt_ai.interfaces.api import runtime_routes
+    from devprompt_ai.memory.event_store import SQLiteEventStore
+    from devprompt_ai.runtime.events import EventBus
+
+    fake = _patch(monkeypatch, FakeStreamService(texts=["先检索代码"]))
+    bus = EventBus(SQLiteEventStore(str(tmp_path / "events.db")))
+
+    async def _fake_bundle() -> Any:
+        return SimpleNamespace(bus=bus)
+
+    monkeypatch.setattr(runtime_routes, "_bundle", _fake_bundle)
+    fake.config = object()  # type: ignore[attr-defined]
+
+    resp = await client.post("/api/v1/optimize/stream", json={"sentence": "改按钮", "project": "."})
+    assert [frame["type"] for frame in _frames(resp.text)] == ["thought", "snapshot"]
+    events = await bus.replay("s-stream", 0)
+    assert [event.type for event in events] == ["run.started", "thought", "snapshot", "stop"]
+
+
 async def test_ask_status_still_delivers_snapshot(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

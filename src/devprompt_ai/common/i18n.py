@@ -33,59 +33,39 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         ),
         "progress.target": "选中目标 {name}（{location}），正在核对事实依据。",
         "progress.facts": "事实核对完成：{total} 项中 {passed} 项通过。",
-        "progress.level": "研判完成，整体置信度 {confidence}，可输出 {level} 档。",
-        "progress.level_unknown": "未评估",
         "progress.clarification": "研判出 {count} 处信息缺口，先和你确认再继续。",
         "progress.answering": "正在回答你的追问。",
-        "progress.generation": "开始生成 {count} 套方案（{labels}）。",
-        "progress.single_variant": "信息量只够输出 1 套保守方案，按规则跳过打分与推荐。",
-        "progress.scoring": "为各套方案打分，并结合你的历史偏好计算加权总分。",
-        "progress.recommendation_unmarked": (
-            "综合评分完成，{reason}（最高为 {label} 档，领先 {gap}）。"
-        ),
-        "progress.recommendation_plain": "综合评分完成，推荐 {label} 档（领先次优 {gap}）。",
-        "progress.recommendation_reasoned": (
-            "综合评分完成，推荐 {label} 档（领先 {gap}，{reason}）。"
-        ),
-        "level.a": "保守",
-        "level.b": "标准",
-        "level.c": "激进",
+        "progress.generation": "正在生成方案。",
         "common.list_sep": "、",
         "clarify.manual_reason": "候选不足（{matched} 条）",
         "clarify.manual_ask": "请指明目标符号名与文件路径（格式：符号@路径）",
         "gate.red.no_target": "未定位到目标符号",
         "gate.red.facts_failed": "适用事实全部未通过",
         "gate.red.claims_undeclared": "方案未声明任何引用，证据链无法核对",
-        "gate.red.anchor_invalid": "C 档方案含 {count} 处无效锚点（路径不存在或行号越界）",
+        "gate.red.anchor_invalid": "方案含 {count} 处无效锚点（路径不存在或行号越界）",
         "gate.disclosure.red": (
-            "本轮证据链不足以背书，方案照常提供，但未标记为可交付档位：{reasons}。"
+            "本轮证据链不足以背书，方案照常提供，但相关缺口须如实留痕：{reasons}。"
         ),
         "gate.yellow.coverage": "断言覆盖率 {coverage}，低于 {threshold}",
-        "gate.yellow.variant_short": "本次仅 {count} 套（模型未给出全部档位）",
-        "gate.yellow.single_variant": "仅一套方案，未做推荐比较",
-        "gate.yellow.no_recommend": "推荐置信度不足",
-        "gate.yellow.recommend_revoked": (
-            "原推荐 {level} 档已撤销（分差 {gap} 达标，但本轮证据不足以背书）"
-        ),
         "gate.yellow.impact_uncovered": "影响半径内 {count} 个关联文件未被方案覆盖",
-        "gate.disclosure.yellow": "本轮证据可用但不足以背书推荐，方案照常提供：{reasons}。",
-        "ranking.conf_base": "置信度不足，建议人工选择",
-        "ranking.conf_close": "三套适配度接近，建议人工选择",
-        "ranking.conf_small_gap": "分差较小",
-        "ranking.conf_top": "{base}（最高档 {conf} < {min}）",
-        "ranking.conf_any": "{base}（最低档 {conf} < {min}）",
-        "ranking.need_two": "推荐判定需要至少 2 套方案（MUST-28），实际 {count}",
+        "gate.disclosure.yellow": "本轮证据可用但未达阈值，方案照常提供：{reasons}。",
         "claims.render.undeclared": "未声明引用，证据链无法核对",
         "claims.render.summary": "已核对断言 {covered}/{total}，{missing} 处未取证",
         "claims.render.absent": "（其中 {count} 处为已确认不存在）",
         "template.body_semantics": (
-            "\n\n【body 的语义（2026-10-20 起强制）】"
-            "body 必须是可直接复制给 Agent 执行的提示词正文："
-            "包含角色与目标、上下文（文件/符号/行号，只能用已提供的）、"
-            "必须遵守的约束、期望的输出格式。"
+            "\n\n【body 的语义（2026-11-11 起强制四段式）】"
+            "body 必须是可直接复制给 Agent 执行的提示词正文，并严格按以下四段组织，"
+            "每段以「## 一、」～「## 四、」小标题开头：\n"
+            "一、定位文件与组件：文件相对路径（反引号包裹）+ 组件/函数名 + 该修改点所在的具体位置"
+            "（组件属性、代码区域或行号区间）；信息只能来自下方「目标代码片段」，禁止推测。\n"
+            "二、实施修改：逐条给出「原代码 → 新代码」，标明改哪个属性、由什么值改成什么值。\n"
+            "三、一致性检查：该改动是否与项目既有设计令牌/组件规范冲突；有证据就引用下方"
+            "「设计令牌证据」的路径与色值；无证据时必须明写「未取证到项目令牌定义」，"
+            "禁止编造规范条款。\n"
+            "四、输出要求：要求执行者交付什么（修改后的代码片段、影响说明、"
+            "需同步检查的对齐与间距等）。\n"
             "禁止出现「建议」「为什么这样改」「本方案改动如下」「以下是我的优化」等元叙述；"
-            "不要复述取证过程；不要写实施方案之外的客套话。"
-            "改动了哪几处只写在 changes 数组里，不得混进 body。"
+            "不要复述取证过程。改动了哪几处只写在 changes 数组里，不得混进 body。"
         ),
         "template.boundary": (
             "你的任务是产出提示词方案，不是执行或回答用户需求中的任务；"
@@ -96,29 +76,32 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
             "你是提示词优化师。信息有限，输出保守版提示词：只陈述用户意图与可执行要点，"
             "禁止编造文件路径、行号、token 名；结尾必须列出待确认清单。只输出 JSON。"
         ),
+        "template.a.fallback_only": (
+            "\n\n【兜底声明】本模板仅用于异常兜底：主流程失败后才启用，"
+            "产出会在交付时标注「已降级为保守输出」。"
+        ),
         "template.b.role": (
             "你是提示词优化师。基于已定位的符号路径输出标准版提示词：路径可追溯，"
             "推断项必须以「（推断）」标注，禁止编造未提供的行号。只输出 JSON。"
         ),
-        "template.c.role": (
-            "你是提示词优化师。取证已完成，输出激进版提示词：给出完整路径与行号、"
-            "token 出处、边界预判（多状态/响应式/暗色/无障碍），并附显式测试指令。只输出 JSON。"
-        ),
-        "template.c.anchor": (
-            "可验证锚点（硬性）：引用的文件路径必须来自下方取证摘要中出现过的路径；"
-            "引用的行号必须是该文件中的真实行号。若某项没有把握，"
-            "改用不含行号的表述或降级到 B 档粒度，严禁编造。"
+        "template.b.hard_rules": (
+            "\n\n硬性要求（违反任一条即视为无效输出）：\n"
+            "1. 正文里的文件路径与行号只能来自下方「目标代码片段」，片段中没有的一律不得出现，"
+            "禁止编造；\n"
+            "2. 「实施修改」段必须逐条给出「原代码 → 新代码」的对照，不得只写「修改为 …」；\n"
+            "3. 正文必须严格按四段式组织，小标题只能是："
+            "「## 一、定位文件与组件」「## 二、实施修改」「## 三、一致性检查」"
+            "「## 四、输出要求」，缺段或改名均视为结构不合法。"
         ),
         "template.reply.role": (
             "你是提示词优化师，此刻在回答用户对已产出方案的追问，而不是产出新方案。"
-            "用简洁中文直接回答，可以引用上一轮方案的档位、标题与具体条目作为依据。"
+            "用简洁中文直接回答，可以引用上一轮方案的标题与具体条目作为依据。"
             "禁止输出新的提示词正文，禁止重新组织方案，禁止说「以下是优化后的版本」。"
             "如果用户的问题需要改动方案，明确告诉他需要重新生成，不要自行修改。"
             "不知道就以取证结果为准说明不知道，不要编造文件路径或行号。只输出 JSON。"
         ),
         "template.field.request": "用户需求",
         "template.field.facts": "取证摘要",
-        "template.field.facts_c": "取证摘要（含行号与 token 出处）",
         "template.field.none_facts": "（无，禁止编造路径）",
         "template.field.clarifications": "已澄清信息",
         "template.field.conservative": "保守模式",
@@ -131,44 +114,27 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "template.field.history": "历史轮次",
         "template.field.none_history": "（首轮，无历史）",
         "template.instruction_prefix": "请输出 JSON：",
-        "template.tier.a": (
-            "A 保守版：只陈述用户意图与可执行要点，明确改动范围边界，结尾附待确认清单"
-            "（缺什么列什么）；禁止出现任何行号，禁止编造未取证的文件路径与选择器。"
-        ),
-        "template.tier.b": (
-            "B 标准版：给出已取证的文件路径与选择器，明确变更边界（改什么、不改什么）；"
-            "推断项必须以「（推断）」字样显式标注；包含验证方式（跑什么测试、出什么 diff）；"
-            "禁止编造未提供的行号。"
-        ),
-        "template.tier.c": (
-            "C 激进版：给出完整路径、行号、组件名与设计 token 定义位置；"
-            "边界预判必须覆盖多状态、响应式、暗色模式、无障碍；"
-            "结尾附显式测试指令（含测试文件路径）。\n"
-            "可验证锚点（硬性）：引用的文件路径必须来自下方取证摘要中出现过的路径；"
-            "引用的行号必须是该文件中的真实行号。若某项没有把握，"
-            "改用不含行号的表述或降级到 B 档粒度，严禁编造。"
-        ),
-        "template.multi.role": (
-            "你是提示词优化师。基于同一份上下文，一次性输出 {count} 套提示词方案，"
-            "请求档位为 {levels}。"
-        ),
-        "template.multi.tiers": "各档位模板约束：{tiers}",
-        "template.multi.tiers_sep": "\n- ",
-        "template.multi.consistency": (
-            "一致性约束：所有方案共享同一份事实基础，同一事实在各套中的描述必须一致"
-            "（禁止信息漂移）；各套正文长度与详细度必须呈明显梯度（A 最短、C 最长）。\n"
-            "除请求档位外不得多套、少套或改用其他档位。只输出 JSON。"
-        ),
-        "template.multi.request_levels": "请求档位（逐一输出，顺序 A→B→C）：{levels}",
-        "template.multi.claims_rules": (
-            "variants 数组长度与档位必须与请求档位一致。\n"
+        "template.claims_rules": (
             "claims 规则：正文里每一处文件路径、符号名、行号、样式 token 引用都要逐条声明，"
             "target 必须与正文原文完全一致；kind=line 时写成「路径:行号」。"
             "若正文明确断言某类引用**不存在**（例如「未找到可用的颜色 token」），"
-            "用 kind=absence 并在 negates 里填被否定的类别（file/symbol/token/line）。"
+            "用 kind=absence 并在 negates 里填被否定的类别（file/symbol/token/line/test）。"
             "没有引用就给空数组，禁止编造。"
         ),
         "template.field.memory": "项目记忆",
+        "template.field.excerpt": "目标代码片段（行号|内容）",
+        "template.field.design_tokens": "设计令牌证据",
+        "template.field.none_excerpt": "（未定位到代码片段，禁止编造行号）",
+        "template.field.none_design_tokens": "（未找到项目设计令牌定义）",
+        "template.sections.a": (
+            "\n\n兜底模板四段式：第一段写「未能定位具体文件」；第二段只写意图层面的动作，"
+            "并逐条标「待确认」；第三段写「无令牌证据」；第四段改为「待确认清单」。"
+        ),
+        "template.sections.b": (
+            "\n\n标准模板四段式：第一段必须给出文件相对路径（来自片段头）；"
+            "第二段允许以「（推断）」标注未证实的细节；"
+            "第三段无令牌证据时必须明说「未取证到项目令牌定义」。"
+        ),
     },
     "en": {
         "progress.retrieval": (
@@ -189,34 +155,11 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
             "Target selected: {name} ({location}); verifying the supporting facts."
         ),
         "progress.facts": "Fact checks finished: {passed} of {total} passed.",
-        "progress.level": (
-            "Probing finished; overall confidence {confidence}, level {level} can be produced."
-        ),
-        "progress.level_unknown": "not assessed",
         "progress.clarification": (
             "Found {count} information gaps; confirming them with you before continuing."
         ),
         "progress.answering": "Answering your follow-up question.",
-        "progress.generation": "Generating {count} variants ({labels}).",
-        "progress.single_variant": (
-            "There is only enough information for one conservative variant; "
-            "scoring and ranking are skipped by rule."
-        ),
-        "progress.scoring": (
-            "Scoring each variant and computing a weighted total with your historical preferences."
-        ),
-        "progress.recommendation_unmarked": (
-            "Scoring finished; {reason} (best is level {label}, ahead by {gap})."
-        ),
-        "progress.recommendation_plain": (
-            "Scoring finished; recommending level {label} (ahead of runner-up by {gap})."
-        ),
-        "progress.recommendation_reasoned": (
-            "Scoring finished; recommending level {label} (ahead by {gap}, {reason})."
-        ),
-        "level.a": "conservative",
-        "level.b": "standard",
-        "level.c": "aggressive",
+        "progress.generation": "Generating the plan.",
         "common.list_sep": ", ",
         "clarify.manual_reason": "Not enough candidates ({matched} matched)",
         "clarify.manual_ask": (
@@ -225,51 +168,45 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "gate.red.no_target": "Target symbol not located",
         "gate.red.facts_failed": "Every applicable fact check failed",
         "gate.red.claims_undeclared": (
-            "The variants declare no references, so the evidence chain cannot be verified"
+            "The plan declares no references, so the evidence chain cannot be verified"
         ),
         "gate.red.anchor_invalid": (
-            "Level-C variants contain {count} invalid anchor(s) (missing path or line out of range)"
+            "The plan contains {count} invalid anchor(s) (missing path or line out of range)"
         ),
         "gate.disclosure.red": (
-            "Evidence is not strong enough to endorse this turn; variants are still "
-            "provided, but no deliverable level is marked: {reasons}."
+            "Evidence is not strong enough to endorse this turn; the plan is still "
+            "provided, and the gaps are disclosed below: {reasons}."
         ),
         "gate.yellow.coverage": ("Claim coverage {coverage} is below the required {threshold}"),
-        "gate.yellow.variant_short": (
-            "Only {count} variant(s) this turn (the model did not provide all levels)"
-        ),
-        "gate.yellow.single_variant": (
-            "Only one variant, so no recommendation comparison was made"
-        ),
-        "gate.yellow.no_recommend": "Recommendation confidence is too low",
-        "gate.yellow.recommend_revoked": (
-            "The original recommendation (level {level}, gap {gap}) was revoked: "
-            "this turn's evidence is not strong enough to endorse it"
-        ),
         "gate.yellow.impact_uncovered": (
-            "{count} file(s) in the impact radius are not covered by the variants"
+            "{count} file(s) in the impact radius are not covered by the plan"
         ),
         "gate.disclosure.yellow": (
-            "Evidence is usable but not enough to endorse a recommendation; "
-            "variants are still provided: {reasons}."
+            "Evidence is usable but below the required threshold; "
+            "the plan is still provided: {reasons}."
         ),
-        "ranking.conf_base": "Confidence is too low; please choose manually",
-        "ranking.conf_close": "The three variants fit similarly; please choose manually",
-        "ranking.conf_small_gap": "The gap between variants is small",
-        "ranking.conf_top": "{base} (top {conf} < {min})",
-        "ranking.conf_any": "{base} (lowest {conf} < {min})",
-        "ranking.need_two": ("Recommendation needs at least 2 variants (MUST-28); got {count}"),
         "claims.render.undeclared": "No references declared; the evidence chain cannot be verified",
         "claims.render.summary": "Verified {covered}/{total} claims, {missing} unverified",
         "claims.render.absent": " ({count} confirmed absent)",
         "template.body_semantics": (
-            "\n\n[Semantics of `body` (mandatory since 2026-10-20)] `body` must be a prompt "
-            "that an Agent can execute as-is: role and goal, context (files/symbols/line "
-            "numbers, only what was provided), constraints to respect, and the expected "
-            'output format. No meta narration such as "suggestion", "why this change", '
-            '"the changes are as follows", or "here is my optimization"; do not restate '
-            "the probing process; no pleasantries outside the plan. Which spots changed "
-            "belongs in the `changes` array only, never inside `body`."
+            "\n\n[Semantics of `body` (four mandatory sections since 2026-11-11)] `body` must be "
+            "a prompt an Agent can execute as-is, and must follow exactly these four sections, "
+            "each starting with a `## 1.`-style heading:\n"
+            "1. File and component location: repo-relative file path (in backticks) + "
+            "component/function name + where exactly the change goes (enclosing component prop, "
+            "code region, or line range). Take this only from the target code excerpt below; "
+            "never guess.\n"
+            "2. Change to apply: for each item give `original code -> new code`, naming which "
+            "attribute changes and from what value to what value.\n"
+            "3. Consistency check: whether the change conflicts with the project's existing "
+            "design tokens or component conventions. If evidence exists, cite the path and color "
+            "value from the design-token evidence below; if not, state explicitly that no project "
+            "token definition was found. Never invent convention clauses.\n"
+            "4. Deliverables: what the executor must hand back (the modified code snippet, impact "
+            "notes, alignment and spacing that need re-checking).\n"
+            'No meta narration such as "suggestion", "why this change", "the changes are as '
+            'follows", or "here is my optimization"; do not restate the probing process. Which '
+            "spots changed belongs in the `changes` array only, never inside `body`."
         ),
         "template.boundary": (
             "Your job is to produce prompt plans, not to execute or answer the user's task; "
@@ -288,22 +225,25 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
             'prompt: paths must be traceable; label inferences with "(inferred)"; never '
             "invent line numbers that were not provided. Output JSON only."
         ),
-        "template.c.role": (
-            "You are a prompt engineer. Probing is complete, so produce an aggressive prompt: "
-            "include full paths and line numbers, token provenance, boundary anticipation "
-            "(multi-state / responsive / dark mode / accessibility), plus explicit test "
-            "instructions. Output JSON only."
+        "template.b.hard_rules": (
+            "\n\nHard requirements (violating any one makes the output invalid):\n"
+            "1. File paths and line numbers in the body may come only from the target code "
+            "excerpt below; anything absent from the excerpt must not appear — never fabricate;\n"
+            "2. Section 2 must give an `original code -> new code` pair for every change, not "
+            'just "change it to ...";\n'
+            "3. The body must use exactly these four headings: `## 1. Locate the file and "
+            "component`, `## 2. Apply the change`, `## 3. Consistency check`, "
+            "`## 4. Deliverables`. Missing or renamed sections make the structure invalid."
         ),
-        "template.c.anchor": (
-            "Verifiable anchors (hard requirement): referenced file paths must appear in the "
-            "evidence summary below; referenced line numbers must be real lines in that file. "
-            "If unsure, use wording without line numbers or fall back to level-B granularity — "
-            "never fabricate."
+        "template.a.fallback_only": (
+            "\n\n[Fallback notice] This template is used only as an exception fallback: it runs "
+            "after the main path fails, and the result is disclosed as a downgraded conservative "
+            "output."
         ),
         "template.reply.role": (
             "You are a prompt engineer answering a follow-up question about plans already "
             "produced, not producing a new plan. Answer concisely and directly in the same "
-            "language as the question; you may cite the previous plan's level, title, and "
+            "language as the question; you may cite the previous plan's title and "
             "specific items as evidence. Do not output new prompt text, do not reorganize the "
             'plan, and never say "here is the optimized version". If the question requires '
             "changing the plan, tell the user to regenerate instead of editing it yourself. "
@@ -312,7 +252,6 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         ),
         "template.field.request": "user_request",
         "template.field.facts": "evidence_summary",
-        "template.field.facts_c": "evidence_summary_with_lines_and_tokens",
         "template.field.none_facts": "(none; never invent paths)",
         "template.field.clarifications": "clarifications",
         "template.field.conservative": "conservative_mode",
@@ -325,52 +264,30 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "template.field.history": "conversation_history",
         "template.field.none_history": "(first turn; no history)",
         "template.instruction_prefix": "Output JSON only: ",
-        "template.tier.a": (
-            "Level A (conservative): state only the user's intent and actionable points, "
-            "define the scope boundary, and end with a must-confirm list (list whatever is "
-            "missing); no line numbers at all, and never invent file paths or selectors that "
-            "were not probed."
-        ),
-        "template.tier.b": (
-            "Level B (standard): give the probed file paths and selectors, and define the "
-            "change boundary (what changes, what does not); label inferences with "
-            '"(inferred)"; include verification (which tests to run, which diff to expect); '
-            "never invent line numbers that were not provided."
-        ),
-        "template.tier.c": (
-            "Level C (aggressive): give full paths, line numbers, component names, and where "
-            "the design tokens are defined; boundary anticipation must cover multi-state, "
-            "responsive, dark mode, and accessibility; end with explicit test instructions "
-            "(including test file paths).\n"
-            "Verifiable anchors (hard requirement): referenced file paths must appear in the "
-            "evidence summary below; referenced line numbers must be real lines in that file. "
-            "If unsure, use wording without line numbers or fall back to level-B granularity — "
-            "never fabricate."
-        ),
-        "template.multi.role": (
-            "You are a prompt engineer. Based on the same context, produce {count} prompt "
-            "variants in a single response; requested levels: {levels}."
-        ),
-        "template.multi.tiers": "Per-level template constraints:{tiers}",
-        "template.multi.tiers_sep": "\n- ",
-        "template.multi.consistency": (
-            "Consistency: all variants share the same factual basis, and the same fact must be "
-            "described identically across variants (no information drift); body length and "
-            "detail must form a clear gradient (A shortest, C longest).\n"
-            "Do not produce more, fewer, or different levels than requested. Output JSON only."
-        ),
-        "template.multi.request_levels": "Requested levels (one variant each, A→B→C): {levels}",
-        "template.multi.claims_rules": (
-            "The variants array length and levels must match the requested levels exactly.\n"
+        "template.claims_rules": (
             "claims rules: every file path, symbol name, line number, and style-token "
             "reference in the body must be declared one by one, and target must match the body "
             'text exactly; for kind=line use "path:line". If the body explicitly asserts that '
             'some reference does NOT exist (for example "no usable colour token was found"), '
             "use kind=absence and put the negated category in negates "
-            "(file/symbol/token/line). Emit an empty array when there are no references; "
+            "(file/symbol/token/line/test). Emit an empty array when there are no references; "
             "never fabricate."
         ),
         "template.field.memory": "project_memory",
+        "template.field.excerpt": "target_code_excerpt (line|content)",
+        "template.field.design_tokens": "design_token_evidence",
+        "template.field.none_excerpt": "(no excerpt located; do not invent line numbers)",
+        "template.field.none_design_tokens": "(no project design token definition found)",
+        "template.sections.a": (
+            "\n\nThe fallback template's four sections: section 1 states that no concrete file "
+            'could be located; section 2 lists intent-level actions each marked "to confirm"; '
+            'section 3 states "no token evidence"; section 4 becomes a must-confirm checklist.'
+        ),
+        "template.sections.b": (
+            "\n\nThe standard template's four sections: section 1 must give the repo-relative file "
+            "path (from the excerpt header); section 2 may mark unverified details with "
+            '"(inferred)"; section 3 must say explicitly when no token evidence was found.'
+        ),
     },
 }
 

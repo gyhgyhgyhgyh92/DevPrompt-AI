@@ -10,11 +10,12 @@ import httpx
 import pytest
 
 from devprompt_ai.domain.errors import DevPromptError, StateError
+from devprompt_ai.domain.generate.ports import VariantDraft
 from devprompt_ai.domain.models import Page, SessionSummary, TurnRecord
 from devprompt_ai.domain.progress import ActionInfo, ProgressEvent
 from devprompt_ai.interfaces.api import health, routes
 from devprompt_ai.interfaces.api.app import create_app
-from devprompt_ai.service import FlowSnapshot, RankingView, SnapshotStatus
+from devprompt_ai.service import FlowSnapshot, SnapshotStatus
 
 
 def _snap(
@@ -72,6 +73,12 @@ class FakeForgeService:
                 "followup_soft_round_guard": 10,
                 "followup_cost_budget": 0.0,
                 "telemetry": True,
+            },
+            "observability": {
+                "trace_enabled": True,
+                "trace_retention_days": 30,
+                "metrics_enabled": True,
+                "replay_enabled": True,
             },
             "locked": {"candidate_limit": 25},
         }
@@ -307,6 +314,37 @@ async def test_optimize_returns_snapshot(
     assert fake_service.state == "ASKING"
 
 
+async def test_optimize_writes_session_log(
+    client: httpx.AsyncClient,
+    fake_service: FakeForgeService,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    """D-05：旧入口 /optimize 也写 run_events（Session Log 不再有盲区）。"""
+    from types import SimpleNamespace
+
+    from devprompt_ai.interfaces.api import runtime_routes
+    from devprompt_ai.memory.event_store import SQLiteEventStore
+    from devprompt_ai.runtime.events import EventBus
+
+    bus = EventBus(SQLiteEventStore(str(tmp_path / "events.db")))
+
+    async def _fake_bundle() -> Any:
+        return SimpleNamespace(bus=bus)
+
+    monkeypatch.setattr(runtime_routes, "_bundle", _fake_bundle)
+    fake_service.config = object()  # type: ignore[attr-defined]  # 让路由认为运行时可用
+
+    resp = await client.post(
+        "/api/v1/optimize",
+        json={"sentence": "改按钮", "project": ".", "session_id": "s1"},
+    )
+    assert resp.status_code == 200
+    events = await bus.replay("s1", 0)
+    assert [event.type for event in events] == ["run.started", "snapshot", "stop"]
+    assert events[0].payload["request_id"] == resp.json()["request_id"]
+
+
 async def test_optimize_forwards_accept_language(
     client: httpx.AsyncClient, fake_service: FakeForgeService
 ) -> None:
@@ -371,7 +409,7 @@ async def test_result_reads_snapshot(
     assert resp.json()["data"]["session_id"] == "s1"
 
 
-async def test_snapshot_renders_variants_and_ranking(
+async def test_snapshot_renders_single_variant(
     client: httpx.AsyncClient, fake_service: FakeForgeService
 ) -> None:
     fake_service.status = "done"
@@ -380,24 +418,22 @@ async def test_snapshot_renders_variants_and_ranking(
         session_id="s1",
         status="done",
         state="DONE",
-        ranking=RankingView(
-            variant="B",
-            gap=0.2,
-            confidence=0.9,
-            marked=True,
-            reason="分差较小",
-            fit=0.75,
-            total=0.802,
+        variant=VariantDraft(
+            title="标准版方案",
+            body="正文",
+            changes=[],
+            fallback=False,
         ),
     )
     resp = await client.get("/api/v1/result/s1")
     assert resp.status_code == 200
     data = resp.json()["data"]
-    assert data["variants"] == []  # 未注入方案时默认空表
-    assert data["ranking"] is not None
-    assert data["ranking"]["variant"] == "B"
-    assert data["ranking"]["marked"] is True
-    assert "variant" not in data  # 旧单数字段已删除（BREAKING）
+    assert data["variant"]["title"] == "标准版方案"
+    assert data["variant"]["fallback"] is False
+    # 旧契约字段已删除（BREAKING，2026-11-11 单套输出）
+    assert "variants" not in data
+    assert "ranking" not in data
+    assert "ranking_skip_reason" not in data
 
 
 async def test_get_history_returns_summaries(
@@ -594,7 +630,7 @@ async def test_session_turns_are_summaries_only(
             turn_index=0,
             state="DONE",
             input="把按钮改成红色",
-            output=[{"title": "x", "body": "正文", "level": "A", "changes": []}],
+            output=[{"title": "x", "body": "正文", "changes": []}],
             summary={"target": "Button", "conclusion": "复用令牌", "open": ["对比度"]},
         )
     ]
@@ -622,7 +658,7 @@ async def test_turn_detail_carries_body(
             turn_index=0,
             state="DONE",
             input="把按钮改成红色",
-            output=[{"title": "保守版", "body": "改按钮", "level": "A", "changes": ["改色"]}],
+            output=[{"title": "保守版", "body": "改按钮", "changes": ["改色"]}],
             facts=[{"key": "token_defined", "passed": False, "evidence": "未找到"}],
         )
     ]

@@ -10,14 +10,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Final, Literal, Protocol
+from typing import Literal, Protocol
 
 from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale, tr
-
-#: 档位在语言包里的键（方案的差异是信息完整度，不是文风，MUST-28）。
-_LEVEL_KEYS: Final[dict[str, str]] = {"A": "level.a", "B": "level.b", "C": "level.c"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,12 +58,6 @@ class ProgressSink(Protocol):
     async def emit(self, event: ProgressEvent) -> None: ...
 
 
-def level_label(variant: str, locale: Locale = DEFAULT_LOCALE) -> str:
-    """``A`` → ``A 保守``；未知档位原样返回（不猜）。"""
-    key = _LEVEL_KEYS.get(variant)
-    return f"{variant} {tr(key, locale)}" if key is not None else variant
-
-
 def display_path(path: str) -> str:
     """路径展示口径：绝对路径只留末两段，避免泄露本机目录结构（MUST-19）。"""
     parts = [part for part in path.replace("\\", "/").split("/") if part]
@@ -104,12 +94,6 @@ def facts_text(passed: int, total: int, locale: Locale = DEFAULT_LOCALE) -> str:
     return tr("progress.facts", locale, passed=passed, total=total)
 
 
-def level_text(level: str, confidence: float | None, locale: Locale = DEFAULT_LOCALE) -> str:
-    """研判结论提示。confidence 为 None 表示模型未给判断——不是「置信度 0」。"""
-    shown = tr("progress.level_unknown", locale) if confidence is None else f"{confidence:.2f}"
-    return tr("progress.level", locale, confidence=shown, level=level_label(level, locale))
-
-
 def clarification_text(count: int, locale: Locale = DEFAULT_LOCALE) -> str:
     return tr("progress.clarification", locale, count=count)
 
@@ -119,43 +103,5 @@ def answering_text(locale: Locale = DEFAULT_LOCALE) -> str:
     return tr("progress.answering", locale)
 
 
-def generation_text(levels: Sequence[str], locale: Locale = DEFAULT_LOCALE) -> str:
-    separator = tr("common.list_sep", locale)
-    labels = separator.join(level_label(level, locale) for level in levels)
-    return tr("progress.generation", locale, count=len(levels), labels=labels)
-
-
-def single_variant_text(locale: Locale = DEFAULT_LOCALE) -> str:
-    return tr("progress.single_variant", locale)
-
-
-def scoring_text(locale: Locale = DEFAULT_LOCALE) -> str:
-    return tr("progress.scoring", locale)
-
-
-def recommendation_text(
-    marked: bool,
-    variant: str,
-    gap: float,
-    reason: str,
-    locale: Locale = DEFAULT_LOCALE,
-) -> str:
-    label = level_label(variant, locale)
-    shown_gap = f"{gap:.2f}"
-    if not marked:
-        return tr(
-            "progress.recommendation_unmarked",
-            locale,
-            reason=reason,
-            label=label,
-            gap=shown_gap,
-        )
-    if reason:
-        return tr(
-            "progress.recommendation_reasoned",
-            locale,
-            label=label,
-            gap=shown_gap,
-            reason=reason,
-        )
-    return tr("progress.recommendation_plain", locale, label=label, gap=shown_gap)
+def generation_text(locale: Locale = DEFAULT_LOCALE) -> str:
+    return tr("progress.generation", locale)

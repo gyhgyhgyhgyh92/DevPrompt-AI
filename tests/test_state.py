@@ -20,8 +20,7 @@ from devprompt_ai.state import (
 
 #: 唯一被允许的「不经 AGENTIC 的执行态直连」，均为既有快速路径。
 FAST_PATH: dict[FlowState, frozenset[FlowState]] = {
-    FlowState.GENERATING: frozenset({FlowState.RANKING, FlowState.DONE}),
-    FlowState.RANKING: frozenset({FlowState.DONE}),
+    FlowState.GENERATING: frozenset({FlowState.DONE}),
 }
 
 
@@ -69,7 +68,8 @@ class FakeStore:
 
 def test_all_states_have_transitions() -> None:
     assert set(TRANSITIONS) == set(FlowState)
-    assert len(list(FlowState)) == 10
+    assert len(list(FlowState)) == 9
+    assert not hasattr(FlowState, "RANKING")
 
 
 def test_init_only_leads_to_agentic_or_aborted() -> None:
@@ -100,7 +100,6 @@ def test_agentic_reaches_every_execution_state() -> None:
         FlowState.ASKING,
         FlowState.CONFIRMING,
         FlowState.GENERATING,
-        FlowState.RANKING,
         FlowState.DONE,
         FlowState.ABORTED,
     } <= TRANSITIONS[FlowState.AGENTIC]
@@ -280,3 +279,20 @@ class TestStartTurn:
         session = await start_turn(store, "local", None)
         assert session.state == FlowState.INIT.value
         assert store.items[session.session_id] is session
+
+    async def test_create_missing_accepts_frontend_uuid(self) -> None:
+        """D-04：/runs 传入前端新生成的 id 时按该 id 建容器并开轮。"""
+        store = FakeStore()
+        session = await start_turn(store, "local", "frontend-uuid", create_missing=True)
+        assert session.session_id == "frontend-uuid"
+        assert session.state == FlowState.INIT.value
+        assert store.items["frontend-uuid"].user_id == "local"
+
+    async def test_create_missing_keeps_other_user_rejected(self) -> None:
+        store = FakeStore()
+        store.items["s9"] = FlowSession(
+            session_id="s9", user_id="someone-else", state=FlowState.DONE.value
+        )
+        with pytest.raises(StateError) as caught:
+            await start_turn(store, "local", "s9", create_missing=True)
+        assert caught.value.code == 6003

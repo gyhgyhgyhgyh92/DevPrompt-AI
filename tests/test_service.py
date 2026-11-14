@@ -7,7 +7,6 @@ from typing import Any, Literal, cast
 
 import pytest
 
-from devprompt_ai.common.i18n import tr
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.decision.port import (
     AskOption,
@@ -19,9 +18,10 @@ from devprompt_ai.domain.decision.port import (
     VariantScore,
 )
 from devprompt_ai.domain.errors import DevPromptError, StateError
-from devprompt_ai.domain.generate.ports import MultiVariantDraft, VariantDraft
+from devprompt_ai.domain.generate.ports import VariantDraft
 from devprompt_ai.domain.models import (
     Candidate,
+    CodeLocation,
     FactResult,
     FlowSession,
     SessionSummary,
@@ -154,13 +154,10 @@ class FakeDecider:
 
 
 class FakeGenerator:
-    async def generate_single(self, ctx, locale="zh-CN"):  # type: ignore[no-untyped-def]
-        return VariantDraft(title="t", body="b", changes=["x"], level=ctx.level)
-
-    async def generate_variants(self, ctx, levels, locale="zh-CN"):  # type: ignore[no-untyped-def]
-        return MultiVariantDraft(
-            variants=[VariantDraft(title="t", body="b", changes=["x"], level=lv) for lv in levels]
-        )
+    async def generate_single(  # type: ignore[no-untyped-def]
+        self, ctx, locale="zh-CN", *, fallback: bool = False
+    ):
+        return VariantDraft(title="t", body="b", changes=["x"], fallback=fallback)
 
     async def answer(self, ctx, locale="zh-CN"):  # type: ignore[no-untyped-def]
         return "回答"
@@ -271,7 +268,7 @@ async def test_delete_project_sessions_rejects_empty_project_root() -> None:
 async def test_optimize_full_flow_with_questions() -> None:
     # 默认 existing 无测试文件 → test_file_exists=False → 1 个未知项
     svc, store = _service()
-    # 2026-11-07：默认 claim_strict 已改 True；本用例只验证打分与推荐链路，
+    # 2026-11-07：默认 claim_strict 已改 True；本用例只验证生成与交付链路，
     # 未声明 claims 的门禁由专门的 strict 用例覆盖。
     svc._cfg.claim_strict = False
     snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
@@ -284,21 +281,17 @@ async def test_optimize_full_flow_with_questions() -> None:
         request_id="r2",
     )
     assert snap2.status == "done"
-    # B 档（有符号、取证未全过）→ 可输出档位 [A,B]；打分 B(3)>A(2)，d≈0.177∈[0.12,0.5)
-    assert [v.level for v in snap2.variants] == ["A", "B"]
-    assert snap2.ranking is not None
-    assert snap2.ranking.variant == "B"
-    assert snap2.ranking.marked is True
-    assert snap2.ranking.reason == tr("ranking.conf_small_gap")
-    assert 0.12 <= snap2.ranking.gap < 0.5
+    # 单套输出：只有 variant 一个对象，且不是兜底产物
+    assert snap2.variant is not None
+    assert snap2.variant.title == "t"
+    assert snap2.variant.fallback is False
 
 
 async def test_optimize_clean_flow_skips_asking() -> None:
     svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"})  # 七项全过 → 零提问
     snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
     assert snap.status == "done"  # unknowns 空 → 零提问（MUST-26 ①）
-    assert [v.level for v in snap.variants] == ["A", "B", "C"]  # C 档 → 三套同调
-    assert snap.ranking is not None
+    assert snap.variant is not None
 
 
 async def test_scan_project_rejects_missing_path(tmp_path: Any) -> None:
@@ -365,6 +358,43 @@ async def test_second_turn_reuses_same_session(tmp_path: Any) -> None:
     assert stored[1].input == sentence2
 
 
+async def test_inherited_refresh_passes_previous_sentence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """继承检索刷新必须传上一轮原句（本轮句在 inherit_for_next_turn 后已覆盖）。"""
+    import devprompt_ai.service as service_mod
+
+    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"})
+    svc._cfg.claim_strict = False
+    first = await svc.optimize("local", ".", "把提交按钮改为红色", request_id="r1")
+
+    seen: list[tuple[str, str]] = []
+
+    async def fake_locate(
+        symbol: Symbol,
+        runner: Any,
+        reader: Any,
+        *,
+        root: str = ".",
+        sentence: str = "",
+        previous_sentence: str = "",
+    ) -> CodeLocation:
+        seen.append((sentence, previous_sentence))
+        return CodeLocation(symbol_name=symbol.name, path=symbol.path, definition_line=12)
+
+    monkeypatch.setattr(service_mod, "locate_symbol", fake_locate)
+
+    await svc.optimize(
+        "local",
+        ".",
+        "把这个按钮的红色改成橙色",
+        session_id=first.session_id,
+        request_id="r2",
+    )
+
+    assert seen == [("把这个按钮的红色改成橙色", "把提交按钮改为红色")]
+
+
 async def test_duplicate_turn_index_rejected(tmp_path: Any) -> None:
     """唯一索引即乐观锁：同一 (session, index) 被占时重复提交返回 6001。"""
     turns = SQLiteTurnStore(str(tmp_path / "turns.db"))
@@ -389,8 +419,8 @@ async def test_duplicate_turn_index_rejected(tmp_path: Any) -> None:
     assert caught.value.code == 6001
 
 
-async def test_second_turn_offers_single_variant(tmp_path: Any) -> None:
-    """首轮三套（方向未定），第二轮收敛为单套且不算分差（MUST-28）。"""
+async def test_each_turn_produces_exactly_one_variant(tmp_path: Any) -> None:
+    """单套输出：首轮与后续轮都只产出一个 ``variant``，不存在套数与推荐视图。"""
     turns = SQLiteTurnStore(str(tmp_path / "turns.db"))
     svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, turns=turns)
 
@@ -399,9 +429,10 @@ async def test_second_turn_offers_single_variant(tmp_path: Any) -> None:
         "local", ".", "把提交按钮改成 primary-600", request_id="r2", session_id=first.session_id
     )
 
-    assert len(first.variants) == 3
-    assert len(second.variants) == 1
-    assert second.ranking is None
+    assert first.variant is not None
+    assert second.variant is not None
+    assert not hasattr(first, "variants")
+    assert not hasattr(second, "ranking")
 
 
 async def test_base_turn_id_continues_from_that_turn(tmp_path: Any) -> None:
@@ -444,23 +475,6 @@ async def test_base_turn_id_of_other_session_raises_6003(tmp_path: Any) -> None:
             session_id=first.session_id,
             base_turn_id="turn-does-not-exist",
         )
-
-
-async def test_direction_conflict_reopens_three_variants(tmp_path: Any) -> None:
-    """用户表达方向性分歧时，第二轮重新展开三套。"""
-    turns = SQLiteTurnStore(str(tmp_path / "turns.db"))
-    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, turns=turns)
-
-    first = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
-    second = await svc.optimize(
-        "local",
-        ".",
-        "推翻刚才的方案，换个方向重做提交按钮",
-        request_id="r2",
-        session_id=first.session_id,
-    )
-
-    assert len(second.variants) == 3
 
 
 async def test_cannot_start_turn_while_previous_running(tmp_path: Any) -> None:
@@ -523,7 +537,7 @@ async def test_progress_events_carry_phase() -> None:
     assert "RETRIEVING" in phases
     assert "GENERATING" in phases
     assert all(
-        phase in {"INIT", "RETRIEVING", "PROBING", "ASKING", "CONFIRMING", "GENERATING", "RANKING"}
+        phase in {"INIT", "RETRIEVING", "PROBING", "ASKING", "CONFIRMING", "GENERATING"}
         for phase in phases
     )
 
@@ -546,13 +560,14 @@ async def test_progress_reports_real_tool_actions() -> None:
     assert titles & {"检索符号", "定位符号定义"}
 
 
-async def test_escape_rounds_to_conservative() -> None:
+async def test_escape_rounds_to_single_conservative_variant() -> None:
     svc, _ = _service(confs=[0.9, 0.9, 0.1, 0.9, 0.9, 0.9, 0.9])
     snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
     done = await svc.escape("local", snap.session_id, request_id="r2")
     assert done.status == "done"
-    assert [v.level for v in done.variants] == ["A"]  # 保守路径仅 A 档
-    assert done.ranking is None  # MUST-28：单套不产生推荐视图
+    # 逃生路径同样只产出一套；是否有兜底标记由生成层（fallback）单向决定
+    assert done.variant is not None
+    assert not hasattr(done, "ranking")
 
 
 async def test_guardrail_rounds_then_confirm() -> None:
@@ -612,39 +627,24 @@ class RecordingStore(FakeStore):
         return await super().save(session)
 
 
-async def test_three_variants_flow_passes_ranking_state() -> None:
-    # 七项全过 → C 档三套 → 状态机必须经停 RANKING（GENERATING→RANKING→DONE）
+async def test_generate_transitions_straight_to_done() -> None:
+    """单套输出后不再经停 RANKING：GENERATING 之后直接 DONE。"""
     store = RecordingStore()
     svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, store=store)
     snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
     assert snap.status == "done"
-    assert "RANKING" in store.states
-    assert (
-        store.states.index("GENERATING")
-        < store.states.index("RANKING")
-        < store.states.index("DONE")
-    )
+    assert "RANKING" not in store.states
+    assert store.states.index("GENERATING") < store.states.index("DONE")
 
 
-async def test_single_variant_skips_score_prompts() -> None:
-    # escape 保守路径 level=A → 单套：不调用 score_prompts、ranking=None、不计算 d（MUST-28）
+async def test_single_output_never_calls_score_prompts() -> None:
+    # 单套输出没有可比较对象：score_prompts 恒不被调用
     decider = FakeDecider([0.9] * 7)
     svc, _ = _service(decider=decider)
     snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
     done = await svc.escape("local", snap.session_id, request_id="r2")
-    assert done.status == "done" and done.ranking is None
+    assert done.status == "done" and done.variant is not None
     assert decider.score_calls == 0
-
-
-async def test_score_prompts_failure_degrades_without_blocking() -> None:
-    # 打分异常 → 诚实降级 ranking=None，流程仍走完 DONE（不阻断、不崩溃）
-    decider = FakeDecider([0.9] * 7, score_error=RuntimeError("LLM unavailable"))
-    svc, _ = _service(existing={"src/ui/button.tsx", "src/ui/button.test.tsx"}, decider=decider)
-    snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
-    assert snap.status == "done" and snap.state == "DONE"
-    assert len(snap.variants) == 3
-    assert snap.ranking is None
-    assert decider.score_calls == 1
 
 
 async def test_rank_components_cache_hits_on_same_input() -> None:
@@ -740,7 +740,6 @@ async def test_flow_events_chain_without_sentence(caplog: pytest.LogCaptureFixtu
     assert "flow.started" in names
     assert "flow.completed" in names
     assert "cache.miss" in names or "cache.hit" in names
-    assert any(n.startswith("recommendation.") for n in names)
     completed = next(r for r in caplog.records if r.getMessage() == "flow.completed")
     assert getattr(completed, "flow_id", "") != ""
     assert isinstance(getattr(completed, "elapsed_ms", None), int)
@@ -1148,11 +1147,10 @@ async def test_rename_session_cas_conflict_twice_raises_6003() -> None:
     assert ei.value.code == 6003
 
 
-async def test_resume_tolerates_legacy_ranking_with_pref() -> None:
-    """2026-10-31 体检回归：偏好记忆移除前落库的会话 ranking 仍带 pref 字段。
+async def test_resume_tolerates_legacy_variant_with_level() -> None:
+    """旧会话里落库的 ``variant`` 仍带 level 字段：重建快照必须忽略未知字段。
 
-    重建快照必须按字段白名单过滤，否则 RankingView(**data) 抛 TypeError，
-    历史会话在 GET /result 上整体 500（用户升级后旧会话全部打不开）。
+    否则 VariantDraft(**data) 会抛 ValidationError，历史会话在 GET /result 上整体 500。
     """
     svc, store = _service()
     store.items["legacy-1"] = FlowSession(
@@ -1160,25 +1158,17 @@ async def test_resume_tolerates_legacy_ranking_with_pref() -> None:
         user_id="local",
         state="DONE",
         data={
-            "variants": [{"title": "方案A", "body": "b", "changes": [], "level": "A"}],
-            "ranking": {
-                "variant": "B",
-                "gap": 0.2,
-                "confidence": 0.8,
-                "marked": True,
-                "reason": "适配度领先",
-                "fit": 0.75,
-                "total": 0.75,
-                "pref": 0.6,  # 2026-10-21 已移除的字段，旧数据里仍在
-            },
+            "variant": {"title": "方案A", "body": "b", "changes": [], "level": "A"},
+            # 推荐层已删除：旧字段必须被忽略而不是让快照构造失败
+            "ranking": {"variant": "B", "marked": True},
         },
     )
 
     snap = await svc.resume("local", "legacy-1", request_id="r-legacy")
 
     assert snap.status == "done"
-    assert snap.ranking is not None
-    assert (snap.ranking.variant, snap.ranking.fit, snap.ranking.total) == ("B", 0.75, 0.75)
+    assert snap.variant is not None
+    assert (snap.variant.title, snap.variant.body) == ("方案A", "b")
 
 
 async def test_snapshot_carries_current_turn_id(tmp_path: Any) -> None:
@@ -1272,12 +1262,11 @@ async def test_answer_guarded_retries_once_after_overflow() -> None:
         data={
             "sentence": "解释一下两套方案差异",
             "project_root": ".",
-            "level": "B",
             "facts": [],
             "clarifications": {},
         },
     )
-    ctx = GenerationContext(sentence="解释一下两套方案差异", project_root=".", level="B")
+    ctx = GenerationContext(sentence="解释一下两套方案差异", project_root=".")
 
     text = await svc._answer_guarded(session, ctx, "zh-CN")
 

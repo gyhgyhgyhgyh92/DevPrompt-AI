@@ -32,23 +32,22 @@ export const UnknownItemSchema = z.object({
   multi_select: z.boolean().default(false),
 })
 
+/** 方案正文中的一条可核对断言（契约 Claim；kind/target/note 由后端生成）。 */
+export const ClaimSchema = z.object({
+  kind: z.string(),
+  target: z.string(),
+  note: z.string().default(''),
+  negates: z.string().nullish(),
+})
+
 /** 方案（契约 VariantPayload；body 为后端生成文本，前端不加工）。 */
 export const VariantSchema = z.object({
   body: z.string(),
-  changes: z.array(z.string()).optional(),
-  level: z.string(),
+  changes: z.array(z.string()).default([]),
+  claims: z.array(ClaimSchema).default([]),
+  /** 本轮主流程异常、已降级为保守输出；前端须给可见提示。 */
+  fallback: z.boolean().default(false),
   title: z.string(),
-})
-
-/** 推荐视图（契约 RankingViewPayload；标记与否由后端判定，前端只渲染，MUST-08）。 */
-export const RankingViewSchema = z.object({
-  confidence: z.number(),
-  fit: z.number(),
-  gap: z.number(),
-  marked: z.boolean(),
-  reason: z.string(),
-  total: z.number(),
-  variant: z.string(),
 })
 
 /** 目标定位（契约 SymbolPayload）：symbol@path:line；line 为 0 表示不带行号。 */
@@ -67,8 +66,6 @@ export const FactSchema = z.object({
 
 /** 交付证据门（契约 DeliveryGatePayload，2026-11-05）：只镜像状态，不做判定（MUST-08）。 */
 export const DeliveryGateSchema = z.object({
-  can_mark_c: z.boolean(),
-  can_mark_recommend: z.boolean(),
   disclosure: z.string(),
   reasons: z.array(z.string()),
   status: z.string(),
@@ -78,7 +75,7 @@ export const DeliveryGateSchema = z.object({
 
 /**
  * 流程快照（契约 FlowSnapshotResponse）。
- * state/status/level/variant 按契约为自由字符串，前端只镜像不判定（MUST-07）。
+ * state/status 按契约为自由字符串，前端只镜像不判定（MUST-07）。
  */
 export const FlowSnapshotSchema = z.object({
   cleared: z.array(z.string()).optional(),
@@ -98,12 +95,12 @@ export const FlowSnapshotSchema = z.object({
   facts: z.array(FactSchema).optional(),
   message: z.string(),
   questions: z.array(UnknownItemSchema).optional(),
-  ranking: RankingViewSchema.nullish(),
   session_id: z.string(),
   state: z.string(),
   status: z.string(),
   target: SymbolSchema.nullish(),
-  variants: z.array(VariantSchema).optional(),
+  /** 本轮唯一方案；null / 缺省表示尚未产出（反问中 / 纯回答轮）。 */
+  variant: VariantSchema.nullish(),
 })
 
 /** POST /feedback 请求体（契约 FeedbackRequest：variant 采纳 / +edited_text 编辑采纳 / 皆无=跳过）。 */

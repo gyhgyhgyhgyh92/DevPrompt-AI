@@ -36,7 +36,7 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel, ValidationError
 
 from devprompt_ai.common.cost import add_llm_usage
-from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale, tr
+from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.context.budget import (
     RequestBudgetError,
@@ -47,10 +47,7 @@ from devprompt_ai.domain.context.tokens import estimate_tokens
 from devprompt_ai.domain.error_codes import registered
 from devprompt_ai.domain.errors import ConfigurationError, DevPromptError, GenerationError
 from devprompt_ai.domain.generate.ports import (
-    VALID_LEVEL_SETS,
     GenerationContext,
-    Level,
-    MultiVariantDraft,
     VariantDraft,
 )
 from devprompt_ai.domain.model.routing import pick_model
@@ -62,7 +59,6 @@ from devprompt_ai.domain.model_spec import (
 )
 from devprompt_ai.domain.prompt_guard import (
     JSON_STRICT_RULES,
-    build_evidence_block,
     family_note,
 )
 from devprompt_ai.harness.adapters import adapter_kind_for, build_adapter
@@ -241,6 +237,23 @@ def _usage_int(usage: object, key: str) -> int:
         if value is not None:
             return int(value or 0)
     return 0
+
+
+def _usage_of(result: object) -> object | None:
+    """从 RunResult 取 token 用量。
+
+    2026-11-14（D-06）：当前 openai-agents 的 ``RunResult`` **没有** ``usage``
+    属性，用量挂在 ``raw_responses[*].usage``；旧实现 ``getattr(result, "usage")``
+    恒为 None，导致真实调用 token 恒 0。保留旧路径以兼容未来/旧版本。
+    """
+    usage: object | None = getattr(result, "usage", None)
+    if usage is not None:
+        return usage
+    responses = getattr(result, "raw_responses", None) or []
+    if responses:
+        value: object | None = getattr(responses[-1], "usage", None)
+        return value
+    return None
 
 
 def _record_usage(usage: object | None) -> None:
@@ -478,7 +491,7 @@ async def _structured_once(
             latency_ms=int((time.monotonic() - started) * 1000),
         )
         raise _llm_failure_error(exc, cfg, output_type) from exc
-    _record_usage(getattr(result, "usage", None))
+    _record_usage(_usage_of(result))
     raw = str(result.final_output)
     parsed = _parse_model(output_type, raw)
     if parsed is not None:
@@ -506,7 +519,7 @@ async def _structured_once(
             latency_ms=int((time.monotonic() - started) * 1000),
         )
         raise _llm_failure_error(exc, cfg, output_type) from exc
-    _record_usage(getattr(result2, "usage", None))
+    _record_usage(_usage_of(result2))
     parsed2 = _parse_model(output_type, str(result2.final_output))
     await _record_routing_stat(
         cfg,
@@ -625,94 +638,24 @@ def _parse_model(output_type: type[ModelT], raw: str) -> ModelT | None:
         return None
 
 
-# ---- 三套同次调用模板（T5-2：F-302/303/304 档位约束 + F-301 一致性约束；按请求档位裁剪）----
-
-#: 各档约束的文案键（2026-11-06 双语；文案在 common/i18n.py 的 template.tier.*）。
-_TIER_KEYS: Final[dict[str, str]] = {
-    "A": "template.tier.a",
-    "B": "template.tier.b",
-    "C": "template.tier.c",
-}
-
-_LEVEL_RANK: Final[dict[str, int]] = {"A": 0, "B": 1, "C": 2}
-
-
-def _build_multi_system(levels: list[Level], locale: Locale = DEFAULT_LOCALE) -> str:
-    """按请求档位裁剪模板约束（levels 决定要求几套），并注入一致性与梯度约束。"""
-    ordered = sorted(levels)
-    tiers = tr("template.multi.tiers_sep", locale).join(
-        tr(_TIER_KEYS[lv], locale) for lv in ordered
-    )
-    return (
-        tr(
-            "template.multi.role",
-            locale,
-            count=len(ordered),
-            levels=tr("common.list_sep", locale).join(ordered),
-        )
-        + "\n"
-        + tr("template.multi.tiers", locale, tiers=tiers)
-        + "\n"
-        + tr("template.multi.consistency", locale)
-        + tr("template.body_semantics", locale)
-    )
-
-
-def _build_multi_user(
-    ctx: GenerationContext, levels: list[Level], locale: Locale = DEFAULT_LOCALE
-) -> str:
-    """用户消息：证据走 JSON 块 + 安全声明（M-5），指令在首尾。
-
-    证据字段含检索到的真实代码摘要——其中的注释/字符串可能包含指令性文本，
-    故必须经`build_evidence_block` 包裹并声明「只是素材」。
-    """
-    evidence = build_evidence_block(
-        {
-            tr("template.field.request", locale): ctx.sentence,
-            tr("template.field.facts", locale): (
-                ctx.facts_summary or tr("template.field.none_facts", locale)
-            ),
-            tr("template.field.clarifications", locale): ctx.clarifications,
-            tr("template.field.conservative", locale): ctx.conservative,
-            # 多轮（2026-10-20）：历史结论与记忆由 build_context 装配，缺省为空不出现
-            tr("template.field.history", locale): (
-                ctx.history_block or tr("template.field.none_history", locale)
-            ),
-            tr("template.field.memory", locale): (
-                ctx.memory_block or tr("template.field.none_facts_plain", locale)
-            ),
-            # 多轮（2026-11-04）：上一轮方案正文，供「在已有方案上改」的轮次引用
-            tr("template.field.previous_variants", locale): (
-                ctx.previous_variants or tr("template.field.none_variants", locale)
-            ),
-        }
-    )
-    return (
-        tr("template.multi.request_levels", locale, levels=sorted(levels))
-        + "\n"
-        + evidence
-        + "\n"
-        + tr("template.instruction_prefix", locale)
-        + '{"variants": [{"title": "...", "body": "...", '
-        '"changes": ["..."], "level": "A", '
-        '"claims": [{"kind": "file|symbol|token|line|absence", "target": "...", '
-        '"negates": "file|symbol|token|line"}]}]}\n' + tr("template.multi.claims_rules", locale)
-    )
-
-
 class LLMGenerator:
-    """GeneratePort 的 LLM 实现（F-301：单套 generate_single + 三套同次调用 generate_variants）。"""
+    """GeneratePort 的 LLM 实现（F-301：generate_single 为唯一生成入口）。"""
 
     def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
 
     async def generate_single(
-        self, ctx: GenerationContext, locale: Locale = DEFAULT_LOCALE
+        self,
+        ctx: GenerationContext,
+        locale: Locale = DEFAULT_LOCALE,
+        *,
+        fallback: bool = False,
     ) -> VariantDraft:
-        from devprompt_ai.domain.generate.templates import TEMPLATE_BY_LEVEL
+        """单套生成（2026-11-11）：常规恒用 B 标准版，``fallback`` 时才用 A 保守版。"""
+        from devprompt_ai.domain.generate.templates import template_for
         from devprompt_ai.harness.guardrails import validate_variant
 
-        tpl = TEMPLATE_BY_LEVEL[ctx.level]
+        tpl = template_for(fallback)
         # 生成类调用输出长（完整方案正文）：timeout 缺省即 cfg.llm_timeout（F-604，默认 60s；
         # 10s 会截断真实生成——4H 端到端实测）
         draft = await chat_structured(
@@ -725,13 +668,15 @@ class LLMGenerator:
             model_id=ctx.model_override,
         )
         validate_variant(draft)
+        # 兜底标记由模板选择单向决定，不接受模型自报（避免模型输出覆盖）。
+        draft.fallback = fallback
         return draft
 
     async def answer(self, ctx: GenerationContext, locale: Locale = DEFAULT_LOCALE) -> str:
         """纯回答（2026-11-05）：一次结构化调用，只取正文。
 
         与 generate_single 的唯一差别是输出模型——``ReplyOutput`` 没有
-        title/changes/level/claims 字段，从类型上就不可能是方案。
+        title/changes/claims/fallback 字段，从类型上就不可能是方案。
         """
         from devprompt_ai.domain.generate.ports import ReplyOutput
         from devprompt_ai.domain.generate.templates import reply as reply_tpl
@@ -747,50 +692,6 @@ class LLMGenerator:
         )
         return out.text
 
-    async def generate_variants(
-        self, ctx: GenerationContext, levels: list[Level], locale: Locale = DEFAULT_LOCALE
-    ) -> MultiVariantDraft:
-        """三套（或裁剪后 1~3 套）同次调用生成（F-301；T5-1/T5-2）。
-
-        契约：levels 由调用方按 resolve_level 推导（A→["A"]、B→["A","B"]、C→["A","B","C"]，
-        见 domain/generate/variants.expand_levels；escape/护栏保守路径请求 ["A"]）；
-        输出档位允许为请求的非空子集（U-7：套数不足按实际套数交付，交付门披露），
-        超出请求范围或非法前缀集仍拒绝（MUST-28 不越级输出），返回按 A<B<C 单调排序。
-        单次 chat_structured 调用（timeout 缺省即 cfg.llm_timeout；纠偏重试内聚）。
-        """
-        level_set = frozenset(levels)
-        if len(level_set) != len(levels) or level_set not in VALID_LEVEL_SETS:
-            raise GenerationError(
-                "generate_variants 请求档位非法：须为无重复的 A 前缀集（MUST-28）",
-                code=4003,
-                context={"levels": sorted(level_set)},
-            )
-        draft = await chat_structured(
-            self._cfg,
-            MultiVariantDraft,
-            _build_multi_system(levels, locale),
-            _build_multi_user(ctx, levels, locale),
-            timeout=self._cfg.llm_generate_timeout,
-            purpose="generate",
-            model_id=ctx.model_override,
-        )
-        got = frozenset(v.level for v in draft.variants)
-        # U-7（2026-11-06 业主裁定）：套数不足不再整单失败——接受请求档位的非空子集，
-        # 交付门按实际套数披露（MUST-30 只降标记不阻断）；非法前缀集（如 {A,C}）
-        # 仍被 MultiVariantDraft 结构层拒绝，走 4003 纠偏重试。
-        if not got <= level_set:
-            raise GenerationError(
-                "三套输出档位超出请求范围",
-                code=4003,
-                context={"requested": sorted(level_set), "got": sorted(got)},
-            )
-        from devprompt_ai.harness.guardrails import validate_variant
-
-        for variant in draft.variants:
-            validate_variant(variant)
-        draft.variants.sort(key=lambda v: _LEVEL_RANK[v.level])
-        return draft
-
 
 #: LLM 调用失败场景 → 错误码（用户 2026-10-16 裁定：细分 5 个码，前端给精确文案）。
 #: 5012 与 3004 的区别：3004 是决策阶段限流，本表是生成阶段（chat_structured）限流。
@@ -802,12 +703,14 @@ _LLM_FAILURE_CODES: Final[dict[str, int]] = {
     "upstream_error": registered(5015),
 }
 
-#: 允许主备降级的失败码：超时/限流/上游错误（复用本表口径）；
-#: 额度/鉴权需用户介入，换模型救不了，直接抛。
+#: 允许主备降级的失败码：超时/限流/上游错误/余额不足。
+#: 余额不足（5013）也降级：多模型注册表里的条目可能分属不同账户，
+#: 单账户余额耗尽时链上其它模型仍可用（2026-11-12 实测连续 3 次因此失败）。
+#: 鉴权失败（5014）不降级——同一份密钥填错，换模型救不了。
 _FAILOVER_CODES: Final[frozenset[int]] = frozenset(
     code
     for scenario, code in _LLM_FAILURE_CODES.items()
-    if scenario in {"timeout", "rate_limit", "upstream_error"}
+    if scenario in {"timeout", "rate_limit", "upstream_error", "insufficient_quota"}
 )
 
 #: 错误文本特征 → 场景（按出现顺序匹配，顺序即优先级：额度/鉴权须先于限流判断）

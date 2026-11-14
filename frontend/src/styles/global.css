@@ -251,7 +251,7 @@ pre {
   border-radius: var(--radius-md);
 }
 
-/* 上下文空态文案（HistoryPage/VariantTabs 共用） */
+/* 列表/空态文案（HistoryPage 等共用） */
 
 .context-panel__empty {
   font-size: var(--text-body-sm);

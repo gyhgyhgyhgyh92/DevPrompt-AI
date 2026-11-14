@@ -47,8 +47,7 @@ function snapshot(): FlowSnapshotResponse {
     reply_text: '',
     questions: [],
     cleared: [],
-    variants: [],
-    ranking: null,
+    variant: null,
   }
 }
 

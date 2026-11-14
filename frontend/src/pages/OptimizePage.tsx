@@ -63,9 +63,7 @@ export function OptimizePage() {
     message,
     questions,
     cleared,
-    variants,
-    ranking,
-    rankingSkipReason,
+    variant,
     isSubmitting,
     thinking,
     isThinking,
@@ -86,9 +84,7 @@ export function OptimizePage() {
       message: s.message,
       questions: s.questions,
       cleared: s.cleared,
-      variants: s.variants,
-      ranking: s.ranking,
-      rankingSkipReason: s.rankingSkipReason,
+      variant: s.variant,
       isSubmitting: s.isSubmitting,
       turns: s.turns,
       hasMoreTurns: s.hasMoreTurns,
@@ -183,7 +179,7 @@ export function OptimizePage() {
     }
     // 已有排队帧则不再重复排队（一帧一次足够）
     scrollFrameRef.current ??= requestAnimationFrame(flush)
-  }, [thinking, turns, status, message, questions, variants, isThinking])
+  }, [thinking, turns, status, message, questions, variant, isThinking])
 
   useEffect(
     () => () => {
@@ -503,7 +499,6 @@ export function OptimizePage() {
             {/* 交付时证据已过期：代码被改过，方案引用的行号可能失效（只披露不阻断） */}
             <EvidenceStaleNotice stale={evidenceStale} />
             <ChatStream
-              rankingSkipReason={rankingSkipReason}
               state={state}
               status={status}
               sentence={sentence}
@@ -513,8 +508,7 @@ export function OptimizePage() {
               replyText={replyText}
               questions={questions}
               cleared={cleared}
-              variants={variants}
-              ranking={ranking}
+              variant={variant}
               deliveryGate={deliveryGate}
               elapsedSeconds={elapsedSeconds}
               errorMessage={errorMessage}

@@ -9,8 +9,7 @@ const snapshot = {
   message: '',
   questions: [],
   cleared: [],
-  variants: [{ title: 'A', body: 'b', level: 'A', changes: [] }],
-  ranking: null,
+  variant: { title: '标准方案', body: 'b', changes: [], claims: [], fallback: false },
 }
 
 /** 手写 reader：不依赖 jsdom 是否实现 ReadableStream。 */

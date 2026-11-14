@@ -1,6 +1,8 @@
 """断言级证据账本（domain/generate/claims）纯函数测试。
 
-覆盖：全命中、部分命中、未声明（不惩罚）、事实未通过、路径分隔符归一。
+覆盖：全命中、部分命中、未声明（不惩罚）、事实未通过、路径分隔符归一；以及
+2026-11-11 修正后的证据源——目标代码片段 / 设计令牌证据支撑的四类正向断言，
+与 ``negates=test`` 的否定断言。
 """
 
 from devprompt_ai.domain.generate.claims import CLAIM_COVERAGE_MIN, ClaimReport, match_claims
@@ -119,3 +121,62 @@ def test_render_reports_gap() -> None:
     ]
 
     assert match_claims(claims, _facts()).render() == "已核对断言 1/2，1 处未取证"
+
+
+# ---- 2026-11-11 账本修正：片段 / 令牌 / 路径证据支撑的断言 ----
+
+
+_EVIDENCE_TEXT = (
+    "src/pages/UserList.tsx\n"
+    '233|  <Button type="primary" danger />\n'
+    "src/styles/antdTheme.ts:8:  colorError: '#ff4d4f'"
+)
+
+
+def test_symbol_claim_covered_by_target_excerpt() -> None:
+    """引用 JSX 组件（Button）：片段里出现即覆盖，不再要求 FactResult 证据命中。"""
+    report = match_claims([Claim(kind="symbol", target="Button")], [], _EVIDENCE_TEXT)
+
+    assert report.covered == 1
+    assert report.coverage == 1.0
+
+
+def test_file_claim_covered_by_token_evidence_path() -> None:
+    """跨文件引用（antdTheme.ts）：令牌证据里含该路径即覆盖。"""
+    report = match_claims(
+        [Claim(kind="file", target="src/styles/antdTheme.ts")], [], _EVIDENCE_TEXT
+    )
+
+    assert report.covered == 1
+
+
+def test_line_claim_covered_by_numbered_excerpt() -> None:
+    """行号断言：片段出现 ``233|`` 且路径一致即覆盖。"""
+    report = match_claims(
+        [Claim(kind="line", target="src/pages/UserList.tsx:233")], [], _EVIDENCE_TEXT
+    )
+
+    assert report.covered == 1
+
+    wrong_line = match_claims(
+        [Claim(kind="line", target="src/pages/UserList.tsx:999")], [], _EVIDENCE_TEXT
+    )
+    assert wrong_line.covered == 0
+
+
+def test_token_claim_covered_by_design_tokens() -> None:
+    """令牌断言：设计令牌证据包含 colorError 即覆盖。"""
+    report = match_claims([Claim(kind="token", target="colorError")], [], _EVIDENCE_TEXT)
+
+    assert report.covered == 1
+
+
+def test_absence_of_test_file_covered_by_failed_fact() -> None:
+    """``absence negates=test``：测试文件不存在（fact 失败）才算如实覆盖。"""
+    facts = [FactResult("test_file_exists", False, "未找到")]
+
+    report = match_claims([Claim(kind="absence", target="未找到测试文件", negates="test")], facts)
+
+    assert report.covered == 1
+    assert report.absent_ok == 1
+    assert report.coverage == 1.0

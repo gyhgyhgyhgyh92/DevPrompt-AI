@@ -98,7 +98,7 @@ export function TurnList({
               <AssistantBlock
                 header={<span className={s('thread__round')}>第 {turn.turn_index + 1} 轮</span>}
                 steps={detail?.steps}
-                variants={detail?.variants}
+                variant={detail?.variants?.[0] ?? null}
                 message={detail?.conclusion || turn.conclusion}
                 openItems={detail?.open_items}
                 loading={detail === undefined}

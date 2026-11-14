@@ -5,7 +5,7 @@
 """
 
 from devprompt_ai.domain.agent.memory import MAX_INHERITED_VARIANTS, TurnMemory
-from devprompt_ai.domain.generate.ports import Level, VariantDraft
+from devprompt_ai.domain.generate.ports import VariantDraft
 from devprompt_ai.domain.models import FactKey, FactResult
 
 #: 七项事实键的取样（FactResult.key 受 Literal 约束，越界键会被 from_payload 丢弃）
@@ -28,11 +28,7 @@ def facts_of(*passed: bool) -> tuple[FactResult, ...]:
 
 
 def variants_of(count: int) -> tuple[VariantDraft, ...]:
-    levels: list[Level] = ["A", "B", "C", "A"]
-    return tuple(
-        VariantDraft(title=f"t{i}", body=f"b{i}", changes=[], level=levels[i % 4])
-        for i in range(count)
-    )
+    return tuple(VariantDraft(title=f"t{i}", body=f"b{i}", changes=[]) for i in range(count))
 
 
 def test_inherit_keeps_clarifications_for_same_target() -> None:
@@ -121,7 +117,7 @@ def test_payload_roundtrip() -> None:
     assert restored.sentence == memory.sentence
     assert [f.key for f in restored.facts] == [f.key for f in memory.facts]
     assert restored.facts_mtime_digest == "digest-a"
-    assert [v.level for v in restored.variants] == ["A", "B"]
+    assert [v.title for v in restored.variants] == ["t0", "t1"]
     assert restored.clarifications == {"范围?": "仅按钮"}
 
 
@@ -137,7 +133,7 @@ def test_from_payload_tolerates_malformed_input() -> None:
             {"key": 1},
             "junk",
         ],
-        "variants": [{"title": "t", "body": "b", "level": "A"}, {"broken": True}],
+        "variants": [{"title": "t", "body": "b"}, {"broken": True}],
         "clarifications": {"q": 1},
     }
     restored = TurnMemory.from_payload(dirty)

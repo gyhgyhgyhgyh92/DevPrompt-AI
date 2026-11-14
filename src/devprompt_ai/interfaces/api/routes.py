@@ -36,7 +36,6 @@ from devprompt_ai.interfaces.api.schemas import (
     PagedHistoryItem,
     PagedTurnSummary,
     ProjectDeleteResponse,
-    RankingViewPayload,
     RollbackRequest,
     ScanResponse,
     SettingsResponse,
@@ -47,6 +46,7 @@ from devprompt_ai.interfaces.api.schemas import (
     UnknownItemPayload,
     VariantPayload,
 )
+from devprompt_ai.runtime.events import BufferedEventSink
 from devprompt_ai.service import FlowSnapshot, ForgeService, build_default
 
 DataT = TypeVar("DataT")
@@ -83,8 +83,8 @@ def _ok(data: DataT, request_id: str) -> ApiResponse[DataT]:
 
 
 def _snapshot_payload(snapshot: FlowSnapshot) -> FlowSnapshotResponse:
-    """快照渲染（dataclass → 契约模型；VariantDraft/RankingView 需逐字段镜像）。"""
-    ranking = snapshot.ranking
+    """快照渲染（dataclass → 契约模型；VariantDraft 需逐字段镜像）。"""
+    variant = snapshot.variant
     target = snapshot.target
     return FlowSnapshotResponse(
         session_id=snapshot.session_id,
@@ -95,14 +95,11 @@ def _snapshot_payload(snapshot: FlowSnapshot) -> FlowSnapshotResponse:
                 status=snapshot.delivery_gate.status,
                 tone=snapshot.delivery_gate.tone,
                 reasons=list(snapshot.delivery_gate.reasons),
-                can_mark_c=snapshot.delivery_gate.can_mark_c,
-                can_mark_recommend=snapshot.delivery_gate.can_mark_recommend,
                 disclosure=snapshot.delivery_gate.disclosure,
             )
             if snapshot.delivery_gate is not None
             else None
         ),
-        ranking_skip_reason=snapshot.ranking_skip_reason,
         status=snapshot.status,
         state=snapshot.state,
         questions=[
@@ -121,8 +118,7 @@ def _snapshot_payload(snapshot: FlowSnapshot) -> FlowSnapshotResponse:
             for q in snapshot.questions
         ],
         cleared=snapshot.cleared,
-        variants=[VariantPayload(**v.model_dump()) for v in snapshot.variants],
-        ranking=RankingViewPayload(**dataclasses.asdict(ranking)) if ranking is not None else None,
+        variant=VariantPayload(**variant.model_dump()) if variant is not None else None,
         target=SymbolPayload(name=target.name, path=target.path, line=target.line)
         if target is not None
         else None,
@@ -145,6 +141,29 @@ async def get_health(request: Request) -> ApiResponse[HealthResponse]:
     return _ok(report, request_id)
 
 
+async def _event_log(
+    service: Any, request_id: str, downstream: ProgressSink | None = None
+) -> BufferedEventSink | None:
+    """旧入口（/optimize、/optimize/stream）的会话日志出口。
+
+    运行时装配不可用（单测 Fake service、未初始化）时返回 None：Session Log 是旁路，
+    缺失不得阻断业务（D-05）。Fake service 没有 config，直接跳过——避免测试触发
+    真实 runtime 初始化并把事件写进用户库。
+    """
+    if getattr(service, "config", None) is None:
+        return None
+    try:
+        # 延迟 import：runtime_routes 在模块级 import 本模块，提前 import 会形成环。
+        from devprompt_ai.interfaces.api.runtime_routes import _bundle
+
+        bundle = await _bundle()
+        return BufferedEventSink(
+            bundle.bus, run_id=request_id, request_id=request_id, downstream=downstream
+        )
+    except Exception:  # noqa: BLE001 - 观测装配失败不影响主流程
+        return None
+
+
 @router.post(
     "/optimize",
     description="有副作用端点：禁止客户端自动重试（MUST-15，重复提交将产生重复流程）。",
@@ -154,15 +173,33 @@ async def post_optimize(
 ) -> ApiResponse[FlowSnapshotResponse]:
     request_id = _request_id(request)
     svc = await get_service()
-    snapshot = await svc.optimize(
-        _USER_ID,
-        req.project,
-        req.sentence,
-        request_id=request_id,
-        session_id=req.session_id,
-        base_turn_id=req.base_turn_id,
-        locale=_locale(request),
-    )
+    log = await _event_log(svc, request_id)
+    try:
+        snapshot = await svc.optimize(
+            _USER_ID,
+            req.project,
+            req.sentence,
+            request_id=request_id,
+            progress=log,
+            session_id=req.session_id,
+            base_turn_id=req.base_turn_id,
+            locale=_locale(request),
+        )
+    except Exception as exc:
+        if log is not None:
+            await log.fail(
+                req.session_id or "",
+                code=int(getattr(exc, "code", 0) or 0),
+                message=str(exc) or type(exc).__name__,
+            )
+        raise
+    if log is not None:
+        await log.finish(
+            snapshot.session_id,
+            _snapshot_payload(snapshot).model_dump(mode="json"),
+            status=snapshot.status,
+            state=snapshot.state,
+        )
     return _ok(_snapshot_payload(snapshot), request_id)
 
 
@@ -261,15 +298,33 @@ async def post_optimize_stream(request: Request, req: OptimizeRequest) -> Stream
 
     async def _produce(sink: ProgressSink) -> FlowSnapshot:
         svc = await get_service()
-        return await svc.optimize(
-            _USER_ID,
-            req.project,
-            req.sentence,
-            request_id=request_id,
-            progress=sink,
-            session_id=req.session_id,
-            locale=_locale(request),
-        )
+        log = await _event_log(svc, request_id, downstream=sink)
+        try:
+            snapshot = await svc.optimize(
+                _USER_ID,
+                req.project,
+                req.sentence,
+                request_id=request_id,
+                progress=log or sink,
+                session_id=req.session_id,
+                locale=_locale(request),
+            )
+        except Exception as exc:
+            if log is not None:
+                await log.fail(
+                    req.session_id or "",
+                    code=int(getattr(exc, "code", 0) or 0),
+                    message=str(exc) or type(exc).__name__,
+                )
+            raise
+        if log is not None:
+            await log.finish(
+                snapshot.session_id,
+                _snapshot_payload(snapshot).model_dump(mode="json"),
+                status=snapshot.status,
+                state=snapshot.state,
+            )
+        return snapshot
 
     return _stream_progress(request_id, _produce)
 

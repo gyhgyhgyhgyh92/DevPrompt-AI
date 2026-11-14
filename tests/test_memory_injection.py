@@ -10,8 +10,6 @@ from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.generate.ports import (
     GeneratePort,
     GenerationContext,
-    Level,
-    MultiVariantDraft,
     VariantDraft,
 )
 from devprompt_ai.memory.project_notes import read_notes
@@ -33,13 +31,11 @@ class RecordingGenerator(FakeGenerator):
     def __init__(self) -> None:
         self.contexts: list[GenerationContext] = []
 
-    async def generate_variants(
-        self, ctx: GenerationContext, levels: list[Level], locale: str = "zh-CN"
-    ) -> MultiVariantDraft:
+    async def generate_single(  # type: ignore[no-untyped-def]
+        self, ctx: GenerationContext, locale: str = "zh-CN", *, fallback: bool = False
+    ) -> VariantDraft:
         self.contexts.append(ctx)
-        return MultiVariantDraft(
-            variants=[VariantDraft(title="t", body="b", changes=["x"], level=lv) for lv in levels]
-        )
+        return VariantDraft(title="t", body="b", changes=["x"], fallback=fallback)
 
 
 def _service_with_generator(gen: GeneratePort, existing: set[str]) -> ForgeService:
@@ -75,7 +71,7 @@ async def test_l1_session_memory_off_fresh_session_completes() -> None:
     )
     assert done.status == "done"
     assert done.state == "DONE"
-    assert done.variants  # 生成产出非空
+    assert done.variant is not None  # 生成产出非空
 
     # 退化验证：无跨会话 L1 记忆 → 同一未知项被重复提问（行为退化非缺陷，流程仍可完成）
     svc2, _ = _service(existing={"src/ui/button.tsx"})
@@ -101,7 +97,7 @@ async def test_l2_project_notes_off_flow_completes() -> None:
     snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
     assert snap.status == "done"
     assert snap.state == "DONE"
-    assert snap.variants
+    assert snap.variant is not None
 
     # 压缩骨架语义（MUST-09 精神）：只有摘要与记忆块，不含 L2 note 正文。
     # 2026-10-20 多轮：新增 history_block / memory_block 两个装配结果字段。
@@ -111,7 +107,6 @@ async def test_l2_project_notes_off_flow_completes() -> None:
         assert set(dumped) == {
             "sentence",
             "project_root",
-            "level",
             "facts_summary",
             "clarifications",
             "conservative",
@@ -123,6 +118,9 @@ async def test_l2_project_notes_off_flow_completes() -> None:
             "ranking_summary",
             # 2026-11-08 F10 会话级模型覆盖
             "model_override",
+            # 2026-11-11 四段式方案的两路证据（代码片段 / 设计令牌）
+            "target_excerpt",
+            "design_tokens",
         }
         assert dumped["clarifications"] == {}
         assert "note" not in dumped["memory_block"]
@@ -143,12 +141,12 @@ async def test_context_delta_is_full_on_first_turn_and_incremental_after() -> No
     assert '<context-update seq="2"' in second, "seq 必须跨轮递增"
 
 
-async def test_multi_variant_draft_level_sets_stable_under_neutral_memory() -> None:
-    """补充：三层全关（无 L1/L2、中性 L3）叠加时生成契约仍成立（MUST-28 前缀集）。"""
+async def test_single_variant_output_stable_under_neutral_memory() -> None:
+    """补充：三层全关（无 L1/L2、中性 L3）叠加时单套输出契约仍成立。"""
     gen = RecordingGenerator()
     svc = _service_with_generator(gen, existing={"src/ui/button.tsx", "src/ui/button.test.tsx"})
     snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
     assert snap.status == "done"
-    multi = MultiVariantDraft(variants=snap.variants)
-    assert [v.level for v in multi.variants] == ["A", "B", "C"]
+    assert snap.variant is not None
+    assert snap.variant.fallback is False
     assert gen.contexts and gen.contexts[0].clarifications == {}

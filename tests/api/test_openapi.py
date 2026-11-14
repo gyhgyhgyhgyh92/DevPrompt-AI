@@ -33,16 +33,29 @@ def test_openapi_covers_all_operations() -> None:
     cancel / events）：**21 路径 / 24 操作**——BREAKING，旧流式端点保留兼容壳。
     2026-11-08 工具输出治理新增 `GET /artifacts/{id}` 回读：**22 路径 / 25 操作**。
     2026-11-08 F10 会话级模型热切换新增 `POST /sessions/{id}/model`：**23 路径 / 26 操作**。
+    2026-11-12 可观测性拆分为 Trace / Metrics / Replay 三模块（BREAKING：旧
+    `GET /sessions/{id}/observability` 下线，新增 10 条独立路径）：**33 路径 / 36 操作**。
     """
     doc = create_app().openapi()
     paths: dict[str, Any] = doc["paths"]
-    assert len(paths) == 23
+    assert len(paths) == 33
     assert all(p.startswith("/api/v1/") for p in paths)
     operations = sum(
         len([m for m in ops if m in {"get", "put", "post", "patch", "delete"}])
         for ops in paths.values()
     )
-    assert operations == 26
+    assert operations == 36
+    assert "get" in paths["/api/v1/obs/trace/sessions/{session_id}/traces"]
+    assert "get" in paths["/api/v1/obs/trace/sessions/{session_id}/events"]
+    assert "get" in paths["/api/v1/obs/trace/traces/{trace_id}"]
+    assert "get" in paths["/api/v1/obs/trace/events/{event_id}"]
+    assert "get" in paths["/api/v1/obs/metrics/summary"]
+    assert "get" in paths["/api/v1/obs/metrics/alerts"]
+    assert "get" in paths["/api/v1/obs/metrics/config"]
+    assert "post" in paths["/api/v1/obs/replay/runs"]
+    assert "get" in paths["/api/v1/obs/replay/runs/{run_id}"]
+    assert "post" in paths["/api/v1/obs/replay/compare"]
+    assert "get" not in paths.get("/api/v1/sessions/{session_id}/observability", {})
     assert "get" in paths["/api/v1/artifacts/{artifact_id}"]
     assert "post" in paths["/api/v1/sessions/{session_id}/model"]
     assert "post" in paths["/api/v1/runs"]
@@ -131,12 +144,13 @@ class TestContextWindowTierContract:
 
         2026-11-07 多端运行时协议新增 5 个操作后为 21 路径 / 24 操作（BREAKING）；
         2026-11-08 工具输出治理新增 `GET /artifacts/{id}`、F10 新增 `POST /sessions/{id}/model`
-        后为 **23 路径 / 26 操作**。
+        后为 **23 路径 / 26 操作**；2026-11-12 可观测性三模块拆分（旧端点下线 + 10 条新路径）
+        后为 **33 路径 / 36 操作**。
         """
         doc = create_app().openapi()
-        assert len(doc["paths"]) == 23
+        assert len(doc["paths"]) == 33
         operations = sum(
             len([k for k in v if k in {"get", "post", "put", "patch", "delete"}])
             for v in doc["paths"].values()
         )
-        assert operations == 26
+        assert operations == 36

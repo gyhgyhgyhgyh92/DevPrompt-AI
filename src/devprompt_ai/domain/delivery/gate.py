@@ -1,14 +1,13 @@
-"""交付证据门（2026-11-05）：三态判定，只控质量标记，不阻断交付。
+"""交付证据门（2026-11-05）：三态判定，只控质量披露，不阻断交付。
 
 天枢交付门禁的转译（`src/agent/deliver-task.ts:122` + `delivery-gate-v2.ts:90`）。
-本项目交付的是**提示词**而非代码改动，因此门控对象从「能否 commit」换成
-「能否标 C 档 / 能否标推荐」：
+2026-11-11 单套输出后，门控对象收敛为「证据是否足以背书本轮方案」：
 
 | 状态 | 含义 | 后果 |
 |---|---|---|
-| GREEN | 适用事实全过且断言有据 | 允许标 C 与推荐（仍受 MUST-27 双阈值约束） |
-| YELLOW | 证据可用但不足以背书 | 保留原档位，不标推荐或附原因 |
-| RED | 证据链断裂 | 不标 C、不标推荐，必须披露原因 |
+| GREEN | 适用事实全过且断言有据 | 正常交付，无披露 |
+| YELLOW | 证据可用但不足以背书 | 照常交付并披露缺口 |
+| RED | 证据链断裂 | 照常交付并披露原因 |
 
 **门禁不阻断交付**：与天枢真实行为一致（其 RED 也只披露不阻断），且符合 MUST-27
 「不标记必须给具体原因，不得静默」——阻断会让用户拿不到任何东西。
@@ -40,20 +39,8 @@ class DeliveryInput:
     #: claims 覆盖率；None 表示本轮没有可核对的断言
     claim_coverage: float | None = None
     claims_undeclared: bool = False
-    variant_count: int = 0
-    #: 本轮请求的期望套数（U-7）；实际不足时 YELLOW 披露，None 表示不核对
-    expected_variant_count: int | None = None
-    #: C 档正文锚点校验（U-2）：明确无效的锚点数（文件不存在或行号越界）→ RED
+    #: 正文锚点校验（U-2）：明确无效的锚点数（文件不存在或行号越界）→ RED
     anchor_invalid_count: int = 0
-    #: `decide_mark` 的结论；None 表示未打分（单套方案）
-    recommend_marked: bool | None = None
-    recommend_reason: str = ""
-    #: 打分层的原始推荐结论（2026-11-06）：与 `recommend_marked` 区分开——
-    #: 前者只表示「分差/置信度够不够」，能否真正标推荐由本门（证据）决定。
-    ranking_marked: bool | None = None
-    #: 打分层的推荐档位与分差，用于把「原推荐 X 已撤销」说清楚。
-    ranked_level: str = ""
-    ranked_gap: float | None = None
     #: 改动归属（E11）：None 表示无影响半径数据（未开 repo 图），不参与判定
     attribution: Attribution | None = None
 
@@ -68,8 +55,6 @@ class DeliveryVerdict:
 
     status: DeliveryStatus
     reasons: tuple[str, ...]
-    can_mark_c: bool
-    can_mark_recommend: bool
     disclosure: str
     tone: Literal["ok", "warn", "error"] = "ok"
 
@@ -96,8 +81,6 @@ def evaluate_delivery(data: DeliveryInput, locale: Locale = DEFAULT_LOCALE) -> D
         return DeliveryVerdict(
             status="RED",
             reasons=tuple(red),
-            can_mark_c=False,
-            can_mark_recommend=False,
             disclosure=tr(
                 "gate.disclosure.red",
                 locale,
@@ -126,31 +109,10 @@ def evaluate_delivery(data: DeliveryInput, locale: Locale = DEFAULT_LOCALE) -> D
                 threshold=f"{CLAIM_COVERAGE_MIN:.0%}",
             )
         )
-    if data.expected_variant_count is not None and data.variant_count < data.expected_variant_count:
-        yellow.append(tr("gate.yellow.variant_short", locale, count=data.variant_count))
-    if data.variant_count < 2:
-        yellow.append(tr("gate.yellow.single_variant", locale))
-    if data.ranking_marked is True:
-        # 打分层本已推荐、且**本轮已存在其它证据缺口**（yellow 非空）→ 撤销并说清撤销了谁、
-        # 为什么（2026-11-06）；没有缺口时保持 GREEN 与推荐不变，不得凭空造出 YELLOW。
-        if yellow:
-            yellow.append(
-                tr(
-                    "gate.yellow.recommend_revoked",
-                    locale,
-                    level=data.ranked_level or "?",
-                    gap=f"{data.ranked_gap:.2f}" if data.ranked_gap is not None else "?",
-                )
-            )
-    elif data.recommend_marked is False:
-        # 推荐理由由 decide_mark 生成（同一层已按语言输出），空则给兜底文案
-        yellow.append(data.recommend_reason or tr("gate.yellow.no_recommend", locale))
     if yellow:
         return DeliveryVerdict(
             status="YELLOW",
             reasons=tuple(yellow),
-            can_mark_c=True,
-            can_mark_recommend=False,
             disclosure=tr(
                 "gate.disclosure.yellow",
                 locale,
@@ -159,11 +121,4 @@ def evaluate_delivery(data: DeliveryInput, locale: Locale = DEFAULT_LOCALE) -> D
             tone="warn",
         )
 
-    return DeliveryVerdict(
-        status="GREEN",
-        reasons=(),
-        can_mark_c=True,
-        can_mark_recommend=data.variant_count >= 2,
-        disclosure="",
-        tone="ok",
-    )
+    return DeliveryVerdict(status="GREEN", reasons=(), disclosure="", tone="ok")
