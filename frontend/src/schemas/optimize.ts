@@ -1,6 +1,49 @@
 import { z } from 'zod'
 import { i18n } from '../i18n'
 
+/** 领域包 id（契约 OptimizeRequest.domain，2026-11-14）；缺省 = 自动路由。15 个预置包。 */
+export const DomainIdSchema = z.enum([
+  'code',
+  'work',
+  'life',
+  'creative',
+  'learning',
+  'data',
+  'marketing',
+  'translation',
+  'legal',
+  'medical',
+  'finance',
+  'game',
+  'visual',
+  'av',
+  'operations',
+])
+export type DomainId = z.infer<typeof DomainIdSchema>
+
+/** 视觉生成风格（2026-11-14 多模态）：仅 domain=visual 时生效；缺省 = 通用风格。 */
+export const VisualStyleSchema = z.enum([
+  'general',
+  'photography',
+  'creative',
+  'chinese-model',
+  'json-structured',
+  'video',
+])
+export type VisualStyle = z.infer<typeof VisualStyleSchema>
+
+/** 图生图参考图上限（与后端 validate_images 对齐）。 */
+export const MAX_IMAGES = 3
+export const MAX_IMAGE_BYTES = 4 * 1024 * 1024
+
+/** 领域路由结论（契约 FlowSnapshotResponse.domain）：值与质量标记成对返回。 */
+export const DomainVerdictSchema = z.object({
+  domain: z.string(),
+  source: z.string(),
+  confidence: z.number(),
+})
+export type DomainVerdictPayload = z.infer<typeof DomainVerdictSchema>
+
 /** POST /optimize 请求体（契约 OptimizeRequest）；session_id 非空 = 同一会话开新一轮。 */
 export const OptimizeRequestSchema = z.object({
   // 原句可留空：留空表示「沿用上一轮目标」（追问入口）或「以 base_turn_id 为基线继续」。
@@ -9,6 +52,12 @@ export const OptimizeRequestSchema = z.object({
   session_id: z.string().optional(),
   /** 以某一历史轮为基线新开一轮（2026-11-05「以此轮继续」）；空串 = 不指定基线。 */
   base_turn_id: z.string(),
+  /** 领域覆盖（2026-11-14 领域包）：缺省 = 自动路由。 */
+  domain: DomainIdSchema.nullish(),
+  /** 视觉生成风格（2026-11-14 多模态）：仅 domain=visual 生效，后端契约层白名单校验。 */
+  style: VisualStyleSchema.nullish(),
+  /** 图生图参考图：base64 data URL，仅 domain=visual 接受（≤3 张、单张 ≤4MB）。 */
+  images: z.array(z.string()).nullish(),
 })
 
 /** POST /history/{session_id}/rollback 请求体（2026-11-05 撤销，物理删除其后轮次）。 */
@@ -99,6 +148,8 @@ export const FlowSnapshotSchema = z.object({
   state: z.string(),
   status: z.string(),
   target: SymbolSchema.nullish(),
+  /** 领域路由结论（2026-11-14 领域包）：nullable+catch 与生成契约对齐，旧后端缺键归 null。 */
+  domain: DomainVerdictSchema.nullable().catch(null),
   /** 本轮唯一方案；null / 缺省表示尚未产出（反问中 / 纯回答轮）。 */
   variant: VariantSchema.nullish(),
 })

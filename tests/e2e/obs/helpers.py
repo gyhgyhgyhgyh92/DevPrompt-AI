@@ -163,6 +163,7 @@ class ScriptedDecider:
         clarifications: Any,
         correction: str = "",
         inherited_variant_count: int = 0,
+        allowed_actions: Any = None,
     ) -> NextActionOutput:
         action = self.actions[min(self.calls, len(self.actions) - 1)]
         self.calls += 1

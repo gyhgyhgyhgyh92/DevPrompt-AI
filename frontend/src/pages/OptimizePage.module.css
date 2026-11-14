@@ -56,6 +56,73 @@
   min-inline-size: 12rem;
 }
 
+/* 视觉生成联动行（2026-11-14 多模态）：风格下拉 + 参考图上传 + 缩略图条 */
+.optimize-page__visual-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  padding-block-end: var(--space-2);
+}
+
+.optimize-page__image-add {
+  font-size: var(--font-size-sm, 0.8125rem);
+  color: var(--color-text-secondary, inherit);
+  background: transparent;
+  border: 1px dashed var(--color-border, currentColor);
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.optimize-page__image-add:hover:not(:disabled) {
+  color: var(--color-text-primary, inherit);
+  border-color: var(--color-accent, currentColor);
+}
+
+.optimize-page__image-error {
+  font-size: var(--font-size-sm, 0.8125rem);
+  color: var(--color-danger, #b91c1c);
+}
+
+.optimize-page__images {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.optimize-page__image-chip {
+  position: relative;
+  display: inline-flex;
+}
+
+.optimize-page__image-chip img {
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+  object-fit: cover;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--color-border, currentColor);
+}
+
+.optimize-page__image-chip button {
+  position: absolute;
+  inset-block-start: calc(-1 * var(--space-1));
+  inset-inline-end: calc(-1 * var(--space-1));
+  inline-size: 1rem;
+  block-size: 1rem;
+  font-size: 0.625rem;
+  line-height: 1;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  background: var(--color-danger, #b91c1c);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* 流程线程（主区） */
 
 /* 窄屏（<768）：侧边栏折叠为抽屉（汉堡唤出 + 遮罩/Esc 关闭）；三栏塌陷为单列 */

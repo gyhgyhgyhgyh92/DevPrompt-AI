@@ -13,7 +13,9 @@ import uuid
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
+
+from pydantic import ValidationError
 
 if TYPE_CHECKING:
     from devprompt_ai.domain.agent.work_order import WorkOrder
@@ -77,6 +79,15 @@ from devprompt_ai.domain.decision.followup import (
 from devprompt_ai.domain.decision.port import DecisionPort, FactProbeOutput
 from devprompt_ai.domain.delivery import DeliveryInput, DeliveryVerdict, evaluate_delivery
 from devprompt_ai.domain.delivery.attribution import Attribution
+from devprompt_ai.domain.delivery.structural import check_structural
+from devprompt_ai.domain.domains import (
+    KNOWN_DOMAIN_IDS,
+    DomainId,
+    DomainPack,
+    DomainVerdict,
+    get_pack,
+)
+from devprompt_ai.domain.domains.rules import match_by_keyword
 from devprompt_ai.domain.errors import (
     CatalogFetchError,
     ConfigurationError,
@@ -294,6 +305,8 @@ class FlowSnapshot:
     reply_text: str = ""
     #: 交付证据门结果（2026-11-05）：只披露质量标记，不阻断交付。
     delivery_gate: DeliveryGateView | None = None
+    #: 领域路由结论（2026-11-14 领域包）：{domain, source, confidence}，旧会话为 None
+    domain: dict[str, Any] | None = None
     """本轮归属（2026-11-04）：前端据此决定该轮进历史列表还是当前对话区。
 
     此前前端用「轮次列表末位」推断当前轮，导致新一轮提交瞬间把上一轮从历史里过滤掉
@@ -418,6 +431,11 @@ class ForgeService:
                 duration_ms=run.duration_ms,
             ),
         )
+        #: 领域分类器（2026-11-14 领域包）：确定性词表未命中时的一次 LLM 分类。
+        #: 函数内 import：保持模块导入轻量（与上方 trace 同款惯例）。
+        from devprompt_ai.decision.domains import DomainClassifier
+
+        self._domain_classifier = DomainClassifier(cfg)
 
     # ------------------------------------------------------------------
     # 模型目录（2026-10-17 动态模型目录）
@@ -588,6 +606,9 @@ class ForgeService:
         base_turn_id: str = "",
         locale: Locale = DEFAULT_LOCALE,
         create_session: bool = False,
+        domain_override: str | None = None,
+        style: str | None = None,
+        images: list[str] | None = None,
     ) -> FlowSnapshot:
         """F-001：创建/恢复会话，执行阶段一至二（检索+探针），路由 ask/done。
 
@@ -595,6 +616,8 @@ class ForgeService:
         ``session_id`` 非空表示**在同一会话开启新一轮**（多轮，2026-10-20）。
         ``base_turn_id`` 非空表示**以某一历史轮为基线**新开一轮（2026-11-05）。
         ``create_session`` 仅 /runs 使用：按前端预生成的 session_id 建容器（D-04）。
+        ``domain_override`` 非空表示用户显式指定领域（2026-11-14 领域包）。
+        ``style``/``images`` 仅 visual 域消费（2026-11-14 多模态）：None=沿用上一轮值。
         """
         session = await start_turn(
             self._sessions, user_id, session_id, create_missing=create_session
@@ -602,8 +625,6 @@ class ForgeService:
         try:
             # 多轮：本轮可以只给原句，项目路径沿用它所在会话的既有值
             project_root = project_root or str(session.data.get("project_root", ""))
-            if not project_root:
-                raise DevPromptError("项目路径不能为空", code=2001)
             # 上一轮的结论与完备度（决定本轮给几套；data 随后会被整体重置）
             previous_summary: dict[str, Any] = {}
             if self._turns is not None:
@@ -629,6 +650,13 @@ class ForgeService:
                 memory = await self._inherit_from_base_turn(user_id, memory, base_turn_id)
             if not memory.sentence:
                 raise DevPromptError("原句不能为空（当前会话也没有可沿用的目标）", code=1001)
+            # 领域路由（2026-11-14）：继承值在 data 重建前取出；带项目路径强制 code 包，
+            # 通用包允许空路径——2001 由「包是否依赖仓库」决定而非一律拒绝。
+            verdict = await self._route_domain(
+                project_root, memory.sentence, session.data.get("domain"), domain_override
+            )
+            if get_pack(verdict.domain).needs_repo and not project_root:
+                raise DevPromptError(tr("domain.code.repo_required", locale), code=2001)
             # 目标锚点（2026-11-05）：已有则追加合并（不重写 objective），无则按本轮原句新建。
             # 旧会话没有这个键，等价于「没有可继承的锚点」，不影响既有流程。
             next_index = previous_index + 1
@@ -645,6 +673,16 @@ class ForgeService:
             session.data = {
                 "sentence": memory.sentence,
                 "project_root": project_root,
+                "domain": verdict.model_dump(),
+                # 多模态（2026-11-14）：风格与参考图随请求传入，追问轮沿用上一轮值
+                "style": (
+                    style if style is not None else str(session.data.get("style", ""))
+                ),
+                "images": (
+                    list(images)
+                    if images is not None
+                    else [str(x) for x in session.data.get("images") or []]
+                ),
                 "last_request_id": request_id,
                 # 会话语言（2026-11-06）：由 Accept-Language 解析后随会话保留，历史轮沿用。
                 "locale": locale,
@@ -664,6 +702,16 @@ class ForgeService:
                     previous_turn_indexes if isinstance(previous_turn_indexes, list) else []
                 ),
             }
+            # 领域披露（2026-11-14）：通用域在时间线报「已识别领域」；兜底路由额外披露
+            if verdict.domain != "code":
+                pack = get_pack(verdict.domain)
+                await _notify(
+                    session,
+                    progress,
+                    tr("domain.detected", locale, name=tr(pack.name_key, locale)),
+                )
+                if verdict.source == "fallback":
+                    await _notify(session, progress, tr("domain.fallback_notice", locale))
             # 继承的方案与取证直接进本轮 data：agentic 循环据此判断能否跳过检索
             if previous_context_window and previous_context_window != current_context_window:
                 emit(
@@ -717,6 +765,47 @@ class ForgeService:
             raise
         finally:
             await self._end_trace(session)
+
+    async def _route_domain(
+        self,
+        project_root: str,
+        sentence: str,
+        previous: Any,
+        override: str | None,
+    ) -> DomainVerdict:
+        """两级领域路由：override > project > keyword > 会话继承 > LLM > 兜底。
+
+        确定性手段先行（零 LLM 成本，MUST-04）；继承优先级低于词表——同一会话的
+        连续性让位给本轮的显式领域词。LLM 分类失败回退兜底包，不阻塞主链。
+        """
+        if override:
+            if override not in KNOWN_DOMAIN_IDS:
+                raise DevPromptError(f"未知领域：{override}", code=1002)
+            return DomainVerdict(domain=cast(DomainId, override), source="override", confidence=1.0)
+        if project_root:
+            return DomainVerdict(domain="code", source="project", confidence=1.0)
+        hit = match_by_keyword(sentence)
+        if hit is not None:
+            return DomainVerdict(domain=hit[0], source="keyword", confidence=hit[1])
+        if isinstance(previous, dict):
+            try:
+                inherited = DomainVerdict.model_validate(previous)
+            except ValidationError:
+                emit_warning("domain.inherit_invalid")
+                inherited = None
+            if inherited is not None:
+                return inherited
+        return await self._domain_classifier.classify(sentence)
+
+    @staticmethod
+    def _domain_id(session: FlowSession) -> str:
+        """本轮领域 id；旧会话无 domain 键时视为 code（零回归）。"""
+        data = session.data.get("domain")
+        return str(data.get("domain", "code")) if isinstance(data, dict) else "code"
+
+    def _domain_pack(self, session: FlowSession) -> DomainPack:
+        """本轮领域包（动作白名单/断言 kinds 的来源）。"""
+        return get_pack(self._domain_id(session))
 
     async def _start_trace(self, session: FlowSession, request_id: str) -> None:
         """开启本轮 Trace（每次请求一个 segment；同一 turn 的追问是独立 segment）。"""
@@ -1038,7 +1127,13 @@ class ForgeService:
         request_id: str,
         progress: ProgressSink | None = None,
     ) -> FlowSnapshot:
-        """固定流水线（无 planner 时的回落路径）：检索 → 研判 → 生成 → 打分 → 交付。"""
+        """固定流水线（无 planner 时的回落路径）：检索 → 研判 → 生成 → 打分 → 交付。
+
+        通用域（2026-11-14 领域包）无仓库可检索，直接生成交付（研判由生成层的
+        反问机制承担，与 agentic 路径一致）。
+        """
+        if self._domain_id(session) != "code":
+            return await self._generate_and_finish(session, progress=progress)
         ok = await self._trace_span(
             "retrieve",
             {"sentence": sentence, "project_root": project_root},
@@ -1162,8 +1257,19 @@ class ForgeService:
                 # 不区分时调度层会看到「已生成 2 套」而直接 deliver，把第二轮的新指令
                 # 整个跳过（实测 R2/R3 正文与 R1 逐字相同、tokens=0）。
                 inherited_variant_count=max(0, variants_total - generated_now),
+                # 领域包（2026-11-14）：菜单只列本领域允许的动作（通用域无检索类动作）
+                allowed_actions=tuple(self._domain_pack(session).allowed_actions),
             )
             action = AgentAction(decision.action)
+            # 白名单兜底（2026-11-14）：模型越权选了本领域不允许的动作（或输出非法枚举），
+            # 一律降级为 generate 继续推进——通用域没有仓库证据，检索类动作必然空转。
+            if action not in self._domain_pack(session).allowed_actions:
+                emit_warning(
+                    "agent.action_filtered",
+                    action=decision.action,
+                    domain=self._domain_id(session),
+                )
+                action = AgentAction.GENERATE
             if action is AgentAction.DELEGATE and decision.delegation_orders:
                 # K6 多波来源：决策层草案先落会话，_act_delegate 据此构造工单列表
                 session.data["delegation_orders"] = [
@@ -2581,6 +2687,11 @@ class ForgeService:
             # 它们是最小充分证据，比上一轮方案正文更不可替代。
             target_excerpt=str(session.data.get("target_excerpt", "")),
             design_tokens=tuple(session.data.get("design_tokens") or ()),
+            # 领域包（2026-11-14）：模板据此切换分段语义与领域指令
+            domain_id=self._domain_id(session),
+            # 多模态（2026-11-14）：visual 域风格与图生图参考图
+            style_id=str(session.data.get("style", "")),
+            images=tuple(str(x) for x in session.data.get("images") or ()),
         )
 
     async def _generate_single_guarded(
@@ -2885,6 +2996,15 @@ class ForgeService:
         )
         # E11 改动归属：影响半径里未被任一 file 断言引用的文件 → YELLOW 披露
         attribution = self._build_attribution(session)
+        # 通用域（2026-11-14 领域包）：无仓库证据可核，改核方案自身结构完整性
+        structural = None
+        if self._domain_id(session) != "code":
+            variant = session.data.get("variant")
+            if isinstance(variant, dict):
+                structural = check_structural(
+                    str(variant.get("body", "")),
+                    [str(item) for item in variant.get("changes", []) if item],
+                )
         return evaluate_delivery(
             DeliveryInput(
                 has_target=bool(session.data.get("target")),
@@ -2893,6 +3013,7 @@ class ForgeService:
                 claims_undeclared=undeclared,
                 anchor_invalid_count=anchor_invalid,
                 attribution=attribution,
+                structural=structural,
             ),
             _session_locale(session),
         )
@@ -3431,6 +3552,9 @@ class ForgeService:
             evidence_stale=bool(session.data.get("evidence_stale")),
             reply_text=str(session.data.get("reply_text", "")),
             delivery_gate=_gate_view(session.data.get("delivery_gate")),
+            domain=(
+                session.data.get("domain") if isinstance(session.data.get("domain"), dict) else None
+            ),
         )
 
     async def _load_owned(self, user_id: str, session_id: str) -> FlowSession:

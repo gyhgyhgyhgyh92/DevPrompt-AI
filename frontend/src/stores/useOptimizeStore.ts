@@ -7,7 +7,7 @@ import type {
   UnknownItemPayload,
   VariantPayload,
 } from '../api/types'
-import { FlowSnapshotSchema } from '../schemas/optimize'
+import { FlowSnapshotSchema, type DomainVerdictPayload } from '../schemas/optimize'
 import type { ActionPayload, ThinkingItem } from '../schemas/stream'
 import type { SseStatus } from '../types'
 import type { RunEvent } from '../api/protocol'
@@ -68,6 +68,8 @@ interface OptimizeState {
   replyText: string
   /** 交付证据门（当前轮，2026-11-05 形态层）：null 表示未过门（进行中 / 反问中）。 */
   deliveryGate: DeliveryGatePayload | null
+  /** 领域路由结论（2026-11-14 领域包）：null 表示旧会话 / 尚未路由。 */
+  domain: DomainVerdictPayload | null
   /** 思考过程时间线（文字段与动作卡片按到达顺序排列）。 */
   thinking: readonly ThinkingItem[]
   /** 思考流进行中（传输层状态，不是 FlowState，MUST-07 不新增状态机态）。 */
@@ -114,6 +116,7 @@ const initialState: Pick<
   | 'evidenceStale'
   | 'replyText'
   | 'deliveryGate'
+  | 'domain'
   | 'thinking'
   | 'isThinking'
 > = {
@@ -138,6 +141,7 @@ const initialState: Pick<
   evidenceStale: false,
   replyText: '',
   deliveryGate: null,
+  domain: null,
   thinking: [],
   isThinking: false,
 }
@@ -242,6 +246,7 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
       replyText: snapshot.reply_text ?? '',
       // 交付证据门：null = 本轮未过门（进行中 / 反问中）
       deliveryGate: snapshot.delivery_gate ?? null,
+      domain: snapshot.domain ?? null,
       // 终态快照即思考结束：无论流何时关闭，都不留「思考中」
       isThinking: false,
     })),

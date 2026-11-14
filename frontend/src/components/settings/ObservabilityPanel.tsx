@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { createPortal } from 'react-dom'
 import { putSettings } from '../../api/endpoints'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { MetricsPanel } from '../../features/obs/MetricsPanel'
@@ -8,6 +7,7 @@ import { ReplayPanel } from '../../features/obs/ReplayPanel'
 import { SessionLogPanel } from '../../features/obs/SessionLogPanel'
 import { TracePanel } from '../../features/obs/TracePanel'
 import { makeS } from '../../utils/css'
+import { Tooltip } from '../ui/Tooltip'
 import { errorMessage } from './errorMessage'
 import styles from '../../features/obs/observability.module.css'
 
@@ -31,14 +31,11 @@ interface ModuleTip {
   scenarios: string
 }
 
-const TIP_MARGIN = 12
-const TIP_WIDTH = 300
-
 /**
  * 可观测性模块标签：悬停/聚焦时在标签下方显示中文气泡解释。
  *
- * 用 portal + fixed 定位，避免被设置弹窗的 `overflow: hidden` 裁切；
- * 位置按视口宽度夹紧，窄屏也不会左右溢出（2026-11-14）。
+ * 气泡实现复用通用组件 ui/Tooltip（portal + fixed 定位 + 视口夹紧 +
+ * role="tooltip" + aria-describedby），避免被设置弹窗的 overflow 裁切。
  */
 function ModuleTab(props: {
   tabKey: ViewKey
@@ -48,50 +45,20 @@ function ModuleTab(props: {
   sections: { definition: string; features: string; scenarios: string }
   onSelect: () => void
 }) {
-  const anchorRef = useRef<HTMLButtonElement | null>(null)
-  const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: -9999, left: -9999, maxWidth: TIP_WIDTH })
-  const tipId = `obs-module-tip-${props.tabKey}`
-
-  const place = (): void => {
-    const rect = anchorRef.current?.getBoundingClientRect()
-    if (rect === undefined) return
-    const maxWidth = Math.min(TIP_WIDTH, window.innerWidth - TIP_MARGIN * 2)
-    const centered = rect.left + rect.width / 2 - maxWidth / 2
-    const left = Math.min(Math.max(centered, TIP_MARGIN), window.innerWidth - maxWidth - TIP_MARGIN)
-    setPos({ top: rect.bottom + 8, left, maxWidth })
-  }
-
-  const show = (): void => {
-    place()
-    setOpen(true)
-  }
-
-  useEffect(() => {
-    if (!open) return undefined
-    const hide = (): void => setOpen(false)
-    window.addEventListener('resize', hide)
-    window.addEventListener('scroll', hide, true)
-    return () => {
-      window.removeEventListener('resize', hide)
-      window.removeEventListener('scroll', hide, true)
-    }
-  }, [open])
-
   return (
-    <span
-      className={s('obs-tab-wrap')}
-      onMouseEnter={show}
-      onMouseLeave={() => setOpen(false)}
-      onFocus={show}
-      onBlur={() => setOpen(false)}
+    <Tooltip
+      id={`obs-module-tip-${props.tabKey}`}
+      title={props.tip.title}
+      rows={[
+        { label: props.sections.definition, text: props.tip.definition },
+        { label: props.sections.features, text: props.tip.features },
+        { label: props.sections.scenarios, text: props.tip.scenarios },
+      ]}
     >
       <button
-        ref={anchorRef}
         type="button"
         role="tab"
         aria-selected={props.active}
-        aria-describedby={tipId}
         className={s(props.active ? 'obs-tab obs-tab--active' : 'obs-tab')}
         onClick={props.onSelect}
       >
@@ -100,31 +67,7 @@ function ModuleTab(props: {
           ⓘ
         </span>
       </button>
-      {createPortal(
-        <span
-          id={tipId}
-          role="tooltip"
-          data-open={open ? 'true' : 'false'}
-          className={s('obs-tip')}
-          style={{ top: `${pos.top}px`, left: `${pos.left}px`, maxWidth: `${pos.maxWidth}px` }}
-        >
-          <strong className={s('obs-tip__title')}>{props.tip.title}</strong>
-          <span className={s('obs-tip__row')}>
-            <span className={s('obs-tip__label')}>{props.sections.definition}</span>
-            {props.tip.definition}
-          </span>
-          <span className={s('obs-tip__row')}>
-            <span className={s('obs-tip__label')}>{props.sections.features}</span>
-            {props.tip.features}
-          </span>
-          <span className={s('obs-tip__row')}>
-            <span className={s('obs-tip__label')}>{props.sections.scenarios}</span>
-            {props.tip.scenarios}
-          </span>
-        </span>,
-        document.body,
-      )}
-    </span>
+    </Tooltip>
   )
 }
 

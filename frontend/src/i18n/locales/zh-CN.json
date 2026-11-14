@@ -1,4 +1,22 @@
 {
+  "domain": {
+    "badge_fallback": "已回退",
+    "code": { "name": "代码" },
+    "work": { "name": "工作" },
+    "life": { "name": "生活" },
+    "creative": { "name": "创意" },
+    "learning": { "name": "学习" },
+    "data": { "name": "数据" },
+    "marketing": { "name": "营销" },
+    "translation": { "name": "翻译" },
+    "legal": { "name": "法律" },
+    "medical": { "name": "医疗" },
+    "finance": { "name": "财务" },
+    "game": { "name": "游戏" },
+    "av": { "name": "音视频" },
+    "visual": { "name": "视觉生成" },
+    "operations": { "name": "运营" }
+  },
   "app": {
     "status_checking": "API 检测中",
     "status_ok": "API 正常",
@@ -44,7 +62,22 @@
     "stop_generation": "停止生成",
     "fallback_notice": "本轮生成异常，已降级为保守输出；内容可能不完整，建议重试。",
     "model_switch": "模型",
-    "model_follow_routing": "跟随路由"
+    "model_follow_routing": "跟随路由",
+    "domain_switch": "模式",
+    "domain_auto": "自动识别",
+    "style_switch": "风格",
+    "style_general": "通用",
+    "style_photography": "摄影向",
+    "style_creative": "创意解构",
+    "style_chinese_model": "中文美学",
+    "style_json_structured": "JSON 结构化",
+    "style_video": "视频生成",
+    "image_add": "添加参考图",
+    "image_remove": "移除图片",
+    "image_limit": "参考图最多 {{max}} 张",
+    "image_format": "仅支持 PNG/JPEG/WebP 图片",
+    "image_size": "单张图片不得超过 4MB",
+    "image_read_failed": "图片读取失败"
   },
   "validation": {
     "followup_mode_exclusive": "answers / escape / guardrail_action 三种模式必须且只能启用一种"
@@ -480,5 +513,91 @@
   },
   "gate": {
     "evidence_stale": "交付前检测到目标项目文件已变更，本方案基于上一轮取证结果，引用的行号与 token 出处可能已过期。建议重新提交一次以获得最新证据。"
+  },
+  "tooltip": {
+    "label_purpose": "作用",
+    "label_usage": "用法",
+    "domain": {
+      "auto": {
+        "title": "自动识别",
+        "purpose": "由系统判断你的需求属于哪一类，自动选择处理方式（检索代码库、追问澄清、产出提示词）。",
+        "usage": "直接描述你要做的事即可。带明显领域词（周报、分镜、文生图等）时会自动归类；需要精确控制时再手动指定模式。"
+      },
+      "code": {
+        "title": "代码工程",
+        "purpose": "在真实代码库里定位问题，产出带文件与行号锚点、可被 ripgrep 反向复核的工程级提示词。",
+        "usage": "填写项目路径并说明要改什么。系统会先取证、必要时反问，最后给出一套可执行方案。"
+      },
+      "work": {
+        "title": "工作事务",
+        "purpose": "产出周报、汇报、方案、邮件等事务类文档正文。",
+        "usage": "说明事项背景与受众；未指明篇幅或格式时按通用公文处理并标注（推断）。"
+      },
+      "life": {
+        "title": "生活事务",
+        "purpose": "行程、采购、健身、装修等生活事务的清单、流程与建议。",
+        "usage": "说明时间、地点、预算与个人偏好；缺项按通用方案处理并标注（推断）。"
+      },
+      "creative": {
+        "title": "创意创作",
+        "purpose": "故事、命名、口号、脑暴等创意类内容产出。",
+        "usage": "给出主题、载体与调性；可要求多个方向备选。"
+      },
+      "learning": {
+        "title": "学习教育",
+        "purpose": "课程、教案、复习计划、论文与考试等学习方案。",
+        "usage": "说明学习目标、当前水平与可用时间。"
+      },
+      "data": {
+        "title": "数据分析",
+        "purpose": "指标解读、数据清洗与可视化方案、报表结论梳理。",
+        "usage": "说明数据来源、统计口径与你要回答的问题；不接入真实数据。"
+      },
+      "marketing": {
+        "title": "文案营销",
+        "purpose": "营销文案、投放素材、社媒内容与增长策划。",
+        "usage": "说明品牌调性、投放渠道与目标人群；可要求多版本对比。"
+      },
+      "translation": {
+        "title": "翻译本地化",
+        "purpose": "多语言翻译与本地化改写，保持术语与语气一致。",
+        "usage": "给出原文与目标语言或地区；可指定术语表与禁用表达。"
+      },
+      "legal": {
+        "title": "法律合同",
+        "purpose": "合同、协议、合规文书的条款梳理与风险提示。",
+        "usage": "说明文书类型、关注条款与适用地区；不替代律师意见。"
+      },
+      "medical": {
+        "title": "医疗健康",
+        "purpose": "症状梳理、就医准备材料与康复记录整理。",
+        "usage": "描述症状、持续时间与既往情况；不作诊断，急症请及时就医。"
+      },
+      "finance": {
+        "title": "金融财务",
+        "purpose": "财报、税务、报销、预算等财务口径的解读与测算思路。",
+        "usage": "提供数据口径、统计期间与要回答的问题。"
+      },
+      "game": {
+        "title": "游戏设计",
+        "purpose": "玩法、关卡、数值与剧情的设计文档。",
+        "usage": "说明品类、目标体验与平台约束。"
+      },
+      "visual": {
+        "title": "视觉生成",
+        "purpose": "产出可直接粘贴进 Midjourney、即梦、Sora 的画面与视频提示词。",
+        "usage": "用大白话描述画面，可另选风格并添加参考图；不生成图片本身。"
+      },
+      "av": {
+        "title": "音视频脚本",
+        "purpose": "分镜表、口播稿、播客脚本等可直接开拍或录制的脚本。",
+        "usage": "说明时长、受众、平台与风格；未指明时按通用短视频处理并标注（推断）。"
+      },
+      "operations": {
+        "title": "运营策划",
+        "purpose": "活动、社群、用户增长与内容排期等运营方案。",
+        "usage": "说明目标、可投入资源、预算与时间节点。"
+      }
+    }
   }
 }

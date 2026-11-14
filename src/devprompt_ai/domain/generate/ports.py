@@ -39,6 +39,16 @@ class GenerationContext(BaseModel):
     target_excerpt: str = ""
     #: 设计令牌证据（rg 命中行，2026-11-11），供「一致性检查」段引用。
     design_tokens: tuple[str, ...] = ()
+    #: 领域包 id（2026-11-14 领域包）：模板据此切换分段语义、领域指令与 claims 规则。
+    #: 默认 "code"——旧调用方零改动；领域指令/分段文案由模板按包内 i18n 键渲染。
+    domain_id: str = "code"
+    #: 视觉生成风格（2026-11-14 多模态）：仅 visual 域消费；空串 = 通用风格。
+    #: 合法值见 domain.domains.packs.visual.VISUAL_STYLES；模板按
+    #: ``domain.visual.style.{style_id}`` i18n 键切领域指令，非法值回退通用。
+    style_id: str = ""
+    #: 图生图参考图（2026-11-14 多模态）：base64 data URL，仅 visual 域消费；
+    #: 生成层据此构造多模态消息（上限/格式由请求契约层校验）。
+    images: tuple[str, ...] = ()
 
 
 ClaimKind: TypeAlias = Literal["file", "symbol", "token", "line", "absence"]

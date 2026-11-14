@@ -66,6 +66,11 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "llm.request_params",
         "context.tier_changed",
         "trace.write_failed",
+        "domain.classify_failed",
+        "domain.classify_invalid",
+        "domain.classify_low_confidence",
+        "domain.inherit_invalid",
+        "agent.action_filtered",
     }
 )
 """SHOULD-08 固定事件名全集（made/skipped 同族计一项）。emit 之外的诊断日志用普通 logging。
@@ -75,6 +80,7 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
 2026-11-04 星型拓扑新增两事件：每步动作（action/index/duration_ms）与循环终止（reason）。
 2026-11-07 新增 decision.probe_empty：模型未给出任何判定（judgments 为空，参数畸形分支）。
 2026-11-08 新增 session.model_switch：F10 会话级模型热切换。
+2026-11-14 新增领域路由三事件：LLM 分类失败/非法领域回退、会话继承载荷畸形。
 """
 
 _telemetry_enabled = True

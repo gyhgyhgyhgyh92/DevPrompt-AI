@@ -147,6 +147,8 @@ class ScriptedDecider:
     #: 每次决策收到的可用方案套数与其中继承套数（2026-11-11）
     variant_counts: list[int] = field(default_factory=list)
     inherited_counts: list[int] = field(default_factory=list)
+    #: 每次决策收到的动作白名单（2026-11-14 领域包）
+    allowed_sets: list[frozenset[str] | None] = field(default_factory=list)
 
     async def next_action(
         self,
@@ -158,6 +160,7 @@ class ScriptedDecider:
         clarifications: Mapping[str, str],
         correction: str = "",
         inherited_variant_count: int = 0,
+        allowed_actions: Sequence[AgentAction] | None = None,
     ) -> NextActionOutput:
         out = self.actions[min(self.calls, len(self.actions) - 1)]
         self.calls += 1
@@ -165,6 +168,9 @@ class ScriptedDecider:
         # 2026-11-11：继承方案数透传（真实实现据此区分「本轮生成」与「上一轮旧方案」）
         self.variant_counts.append(variant_count)
         self.inherited_counts.append(inherited_variant_count)
+        self.allowed_sets.append(
+            frozenset(a.value for a in allowed_actions) if allowed_actions else None
+        )
         return out
 
     async def probe_facts(

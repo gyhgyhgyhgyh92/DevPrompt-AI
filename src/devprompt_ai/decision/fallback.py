@@ -8,24 +8,27 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
+from typing import Final
 
 from devprompt_ai.common.text import estimate_tokens
 from devprompt_ai.config import AppConfig
 from devprompt_ai.decision.prompts import (
+    ACTION_LINES,
     FACTS_SYSTEM,
     FACTS_USER,
-    NEXT_ACTION_SYSTEM,
     NEXT_ACTION_USER,
     RANK_SYSTEM,
     RANK_USER,
     SCORE_SYSTEM,
     SCORE_USER,
     facts_evidence,
+    next_action_enum,
+    next_action_system,
     plan_evidence,
     rank_evidence,
     score_evidence,
 )
-from devprompt_ai.domain.agent.action import AgentStep
+from devprompt_ai.domain.agent.action import AgentAction, AgentStep
 from devprompt_ai.domain.decision.port import (
     DecisionPort,
     FactProbeOutput,
@@ -45,6 +48,9 @@ from devprompt_ai.harness.llm import (
 from devprompt_ai.observability.logging import emit, emit_warning
 
 logger = logging.getLogger("devprompt.decision")
+
+#: 动作枚举全集（含 delegate）：allowed_actions=None 时 USER 枚举串与旧契约逐字一致。
+_ALL_ACTIONS: Final[tuple[str, ...]] = tuple(ACTION_LINES) + ("delegate",)
 
 
 def _fit_state(text: str, limit: int) -> str:
@@ -213,12 +219,20 @@ class LLMFallbackDecider:
         clarifications: Mapping[str, str],
         correction: str = "",
         inherited_variant_count: int = 0,
+        allowed_actions: Sequence[AgentAction] | None = None,
     ) -> NextActionOutput:
         """Agentic 调度：给定已发生的事实与动作序列，决定下一步做什么。
 
         与前三类能力的区别：它消费的是「本轮已走到哪」，不是「这组输入怎么判」。
         同样单次调用 + 结构化输出，不加调用轮次。
+        ``allowed_actions``（2026-11-14 领域包）：None 表示全部动作（旧调用方零改动）；
+        非空时 SYSTEM 菜单与 USER 枚举串只列白名单动作。
         """
+        allowed = (
+            [a.value for a in allowed_actions]
+            if allowed_actions is not None
+            else list(next_action_enum(_ALL_ACTIONS))
+        )
         fact_listing = "\n".join(
             f"- {f.key}: {'真' if f.passed else '假'}（证据：{f.evidence}）" for f in facts
         )
@@ -228,8 +242,14 @@ class LLMFallbackDecider:
             for s in steps
         )
         clarification_listing = "\n".join(f"- {q}：{a}" for q, a in clarifications.items())
+        # 白名单经 USER 枚举串二次注入（SYSTEM 菜单已过滤）；replace 而非 format，
+        # 避免与 NEXT_ACTION_USER 既有的 {evidence} 占位相互干扰。
+        user_template = NEXT_ACTION_USER.replace(
+            '"retrieve|probe|ask|generate|deliver|abort|reply|delegate"',
+            f'"{next_action_enum(allowed)}"',
+        )
         user = _fit_state(
-            NEXT_ACTION_USER.format(
+            user_template.format(
                 evidence=plan_evidence(
                     sentence,
                     fact_listing,
@@ -245,7 +265,7 @@ class LLMFallbackDecider:
         return await chat_structured(
             self._cfg,
             NextActionOutput,
-            NEXT_ACTION_SYSTEM,
+            next_action_system(allowed),
             user,
             timeout=self._cfg.llm_rank_timeout,
             purpose="decide",

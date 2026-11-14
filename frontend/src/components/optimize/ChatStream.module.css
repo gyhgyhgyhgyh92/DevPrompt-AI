@@ -87,6 +87,15 @@
   color: var(--color-text-muted);
 }
 
+/* 领域徽标（2026-11-14 领域包）：品牌行右侧小型 pill；fallback 源随文案附注 */
+.chat-reply__domain {
+  padding: 2px var(--space-2);
+  font-size: var(--text-micro);
+  color: var(--color-primary-700);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-full);
+}
+
 /* 多轮全文流（2026-10-20）：每轮完整铺开——用户气泡靠右、助手块靠左。
  * 2026-11-02 实测：历史轮次此前无列宽约束，铺满主区（1180）而当前轮是 820 居中，
  * 两段内容左右错位约 200px；此处与 .chat-stream 对齐（同列宽 + 同内边距）。 */

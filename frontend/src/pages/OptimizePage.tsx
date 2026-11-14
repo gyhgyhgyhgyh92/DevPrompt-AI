@@ -22,6 +22,7 @@ import { AgentTimeline } from '../components/optimize/AgentTimeline'
 import { EvidenceStaleNotice } from '../components/optimize/EvidenceStaleNotice'
 import { ChatStream } from '../components/optimize/ChatStream'
 import { ConsoleInput } from '../components/optimize/ConsoleInput'
+import { DomainSelect } from '../components/optimize/DomainSelect'
 import { TurnList } from '../components/optimize/TurnList'
 import { errorMessage } from '../components/settings/errorMessage'
 import { i18n } from '../i18n'
@@ -29,6 +30,7 @@ import { useSSE } from '../hooks/useSSE'
 import { useRunStream } from '../hooks/useRunStream'
 import { useOptimizeStore } from '../stores/useOptimizeStore'
 import { useHistoryStore } from '../stores/useHistoryStore'
+import { MAX_IMAGES, MAX_IMAGE_BYTES, type DomainId, type VisualStyle } from '../schemas/optimize'
 import { makeS } from '../utils/css'
 import chatStyles from '../components/optimize/ChatStream.module.css'
 import styles from './OptimizePage.module.css'
@@ -51,6 +53,24 @@ function resolveFlowView(status: string | null): Exclude<FlowView, 'thinking'> {
 /** 错误文案走统一降级链（按 code 查表 → 后端 message → fallback，N-7）。 */
 function toMessage(error: unknown): string {
   return errorMessage(error, i18n.t('common.request_failed'))
+}
+
+/** 视觉风格下拉选项（general 为缺省空值，不在列表中重复出现）。 */
+const VISUAL_STYLE_OPTIONS: VisualStyle[] = [
+  'photography',
+  'creative',
+  'chinese-model',
+  'json-structured',
+  'video',
+]
+
+/** 模式/风格选择跨会话记忆键（图片 data URL 不落盘）。 */
+const DOMAIN_MEMORY_KEY = 'devprompt.domainOverride'
+const STYLE_MEMORY_KEY = 'devprompt.visualStyle'
+
+/** 读 localStorage 字符串；存储内容不可信，由 useState 缺省值兜底。 */
+function storedOrEmpty(key: string): string {
+  return window.localStorage.getItem(key) ?? ''
 }
 
 /** 优化主页（设计文档 §1.1 对话流：无会话时居中输入卡片，有会话时图五对话流）。 */
@@ -76,6 +96,7 @@ export function OptimizePage() {
     evidenceStale,
     replyText,
     deliveryGate,
+    domain: domainVerdict,
   } = useOptimizeStore(
     useShallow((s) => ({
       sessionId: s.sessionId,
@@ -95,6 +116,7 @@ export function OptimizePage() {
       evidenceStale: s.evidenceStale,
       replyText: s.replyText,
       deliveryGate: s.deliveryGate,
+      domain: s.domain,
       thinking: s.thinking,
       isThinking: s.isThinking,
     })),
@@ -109,6 +131,16 @@ export function OptimizePage() {
   // F10 会话级模型切换：候选来自设置中心注册表；空串 = 跟随多模型路由
   const [modelOptions, setModelOptions] = useState<{ id: string; modelId: string }[]>([])
   const [modelOverride, setModelOverride] = useState('')
+  // 模式选择（2026-11-14 多模态）：空串 = 自动路由；选 visual 联动风格与参考图上传。
+  const [domainOverride, setDomainOverride] = useState<'' | DomainId>(
+    () => storedOrEmpty(DOMAIN_MEMORY_KEY) as '' | DomainId,
+  )
+  const [visualStyle, setVisualStyle] = useState<'' | VisualStyle>(
+    () => storedOrEmpty(STYLE_MEMORY_KEY) as '' | VisualStyle,
+  )
+  const [images, setImages] = useState<{ name: string; dataUrl: string }[]>([])
+  const [imageError, setImageError] = useState<string | null>(null)
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
   const streamRef = useRef<AbortController | null>(null)
   const runIdRef = useRef<string | null>(null)
   const [runSessionId, setRunSessionId] = useState<string | null>(null)
@@ -139,6 +171,61 @@ export function OptimizePage() {
     setSessionModel(sessionId, id).catch((error: unknown) => {
       setErrorMessage(toMessage(error))
     })
+  }
+
+  // 模式/风格切换：选择即持久化（空串 = 清除记忆，回到自动路由）
+  function handleDomainSwitch(value: string): void {
+    setDomainOverride(value as '' | DomainId)
+    if (value === '') window.localStorage.removeItem(DOMAIN_MEMORY_KEY)
+    else window.localStorage.setItem(DOMAIN_MEMORY_KEY, value)
+  }
+
+  function handleVisualStyleChange(value: string): void {
+    setVisualStyle(value as '' | VisualStyle)
+    if (value === '') window.localStorage.removeItem(STYLE_MEMORY_KEY)
+    else window.localStorage.setItem(STYLE_MEMORY_KEY, value)
+  }
+
+  function fileToDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(file)
+    })
+  }
+
+  /** 参考图挑选：逐张校验数量/格式/体积（与后端 validate_images 对齐），行内提示不弹窗。 */
+  async function handleImagePick(fileList: FileList | null): Promise<void> {
+    if (fileList === null || fileList.length === 0) return
+    setImageError(null)
+    const accepted: { name: string; dataUrl: string }[] = [...images]
+    let error: string | null = null
+    for (const file of Array.from(fileList)) {
+      if (accepted.length >= MAX_IMAGES) {
+        error = t('optimize.image_limit', { max: MAX_IMAGES })
+        break
+      }
+      if (file.type !== 'image/png' && file.type !== 'image/jpeg' && file.type !== 'image/webp') {
+        error = t('optimize.image_format')
+        continue
+      }
+      if (file.size > MAX_IMAGE_BYTES) {
+        error = t('optimize.image_size')
+        continue
+      }
+      const dataUrl = await fileToDataUrl(file).catch((err: unknown) => {
+        console.error(err)
+        return ''
+      })
+      if (dataUrl === '') {
+        error = t('optimize.image_read_failed')
+        continue
+      }
+      accepted.push({ name: file.name, dataUrl })
+    }
+    setImages(accepted)
+    if (error !== null) setImageError(error)
   }
 
   // 多端协议：订阅本次 run 的会话事件流；快照到达后刷新轮次与历史列表。
@@ -387,6 +474,8 @@ export function OptimizePage() {
         project: nextProject,
         sentence: nextSentence,
         base_turn_id: baseTurnId,
+        // 领域恒自动路由（2026-11-14 用户裁定：前端无手动入口）
+        domain: undefined,
       })
       started = true
       runIdRef.current = record.run_id
@@ -423,6 +512,13 @@ export function OptimizePage() {
           project: nextProject,
           session_id: activeSessionId ?? undefined,
           base_turn_id: baseTurnId,
+          // 模式选择（2026-11-14 多模态）：空串 = 自动路由；选 visual 附风格与参考图
+          domain: domainOverride === '' ? undefined : domainOverride,
+          style: domainOverride === 'visual' && visualStyle !== '' ? visualStyle : undefined,
+          images:
+            domainOverride === 'visual' && images.length > 0
+              ? images.map((img) => img.dataUrl)
+              : undefined,
         },
         {
           onThought: (text, phase) => useOptimizeStore.getState().appendThought(text, phase),
@@ -455,6 +551,80 @@ export function OptimizePage() {
     }
   }
 
+  /** 模式选择 + 视觉联动行：hero 输入视图与对话流 composer 共用同一份 state（2026-11-14 多模态）。 */
+  function renderModeControls() {
+    return (
+      <>
+        <label className={s('optimize-page__model-switch')}>
+          <span>{t('optimize.domain_switch')}</span>
+          <DomainSelect
+            value={domainOverride}
+            disabled={isThinking}
+            onChange={(next) => handleDomainSwitch(next)}
+          />
+        </label>
+        {domainOverride === 'visual' ? (
+          <div className={s('optimize-page__visual-row')}>
+            <label className={s('optimize-page__model-switch optimize-page__style-switch')}>
+              <span>{t('optimize.style_switch')}</span>
+              <select
+                value={visualStyle}
+                disabled={isThinking}
+                onChange={(e) => handleVisualStyleChange(e.target.value)}
+              >
+                <option value="">{t('optimize.style_general')}</option>
+                {VISUAL_STYLE_OPTIONS.map((style) => (
+                  <option key={style} value={style}>
+                    {t(`optimize.style_${style.replace(/-/g, '_')}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              multiple
+              hidden
+              onChange={(e) => {
+                void handleImagePick(e.target.files)
+                e.target.value = ''
+              }}
+            />
+            <button
+              type="button"
+              className={s('optimize-page__image-add')}
+              disabled={isThinking}
+              onClick={() => imageInputRef.current?.click()}
+            >
+              {t('optimize.image_add')}
+            </button>
+            {imageError !== null ? (
+              <span className={s('optimize-page__image-error')}>{imageError}</span>
+            ) : null}
+            {images.length > 0 ? (
+              <div className={s('optimize-page__images')}>
+                {images.map((img, index) => (
+                  <span key={`${img.name}-${index}`} className={s('optimize-page__image-chip')}>
+                    <img src={img.dataUrl} alt={img.name} />
+                    <button
+                      type="button"
+                      aria-label={t('optimize.image_remove')}
+                      disabled={isThinking}
+                      onClick={() => setImages((prev) => prev.filter((_, i) => i !== index))}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </>
+    )
+  }
+
   // 思考中优先于一切：提交后立即离开输入页，不等后端返回
   const view: FlowView = isThinking ? 'thinking' : resolveFlowView(status)
 
@@ -467,6 +637,7 @@ export function OptimizePage() {
             initialSentence={sentence}
             initialProject={project}
             isHero
+            modeControls={renderModeControls()}
             onSubmit={(nextSentence, nextProject) => {
               void handleOptimizeSubmit(nextSentence, nextProject)
             }}
@@ -510,6 +681,7 @@ export function OptimizePage() {
               cleared={cleared}
               variant={variant}
               deliveryGate={deliveryGate}
+              domainVerdict={domainVerdict}
               elapsedSeconds={elapsedSeconds}
               errorMessage={errorMessage}
               isBusy={isBusy || isSubmitting}
@@ -546,6 +718,7 @@ export function OptimizePage() {
               initialProject={project}
               projectOptional
               disabled={isThinking}
+              modeControls={renderModeControls()}
               onSubmit={(nextSentence, nextProject) => {
                 void handleOptimizeSubmit(nextSentence, nextProject)
               }}

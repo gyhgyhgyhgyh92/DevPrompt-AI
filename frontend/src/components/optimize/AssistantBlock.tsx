@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DeliveryGatePayload, VariantPayload } from '../../api/types'
+import type { DomainVerdictPayload } from '../../schemas/optimize'
 import { DeliveryGateCard } from './DeliveryGateCard'
 import { PromptCard } from './PromptCard'
 import styles from './ChatStream.module.css'
@@ -23,6 +24,8 @@ interface AssistantBlockProps {
   steps?: readonly Record<string, unknown>[]
   /** 交付证据门结果；undefined/null 表示本轮未过门。 */
   gate?: DeliveryGatePayload | null
+  /** 领域路由结论（2026-11-14 领域包）：null 表示旧会话缺省，不渲染徽标。 */
+  domainVerdict?: DomainVerdictPayload | null
   /** 本轮唯一方案；null 表示未产出（反问中 / 纯回答轮）。 */
   variant?: VariantPayload | null
   /** 纯回答轮正文。 */
@@ -53,6 +56,7 @@ export function AssistantBlock({
   planning,
   steps,
   gate,
+  domainVerdict = null,
   variant = null,
   replyText = '',
   message = '',
@@ -68,6 +72,14 @@ export function AssistantBlock({
       <header className={s('chat-reply__head')}>
         <span className={s('chat-reply__mark')} aria-hidden="true" />
         <span className={s('chat-reply__brand')}>DevPrompt AI</span>
+        {domainVerdict ? (
+          <span className={s('chat-reply__domain')}>
+            {t(`domain.${domainVerdict.domain}.name`, domainVerdict.domain)}
+            {domainVerdict.source === 'fallback'
+              ? ` · ${t('domain.badge_fallback')}`
+              : null}
+          </span>
+        ) : null}
         {header}
       </header>
 

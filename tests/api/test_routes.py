@@ -99,6 +99,9 @@ class FakeForgeService:
         session_id: str | None = None,
         base_turn_id: str = "",
         locale: str = "zh-CN",
+        domain_override: str | None = None,
+        style: str | None = None,
+        images: list[str] | None = None,
     ) -> FlowSnapshot:
         self.optimize_calls.append(
             {

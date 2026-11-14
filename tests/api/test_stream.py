@@ -51,6 +51,9 @@ class FakeStreamService:
         progress: Any = None,
         session_id: str | None = None,
         locale: str = "zh-CN",
+        domain_override: str | None = None,
+        style: str | None = None,
+        images: list[str] | None = None,
     ) -> FlowSnapshot:
         self.calls.append(
             {"user_id": user_id, "project": project_root, "sentence": sentence, "rid": request_id}

@@ -1062,7 +1062,13 @@ src/devprompt_ai/
 │   ├── delivery/
 │   │   ├── __init__.py        包声明
 │   │   ├── gate.py            交付证据门（GREEN/YELLOW/RED 三态，纯函数；只读证据不产出证据）
-│   │   └── attribution.py     交付归属（E11：影响半径 × file 断言差集 → 三色；2026-11-08 接 gate）
+│   │   ├── attribution.py     交付归属（E11：影响半径 × file 断言差集 → 三色；2026-11-08 接 gate）
+│   │   └── structural.py      通用域结构化校验（2026-11-14 领域包：四段齐备/交付物/占位符，纯函数）
+│   ├── domains/               领域包模块（2026-11-14：纯数据零 I/O；路由判定关键词在 rules、LLM 在 decision/domains）
+│   │   ├── ports.py           DomainId / DomainPack / DomainVerdict 契约
+│   │   ├── registry.py        包注册表（code/work/life/creative；get_pack / all_packs）
+│   │   ├── rules.py           确定性关键词路由（纯函数，第一级路由）
+│   │   └── packs/             四个预置领域包（每包声明 needs_repo/动作白名单/断言 kinds/词表/i18n 键）
 │   ├── generate/
 │   │   ├── ports.py           Protocol 定义（LLM 调用）
 │   │   ├── anchors.py         锚点抽取与核验（C 核验并入 B；纯函数）
@@ -1082,7 +1088,8 @@ src/devprompt_ai/
 │       └── replay/             录制索引（playback）、快照归一化（normalize）、比对（compare）
 ├── decision/                  决策层实现（单一 LLM 实现）
 │   ├── fallback.py            LLM 决策实现（原 JevDecider 已于 2026-10-15 移除）
-│   └── prompts.py             决策问题模板
+│   ├── domains.py             领域分类 LLM 实现（2026-11-14 领域包第二级路由；失败回退兜底包）
+│   └── prompts.py             决策问题模板（next_action_system 按领域白名单动态拼装动作菜单）
 ├── harness/
 │   ├── adapters/            【2026-09-17】协议适配层（按 provider 分流 API 形态）
 │   │   ├── __init__.py      build_adapter() + supported_adapter_kinds()

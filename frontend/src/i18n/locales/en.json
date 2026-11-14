@@ -1,4 +1,22 @@
 {
+  "domain": {
+    "badge_fallback": "fallback",
+    "code": { "name": "Code" },
+    "work": { "name": "Work" },
+    "life": { "name": "Life" },
+    "creative": { "name": "Creative" },
+    "learning": { "name": "Learning" },
+    "data": { "name": "Data" },
+    "marketing": { "name": "Marketing" },
+    "translation": { "name": "Translation" },
+    "legal": { "name": "Legal" },
+    "medical": { "name": "Medical" },
+    "finance": { "name": "Finance" },
+    "game": { "name": "Game" },
+    "av": { "name": "A/V" },
+    "visual": { "name": "Visual" },
+    "operations": { "name": "Operations" }
+  },
   "app": {
     "status_checking": "Checking API",
     "status_ok": "API OK",
@@ -44,7 +62,22 @@
     "stop_generation": "Stop generating",
     "fallback_notice": "Generation failed this turn and fell back to a conservative draft; the result may be incomplete — retry for a full plan.",
     "model_switch": "Model",
-    "model_follow_routing": "Follow routing"
+    "model_follow_routing": "Follow routing",
+    "domain_switch": "Mode",
+    "domain_auto": "Auto detect",
+    "style_switch": "Style",
+    "style_general": "General",
+    "style_photography": "Photography",
+    "style_creative": "Creative",
+    "style_chinese_model": "Chinese aesthetics",
+    "style_json_structured": "JSON structured",
+    "style_video": "Video",
+    "image_add": "Add reference image",
+    "image_remove": "Remove image",
+    "image_limit": "Up to {{max}} reference images",
+    "image_format": "Only PNG/JPEG/WebP images are supported",
+    "image_size": "Each image must be 4MB or less",
+    "image_read_failed": "Failed to read image"
   },
   "validation": {
     "followup_mode_exclusive": "Exactly one of answers / escape / guardrail_action must be set"
@@ -480,5 +513,91 @@
   },
   "gate": {
     "evidence_stale": "Project files changed before delivery; this plan is based on the previous turn's evidence, so the referenced line numbers and tokens may be stale. Submit again to refresh the evidence."
+  },
+  "tooltip": {
+    "label_purpose": "What it does",
+    "label_usage": "How to use",
+    "domain": {
+      "auto": {
+        "title": "Auto detect",
+        "purpose": "The system decides which kind of request this is and picks the handling path (repo search, clarifying questions, prompt drafting).",
+        "usage": "Just describe what you need. Obvious domain words (weekly report, storyboard, text-to-image) route automatically; pick a mode manually only when you need precise control."
+      },
+      "code": {
+        "title": "Code engineering",
+        "purpose": "Locates the issue in a real repository and produces an engineering-grade prompt with file and line anchors that ripgrep can re-verify.",
+        "usage": "Fill in the project path and describe the change. The system gathers evidence, asks when needed, then returns one actionable plan."
+      },
+      "work": {
+        "title": "Work & documents",
+        "purpose": "Drafts weekly reports, summaries, proposals, emails and similar business documents.",
+        "usage": "Describe the context and the audience; unspecified length or format falls back to a generic official style and is marked as inferred."
+      },
+      "life": {
+        "title": "Everyday planning",
+        "purpose": "Lists, procedures and advice for travel, purchases, fitness, moving and home projects.",
+        "usage": "Mention timing, location, budget and personal preferences; missing details fall back to a generic plan and are marked as inferred."
+      },
+      "creative": {
+        "title": "Creative writing",
+        "purpose": "Stories, naming, slogans and brainstorming output.",
+        "usage": "Give the theme, medium and tone; ask for several directions if you want alternatives."
+      },
+      "learning": {
+        "title": "Learning & teaching",
+        "purpose": "Course outlines, lesson plans, revision schedules, papers and exam prep.",
+        "usage": "State the learning goal, current level and available study time."
+      },
+      "data": {
+        "title": "Data analysis",
+        "purpose": "Metric interpretation, cleaning and visualization plans, and report takeaways.",
+        "usage": "Describe the data source, statistical definitions and the questions to answer; no live data is connected."
+      },
+      "marketing": {
+        "title": "Marketing copy",
+        "purpose": "Campaign copy, ad creatives, social posts and growth plans.",
+        "usage": "Describe brand voice, channel and audience; request side-by-side variants if useful."
+      },
+      "translation": {
+        "title": "Translation & localization",
+        "purpose": "Translation and localized rewriting with consistent terminology and tone.",
+        "usage": "Provide the source text and target language or region; optionally specify a glossary and forbidden wording."
+      },
+      "legal": {
+        "title": "Legal & contracts",
+        "purpose": "Clause breakdown and risk notes for contracts, agreements and compliance documents.",
+        "usage": "State the document type, clauses of interest and jurisdiction; this does not replace legal advice."
+      },
+      "medical": {
+        "title": "Medical & health",
+        "purpose": "Symptom organization, preparation material for appointments and recovery notes.",
+        "usage": "Describe symptoms, duration and history; this is not a diagnosis — seek care for emergencies."
+      },
+      "finance": {
+        "title": "Finance & accounting",
+        "purpose": "Interpretation and calculation approaches for reports, tax, expenses and budgets.",
+        "usage": "Provide the data definitions, the period and the questions to answer."
+      },
+      "game": {
+        "title": "Game design",
+        "purpose": "Design documents for mechanics, levels, numbers and narrative.",
+        "usage": "State the genre, target experience and platform constraints."
+      },
+      "visual": {
+        "title": "Visual generation",
+        "purpose": "Produces image and video prompts you can paste straight into Midjourney, Jimeng or Sora.",
+        "usage": "Describe the scene in plain language, optionally pick a style and attach reference images; it does not render images."
+      },
+      "av": {
+        "title": "Audio & video scripts",
+        "purpose": "Storyboards, voiceover drafts and podcast scripts that are ready to shoot or record.",
+        "usage": "State duration, audience, platform and style; unspecified items fall back to a generic short video and are marked as inferred."
+      },
+      "operations": {
+        "title": "Operations planning",
+        "purpose": "Campaign, community, growth and content scheduling plans.",
+        "usage": "Describe the goal, available resources, budget and timeline."
+      }
+    }
   }
 }

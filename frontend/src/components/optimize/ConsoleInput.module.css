@@ -344,6 +344,21 @@
   background: var(--hover);
 }
 
+/* 「选择项目」行右侧插槽：页面层注入的模式/风格/参考图控件（2026-11-14 多模态）。
+   >label/>div 归零 padding——注入的控件自带 composer 行距，卡片内不需要。 */
+.console-input__mode-slot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+.console-input__mode-slot > label,
+.console-input__mode-slot > div {
+  padding-inline: 0;
+}
+
 .console-input__error {
   margin-block-start: var(--space-2);
   font-size: var(--text-body-xs);

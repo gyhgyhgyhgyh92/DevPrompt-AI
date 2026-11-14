@@ -48,6 +48,8 @@ export const StartRunRequestSchema = z.object({
   sentence: z.string().default(''),
   base_turn_id: z.string().default(''),
   locale: z.string().default('zh-CN'),
+  /** 领域覆盖（2026-11-14 领域包）：缺省 = 自动路由。 */
+  domain: z.enum(['code', 'work', 'life', 'creative']).nullish(),
 })
 
 /** 入参类型用 z.input：带默认值的字段（locale 等）对调用方是可选的。 */

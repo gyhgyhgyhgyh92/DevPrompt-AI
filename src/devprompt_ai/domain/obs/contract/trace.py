@@ -289,16 +289,26 @@ def preview(value: dict[str, Any], limit: int = 500) -> dict[str, Any]:
 
 
 def mask_secrets(value: object) -> Any:
-    """递归掩码密钥字段；其余内容按用户批准保留明文。"""
+    """递归掩码密钥字段；其余内容按用户批准保留明文。
+
+    ``images`` 键（2026-11-14 多模态）：base64 参考图不入 trace，只留数量与体积标记。
+    """
     if isinstance(value, dict):
         masked: dict[str, Any] = {}
         for key, item in value.items():
             lowered = str(key).lower()
             if any(part in lowered for part in _SECRET_KEY_PARTS):
                 masked[str(key)] = "***"
+            elif lowered == "images" and isinstance(item, (list, tuple)):
+                masked[str(key)] = _mask_images(item)
             else:
                 masked[str(key)] = mask_secrets(item)
         return masked
     if isinstance(value, (list, tuple)):
         return [mask_secrets(item) for item in value]
     return value
+
+
+def _mask_images(items: list[Any] | tuple[Any, ...]) -> list[str]:
+    """图像列表 → 占位符（保留张数与粗略体积，便于回放时判断 payload 规模）。"""
+    return [f"[image{index + 1}: ~{len(str(raw)) // 1024}KB]" for index, raw in enumerate(items)]

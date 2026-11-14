@@ -32,7 +32,7 @@ from openai import AsyncOpenAI
 from openai.types.responses import ResponseOutputMessage, ResponseTextDeltaEvent
 
 from devprompt_ai.domain.model.tuning import anthropic_thinking
-from devprompt_ai.harness.adapters.base import BaseNativeModel
+from devprompt_ai.harness.adapters.base import BaseNativeModel, parse_image_data_url
 
 #: Anthropic API 版本头（官方要求；缺省会 400）。
 _ANTHROPIC_VERSION = "2023-06-01"
@@ -94,16 +94,52 @@ class AnthropicNativeModel(BaseNativeModel):
             return system, [{"role": "user", "content": user_input}]
         messages: list[dict[str, Any]] = []
         for item in user_input:
-            raw = getattr(item, "raw_item", item)
-            role = str(getattr(raw, "role", "user"))
-            content = getattr(raw, "content", "")
+            raw = item if isinstance(item, dict) else getattr(item, "raw_item", item)
+            role = str(
+                raw.get("role", "user")
+                if isinstance(raw, dict)
+                else getattr(raw, "role", "user")
+            )
+            content = (
+                raw.get("content", "") if isinstance(raw, dict) else getattr(raw, "content", "")
+            )
             if isinstance(content, list):
-                text = "".join(
-                    str(getattr(block, "text", "")) for block in content if hasattr(block, "text")
+                # 图像 item（2026-11-14 多模态）：input_image → Anthropic base64 源块；
+                # 无图像时保持原 join 文本行为（零回归）。
+                has_image = any(
+                    isinstance(block, dict) and block.get("type") == "input_image"
+                    for block in content
                 )
+                if not has_image:
+                    text = "".join(
+                        str(getattr(block, "text", ""))
+                        for block in content
+                        if hasattr(block, "text")
+                    )
+                    messages.append({"role": role, "content": text})
+                    continue
+                blocks: list[dict[str, Any]] = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "input_image":
+                        parsed = parse_image_data_url(str(block.get("image_url", "")))
+                        if parsed:
+                            media_type, data = parsed
+                            blocks.append(
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": media_type,
+                                        "data": data,
+                                    },
+                                }
+                            )
+                    elif hasattr(block, "text"):
+                        blocks.append({"type": "text", "text": str(getattr(block, "text", ""))})
+                messages.append({"role": role, "content": blocks or [{"type": "text", "text": ""}]})
             else:
                 text = str(content)
-            messages.append({"role": role, "content": text})
+                messages.append({"role": role, "content": text})
         return system, messages or [{"role": "user", "content": ""}]
 
     @staticmethod

@@ -76,13 +76,13 @@ class TestTaskBoundary:
             ("standard", STANDARD_TEMPLATE),
             ("conservative", CONSERVATIVE_TEMPLATE),
         ):
-            assert TASK_NOT_EXECUTE in tpl.system("zh-CN"), f"{name} 模板缺边界声明"
+            assert TASK_NOT_EXECUTE in tpl.system("zh-CN", "code"), f"{name} 模板缺边界声明"
 
     def test_templates_keep_their_original_constraints(self) -> None:
         """边界声明是**附加**，不得覆盖各模板原有约束。"""
-        assert "待确认清单" in CONSERVATIVE_TEMPLATE.system("zh-CN")
-        assert "（推断）" in STANDARD_TEMPLATE.system("zh-CN")
-        assert "禁止编造" in STANDARD_TEMPLATE.system("zh-CN")
+        assert "待确认清单" in CONSERVATIVE_TEMPLATE.system("zh-CN", "code")
+        assert "（推断）" in STANDARD_TEMPLATE.system("zh-CN", "code")
+        assert "禁止编造" in STANDARD_TEMPLATE.system("zh-CN", "code")
 
 
 class TestNonGoals:
@@ -138,7 +138,7 @@ class TestVerifiableAnchor:
 
     def test_standard_template_absorbs_the_hard_rule(self) -> None:
         """M-6 并入 B：路径与行号只能来自片段，禁止编造（C 档已删除）。"""
-        system = STANDARD_TEMPLATE.system("zh-CN")
+        system = STANDARD_TEMPLATE.system("zh-CN", "code")
         assert "只能来自下方「目标代码片段」" in system
         assert "禁止编造" in system
 
@@ -175,5 +175,5 @@ class TestJsonStrictRules:
         from devprompt_ai.harness.llm import _instructions
 
         cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
-        instructions = _instructions(cfg, STANDARD_TEMPLATE.system("zh-CN"), "{}")
+        instructions = _instructions(cfg, STANDARD_TEMPLATE.system("zh-CN", "code"), "{}")
         assert JSON_STRICT_RULES in instructions

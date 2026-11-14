@@ -54,6 +54,9 @@ class RunManager:
         request_id: str,
         base_turn_id: str = "",
         locale: Locale = DEFAULT_LOCALE,
+        domain: str | None = None,
+        style: str | None = None,
+        images: list[str] | None = None,
     ) -> RunRecord:
         if not session_id.strip():
             raise DevPromptError("session_id 不能为空", code=2001)
@@ -89,6 +92,9 @@ class RunManager:
                 request_id=request_id,
                 base_turn_id=base_turn_id,
                 locale=locale,
+                domain=domain,
+                style=style,
+                images=images,
             )
         )
         self._tasks[run_id] = task
@@ -117,6 +123,9 @@ class RunManager:
         request_id: str,
         base_turn_id: str,
         locale: Locale,
+        domain: str | None = None,
+        style: str | None = None,
+        images: list[str] | None = None,
     ) -> None:
         sink = EventSink(self._bus, session_id, run_id)
         try:
@@ -135,6 +144,9 @@ class RunManager:
                     # 前端在 POST /runs 前用 crypto.randomUUID() 生成 session_id，
                     # 执行侧按该 id 建容器（D-04），否则新会话直接 6003。
                     create_session=True,
+                    domain_override=domain,
+                    style=style,
+                    images=images,
                 ),
                 timeout=timeout,
             )

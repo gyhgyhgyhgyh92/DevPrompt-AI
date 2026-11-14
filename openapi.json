@@ -842,6 +842,30 @@
         "title": "DeliveryGatePayload",
         "type": "object"
       },
+      "DomainVerdictPayload": {
+        "description": "领域路由结论（2026-11-14 领域包）：domain/source/confidence 三要素。",
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain",
+          "source",
+          "confidence"
+        ],
+        "title": "DomainVerdictPayload",
+        "type": "object"
+      },
       "FactPayload": {
         "description": "取证事实只读透出（F-104 七项判定结果）。\n\n``applicable`` 不进契约：它是内部档位判定依据，前端不需要按项目类型分支渲染。",
         "properties": {
@@ -934,6 +958,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/DeliveryGatePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DomainVerdictPayload"
               },
               {
                 "type": "null"
@@ -1835,6 +1869,48 @@
             "title": "Base Turn Id",
             "type": "string"
           },
+          "domain": {
+            "anyOf": [
+              {
+                "enum": [
+                  "code",
+                  "work",
+                  "life",
+                  "creative",
+                  "learning",
+                  "data",
+                  "marketing",
+                  "translation",
+                  "legal",
+                  "medical",
+                  "finance",
+                  "game",
+                  "visual",
+                  "av",
+                  "operations"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "images": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Images"
+          },
           "project": {
             "default": "",
             "title": "Project",
@@ -1855,6 +1931,25 @@
               }
             ],
             "title": "Session Id"
+          },
+          "style": {
+            "anyOf": [
+              {
+                "enum": [
+                  "general",
+                  "photography",
+                  "creative",
+                  "chinese-model",
+                  "json-structured",
+                  "video"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style"
           }
         },
         "title": "OptimizeRequest",
@@ -2466,6 +2561,48 @@
             "title": "Base Turn Id",
             "type": "string"
           },
+          "domain": {
+            "anyOf": [
+              {
+                "enum": [
+                  "code",
+                  "work",
+                  "life",
+                  "creative",
+                  "learning",
+                  "data",
+                  "marketing",
+                  "translation",
+                  "legal",
+                  "medical",
+                  "finance",
+                  "game",
+                  "visual",
+                  "av",
+                  "operations"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "images": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Images"
+          },
           "locale": {
             "default": "zh-CN",
             "title": "Locale",
@@ -2486,6 +2623,25 @@
             "minLength": 1,
             "title": "Session Id",
             "type": "string"
+          },
+          "style": {
+            "anyOf": [
+              {
+                "enum": [
+                  "general",
+                  "photography",
+                  "creative",
+                  "chinese-model",
+                  "json-structured",
+                  "video"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style"
           }
         },
         "required": [

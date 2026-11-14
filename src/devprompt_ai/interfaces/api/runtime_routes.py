@@ -13,12 +13,17 @@ from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Header, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale
 from devprompt_ai.domain.errors import DevPromptError, StateError
 from devprompt_ai.interfaces.api.routes import _USER_ID, _snapshot_payload, get_service
-from devprompt_ai.interfaces.api.schemas import ApiResponse, ArtifactResponse, SessionModelResponse
+from devprompt_ai.interfaces.api.schemas import (
+    ApiResponse,
+    ArtifactResponse,
+    SessionModelResponse,
+    validate_images,
+)
 from devprompt_ai.runtime.artifacts import read_tool_artifact
 from devprompt_ai.runtime.bootstrap import RuntimeBundle, get_runtime
 from devprompt_ai.runtime.events import EventBus, follow
@@ -36,6 +41,46 @@ class StartRunRequest(BaseModel):
     sentence: str = ""
     base_turn_id: str = ""
     locale: str = "zh-CN"
+    #: 领域覆盖（2026-11-14 领域包）：None=自动路由；白名单与 KNOWN_DOMAIN_IDS 同步
+    domain: (
+        Literal[
+            "code",
+            "work",
+            "life",
+            "creative",
+            "learning",
+            "data",
+            "marketing",
+            "translation",
+            "legal",
+            "medical",
+            "finance",
+            "game",
+            "visual",
+            "av",
+            "operations",
+        ]
+        | None
+    ) = None
+    #: 视觉生成风格（2026-11-14 多模态）：仅 domain="visual" 时生效
+    style: (
+        Literal[
+            "general",
+            "photography",
+            "creative",
+            "chinese-model",
+            "json-structured",
+            "video",
+        ]
+        | None
+    ) = None
+    #: 图生图参考图（base64 data URL）：仅 domain="visual" 接受，校验规则同 /optimize
+    images: list[str] | None = None
+
+    @model_validator(mode="after")
+    def _validate_images(self) -> StartRunRequest:
+        validate_images(self.images, self.domain)
+        return self
 
 
 class InterventionAnswerRequest(BaseModel):
@@ -84,6 +129,9 @@ async def start_run(
         request_id=request_id,
         base_turn_id=req.base_turn_id,
         locale=cast(Locale, req.locale) if req.locale else DEFAULT_LOCALE,
+        domain=req.domain,
+        style=req.style,
+        images=req.images,
     )
     return ApiResponse(
         data={

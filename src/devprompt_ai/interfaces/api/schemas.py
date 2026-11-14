@@ -6,11 +6,43 @@ ApiResponse 泛型化：data 体类型进 OpenAPI，供前端类型生成精确�
 
 from __future__ import annotations
 
-from typing import Any, Generic, Literal, TypeVar
+import base64
+import binascii
+from typing import Any, Final, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, Field, model_validator
 
 DataT = TypeVar("DataT")
+
+#: 图生图参考图上限（2026-11-14 多模态）。
+MAX_IMAGES: Final[int] = 3
+MAX_IMAGE_BYTES: Final[int] = 4 * 1024 * 1024
+_IMAGE_MEDIA_TYPES: Final[tuple[str, ...]] = ("image/png", "image/jpeg", "image/webp")
+
+
+def validate_images(images: list[str] | None, domain: str | None) -> list[str] | None:
+    """图生图参考图校验：仅 visual 域接受；≤3 张、png/jpeg/webp、单张 ≤4MB。
+
+    OptimizeRequest 与 StartRunRequest 共用；违规抛 ValueError（pydantic → 422）。
+    """
+    if not images:
+        return images
+    if domain != "visual":
+        raise ValueError("images 仅在 domain=visual 时支持")
+    if len(images) > MAX_IMAGES:
+        raise ValueError(f"images 最多 {MAX_IMAGES} 张")
+    for img in images:
+        prefix, sep, payload = img.partition(",")
+        media_type = prefix[5:].split(";", 1)[0] if prefix.startswith("data:") else ""
+        if not sep or media_type not in _IMAGE_MEDIA_TYPES or ";base64" not in prefix:
+            raise ValueError("images 仅支持 png/jpeg/webp 的 base64 data URL")
+        try:
+            size = len(base64.b64decode(payload, validate=True))
+        except (ValueError, binascii.Error) as exc:
+            raise ValueError("images 的 base64 数据无法解码") from exc
+        if size > MAX_IMAGE_BYTES:
+            raise ValueError(f"单张图片不得超过 {MAX_IMAGE_BYTES // (1024 * 1024)}MB")
+    return images
 
 
 class OptimizeRequest(BaseModel):
@@ -28,12 +60,51 @@ class OptimizeRequest(BaseModel):
     #: 以某一历史轮为基线新开一轮（2026-11-05「回滚/继续」语义）。
     #: 非空时以该轮的取证与方案作为本轮起点；历史轮一条不少（turn 表 append-only）。
     base_turn_id: str = ""
+    #: 领域覆盖（2026-11-14 领域包）：None=自动路由；指定则跳过路由直接用该领域包。
+    #: 白名单须与 domain.domains.ports.KNOWN_DOMAIN_IDS 同步（此处曾漂移为 4 域，已修复）。
+    domain: (
+        Literal[
+            "code",
+            "work",
+            "life",
+            "creative",
+            "learning",
+            "data",
+            "marketing",
+            "translation",
+            "legal",
+            "medical",
+            "finance",
+            "game",
+            "visual",
+            "av",
+            "operations",
+        ]
+        | None
+    ) = None
+    #: 视觉生成域的风格（2026-11-14 多模态）：仅 domain="visual" 时生效；
+    #: None/空 = 通用风格。非法值由生成层回退通用，不在契约层报错。
+    style: (
+        Literal[
+            "general",
+            "photography",
+            "creative",
+            "chinese-model",
+            "json-structured",
+            "video",
+        ]
+        | None
+    ) = None
+    #: 图生图参考图（2026-11-14 多模态）：base64 data URL 列表，仅 domain="visual" 接受；
+    #: ≤3 张、单张 ≤4MB、png/jpeg/webp。服务端校验，超限返回参数错误。
+    images: list[str] | None = None
 
     @model_validator(mode="after")
     def _need_sentence_or_base(self) -> OptimizeRequest:
         """原句与基线轮至少给一个——否则没有任何可优化的上下文。"""
         if not self.sentence.strip() and not self.base_turn_id.strip():
             raise ValueError("sentence 与 base_turn_id 至少给一个")
+        validate_images(self.images, self.domain)
         return self
 
 
@@ -116,6 +187,15 @@ class UnknownItemPayload(BaseModel):
     multi_select: bool = False
 
 
+class DomainVerdictPayload(BaseModel):
+    """领域路由结论（2026-11-14 领域包）：domain/source/confidence 三要素。"""
+
+    domain: str
+    #: override / project / keyword / llm / fallback
+    source: str
+    confidence: float
+
+
 class VariantPayload(BaseModel):
     """domain VariantDraft 的契约镜像（F-301 单套方案）。
 
@@ -186,6 +266,8 @@ class FlowSnapshotResponse(BaseModel):
     questions: list[UnknownItemPayload] = Field(default_factory=list)
     cleared: list[str] = Field(default_factory=list)
     variant: VariantPayload | None = None
+    #: 领域路由结论（2026-11-14 领域包）：值与质量标记成对返回（MUST-11d）；旧会话 None
+    domain: DomainVerdictPayload | None = None
     target: SymbolPayload | None = None
     facts: list[FactPayload] = Field(default_factory=list)
     cost: CostDetailPayload | None = None  # F-805 成本明细（additive，无新增契约路径）

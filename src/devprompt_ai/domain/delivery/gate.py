@@ -20,12 +20,15 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale, tr
 from devprompt_ai.domain.delivery.attribution import Attribution, GateColor, evaluate_attribution
 from devprompt_ai.domain.generate.claims import CLAIM_COVERAGE_MIN
 from devprompt_ai.domain.models import FactResult
+
+if TYPE_CHECKING:
+    from devprompt_ai.domain.delivery.structural import StructuralCheck
 
 DeliveryStatus = Literal["GREEN", "YELLOW", "RED"]
 
@@ -43,6 +46,9 @@ class DeliveryInput:
     anchor_invalid_count: int = 0
     #: 改动归属（E11）：None 表示无影响半径数据（未开 repo 图），不参与判定
     attribution: Attribution | None = None
+    #: 通用域结构化校验结果（2026-11-14 领域包）：非 None 时走结构化分支，
+    #: 忽略检索/取证/锚点/claims（通用域没有这些证据源）
+    structural: StructuralCheck | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,8 +70,35 @@ def _join(items: Sequence[str], locale: Locale) -> str:
     return tr("common.list_sep", locale).join(items)
 
 
+def _evaluate_structural(data: DeliveryInput, locale: Locale) -> DeliveryVerdict:
+    """通用域分支（MUST-08：结构化判定在 structural.py，这里只拼门禁结论）。"""
+    check = data.structural
+    assert check is not None  # 分支条件已保证（evaluate_delivery 入口分流）
+    red: list[str] = []
+    if not check.body_sections_ok:
+        red.append(tr("gate.red.structural_sections", locale))
+    if not check.deliverables_declared:
+        red.append(tr("gate.red.structural_deliverables", locale))
+    if check.placeholder_count:
+        red.append(tr("gate.red.structural_placeholder", locale, count=check.placeholder_count))
+    if red:
+        return DeliveryVerdict(
+            status="RED",
+            reasons=tuple(red),
+            disclosure=tr("gate.disclosure.red", locale, reasons=_join(red, locale)),
+            tone="error",
+        )
+    return DeliveryVerdict(status="GREEN", reasons=(), disclosure="", tone="ok")
+
+
 def evaluate_delivery(data: DeliveryInput, locale: Locale = DEFAULT_LOCALE) -> DeliveryVerdict:
-    """按 RED → YELLOW → GREEN 优先级判定，命中即返回。"""
+    """按 RED → YELLOW → GREEN 优先级判定，命中即返回。
+
+    ``structural`` 非 None（通用域）时改核结构完整性：无仓库证据可查，
+    事实/锚点/claims 均不适用。
+    """
+    if data.structural is not None:
+        return _evaluate_structural(data, locale)
     applicable = [fact for fact in data.facts if fact.applicable]
 
     red: list[str] = []

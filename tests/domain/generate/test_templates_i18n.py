@@ -29,8 +29,8 @@ def test_standard_and_fallback_have_bilingual_roles() -> None:
         "conservative": (CONSERVATIVE_TEMPLATE, "保守版提示词", "conservative"),
     }
     for label, (tpl, zh_word, en_word) in keywords.items():
-        zh = tpl.system("zh-CN")
-        en = tpl.system("en")
+        zh = tpl.system("zh-CN", "code")
+        en = tpl.system("en", "code")
         assert zh_word in zh, f"{label} 中文 role 缺失"
         assert en_word in en, f"{label} 英文 role 缺失"
         # body 语义段也必须切换：这是决定方案正文语言的关键约束
@@ -40,9 +40,9 @@ def test_standard_and_fallback_have_bilingual_roles() -> None:
 
 def test_boundary_declaration_present_in_both_languages() -> None:
     for tpl in (STANDARD_TEMPLATE, CONSERVATIVE_TEMPLATE):
-        assert tr("template.boundary", "zh-CN") in tpl.system("zh-CN")
-        assert tr("template.boundary", "en") in tpl.system("en")
-        assert tr("template.boundary", "zh-CN") not in tpl.system("en")
+        assert tr("template.boundary", "zh-CN") in tpl.system("zh-CN", "code")
+        assert tr("template.boundary", "en") in tpl.system("en", "code")
+        assert tr("template.boundary", "zh-CN") not in tpl.system("en", "code")
 
 
 def test_evidence_field_names_switch_but_json_instruction_stays() -> None:
@@ -61,8 +61,8 @@ def test_evidence_field_names_switch_but_json_instruction_stays() -> None:
 
 
 def test_fallback_template_declares_itself() -> None:
-    assert "兜底声明" in CONSERVATIVE_TEMPLATE.system("zh-CN")
-    assert "[Fallback notice]" in CONSERVATIVE_TEMPLATE.system("en")
+    assert "兜底声明" in CONSERVATIVE_TEMPLATE.system("zh-CN", "code")
+    assert "[Fallback notice]" in CONSERVATIVE_TEMPLATE.system("en", "code")
 
 
 def test_reply_template_is_bilingual() -> None:

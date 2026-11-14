@@ -107,11 +107,24 @@ def _is_retryable(exc: BaseException) -> bool:
     return any(marker in haystack for marker in _RETRYABLE_MARKERS)
 
 
-async def _run_with_retry(agent: Agent, user: str, timeout: float) -> Any:
+def _user_payload(user: str, images: tuple[str, ...]) -> str | list[Any]:
+    """纯文本走 str（零回归）；带参考图时构造 agents 标准的 user message items。
+
+    dict 形态的 ``input_image`` item 由 openai 系 SDK 与两个原生 adapter 各自转换
+    （2026-11-14 多模态）。
+    """
+    if not images:
+        return user
+    content: list[dict[str, Any]] = [{"type": "input_text", "text": user}]
+    content.extend({"type": "input_image", "image_url": img} for img in images)
+    return [{"role": "user", "content": content}]
+
+
+async def _run_with_retry(agent: Agent, payload: str | list[Any], timeout: float) -> Any:
     """带退避与共享预算的单次结构化调用（失败抛原始异常，由调用方归类）。"""
     for attempt in range(1, _RETRY_POLICY.max_attempts + 1):
         try:
-            return await asyncio.wait_for(Runner.run(agent, user, max_turns=1), timeout=timeout)
+            return await asyncio.wait_for(Runner.run(agent, payload, max_turns=1), timeout=timeout)
         except Exception as exc:
             if (
                 attempt >= _RETRY_POLICY.max_attempts
@@ -463,8 +476,13 @@ async def _structured_once(
     *,
     timeout: float,
     purpose: str,
+    images: tuple[str, ...] = (),
 ) -> ModelT:
-    """单候选的一次结构化调用（含纠偏重试），失败转细分错误码（M-9）。"""
+    """单候选的一次结构化调用（含纠偏重试），失败转细分错误码（M-9）。
+
+    ``images`` 非空时走多模态消息（2026-11-14 图生图）；纠偏重试仅重发文本——
+    上一轮输出已包含模型对图像的解读，重发原图只增加无谓 token。
+    """
     _ensure_client(cfg)
     schema = json.dumps(output_type.model_json_schema(), ensure_ascii=False)
     instructions = _instructions(cfg, system, schema)
@@ -481,7 +499,7 @@ async def _structured_once(
     )
     started = time.monotonic()
     try:
-        result = await _run_with_retry(agent, user, timeout)
+        result = await _run_with_retry(agent, _user_payload(user, images), timeout)
     except Exception as exc:
         # LLM 调用失败 → 细分错误码（5011~5015），供前端给精确文案（M-9）
         await _record_routing_stat(
@@ -591,6 +609,7 @@ async def chat_structured(
     timeout: float | None = None,
     purpose: RoutingPurpose = "generate",
     model_id: str = "",
+    images: tuple[str, ...] = (),
 ) -> ModelT:
     """单次结构化调用（多模型路由 + 主备，G2–G6/G9）。
 
@@ -617,6 +636,7 @@ async def chat_structured(
                 user,
                 timeout=effective_timeout,
                 purpose=purpose,
+                images=images,
             )
         except DevPromptError as exc:
             last_error = exc
@@ -661,11 +681,12 @@ class LLMGenerator:
         draft = await chat_structured(
             self._cfg,
             VariantDraft,
-            tpl.system(locale),
+            tpl.system(locale, ctx.domain_id),
             tpl.build_user(ctx, locale),
             timeout=self._cfg.llm_generate_timeout,
             purpose="generate",
             model_id=ctx.model_override,
+            images=ctx.images,
         )
         validate_variant(draft)
         # 兜底标记由模板选择单向决定，不接受模型自报（避免模型输出覆盖）。

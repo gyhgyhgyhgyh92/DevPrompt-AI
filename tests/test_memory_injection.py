@@ -121,6 +121,11 @@ async def test_l2_project_notes_off_flow_completes() -> None:
             # 2026-11-11 四段式方案的两路证据（代码片段 / 设计令牌）
             "target_excerpt",
             "design_tokens",
+            # 2026-11-14 领域包
+            "domain_id",
+            # 2026-11-14 多模态：visual 域风格与图生图参考图（其余域恒为空缺省）
+            "style_id",
+            "images",
         }
         assert dumped["clarifications"] == {}
         assert "note" not in dumped["memory_block"]

@@ -24,6 +24,7 @@ from devprompt_ai.interfaces.api.schemas import (
     AskOptionPayload,
     CostDetailPayload,
     DeliveryGatePayload,
+    DomainVerdictPayload,
     FactPayload,
     FlowSnapshotResponse,
     FollowupRequest,
@@ -131,6 +132,15 @@ def _snapshot_payload(snapshot: FlowSnapshot) -> FlowSnapshotResponse:
         agent_step=snapshot.agent_step,
         agent_action=snapshot.agent_action,
         agent_elapsed_ms=snapshot.agent_elapsed_ms,
+        domain=(
+            DomainVerdictPayload(
+                domain=str(snapshot.domain.get("domain", "")),
+                source=str(snapshot.domain.get("source", "")),
+                confidence=float(snapshot.domain.get("confidence", 0.0)),
+            )
+            if isinstance(snapshot.domain, dict)
+            else None
+        ),
     )
 
 
@@ -184,6 +194,9 @@ async def post_optimize(
             session_id=req.session_id,
             base_turn_id=req.base_turn_id,
             locale=_locale(request),
+            domain_override=req.domain,
+            style=req.style,
+            images=req.images,
         )
     except Exception as exc:
         if log is not None:
@@ -308,6 +321,9 @@ async def post_optimize_stream(request: Request, req: OptimizeRequest) -> Stream
                 progress=log or sink,
                 session_id=req.session_id,
                 locale=_locale(request),
+                domain_override=req.domain,
+                style=req.style,
+                images=req.images,
             )
         except Exception as exc:
             if log is not None:

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { DeliveryGatePayload, UnknownItemPayload, VariantPayload } from '../../api/types'
+import type { DomainVerdictPayload } from '../../schemas/optimize'
 import type { ThinkingItem } from '../../schemas/stream'
 import { AskFlow } from './AskFlow'
 import { AssistantBlock } from './AssistantBlock'
@@ -57,6 +58,8 @@ interface ChatStreamProps {
   variant: VariantPayload | null
   /** 交付证据门结果（2026-11-05 形态层）：null 表示本轮未过门。 */
   deliveryGate: DeliveryGatePayload | null
+  /** 领域路由结论（2026-11-14 领域包）：缺省视为旧会话。 */
+  domainVerdict?: DomainVerdictPayload | null
   elapsedSeconds: number | null
   errorMessage: string | null
   isBusy: boolean
@@ -84,6 +87,7 @@ export function ChatStream({
   cleared,
   variant,
   deliveryGate,
+  domainVerdict,
   elapsedSeconds,
   errorMessage,
   isBusy,
@@ -216,6 +220,7 @@ export function ChatStream({
           ) : null
         }
         gate={isThinking ? null : deliveryGate}
+        domainVerdict={domainVerdict}
         variant={isThinking ? null : variant}
         replyText={isThinking ? '' : replyText}
         message={!isThinking && isResult ? message : ''}

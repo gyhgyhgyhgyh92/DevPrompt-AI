@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { putSettings, scanProject } from '../../api/endpoints'
 import { nativePickErrorText, pickFolderViaNative } from '../../api/nativeFolder'
@@ -32,7 +32,9 @@ interface ConsoleInputProps {
   initialProject?: string
   /** 启动页主视觉（品牌行 + 主张 + 能力标签）；结果页 composer 不传，保持单行轻量。 */
   isHero?: boolean
-  /** 提交原句与项目路径（草稿不进 store，上抛交页面调 optimize 流）。 */
+  /** 「选择项目」行右侧插槽（2026-11-14 多模态）：页面层注入模式/风格/参考图控件。 */
+  modeControls?: ReactNode
+  /** 提交原句与项目路径（草稿不进 store，上抛交页面调 optimize 流；领域由后端自动路由）。 */
   onSubmit: (sentence: string, project: string) => void
 }
 
@@ -72,6 +74,7 @@ export function ConsoleInput({
   projectOptional = false,
   disabled = false,
   isHero = false,
+  modeControls,
   onSubmit,
 }: ConsoleInputProps) {
   const { t } = useTranslation()
@@ -260,6 +263,9 @@ export function ConsoleInput({
                   : t('console.pick_folder')}
             </span>
           </button>
+          {modeControls !== undefined ? (
+            <div className={s('console-input__mode-slot')}>{modeControls}</div>
+          ) : null}
         </div>
         {projectError !== null ? <p className={s('console-input__error')}>{projectError}</p> : null}
       </form>

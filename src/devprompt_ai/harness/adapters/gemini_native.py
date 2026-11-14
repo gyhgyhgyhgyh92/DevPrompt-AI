@@ -30,7 +30,7 @@ from openai import AsyncOpenAI
 from openai.types.responses import ResponseOutputMessage, ResponseTextDeltaEvent
 
 from devprompt_ai.domain.model.tuning import gemini_thinking_budget
-from devprompt_ai.harness.adapters.base import BaseNativeModel
+from devprompt_ai.harness.adapters.base import BaseNativeModel, parse_image_data_url
 
 
 class GeminiNativeModel(BaseNativeModel):
@@ -70,19 +70,46 @@ class GeminiNativeModel(BaseNativeModel):
 
     @staticmethod
     def _to_contents(user_input: str | list[Any]) -> list[dict[str, Any]]:
-        """agents input → Gemini contents。"""
+        """agents input → Gemini contents。
+
+        图像 item（2026-11-14 多模态）：input_image → inline_data；无图像时保持
+        原 join 文本行为（零回归）。
+        """
         if isinstance(user_input, str):
             return [{"role": "user", "parts": [{"text": user_input}]}]
         contents: list[dict[str, Any]] = []
         for item in user_input:
-            raw = getattr(item, "raw_item", item)
-            role = "model" if str(getattr(raw, "role", "user")) == "assistant" else "user"
-            content = getattr(raw, "content", "")
+            raw = item if isinstance(item, dict) else getattr(item, "raw_item", item)
+            role_str = str(
+                raw.get("role", "user") if isinstance(raw, dict) else getattr(raw, "role", "user")
+            )
+            role = "model" if role_str == "assistant" else "user"
+            content = (
+                raw.get("content", "") if isinstance(raw, dict) else getattr(raw, "content", "")
+            )
             if isinstance(content, list):
-                text = "".join(str(getattr(b, "text", "")) for b in content if hasattr(b, "text"))
+                has_image = any(
+                    isinstance(block, dict) and block.get("type") == "input_image"
+                    for block in content
+                )
+                if not has_image:
+                    text = "".join(
+                        str(getattr(b, "text", "")) for b in content if hasattr(b, "text")
+                    )
+                    contents.append({"role": role, "parts": [{"text": text}]})
+                    continue
+                parts: list[dict[str, Any]] = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "input_image":
+                        parsed = parse_image_data_url(str(block.get("image_url", "")))
+                        if parsed:
+                            media_type, data = parsed
+                            parts.append({"inline_data": {"mime_type": media_type, "data": data}})
+                    elif hasattr(block, "text"):
+                        parts.append({"text": str(getattr(block, "text", ""))})
+                contents.append({"role": role, "parts": parts or [{"text": ""}]})
             else:
-                text = str(content)
-            contents.append({"role": role, "parts": [{"text": text}]})
+                contents.append({"role": role, "parts": [{"text": str(content)}]})
         return contents or [{"role": "user", "parts": [{"text": ""}]}]
 
     @staticmethod

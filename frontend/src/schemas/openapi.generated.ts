@@ -1181,6 +1181,18 @@ export interface components {
             tone: string;
         };
         /**
+         * DomainVerdictPayload
+         * @description 领域路由结论（2026-11-14 领域包）：domain/source/confidence 三要素。
+         */
+        DomainVerdictPayload: {
+            /** Confidence */
+            confidence: number;
+            /** Domain */
+            domain: string;
+            /** Source */
+            source: string;
+        };
+        /**
          * FactPayload
          * @description 取证事实只读透出（F-104 七项判定结果）。
          *
@@ -1214,6 +1226,7 @@ export interface components {
             /** Current Turn Id */
             current_turn_id?: string | null;
             delivery_gate?: components["schemas"]["DeliveryGatePayload"] | null;
+            domain?: components["schemas"]["DomainVerdictPayload"] | null;
             /**
              * Evidence Stale
              * @default false
@@ -1642,6 +1655,10 @@ export interface components {
              * @default
              */
             base_turn_id: string;
+            /** Domain */
+            domain?: ("code" | "work" | "life" | "creative" | "learning" | "data" | "marketing" | "translation" | "legal" | "medical" | "finance" | "game" | "visual" | "av" | "operations") | null;
+            /** Images */
+            images?: string[] | null;
             /**
              * Project
              * @default
@@ -1654,6 +1671,8 @@ export interface components {
             sentence: string;
             /** Session Id */
             session_id?: string | null;
+            /** Style */
+            style?: ("general" | "photography" | "creative" | "chinese-model" | "json-structured" | "video") | null;
         };
         /**
          * PagedHistoryItem
@@ -1985,6 +2004,10 @@ export interface components {
              * @default
              */
             base_turn_id: string;
+            /** Domain */
+            domain?: ("code" | "work" | "life" | "creative" | "learning" | "data" | "marketing" | "translation" | "legal" | "medical" | "finance" | "game" | "visual" | "av" | "operations") | null;
+            /** Images */
+            images?: string[] | null;
             /**
              * Locale
              * @default zh-CN
@@ -2002,6 +2025,8 @@ export interface components {
             sentence: string;
             /** Session Id */
             session_id: string;
+            /** Style */
+            style?: ("general" | "photography" | "creative" | "chinese-model" | "json-structured" | "video") | null;
         };
         /**
          * SymbolPayload

@@ -55,7 +55,8 @@ select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "ASYNC"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
-mypy_path = "src"
+mypy_path = ["src", "tests"]
+explicit_package_bases = true
 files = ["src", "tests", "scripts"]
 
 [[tool.mypy.overrides]]
