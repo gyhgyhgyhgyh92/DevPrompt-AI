@@ -9,12 +9,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
 from devprompt_ai.domain.events import RunEvent
 from devprompt_ai.domain.progress import ProgressEvent, ProgressSink
 from devprompt_ai.memory.event_store import SQLiteEventStore
+
+logger = logging.getLogger(__name__)
 
 #: 单个订阅者的队列上限：满了就丢帧，执行体绝不因慢客户端阻塞。
 _SUBSCRIBER_QUEUE_SIZE = 2048
@@ -109,6 +112,89 @@ class EventSink(ProgressSink):
             },
             run_id=self._run_id,
         )
+
+
+class BufferedEventSink(ProgressSink):
+    """旧入口（/optimize、/optimize/stream）的会话日志出口。
+
+    新会话在 optimize 返回前拿不到 session_id，事件先缓冲；绑定后按
+    ``run.started → 缓冲事件`` 补写。所有写入 fail-open：观测失败只告警，
+    绝不影响业务返回（D-05）。
+    """
+
+    def __init__(
+        self,
+        bus: EventBus,
+        *,
+        run_id: str,
+        request_id: str,
+        downstream: ProgressSink | None = None,
+    ) -> None:
+        self._bus = bus
+        self._run_id = run_id
+        self._request_id = request_id
+        self._downstream = downstream
+        self._session_id = ""
+        self._sink: EventSink | None = None
+        self._buffer: list[ProgressEvent] = []
+
+    async def start(self, session_id: str) -> None:
+        """绑定会话并补写 run.started 与缓冲事件；重复调用无副作用。"""
+        if self._sink is not None or not session_id:
+            return
+        self._session_id = session_id
+        self._sink = EventSink(self._bus, session_id, self._run_id)
+        await self._append("run.started", {"run_id": self._run_id, "request_id": self._request_id})
+        buffered, self._buffer = self._buffer, []
+        for event in buffered:
+            await self._emit_event(event)
+
+    async def emit(self, event: ProgressEvent) -> None:
+        if self._downstream is not None:
+            try:
+                await self._downstream.emit(event)
+            except Exception:  # noqa: BLE001 - 下游失败不影响日志与业务
+                logger.warning("session_log.downstream_failed", exc_info=True)
+        if self._sink is None:
+            self._buffer.append(event)
+            return
+        await self._emit_event(event)
+
+    async def finish(
+        self,
+        session_id: str,
+        payload: dict[str, Any],
+        *,
+        status: str,
+        state: str,
+    ) -> None:
+        await self.start(session_id)
+        if self._sink is None:
+            return
+        await self._append("snapshot", payload)
+        await self._append("stop", {"status": status, "state": state})
+
+    async def fail(self, session_id: str, *, code: int, message: str) -> None:
+        await self.start(session_id)
+        if self._sink is None:
+            return
+        await self._append(
+            "error", {"code": code, "message": message, "request_id": self._request_id}
+        )
+
+    async def _emit_event(self, event: ProgressEvent) -> None:
+        if self._sink is None:
+            return
+        try:
+            await self._sink.emit(event)
+        except Exception:  # noqa: BLE001 - 日志是旁路，失败不得外抛
+            logger.warning("session_log.write_failed", exc_info=True)
+
+    async def _append(self, event_type: str, payload: dict[str, Any]) -> None:
+        try:
+            await self._bus.append(self._session_id, event_type, payload, run_id=self._run_id)
+        except Exception:  # noqa: BLE001 - 同上
+            logger.warning("session_log.write_failed", exc_info=True)
 
 
 async def follow(

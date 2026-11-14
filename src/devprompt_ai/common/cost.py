@@ -59,6 +59,14 @@ def take_llm_usage() -> Usage:
     return usage
 
 
+def peek_llm_usage() -> Usage:
+    """只读当前请求的聚合用量（不清零）。
+
+    Trace 在单次 LLM 调用前后取差值，避免依赖 ``last_usage`` 的上下文传递细节（D-06）。
+    """
+    return _USAGE.get() or Usage()
+
+
 def add_llm_tokens(total: int) -> None:
     """兼容旧调用方：只累计 total。"""
     add_llm_usage(total)

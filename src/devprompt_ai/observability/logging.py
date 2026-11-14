@@ -46,6 +46,7 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "agent.loop_terminated",
         "evidence.reused",
         "evidence.stale_reprobe",
+        "generate.fallback",
         "evidence.claim_uncovered",
         "evidence.claim_undeclared",
         "evidence.anchor_invalid",
@@ -64,6 +65,7 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "evidence.stale_on_deliver",
         "llm.request_params",
         "context.tier_changed",
+        "trace.write_failed",
     }
 )
 """SHOULD-08 固定事件名全集（made/skipped 同族计一项）。emit 之外的诊断日志用普通 logging。

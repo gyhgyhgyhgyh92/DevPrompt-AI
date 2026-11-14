@@ -5,6 +5,7 @@ import { useSettingsStore } from '../../stores/useSettingsStore'
 import { AppearancePanel } from './AppearancePanel'
 import { errorMessage } from './errorMessage'
 import { ModelServicePanel } from './ModelServicePanel'
+import { ObservabilityPanel } from './ObservabilityPanel'
 import { SecurityPanel } from './SecurityPanel'
 import styles from './settings.module.css'
 import { makeS } from '../../utils/css'
@@ -16,12 +17,13 @@ export interface SettingsModalProps {
   onClose: () => void
 }
 
-type TabKey = 'model-service' | 'appearance' | 'security'
+type TabKey = 'model-service' | 'appearance' | 'observability' | 'security'
 
-const TAB_KEYS = ['model-service', 'appearance', 'security'] as const
+const TAB_KEYS = ['model-service', 'appearance', 'observability', 'security'] as const
 const TAB_ICONS: Record<(typeof TAB_KEYS)[number], string> = {
   'model-service': '⚙',
   appearance: '◐',
+  observability: '◎',
   security: '⚑',
 }
 
@@ -123,6 +125,7 @@ export function SettingsModal(props: SettingsModalProps) {
             ) : null}
             {activeTab === 'model-service' ? <ModelServicePanel /> : null}
             {activeTab === 'appearance' ? <AppearancePanel /> : null}
+            {activeTab === 'observability' ? <ObservabilityPanel /> : null}
             {activeTab === 'security' ? <SecurityPanel /> : null}
           </div>
         </div>

@@ -71,3 +71,8 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "e2e: 端到端集成测试（可独立运行，默认包含确定性用例）",
+    "real_llm: 需要真实大模型配置的用例（默认 skip，需 OBS_E2E_REAL_LLM=1）",
+    "perf: 性能门槛用例（采集/查询延迟与完整率）",
+]

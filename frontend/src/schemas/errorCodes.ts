@@ -58,6 +58,7 @@ export const ERROR_TEXT: Readonly<Record<number, string>> = {
   6001: 'errors.6001',
   6002: 'errors.6002',
   6003: 'errors.6003',
+  6004: 'errors.6004',
 
   // 9 系统内部
   9001: 'errors.9001',

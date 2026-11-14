@@ -1,0 +1,685 @@
+{
+  "environment": {
+    "python": "3.13.14",
+    "platform": "win32",
+    "real_llm": true,
+    "model": "deepseek-flash",
+    "base_url": "https://api.deepseek.com",
+    "project": "D:\\Works\\DevPrompt AI\\eval\\recall\\mock-react-admin",
+    "db_isolation": "临时目录（不触碰用户真实 DB）",
+    "pytest_summary": "39 passed, 3 deselected, 3 xfailed in 46.01s",
+    "pytest_exit": 0,
+    "pytest_duration_ms": 49082.2
+  },
+  "cases": [
+    {
+      "case_id": "XM01",
+      "module": "test_obs_cross_module",
+      "category": "确定性回归",
+      "title": "test_xm01_join_key_links_log_and_trace",
+      "status": "PASS",
+      "duration_ms": 294.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "XM02",
+      "module": "test_obs_cross_module",
+      "category": "确定性回归",
+      "title": "test_xm02_turn_state_matches_between_log_trace_metrics",
+      "status": "PASS",
+      "duration_ms": 282.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "XM03",
+      "module": "test_obs_cross_module",
+      "category": "确定性回归",
+      "title": "test_xm03_action_nodes_match_log_actions",
+      "status": "PASS",
+      "duration_ms": 322.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "XM04",
+      "module": "test_obs_cross_module",
+      "category": "确定性回归",
+      "title": "test_xm04_replay_nodes_belong_to_trace",
+      "status": "PASS",
+      "duration_ms": 230.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "XM05",
+      "module": "test_obs_cross_module",
+      "category": "确定性回归",
+      "title": "test_xm05_completeness_is_full",
+      "status": "PASS",
+      "duration_ms": 242.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "XM06",
+      "module": "test_obs_cross_module",
+      "category": "确定性回归",
+      "title": "test_xm06_concurrent_sessions_are_isolated",
+      "status": "PASS",
+      "duration_ms": 1016.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "MT01",
+      "module": "test_obs_metrics",
+      "category": "确定性回归",
+      "title": "test_mt01_aggregates_all_dimensions",
+      "status": "PASS",
+      "duration_ms": 155.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "MT02",
+      "module": "test_obs_metrics",
+      "category": "确定性回归",
+      "title": "test_mt02_rule_thresholds_and_severity",
+      "status": "PASS",
+      "duration_ms": 1.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "MT03",
+      "module": "test_obs_metrics",
+      "category": "确定性回归",
+      "title": "test_mt03_alert_lifecycle",
+      "status": "PASS",
+      "duration_ms": 73.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "MT04",
+      "module": "test_obs_metrics",
+      "category": "确定性回归",
+      "title": "test_mt04_concurrent_evaluation_is_idempotent",
+      "status": "XFAIL",
+      "duration_ms": 130.0,
+      "evidence": "C-4：sync_alerts 并发读-判-写无事务保护，唯一索引冲突（报告 P1）",
+      "error": ""
+    },
+    {
+      "case_id": "MT05",
+      "module": "test_obs_metrics",
+      "category": "确定性回归",
+      "title": "test_mt05_empty_data",
+      "status": "PASS",
+      "duration_ms": 115.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "MT06",
+      "module": "test_obs_metrics",
+      "category": "确定性回归",
+      "title": "test_mt06_disabled_module_returns_6004",
+      "status": "PASS",
+      "duration_ms": 142.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "MT07",
+      "module": "test_obs_metrics",
+      "category": "确定性回归",
+      "title": "test_mt07_fake_run_metrics_cover_session",
+      "status": "PASS",
+      "duration_ms": 147.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "PF01",
+      "module": "test_obs_performance",
+      "category": "确定性回归",
+      "title": "test_pf01_collection_latency_under_200ms",
+      "status": "PASS",
+      "duration_ms": 3004.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "PF02",
+      "module": "test_obs_performance",
+      "category": "确定性回归",
+      "title": "test_pf02_query_latency_under_500ms",
+      "status": "PASS",
+      "duration_ms": 3167.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "PF03",
+      "module": "test_obs_performance",
+      "category": "确定性回归",
+      "title": "test_pf03_completeness_at_least_99_9",
+      "status": "PASS",
+      "duration_ms": 2659.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "RP01",
+      "module": "test_obs_replay",
+      "category": "确定性回归",
+      "title": "test_rp01_fake_verify_matches",
+      "status": "PASS",
+      "duration_ms": 198.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "RP02",
+      "module": "test_obs_replay",
+      "category": "确定性回归",
+      "title": "test_rp02_real_llm_verify_is_covered_in_real_suite",
+      "status": "PASS",
+      "duration_ms": 2.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "RP03",
+      "module": "test_obs_replay",
+      "category": "确定性回归",
+      "title": "test_rp03_compare_same_and_different_input",
+      "status": "PASS",
+      "duration_ms": 131.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "RP04",
+      "module": "test_obs_replay",
+      "category": "确定性回归",
+      "title": "test_rp04_missing_record_fails_cleanly",
+      "status": "PASS",
+      "duration_ms": 208.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "RP05",
+      "module": "test_obs_replay",
+      "category": "确定性回归",
+      "title": "test_rp05_disabled_and_unknown",
+      "status": "PASS",
+      "duration_ms": 131.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "RP06",
+      "module": "test_obs_replay",
+      "category": "确定性回归",
+      "title": "test_rp06_compare_reports_diff",
+      "status": "PASS",
+      "duration_ms": 116.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "RP07",
+      "module": "test_obs_replay",
+      "category": "确定性回归",
+      "title": "test_rp07_partial_trace_fails_without_crash",
+      "status": "PASS",
+      "duration_ms": 183.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "AB03",
+      "module": "test_obs_resilience",
+      "category": "确定性回归",
+      "title": "test_ab03_cancel_mid_run_is_recorded",
+      "status": "PASS",
+      "duration_ms": 203.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "AB05",
+      "module": "test_obs_resilience",
+      "category": "确定性回归",
+      "title": "test_ab05_long_session_50_turns",
+      "status": "PASS",
+      "duration_ms": 951.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "AB07",
+      "module": "test_obs_resilience",
+      "category": "确定性回归",
+      "title": "test_ab07_restart_keeps_data_readable",
+      "status": "PASS",
+      "duration_ms": 154.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "AB06",
+      "module": "test_obs_resilience",
+      "category": "确定性回归",
+      "title": "test_ab06_trace_write_failure_keeps_business",
+      "status": "XFAIL",
+      "duration_ms": 107.0,
+      "evidence": "C-6：trace.write_failed 未登记事件名，emit 在异常处理中再次抛出，破坏 fail-open（报告 P0）",
+      "error": ""
+    },
+    {
+      "case_id": "SL01",
+      "module": "test_obs_session_log",
+      "category": "确定性回归",
+      "title": "test_sl01_events_ordered_and_payload_intact",
+      "status": "PASS",
+      "duration_ms": 121.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "SL02",
+      "module": "test_obs_session_log",
+      "category": "确定性回归",
+      "title": "test_sl02_pagination_has_no_gap_or_duplicate",
+      "status": "PASS",
+      "duration_ms": 8300.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "SL03",
+      "module": "test_obs_session_log",
+      "category": "确定性回归",
+      "title": "test_sl03_session_isolation",
+      "status": "PASS",
+      "duration_ms": 69.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "SL04",
+      "module": "test_obs_session_log",
+      "category": "确定性回归",
+      "title": "test_sl04_write_failure_is_not_silent",
+      "status": "PASS",
+      "duration_ms": 29.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "SL05",
+      "module": "test_obs_session_log",
+      "category": "确定性回归",
+      "title": "test_sl05_live_follow_receives_in_order",
+      "status": "PASS",
+      "duration_ms": 33.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "SL06",
+      "module": "test_obs_session_log",
+      "category": "确定性回归",
+      "title": "test_sl06_long_session_query_within_budget",
+      "status": "PASS",
+      "duration_ms": 21142.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "SL07",
+      "module": "test_obs_session_log",
+      "category": "确定性回归",
+      "title": "test_sl07_runs_path_emits_full_event_stream",
+      "status": "PASS",
+      "duration_ms": 272.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "TR01",
+      "module": "test_obs_trace",
+      "category": "确定性回归",
+      "title": "test_tr01_collects_full_chain",
+      "status": "PASS",
+      "duration_ms": 149.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "TR02",
+      "module": "test_obs_trace",
+      "category": "确定性回归",
+      "title": "test_tr02_query_tree_and_detail",
+      "status": "PASS",
+      "duration_ms": 126.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "TR03",
+      "module": "test_obs_trace",
+      "category": "确定性回归",
+      "title": "test_tr03_secrets_are_masked",
+      "status": "PASS",
+      "duration_ms": 119.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "TR04",
+      "module": "test_obs_trace",
+      "category": "确定性回归",
+      "title": "test_tr04_multi_turn_pagination_is_turn_major",
+      "status": "XFAIL",
+      "duration_ms": 141.0,
+      "evidence": "C-1：query_events 全局按 seq 排序，多轮 trace 的事件交错，轮次顺序不成立",
+      "error": ""
+    },
+    {
+      "case_id": "TR05",
+      "module": "test_obs_trace",
+      "category": "确定性回归",
+      "title": "test_tr05_disabled_module_blocks_api_and_collection",
+      "status": "PASS",
+      "duration_ms": 130.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "TR06",
+      "module": "test_obs_trace",
+      "category": "确定性回归",
+      "title": "test_tr06_retention_cleanup",
+      "status": "PASS",
+      "duration_ms": 75.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "TR07",
+      "module": "test_obs_trace",
+      "category": "确定性回归",
+      "title": "test_tr07_write_failure_is_fail_open",
+      "status": "PASS",
+      "duration_ms": 12.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "TR08",
+      "module": "test_obs_trace",
+      "category": "确定性回归",
+      "title": "test_tr08_symbols_recorded_when_no_override",
+      "status": "PASS",
+      "duration_ms": 152.0,
+      "evidence": "",
+      "error": ""
+    },
+    {
+      "case_id": "PF-01",
+      "module": "性能",
+      "category": "正常",
+      "title": "采集延迟 ≤200ms",
+      "status": "PASS",
+      "duration_ms": 2816.686699999991,
+      "evidence": "single_p95=12.4ms batch_p95=13.8ms",
+      "error": ""
+    },
+    {
+      "case_id": "PF-03",
+      "module": "性能",
+      "category": "边界",
+      "title": "数据完整率 ≥99.9%",
+      "status": "PASS",
+      "duration_ms": 2444.8081000000457,
+      "evidence": "inserted=10000 completeness=100.0000%",
+      "error": ""
+    },
+    {
+      "case_id": "PF-04",
+      "module": "性能",
+      "category": "边界",
+      "title": "长会话容量观察",
+      "status": "PASS",
+      "duration_ms": 714.5628999996916,
+      "evidence": "p95=1.7ms db=748.0KB",
+      "error": ""
+    },
+    {
+      "case_id": "RL-01H",
+      "module": "真实 LLM（历史证据）",
+      "category": "正常",
+      "title": "历史真实单轮成功的数据复验",
+      "status": "PASS",
+      "duration_ms": 0.0,
+      "evidence": "run=success session=4606913ce48a4cffad84c5c9c01894ae trace=4606913ce48a4cffad84c5c9c01894ae:0:e2e-rl01 events=66 llm_events=1",
+      "error": ""
+    },
+    {
+      "case_id": "PF-02",
+      "module": "性能",
+      "category": "正常",
+      "title": "查询响应 ≤500ms",
+      "status": "PASS",
+      "duration_ms": 1591.4053000001331,
+      "evidence": "p95=19.7ms n=150",
+      "error": ""
+    },
+    {
+      "case_id": "RL-01",
+      "module": "Session Log/Trace",
+      "category": "正常",
+      "title": "真实 LLM 单轮成功",
+      "status": "BLOCKED",
+      "duration_ms": 1168.5090000000855,
+      "evidence": "供应商余额/配额不足（5013），真实 LLM 场景无法完成",
+      "error": ""
+    },
+    {
+      "case_id": "MT-07",
+      "module": "Metrics",
+      "category": "正常",
+      "title": "真实运行指标聚合",
+      "status": "BLOCKED",
+      "duration_ms": 0.0024000000848900527,
+      "evidence": "RL-01 未成功（真实 LLM 不可用），依赖用例跳过",
+      "error": ""
+    },
+    {
+      "case_id": "RP-02",
+      "module": "Replay",
+      "category": "正常",
+      "title": "真实 Trace 确定性回放",
+      "status": "BLOCKED",
+      "duration_ms": 0.001100000190490391,
+      "evidence": "RL-01 未成功（真实 LLM 不可用），依赖用例跳过",
+      "error": ""
+    },
+    {
+      "case_id": "RL-02",
+      "module": "Session Log/Trace",
+      "category": "正常",
+      "title": "真实 LLM 两轮会话",
+      "status": "BLOCKED",
+      "duration_ms": 0.0009000000318337698,
+      "evidence": "RL-01 未成功（真实 LLM 不可用），依赖用例跳过",
+      "error": ""
+    },
+    {
+      "case_id": "XM-01/02",
+      "module": "跨模块",
+      "category": "正常",
+      "title": "request_id/trace_id/指标关联",
+      "status": "BLOCKED",
+      "duration_ms": 0.0008000001798791345,
+      "evidence": "RL-01 未成功（真实 LLM 不可用），依赖用例跳过",
+      "error": ""
+    },
+    {
+      "case_id": "PF-02a",
+      "module": "性能",
+      "category": "正常",
+      "title": "真实会话查询响应",
+      "status": "BLOCKED",
+      "duration_ms": 0.0010999997357430402,
+      "evidence": "RL-01 未成功（真实 LLM 不可用），依赖用例跳过",
+      "error": ""
+    },
+    {
+      "case_id": "RL-03",
+      "module": "全链路",
+      "category": "异常",
+      "title": "真实认证失败可观测",
+      "status": "PASS",
+      "duration_ms": 1098.157700000229,
+      "evidence": "events=['run.started', 'error'] trace_status=failed replay=failed",
+      "error": ""
+    }
+  ],
+  "measurements": [
+    {
+      "name": "采集延迟 P95（单事件）",
+      "value": 12.4,
+      "unit": "ms",
+      "threshold": 200.0,
+      "passed": true,
+      "method": "record→flush→get_event ×200",
+      "comparison": "<="
+    },
+    {
+      "name": "批量写入 P95（20 条/批）",
+      "value": 13.79,
+      "unit": "ms",
+      "threshold": 200.0,
+      "passed": true,
+      "method": "append_events ×50",
+      "comparison": "<="
+    },
+    {
+      "name": "数据完整率",
+      "value": 100.0,
+      "unit": "%",
+      "threshold": 99.9,
+      "passed": true,
+      "method": "写入 10000 条 / 逐 trace 回读",
+      "comparison": ">="
+    },
+    {
+      "name": "长会话容量（50 trace × 50 事件）",
+      "value": 1.68,
+      "unit": "ms",
+      "threshold": 500.0,
+      "passed": true,
+      "method": "单 trace 回读 P95；DB=748.0KB",
+      "comparison": "<="
+    },
+    {
+      "name": "查询响应 P95（5000 事件）",
+      "value": 19.7,
+      "unit": "ms",
+      "threshold": 500.0,
+      "passed": true,
+      "method": "5 端点 × 30 次（HTTP，预置 5000 事件）",
+      "comparison": "<="
+    }
+  ],
+  "defects": [
+    {
+      "defect_id": "D-01",
+      "priority": "P1",
+      "title": "Trace 多轮事件台账按全局 seq 排序，轮次交错",
+      "impact": "同一会话两轮以上时，事件列表把 turn0/turn1 交错返回；按 seq 分页的轮次顺序不稳定，人类回溯体验下降。",
+      "reproduction": "uv run pytest tests/e2e/obs/test_obs_trace.py::test_tr04_multi_turn_pagination_is_turn_major -q",
+      "recommendation": "query_events 改为 ORDER BY turn_index, seq；cursor 改为 (turn_index, seq) 复合游标，并同步调整 API 契约与前端加载更早逻辑。",
+      "status": "open（仅报告）"
+    },
+    {
+      "defect_id": "D-02",
+      "priority": "P0",
+      "title": "trace.write_failed 未登记事件名，写失败时二次抛错破坏 fail-open",
+      "impact": "TraceCollectorImpl.flush 的异常分支调用 emit('trace.write_failed')，该事件不在 EVENT_NAMES，emit 抛 ValueError；当缓冲区在轮次中途写满时异常穿透到业务，Trace 写失败会直接导致本轮优化失败。",
+      "reproduction": "uv run pytest tests/e2e/obs/test_obs_resilience.py::test_ab06_trace_write_failure_keeps_business -q",
+      "recommendation": "① 在 observability/logging.EVENT_NAMES 登记 trace.write_failed；② flush 的 except 分支整体 try/except 包裹 emit，确保观测失败永不外抛。",
+      "status": "open（仅报告）"
+    },
+    {
+      "defect_id": "D-03",
+      "priority": "P1",
+      "title": "并发告警评估触发唯一索引冲突",
+      "impact": "MetricsService.evaluate 并发（多轮/多会话同时结束）时，sync_alerts 先查后插无事务保护，触发 metrics_alerts 唯一索引 IntegrityError。",
+      "reproduction": "uv run pytest tests/e2e/obs/test_obs_metrics.py::test_mt04_concurrent_evaluation_is_idempotent -q",
+      "recommendation": "sync_alerts 使用 BEGIN IMMEDIATE 单事务 + INSERT ... ON CONFLICT DO UPDATE，或对同一 scope 加进程内串行锁。",
+      "status": "open（仅报告）"
+    },
+    {
+      "defect_id": "D-04",
+      "priority": "P0",
+      "title": "POST /runs 不接受前端新生成的 session_id，新会话直接 6003",
+      "impact": "前端 OptimizePage 在新会话时用 crypto.randomUUID() 生成 session_id 并 POST /runs；RunManager 交给 service.optimize(start_turn) 时该会话不存在，返回 6003（流程 ID 不存在），新会话无法通过多端运行协议启动。本次真实场景改用测试预建会话才跑通。",
+      "reproduction": "用任意新 UUID POST /api/v1/runs 后订阅 /sessions/{id}/stream：第二条事件即为 error code=6003。",
+      "recommendation": "RunManager.start 在会话不存在时创建容器（或新增 POST /sessions 供前端先建会话），并补充新会话经 /runs 启动的回归用例。",
+      "status": "open（仅报告）"
+    },
+    {
+      "defect_id": "D-06",
+      "priority": "P1",
+      "title": "真实 LLM 调用的 token 用量未进入 Trace/Metrics",
+      "impact": "真实运行中 llm.response 节点的 attributes.tokens 恒为 0，导致 Metrics 的 token_total/token_budget 规则失效，成本类指标不可用。",
+      "reproduction": "uv run python scripts/obs_e2e.py --real-llm；查看 RL-01 证据中的 llm_tokens 与 Trace 的 llm.response.attributes.tokens。",
+      "recommendation": "在 LLMGenerator 的调用链上确认 agent Runner 是否返回 usage；缺失时从共享 usage 聚合器（common.cost）回填到 Trace 事件属性。",
+      "status": "open（仅报告）"
+    },
+    {
+      "defect_id": "D-07",
+      "priority": "P1",
+      "title": "真实 Trace 回放出现节点顺序漂移（47 matched / 2 mismatched）",
+      "impact": "真实运行中 verify_facts 用 asyncio.gather 并发发起多路读取，事件 seq 取决于完成顺序；回放时并发完成顺序不同，导致 file.read/read 与 exists 错位，verify 结果为 diverged，无法作为严格回归基线。",
+      "reproduction": "uv run python scripts/obs_e2e.py --real-llm；查看 RP-02（XFAIL）与 eval/obs/runs/<timestamp>/success/devprompt.db 的 replay_nodes diff。",
+      "recommendation": "对并发取证按固定 key（工具参数/路径）排序后再分配 seq，或在比对时按 (kind, name, call_key) 对齐而不是按位置对齐。",
+      "status": "open（仅报告）"
+    },
+    {
+      "defect_id": "D-08",
+      "priority": "P1",
+      "title": "真实 LLM 供应商余额耗尽，重复回归与多轮验证受阻（外部依赖）",
+      "impact": "本次首个真实单轮成功（66 个 Trace 节点）后，DeepSeek/MiniMax/Kimi 三个已配置供应商均返回 402/429（余额不足或账号停用），后续真实多轮与重复验证无法完成。",
+      "reproduction": "scripts/obs_e2e.py --real-llm 的 RL-01 返回 error code=5013；直接请求各供应商 chat/completions 返回 402/429。",
+      "recommendation": "为测试环境准备独立且有余量的密钥；报告中保留历史成功证据，余额恢复后按同一命令复跑以补齐多轮场景。",
+      "status": "open（仅报告）"
+    },
+    {
+      "defect_id": "D-05",
+      "priority": "P2",
+      "title": "Session Log 仅覆盖 /runs 链路，/optimize 不写 run_events",
+      "impact": "直接调用 POST /optimize（旧入口/脚本）产生的会话没有 Session Log 数据，与「全量日志」预期不一致。",
+      "reproduction": "使用 POST /api/v1/optimize 后 GET /api/v1/events?session_id=... 返回空。",
+      "recommendation": "统一入口：/optimize 也注入 EventSink，或在文档与 UI 明确 Session Log 仅适用于 /runs 运行。",
+      "status": "open（仅报告）"
+    }
+  ],
+  "consistency": {
+    "historical_run": "success",
+    "session_id": "4606913ce48a4cffad84c5c9c01894ae",
+    "trace_id": "4606913ce48a4cffad84c5c9c01894ae:0:e2e-rl01",
+    "trace_events": 66,
+    "llm_events": 1,
+    "note": "该会话为真实 LLM 单轮成功产物；后续复跑因供应商余额耗尽（5013）改为 BLOCKED"
+  }
+}

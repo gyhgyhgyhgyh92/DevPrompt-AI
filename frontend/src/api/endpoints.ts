@@ -20,6 +20,17 @@ import {
   SettingsResponseSchema,
   SettingsUpdateSchema,
 } from '../schemas/settings'
+import {
+  ObsAlertsSchema,
+  ObsEventPageSchema,
+  ObsEventSchema,
+  ObsListSchema,
+  ObsMetricSummarySchema,
+  ObsMetricsConfigSchema,
+  ObsReplayCompareSchema,
+  ObsReplayRunSchema,
+  ObsTraceTreeSchema,
+} from '../schemas/obs'
 import { StreamEventSchema, type ActionPayload } from '../schemas/stream'
 import {
   InterventionAnswerSchema,
@@ -106,6 +117,40 @@ export const ENDPOINTS = {
     `${API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}/model`,
   events: (sessionId: string, before: number, limit = 200) =>
     `${API_BASE_URL}/events?session_id=${encodeURIComponent(sessionId)}&before=${before}&limit=${limit}`,
+  // ---- 可观测性三模块（2026-11-12，独立 API）----
+  obsTraceList: (sessionId: string, limit = 200) =>
+    `${API_BASE_URL}/obs/trace/sessions/${encodeURIComponent(sessionId)}/traces?limit=${limit}`,
+  obsTraceEvents: (
+    sessionId: string,
+    params?: { kind?: string; cursor?: number; limit?: number },
+  ) => {
+    const query = new URLSearchParams()
+    if (params?.kind) query.set('kind', params.kind)
+    if (params?.cursor !== undefined) query.set('cursor', String(params.cursor))
+    if (params?.limit !== undefined) query.set('limit', String(params.limit))
+    const suffix = query.toString() === '' ? '' : `?${query.toString()}`
+    return `${API_BASE_URL}/obs/trace/sessions/${encodeURIComponent(sessionId)}/events${suffix}`
+  },
+  obsTraceTree: (traceId: string, full = false) =>
+    `${API_BASE_URL}/obs/trace/traces/${encodeURIComponent(traceId)}?full=${full}`,
+  obsTraceEvent: (eventId: string) =>
+    `${API_BASE_URL}/obs/trace/events/${encodeURIComponent(eventId)}`,
+  obsMetricsSummary: (params: Record<string, string | number>) => {
+    const query = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => query.set(key, String(value)))
+    return `${API_BASE_URL}/obs/metrics/summary?${query.toString()}`
+  },
+  obsMetricsAlerts: (params: { status?: string; limit?: number; offset?: number }) => {
+    const query = new URLSearchParams()
+    if (params.status) query.set('status', params.status)
+    if (params.limit !== undefined) query.set('limit', String(params.limit))
+    if (params.offset !== undefined) query.set('offset', String(params.offset))
+    return `${API_BASE_URL}/obs/metrics/alerts?${query.toString()}`
+  },
+  obsMetricsConfig: `${API_BASE_URL}/obs/metrics/config`,
+  obsReplayRuns: `${API_BASE_URL}/obs/replay/runs`,
+  obsReplayRun: (runId: string) => `${API_BASE_URL}/obs/replay/runs/${encodeURIComponent(runId)}`,
+  obsReplayCompare: `${API_BASE_URL}/obs/replay/compare`,
 } as const
 
 /** 请求体校验：不合法即抛契约错误（编程错误，不发请求也不重试，MUST-15）。 */
@@ -271,6 +316,123 @@ export function getTurn(turnId: string, signal?: AbortSignal): Promise<TurnDetai
   return request(ENDPOINTS.turn(turnId), { method: 'GET', schema: TurnDetailSchema, signal })
 }
 
+/**
+ * GET /events?session_id=&before=&limit=：运行时事件台账（Session Log 数据源）。
+ * `before` 为 seq 倒序游标（首次传 1<<30 取最新一页）；返回按 seq 升序。
+ */
+export function getSessionEvents(
+  sessionId: string,
+  before = 1 << 30,
+  limit = 200,
+  signal?: AbortSignal,
+): Promise<RunEvent[]> {
+  return request(ENDPOINTS.events(sessionId, before, limit), {
+    method: 'GET',
+    schema: z.array(RunEventSchema),
+    signal,
+  })
+}
+
+// ---- 可观测性三模块（2026-11-12）----
+
+export function getObsTraces(sessionId: string, signal?: AbortSignal) {
+  return request(ENDPOINTS.obsTraceList(sessionId), {
+    method: 'GET',
+    schema: ObsListSchema,
+    signal,
+  })
+}
+
+export function getObsEvents(
+  sessionId: string,
+  params?: { kind?: string; cursor?: number; limit?: number },
+  signal?: AbortSignal,
+) {
+  return request(ENDPOINTS.obsTraceEvents(sessionId, params), {
+    method: 'GET',
+    schema: ObsEventPageSchema,
+    signal,
+  })
+}
+
+export function getObsTraceTree(traceId: string, full = false, signal?: AbortSignal) {
+  return request(ENDPOINTS.obsTraceTree(traceId, full), {
+    method: 'GET',
+    schema: ObsTraceTreeSchema,
+    signal,
+  })
+}
+
+export function getObsEvent(eventId: string, signal?: AbortSignal) {
+  return request(ENDPOINTS.obsTraceEvent(eventId), {
+    method: 'GET',
+    schema: ObsEventSchema,
+    signal,
+  })
+}
+
+export function getObsMetricsSummary(
+  params: Record<string, string | number>,
+  signal?: AbortSignal,
+) {
+  return request(ENDPOINTS.obsMetricsSummary(params), {
+    method: 'GET',
+    schema: ObsMetricSummarySchema,
+    signal,
+  })
+}
+
+export function getObsAlerts(
+  params: { status?: string; limit?: number; offset?: number },
+  signal?: AbortSignal,
+) {
+  return request(ENDPOINTS.obsMetricsAlerts(params), {
+    method: 'GET',
+    schema: ObsAlertsSchema,
+    signal,
+  })
+}
+
+export function getObsMetricsConfig(signal?: AbortSignal) {
+  return request(ENDPOINTS.obsMetricsConfig, {
+    method: 'GET',
+    schema: ObsMetricsConfigSchema,
+    signal,
+  })
+}
+
+export function createObsReplay(
+  body: { mode: 'verify' | 'compare'; left_trace_id: string; right_trace_id?: string },
+  signal?: AbortSignal,
+) {
+  return request(ENDPOINTS.obsReplayRuns, {
+    method: 'POST',
+    schema: ObsReplayRunSchema,
+    // request() 内部统一 JSON.stringify，这里必须传对象，否则会被二次编码成字符串（422）。
+    body,
+    hasSideEffect: true,
+    signal,
+  })
+}
+
+export function getObsReplayRun(runId: string, signal?: AbortSignal) {
+  return request(ENDPOINTS.obsReplayRun(runId), {
+    method: 'GET',
+    schema: ObsReplayRunSchema,
+    signal,
+  })
+}
+
+export function compareObsTraces(left: string, right: string, signal?: AbortSignal) {
+  return request(ENDPOINTS.obsReplayCompare, {
+    method: 'POST',
+    schema: ObsReplayCompareSchema,
+    body: { left_trace_id: left, right_trace_id: right },
+    hasSideEffect: true,
+    signal,
+  })
+}
+
 /** POST /history/{session_id}/rollback：撤销到某一轮（物理删除其后轮次，破坏性操作）。 */
 export function rollbackSession(
   sessionId: string,
@@ -280,7 +442,7 @@ export function rollbackSession(
   const body = RollbackRequestSchema.parse({ turn_id: turnId })
   return request(ENDPOINTS.sessionRollback(sessionId), {
     method: 'POST',
-    body: JSON.stringify(body),
+    body,
     schema: FlowSnapshotSchema,
     signal,
   })
@@ -379,10 +541,7 @@ export type ModelCatalogResponse = z.infer<typeof ModelCatalogResponseSchema>
 const RunCancelSchema = z.object({ run_id: z.string(), cancelled: z.boolean() })
 
 /** POST /runs：启动一次运行并立即返回（有副作用端点，禁重试 MUST-15）。 */
-export function startRun(
-  body: StartRunRequest,
-  signal?: AbortSignal,
-): Promise<StartRunResponse> {
+export function startRun(body: StartRunRequest, signal?: AbortSignal): Promise<StartRunResponse> {
   return request(ENDPOINTS.runs, {
     method: 'POST',
     schema: StartRunResponseSchema,
@@ -464,7 +623,7 @@ export async function setSessionModel(
   const data = await request(ENDPOINTS.sessionModel(sessionId), {
     method: 'POST',
     schema: SessionModelResponseSchema,
-    body: JSON.stringify({ model_id: modelId }),
+    body: { model_id: modelId },
     hasSideEffect: true,
     signal,
   })

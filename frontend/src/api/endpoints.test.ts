@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  compareObsTraces,
+  createObsReplay,
   getHealth,
   getHistory,
   getResult,
@@ -8,6 +10,7 @@ import {
   postOptimize,
   putSettings,
   scanProject,
+  setSessionModel,
 } from './endpoints'
 import { ApiError, SUCCESS_CODE } from './errors'
 import type { ApiResponse } from './types'
@@ -37,8 +40,13 @@ const snapshot = {
   message: '',
   questions: [{ key: 'target', reason: '缺失', best_guess: 'Foo', ask: '改哪里？' }],
   cleared: ['scope'],
-  variants: [{ title: 'A', body: 'b', level: 'A', changes: [] }],
-  ranking: null,
+  variant: {
+    title: '标准方案',
+    body: 'b',
+    changes: [],
+    claims: [],
+    fallback: false,
+  },
 }
 
 const settings = {
@@ -56,6 +64,12 @@ const settings = {
     followup_cost_budget: 1,
     followup_soft_round_guard: 10,
     telemetry: true,
+  },
+  observability: {
+    trace_enabled: true,
+    trace_retention_days: 30,
+    metrics_enabled: true,
+    replay_enabled: true,
   },
   locked: { candidate_limit: 25 },
 }
@@ -92,6 +106,27 @@ describe('api/endpoints 12 操作', () => {
     expect(init?.body).toBe(
       JSON.stringify({ sentence: '加个按钮', project: 'D:/repo', base_turn_id: '' }),
     )
+  })
+
+  it('Replay/模型切换请求体只编码一次（不得二次 JSON.stringify）', async () => {
+    const createMock = stubFetchJson(
+      envelope({ run: { run_id: 'r1', status: 'running' }, nodes: [] }),
+    )
+    await createObsReplay({ mode: 'verify', left_trace_id: 't1' })
+    const createBody = JSON.parse(String(createMock.mock.calls[0]?.[1]?.body))
+    expect(createBody).toEqual({ mode: 'verify', left_trace_id: 't1' })
+
+    vi.unstubAllGlobals()
+    const compareMock = stubFetchJson(envelope({ nodes: [], final: {} }))
+    await compareObsTraces('t1', 't2')
+    const compareBody = JSON.parse(String(compareMock.mock.calls[0]?.[1]?.body))
+    expect(compareBody).toEqual({ left_trace_id: 't1', right_trace_id: 't2' })
+
+    vi.unstubAllGlobals()
+    const modelMock = stubFetchJson(envelope({ session_id: 's1', model_override: 'm1' }))
+    await setSessionModel('s1', 'm1')
+    const modelBody = JSON.parse(String(modelMock.mock.calls[0]?.[1]?.body))
+    expect(modelBody).toEqual({ model_id: 'm1' })
   })
 
   it('postFollowup 三模式互斥：混合请求体直接拒绝且不发请求', async () => {

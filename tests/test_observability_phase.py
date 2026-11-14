@@ -143,7 +143,7 @@ def test_strategy_is_continuous_and_measured_aware() -> None:
                         AgentAction.PROBE,
                         AgentAction.ASK,
                         AgentAction.GENERATE,
-                        AgentAction.RANK,
+                        AgentAction.DELEGATE,
                         AgentAction.DELIVER,
                         AgentAction.ABORT,
                         AgentAction.REPLY,

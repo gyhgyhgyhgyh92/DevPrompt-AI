@@ -37,6 +37,19 @@
   block-size: 84vh;
 }
 
+/* 可观测性：更宽的画布 + 固定高度（图表/台账异步到达时内部重排，不推动弹窗）。
+ * 内容区改为纵向 flex，让面板能撑满可用高度并在内部滚动（2026-11-12）。 */
+.settings-modal[data-tab='observability'] {
+  width: min(1180px, 100%);
+  block-size: 84vh;
+}
+
+.settings-modal[data-tab='observability'] .settings-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .settings-modal__header {
   display: flex;
   align-items: center;

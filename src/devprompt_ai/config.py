@@ -66,6 +66,15 @@ class _LocalSettingsSource(PydanticBaseSettingsSource):
         for key in ("followup_soft_round_guard", "followup_cost_budget", "telemetry"):
             if key in local.get("process", {}):
                 values[key] = local["process"][key]
+        # 可观测性三模块开关（2026-11-12）：与流程段同表持久化，重启后按上次保存值装配
+        for key in (
+            "obs_trace_enabled",
+            "obs_trace_retention_days",
+            "obs_metrics_enabled",
+            "obs_replay_enabled",
+        ):
+            if key in local.get("process", {}):
+                values[key] = local["process"][key]
         return values
 
 
@@ -139,6 +148,20 @@ class AppConfig(BaseSettings):
     tool_output_governance: bool = True
     # K6 team 编排：关闭则委派走单工单直连调度闸（不按波分派）。
     team_orchestration: bool = True
+    # ---- 可观测性三模块（2026-11-12，独立启用/配置）----
+    obs_trace_enabled: bool = True
+    obs_trace_retention_days: int = 30
+    obs_trace_full_payload: bool = True
+    obs_metrics_enabled: bool = True
+    obs_metrics_p95_warn_ms: int = 5000
+    obs_metrics_error_rate_warn: float = 0.2
+    obs_metrics_token_warn: int = 50000
+    obs_metrics_tool_failure_warn: float = 0.2
+    obs_metrics_alert_cooldown_s: int = 300
+    obs_metrics_critical_multiplier: float = 2.0
+    obs_replay_enabled: bool = True
+    obs_replay_max_nodes: int = 20000
+    obs_replay_timeout_seconds: float = 120.0
     fact_probe_threshold: float = 0.75
     max_state_tokens: int = 30000  # 上下文装配预算下限（随档位放大，上限 160K）
 

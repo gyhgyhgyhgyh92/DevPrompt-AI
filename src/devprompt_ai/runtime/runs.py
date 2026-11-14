@@ -132,6 +132,9 @@ class RunManager:
                     session_id=session_id,
                     base_turn_id=base_turn_id,
                     locale=locale,
+                    # 前端在 POST /runs 前用 crypto.randomUUID() 生成 session_id，
+                    # 执行侧按该 id 建容器（D-04），否则新会话直接 6003。
+                    create_session=True,
                 ),
                 timeout=timeout,
             )

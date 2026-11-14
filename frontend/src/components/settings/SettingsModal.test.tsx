@@ -12,6 +12,8 @@ vi.mock('../../api/endpoints', () => ({
   putSettings: vi.fn(),
   getHealth: vi.fn(),
   getHistory: vi.fn(),
+  getSessionEvents: vi.fn(async () => []),
+  openSessionStream: vi.fn(() => () => undefined),
 }))
 
 const settingsFixture: SettingsResponse = {
@@ -29,6 +31,12 @@ const settingsFixture: SettingsResponse = {
     followup_cost_budget: 2,
     followup_soft_round_guard: 12,
     telemetry: true,
+  },
+  observability: {
+    trace_enabled: true,
+    trace_retention_days: 30,
+    metrics_enabled: true,
+    replay_enabled: true,
   },
   locked: { candidate_limit: 30 },
 }
@@ -58,16 +66,29 @@ describe('SettingsModal 契约与开关行为', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('open=true 渲染三项导航且焦点移入面板', async () => {
+  it('open=true 渲染四项导航且焦点移入面板', async () => {
     render(<SettingsModal open onClose={vi.fn()} />)
 
     expect(screen.getByRole('dialog', { name: '设置' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '⚙ 模型服务' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '◐ 通用外观' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '◎ 可观测性' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '⚑ 流程与安全' })).toBeTruthy()
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole('dialog', { name: '设置' })),
     )
+  })
+
+  it('切到可观测性渲染面板并结束第 3 项空态', async () => {
+    const user = userEvent.setup()
+    render(<SettingsModal open onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: '◎ 可观测性' }))
+
+    expect(screen.getByRole('tablist', { name: '可观测性' })).toBeTruthy()
+    expect(
+      screen.getByText('Session Log 运行时台账 + Trace / Metrics / Replay 三个独立模块（只读）'),
+    ).toBeTruthy()
   })
 
   it('Esc 触发 onClose', async () => {

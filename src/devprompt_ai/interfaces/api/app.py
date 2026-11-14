@@ -18,7 +18,13 @@ from starlette.types import Scope
 from devprompt_ai.common.process import ProcessError, ProcessTimeoutError
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.errors import DevPromptError
-from devprompt_ai.interfaces.api import routes, runtime_routes
+from devprompt_ai.interfaces.api import (
+    obs_metrics_routes,
+    obs_replay_routes,
+    obs_trace_routes,
+    routes,
+    runtime_routes,
+)
 from devprompt_ai.interfaces.api.schemas import ApiResponse
 
 
@@ -135,6 +141,7 @@ _HTTP_STATUS_BY_CODE: dict[int, int] = {
     6001: 409,
     6002: 409,
     6003: 404,
+    6004: 404,
     9001: 500,
     9002: 500,
 }
@@ -179,6 +186,9 @@ def create_app() -> FastAPI:
 
     app.include_router(routes.router)
     app.include_router(runtime_routes.router)
+    app.include_router(obs_trace_routes.router)
+    app.include_router(obs_metrics_routes.router)
+    app.include_router(obs_replay_routes.router)
     for exc_type in (DevPromptError, ProcessError, ProcessTimeoutError, TimeoutError):
         app.add_exception_handler(exc_type, _render_error)
     # py3.10 下 asyncio.TimeoutError 与内建 TimeoutError 非同一类，显式覆盖
