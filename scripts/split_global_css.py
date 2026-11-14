@@ -93,7 +93,10 @@ def main(argv: list[str]) -> int:
     page_css = "".join(buckets["page"]).strip()
     rest = "".join(buckets["global"]).strip()
 
-    print(f"全局层 {len(buckets['global'])} 块 / 壳层 {len(buckets['shell'])} 块 / 页面层 {len(buckets['page'])} 块")
+    print(
+        f"全局层 {len(buckets['global'])} 块 / 壳层 {len(buckets['shell'])} 块 / "
+        f"页面层 {len(buckets['page'])} 块"
+    )
     if not apply:
         print("dry-run：加 --apply 才写文件")
         return 0

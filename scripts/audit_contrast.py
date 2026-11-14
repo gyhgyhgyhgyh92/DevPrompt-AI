@@ -73,8 +73,7 @@ def load_blocks() -> dict[str, dict[str, str]]:
             raise SystemExit(f"找不到 {theme} 主题的 token 块：{TOKENS}")
         body = match.group("body")
         result[theme] = {
-            name: value.strip()
-            for name, value in re.findall(r"(--[\w-]+):\s*([^;]+);", body)
+            name: value.strip() for name, value in re.findall(r"(--[\w-]+):\s*([^;]+);", body)
         }
     return result
 
@@ -97,8 +96,10 @@ def parse_color(value: str) -> tuple[int, int, int, float] | None:
         parts = [part.strip() for part in re.split(r"[,\s/]+", rgb_match.group(1)) if part]
         if len(parts) < 3:
             return None
-        channels = [int(round(float(part.rstrip("%")) if part.endswith("%") else float(part)))
-                    for part in parts[:3]]
+        channels = [
+            int(round(float(part.rstrip("%")) if part.endswith("%") else float(part)))
+            for part in parts[:3]
+        ]
         alpha = float(parts[3]) if len(parts) > 3 else 1.0
         return (channels[0], channels[1], channels[2], alpha)
     return None
@@ -117,7 +118,9 @@ def resolve(name: str, tokens: dict[str, str], depth: int = 0) -> str:
     return raw
 
 
-def composite(foreground: tuple[int, int, int, float], background: tuple[int, int, int, float]) -> tuple[int, int, int, float]:
+def composite(
+    foreground: tuple[int, int, int, float], background: tuple[int, int, int, float]
+) -> tuple[int, int, int, float]:
     alpha = foreground[3]
     mixed = tuple(
         round(foreground[index] * alpha + background[index] * (1 - alpha)) for index in range(3)

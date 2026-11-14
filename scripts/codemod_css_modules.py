@@ -103,8 +103,7 @@ def process(path: Path, src_root: Path, dry: bool) -> str | None:
     helper = "../" * depth + "utils/css"
     text = text.replace(
         f"import styles from '{css_rel[:-4]}.module.css'\n",
-        f"import styles from '{css_rel[:-4]}.module.css'\n"
-        f"import {{ makeS }} from '{helper}'\n",
+        f"import styles from '{css_rel[:-4]}.module.css'\nimport {{ makeS }} from '{helper}'\n",
         1,
     )
     text = wrap_class_names(text)
