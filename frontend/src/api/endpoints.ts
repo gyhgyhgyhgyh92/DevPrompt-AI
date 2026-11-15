@@ -213,6 +213,8 @@ function streamEventHandlers(handlers: StreamOptimizeHandlers): PostStreamHandle
             scope: event.scope,
             output: event.output,
             status: event.status,
+            id: event.id,
+            delta: event.delta,
           },
           event.phase,
         )

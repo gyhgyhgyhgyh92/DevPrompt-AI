@@ -213,3 +213,77 @@ describe('useOptimizeStore 运行时事件守卫', () => {
     expect(useOptimizeStore.getState().agentStep).not.toBe('oops')
   })
 })
+
+describe('useOptimizeStore 流式动作归并（2026-11-15）', () => {
+  it('同一 callId 的增量帧追加到同一张卡，完成帧替换输出并补齐范围与耗时', () => {
+    const store = useOptimizeStore.getState()
+    store.beginThinking()
+
+    store.appendAction(
+      {
+        title: '检索符号',
+        detail: 'rg -n Foo',
+        scope: '',
+        output: '',
+        status: 'ok',
+        id: 'c1',
+        delta: 'hit-1\n',
+      },
+      'RETRIEVING',
+    )
+    store.appendAction(
+      {
+        title: '检索符号',
+        detail: 'rg -n Foo',
+        scope: '',
+        output: '',
+        status: 'ok',
+        id: 'c1',
+        delta: 'hit-2\n',
+      },
+      'RETRIEVING',
+    )
+
+    let items = useOptimizeStore.getState().thinking
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ kind: 'action', output: 'hit-1\nhit-2\n' })
+
+    store.appendAction(
+      {
+        title: '检索符号',
+        detail: 'rg -n Foo',
+        scope: '命中 2 行',
+        output: 'hit-1\nhit-2\n',
+        status: 'ok',
+        id: 'c1',
+        delta: '',
+        duration_ms: 42,
+      },
+      'RETRIEVING',
+    )
+
+    items = useOptimizeStore.getState().thinking
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      output: 'hit-1\nhit-2\n',
+      scope: '命中 2 行',
+      durationMs: 42,
+    })
+  })
+
+  it('无 callId 的旧帧各自新建卡片（向后兼容）', () => {
+    const store = useOptimizeStore.getState()
+    store.beginThinking()
+
+    store.appendAction(
+      { title: 'A', detail: '', scope: '', output: 'x', status: 'ok', id: '', delta: '' },
+      'RETRIEVING',
+    )
+    store.appendAction(
+      { title: 'B', detail: '', scope: '', output: 'y', status: 'ok', id: '', delta: '' },
+      'RETRIEVING',
+    )
+
+    expect(useOptimizeStore.getState().thinking).toHaveLength(2)
+  })
+})

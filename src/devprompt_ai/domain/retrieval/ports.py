@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any, Protocol, runtime_checkable
 
 
@@ -18,6 +19,27 @@ class CommandRunner(Protocol):
         cwd: str | None = None,
     ) -> str:
         """返回 stdout 文本；超时/非允许退出码由实现抛错。"""
+        ...
+
+
+@runtime_checkable
+class StreamingCommandRunner(Protocol):
+    """可选能力：命令执行期间逐行产出 stdout（2026-11-15 流式呈现）。
+
+    与 :class:`CommandRunner` **并存**而非替换：实现方只需额外提供 ``run_stream``；
+    调用方用 ``isinstance`` 探测，能力缺失即回退 ``run``——既有实现与测试替身零改动。
+    """
+
+    async def run_stream(
+        self,
+        args: list[str],
+        *,
+        on_line: Callable[[str], Awaitable[None]],
+        timeout: float = 10.0,
+        allowed_exit_codes: frozenset[int] = frozenset({0}),
+        cwd: str | None = None,
+    ) -> str:
+        """执行命令并返回完整 stdout；``on_line`` 在执行期间逐行收到内容。"""
         ...
 
 

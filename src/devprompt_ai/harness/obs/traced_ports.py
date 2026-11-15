@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import asdict
 from typing import Any, cast
 
@@ -22,7 +22,7 @@ from devprompt_ai.domain.obs.contract.trace import (
     hash_key,
     normalize_decision_args,
 )
-from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader
+from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader, StreamingCommandRunner
 
 
 def _strip_route_keys(args: list[str]) -> list[str]:
@@ -54,6 +54,66 @@ class TracedRunner:
         try:
             out = await self._inner.run(
                 args, timeout=timeout, allowed_exit_codes=allowed_exit_codes, cwd=cwd
+            )
+        except Exception as exc:  # noqa: BLE001 - 记录失败后原样抛给调用方
+            await self._collector.record(
+                TraceKind.TOOL_RESULT.value,
+                "command",
+                output={"stderr": str(exc)},
+                status=TraceStatus.FAILED.value,
+                error={"type": type(exc).__name__, "message": str(exc)},
+                attributes={
+                    "call_key": call_key,
+                    "duration_ms": int((time.monotonic() - started) * 1000),
+                },
+                parent_id=call_id,
+            )
+            raise
+        await self._collector.record(
+            TraceKind.TOOL_RESULT.value,
+            "command",
+            output={"stdout": out},
+            attributes={
+                "call_key": call_key,
+                "duration_ms": int((time.monotonic() - started) * 1000),
+            },
+            parent_id=call_id,
+        )
+        return out
+
+    async def run_stream(
+        self,
+        args: list[str],
+        *,
+        on_line: Callable[[str], Awaitable[None]],
+        timeout: float = 10.0,
+        allowed_exit_codes: frozenset[int] = frozenset({0}),
+        cwd: str | None = None,
+    ) -> str:
+        """流式变体（2026-11-15）：透传 inner 的 run_stream，**trace 仍只记最终态**。
+
+        增量片段不写观测库——否则一次检索会把 trace 放大成百上千行事件。
+        inner 不支持流式时抛 NotImplementedError，由上层回退到 run。
+        """
+        inner = self._inner
+        if not isinstance(inner, StreamingCommandRunner):
+            raise NotImplementedError("inner runner does not support streaming")
+        clean = _strip_route_keys(args)
+        call_key = hash_key("tool", clean, cwd or "")
+        started = time.monotonic()
+        call_id = await self._collector.record(
+            TraceKind.TOOL.value,
+            "command",
+            input={"args": clean, "cwd": cwd or "", "timeout": timeout},
+            attributes={"call_key": call_key, "tool": clean[0] if clean else ""},
+        )
+        try:
+            out = await inner.run_stream(
+                args,
+                on_line=on_line,
+                timeout=timeout,
+                allowed_exit_codes=allowed_exit_codes,
+                cwd=cwd,
             )
         except Exception as exc:  # noqa: BLE001 - 记录失败后原样抛给调用方
             await self._collector.record(

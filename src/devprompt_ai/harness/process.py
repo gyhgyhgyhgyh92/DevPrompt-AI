@@ -11,9 +11,10 @@ import asyncio
 import logging
 import os
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 
-from devprompt_ai.common.process import run_command
+from devprompt_ai.common.process import run_command, run_command_stream
 from devprompt_ai.domain.models import Symbol
 from devprompt_ai.domain.retrieval.ports import CommandRunner
 from devprompt_ai.domain.retrieval.symbols import (
@@ -43,6 +44,24 @@ class LocalCommandRunner:
     ) -> str:
         return await run_command(
             args, timeout=timeout, allowed_exit_codes=allowed_exit_codes, cwd=cwd
+        )
+
+    async def run_stream(
+        self,
+        args: list[str],
+        *,
+        on_line: Callable[[str], Awaitable[None]],
+        timeout: float = 10.0,
+        allowed_exit_codes: frozenset[int] = frozenset({0}),
+        cwd: str | None = None,
+    ) -> str:
+        """流式变体（2026-11-15）：逐行回调，供展示层做增量呈现。"""
+        return await run_command_stream(
+            args,
+            on_line=on_line,
+            timeout=timeout,
+            allowed_exit_codes=allowed_exit_codes,
+            cwd=cwd,
         )
 
 

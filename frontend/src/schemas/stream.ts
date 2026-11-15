@@ -15,6 +15,15 @@ export const ActionPayloadSchema = z.object({
   status: z.enum(['ok', 'failed']).default('ok'),
   /** 动作真实耗时（毫秒）；旧后端缺省时前端不展示耗时（2026-11-07）。 */
   duration_ms: z.number().int().nullish(),
+  /**
+   * 动作实例 id（2026-11-15 流式呈现）：同一次工具调用的增量帧与完成帧共享，
+   * 前端据此归并到同一张卡片。旧后端无此字段时按「每次都是新卡」处理。
+   */
+  id: z.string().default(''),
+  /**
+   * 本次增量片段：非空 = 执行途中的续写（追加到既有卡）；空 = 完整卡（替换输出）。
+   */
+  delta: z.string().default(''),
 })
 
 export const StreamEventSchema = z.discriminatedUnion('type', [
@@ -27,6 +36,9 @@ export const StreamEventSchema = z.discriminatedUnion('type', [
     scope: z.string(),
     output: z.string().default(''),
     status: z.enum(['ok', 'failed']).default('ok'),
+    /** 动作实例 id + 本次增量片段（2026-11-15 流式）；旧后端帧缺省即按新卡处理。 */
+    id: z.string().default(''),
+    delta: z.string().default(''),
   }),
   z.object({ type: z.literal('snapshot'), data: FlowSnapshotSchema }),
   z.object({
@@ -61,5 +73,10 @@ export type ThinkingItem =
       status?: 'ok' | 'failed'
       /** 动作耗时（毫秒）；undefined 表示后端未测或旧数据，此时不展示耗时。 */
       durationMs?: number
+      /**
+       * 动作实例 id（2026-11-15 流式）：同一次工具调用的增量帧与完成帧共享，
+       * 前端据此把增量追加到同一张卡片（与条目自身的 React key 区分）。
+       */
+      callId?: string
       phase: string
     }

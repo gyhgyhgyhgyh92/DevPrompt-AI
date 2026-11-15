@@ -86,6 +86,7 @@
     "read_with_detail": "Read {{detail}}",
     "command_failed": "Command failed · {{scope}}",
     "command_ok": "Command executed",
+    "running": "Running",
     "copy_command": "Copy command"
   },
   "clarify": {

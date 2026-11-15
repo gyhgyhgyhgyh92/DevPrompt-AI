@@ -338,3 +338,81 @@ class TestFailureDegrade:
         with pytest.raises(ProcessTimeoutError):
             await tracer.run(["rg", "x"])
         assert sink.events == []
+
+
+class StreamRunner:
+    """支持流式的 runner（2026-11-15）：逐行回调。"""
+
+    def __init__(self, lines: list[str]) -> None:
+        self.lines = lines
+
+    async def run(
+        self,
+        args: list[str],
+        *,
+        timeout: float = 10.0,
+        allowed_exit_codes: frozenset[int] = frozenset({0}),
+        cwd: str | None = None,
+    ) -> str:
+        return "\n".join(self.lines)
+
+    async def run_stream(
+        self,
+        args: list[str],
+        *,
+        on_line: Any,
+        timeout: float = 10.0,
+        allowed_exit_codes: frozenset[int] = frozenset({0}),
+        cwd: str | None = None,
+    ) -> str:
+        for line in self.lines:
+            await on_line(line)
+        return "\n".join(self.lines)
+
+
+class TestStreamingRunner:
+    """流式动作卡（2026-11-15）：增量帧与完成帧的语义。"""
+
+    async def test_delta_frames_then_completion_frame(self) -> None:
+        sink = FakeSink()
+        tracer = TracingRunner(StreamRunner(["hit-1", "hit-2"]), sink, _ROOT)
+
+        out = await tracer.run(["rg", "-n", "Foo", "."])
+
+        assert out == "hit-1\nhit-2"
+        actions = sink.actions()
+        deltas = [a for a in actions if a.delta != ""]
+        finals = [a for a in actions if a.delta == ""]
+        assert deltas, "必须有增量帧"
+        # 同一次调用的增量帧共享动作 id，前端据此归并到同一张卡
+        assert all(a.id == deltas[0].id for a in deltas)
+        assert "hit-1" in "".join(a.delta for a in deltas)
+        assert "hit-2" in "".join(a.delta for a in deltas)
+        # 结束必须补一张完成帧：范围标签、耗时、共享 id
+        assert finals, "结束必须补完成帧"
+        assert finals[-1].scope == "命中 2 行"
+        assert finals[-1].id == deltas[0].id
+        assert finals[-1].duration_ms is not None
+
+    async def test_incremental_delta_is_redacted(self) -> None:
+        """增量片段同样脱敏（MUST-19）：不得出现绝对路径。"""
+        sink = FakeSink()
+        tracer = TracingRunner(StreamRunner(["D:/proj/src/ui/Button.tsx:12:x"]), sink, _ROOT)
+
+        await tracer.run(["rg", "-n", "Button", "."])
+
+        deltas = [a for a in sink.actions() if a.delta != ""]
+        assert deltas
+        assert "D:/proj" not in "".join(a.delta for a in deltas)
+
+    async def test_runner_without_stream_support_keeps_old_path(self) -> None:
+        """不支持流式的实现（测试替身）走原路径：一次完成帧，无增量。"""
+        sink = FakeSink()
+        tracer = TracingRunner(FakeRunner(out="hit-1\nhit-2"), sink, _ROOT)
+
+        await tracer.run(["rg", "-n", "Foo", "."])
+
+        actions = sink.actions()
+        assert len(actions) == 1
+        assert actions[0].delta == ""
+        assert actions[0].scope == "命中 2 行"

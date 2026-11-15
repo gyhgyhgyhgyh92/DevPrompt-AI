@@ -26,6 +26,7 @@ import re
 import time
 from collections.abc import Callable
 from typing import Final
+from uuid import uuid4
 
 from devprompt_ai.common.process import (
     ExecutableNotFoundError,
@@ -33,7 +34,7 @@ from devprompt_ai.common.process import (
     ProcessTimeoutError,
 )
 from devprompt_ai.domain.progress import ActionInfo, ProgressEvent, ProgressSink, display_path
-from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader
+from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader, StreamingCommandRunner
 from devprompt_ai.harness.output_store import persist, raw_path
 from devprompt_ai.harness.output_summary import summarize_output, threshold_for, with_footer
 
@@ -44,6 +45,11 @@ _MAX_DETAIL: Final = 160
 #: 动作输出上限（渲染成可展开代码块；超限截断并标记）
 _OUTPUT_MAX_LINES: Final = 20
 _OUTPUT_MAX_CHARS: Final = 2000
+
+#: 增量推送节流（2026-11-15 流式呈现）：最短间隔 50ms，或攒够 5 行即发。
+#: 帧太密会把 SSE 刷爆，太疏则失去「正在逐条命中」的观感。
+_STREAM_MIN_INTERVAL_S: Final = 0.05
+_STREAM_MAX_LINES: Final = 5
 
 #: 盘符绝对路径（D:/x/y、D:\x\y）：卡片里整体收窄为末两段。
 _ABS_PATH_RE: Final = re.compile(r"[A-Za-z]:[\\/][^\s\"']*")
@@ -166,6 +172,13 @@ class TracingRunner:
         # 只改展示副本，args 本身绝不能动（否则改变真实 rg 行为）
         shown = [arg for arg in args if not arg.startswith(_ROUTE_KEY_PREFIX)]
         started = time.monotonic()
+        # 流式优先（2026-11-15）：inner 支持逐行产出时，命中行在命令执行途中就抵达卡片；
+        # 不支持（测试替身 / 旧包装）则走下面的原路径，行为完全不变。
+        inner = self._inner
+        if isinstance(inner, StreamingCommandRunner):
+            return await self._run_streamed(
+                inner, args, shown, timeout, allowed_exit_codes, cwd, started
+            )
         try:
             out = await self._inner.run(
                 args, timeout=timeout, allowed_exit_codes=allowed_exit_codes, cwd=cwd
@@ -203,6 +216,120 @@ class TracingRunner:
                     governance=self._governance,
                 ),
                 duration_ms=int((time.monotonic() - started) * 1000),
+            )
+        )
+        return out
+
+    async def _run_streamed(
+        self,
+        inner: StreamingCommandRunner,
+        args: list[str],
+        shown: list[str],
+        timeout: float,
+        allowed_exit_codes: frozenset[int],
+        cwd: str | None,
+        started: float,
+    ) -> str:
+        """流式执行（2026-11-15）：逐行脱敏 → 节流 → 增量帧；结束时补一张完成帧。
+
+        帧语义（前端据此归并到同一张卡）：
+        - ``delta`` 非空 = 执行途中的续写片段，**追加**到该 id 卡片的输出；
+        - ``delta`` 为空 = 完整卡，用其 ``output`` **替换**输出并更新范围标签与耗时。
+        """
+        action_id = uuid4().hex[:12]
+        title = _title(args)
+        detail = _clip(redact(" ".join(shown), self._root))
+        buffer: list[str] = []
+        total_chars = 0
+        last_push = 0.0
+        pushed = False
+
+        async def _push(chunk: str) -> None:
+            nonlocal pushed
+            await self._emit(ActionInfo(title=title, detail=detail, id=action_id, delta=chunk))
+            pushed = True
+
+        async def on_line(line: str) -> None:
+            nonlocal total_chars, last_push
+            if total_chars >= _OUTPUT_MAX_CHARS:
+                return  # 增量总量受既有输出治理口径约束
+            redacted = redact(line, self._root)  # 增量同样脱敏（MUST-19）
+            total_chars += len(redacted) + 1
+            buffer.append(redacted)
+            now = time.monotonic()
+            if now - last_push < _STREAM_MIN_INTERVAL_S and len(buffer) < _STREAM_MAX_LINES:
+                return
+            last_push = now
+            chunk = "\n".join(buffer)
+            buffer.clear()
+            await _push(chunk)
+
+        try:
+            out = await inner.run_stream(
+                args,
+                on_line=on_line,
+                timeout=timeout,
+                allowed_exit_codes=allowed_exit_codes,
+                cwd=cwd,
+            )
+        except NotImplementedError:
+            # 能力探测只认方法存在：内层实现可能仍不支持（测试替身）→ 回退原路径，行为等价
+            out = await self._inner.run(
+                args, timeout=timeout, allowed_exit_codes=allowed_exit_codes, cwd=cwd
+            )
+        except (ExecutableNotFoundError, ProcessTimeoutError):
+            # 已推送增量时补一张终止卡：否则前端只剩半截输出、没有结论
+            if pushed:
+                await self._emit(
+                    ActionInfo(
+                        title=title,
+                        detail=detail,
+                        scope="已中断",
+                        output="",
+                        status="failed",
+                        duration_ms=int((time.monotonic() - started) * 1000),
+                        id=action_id,
+                    )
+                )
+            raise
+        except ProcessError as exc:
+            # 非允许退出码（rg 未命中即 exit 1）→ 降级：失败卡即时浮出（失败优先，不折叠）
+            if buffer:
+                chunk = "\n".join(buffer)
+                buffer.clear()
+                await _push(chunk)
+            await self._emit(
+                ActionInfo(
+                    title=title,
+                    detail=detail,
+                    scope=f"Exit code {exc.code}",
+                    output=_output((exc.stderr or str(exc)).splitlines(), self._root),
+                    status="failed",
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    id=action_id,
+                )
+            )
+            return ""
+        if buffer:
+            chunk = "\n".join(buffer)
+            buffer.clear()
+            await _push(chunk)
+        lines = out.splitlines()
+        hits = sum(1 for line in lines if line.strip())
+        await self._emit(
+            ActionInfo(
+                title=title,
+                detail=detail,
+                scope=f"命中 {hits} 行" if hits else "无匹配",
+                output=await _governed_output(
+                    out,
+                    tool=_tool_of(args),
+                    success=True,
+                    root=self._root,
+                    governance=self._governance,
+                ),
+                duration_ms=int((time.monotonic() - started) * 1000),
+                id=action_id,
             )
         )
         return out

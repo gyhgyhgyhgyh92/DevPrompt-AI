@@ -193,8 +193,9 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
     set((state) => {
       if (!state.isThinking) return { thinking: state.thinking }
       const last = state.thinking.at(-1)
-      // 同一阶段的文字段合并，避免碎片化；跨阶段另起一段
-      if (last?.kind === 'text' && last.phase === phase) {
+      // 生成阶段的文本是**流式增量**（同一段的连续片段），必须合并成一条逐字呈现；
+      // 其余阶段的通知是独立句子，分段显示才能「逐条浮现」，而不是一次性整段弹出。
+      if (phase === 'GENERATING' && last?.kind === 'text' && last.phase === phase) {
         return {
           thinking: [...state.thinking.slice(0, -1), { ...last, text: last.text + text }],
         }
@@ -208,7 +209,26 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
       if (!state.isThinking) return { thinking: state.thinking }
       // 契约是 snake_case（duration_ms），视图模型是 camelCase（durationMs）：
       // 在这里一次性转换，组件不再关心契约命名（MUST-16：store 只存结果）。
-      const { duration_ms: durationMs, ...rest } = action
+      const { duration_ms: durationMs, id: callId, delta, ...rest } = action
+      // 流式归并（2026-11-15）：同一次工具调用（同一 callId）的增量帧追加到既有卡片；
+      // 完成帧（delta 为空）用其完整输出替换卡片内容，并补齐范围标签与耗时。
+      if (callId !== '') {
+        const index = state.thinking.findIndex(
+          (item) => item.kind === 'action' && item.callId === callId,
+        )
+        const existing = index >= 0 ? state.thinking[index] : undefined
+        if (existing !== undefined && existing.kind === 'action') {
+          const next = [...state.thinking]
+          next[index] = {
+            ...existing,
+            output: delta !== '' ? `${existing.output}${delta}` : rest.output,
+            scope: rest.scope !== '' ? rest.scope : existing.scope,
+            durationMs: durationMs ?? existing.durationMs,
+            status: rest.status ?? existing.status,
+          }
+          return { thinking: next }
+        }
+      }
       return {
         thinking: [
           ...state.thinking,
@@ -216,6 +236,9 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
             id: nextThinkingId(),
             kind: 'action',
             ...rest,
+            // 首帧可能是增量帧（output 为空）→ 增量内容即该卡的初始输出
+            output: rest.output !== '' ? rest.output : delta,
+            callId: callId === '' ? undefined : callId,
             durationMs: durationMs ?? undefined,
             phase,
           },
@@ -285,6 +308,8 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
             scope: typeof event.data.scope === 'string' ? event.data.scope : '',
             output: typeof event.data.output === 'string' ? event.data.output : '',
             status: event.data.status === 'failed' ? 'failed' : 'ok',
+            id: typeof event.data.id === 'string' ? event.data.id : '',
+            delta: typeof event.data.delta === 'string' ? event.data.delta : '',
           },
           typeof event.data.phase === 'string' ? event.data.phase : '',
         )
@@ -318,7 +343,15 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
         const payload = parseEventPayload(DelegationRejectedPayloadSchema, event.data)
         if (!payload) return
         store.appendAction(
-          { title: '委派被拒', detail: payload.reason, scope: '', output: '', status: 'failed' },
+          {
+            title: '委派被拒',
+            detail: payload.reason,
+            scope: '',
+            output: '',
+            status: 'failed',
+            id: '',
+            delta: '',
+          },
           '',
         )
         return
@@ -333,6 +366,8 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
             scope: '',
             output: '',
             status: 'ok',
+            id: '',
+            delta: '',
           },
           '',
         )

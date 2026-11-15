@@ -535,6 +535,9 @@ async def test_followup_stream_frame_order_and_action_fields(
         "output",
         "status",
         "duration_ms",
+        # 流式归并（2026-11-15）：动作实例 id 与本次增量片段
+        "id",
+        "delta",
     }
     assert action["duration_ms"] is None
     # 帧里不得出现绝对路径（MUST-19）

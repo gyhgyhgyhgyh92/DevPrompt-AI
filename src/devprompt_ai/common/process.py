@@ -10,9 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import glob
+import logging
 import os
 import shutil
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 10.0
 _ENCODING = "utf-8"
@@ -93,6 +97,31 @@ async def run_command(
     cwd: str | None = None,
 ) -> str:
     """执行外部命令并返回 stdout 文本。exit 码不在允许集时抛 ProcessError。"""
+    return await run_command_stream(
+        args,
+        on_line=None,
+        timeout=timeout,
+        allowed_exit_codes=allowed_exit_codes,
+        cwd=cwd,
+    )
+
+
+async def run_command_stream(
+    args: list[str],
+    *,
+    on_line: Callable[[str], Awaitable[None]] | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+    allowed_exit_codes: frozenset[int] = DEFAULT_ALLOWED_EXIT_CODES,
+    cwd: str | None = None,
+) -> str:
+    """执行外部命令并返回 stdout 文本；``on_line`` 在执行期间逐行收到 stdout。
+
+    与 :func:`run_command` 同源（后者是本函数的 ``on_line=None`` 特例），退出码与
+    超时语义完全一致。
+
+    **stderr 必须并发消费**：逐行读 stdout 时若无人读 stderr，管道写满会让子进程
+    阻塞（rg 输出大量告警即触发），故 stderr 由独立 task 持续 drain。
+    """
     # 测试路由键约定（F-103/F-104）：domain 层在 rg 参数后追加 --route-key=<键> 供测试 Fake 路由，
     # 真实进程不可见，转发前过滤
     args = [a for a in args if not a.startswith("--route-key=")]
@@ -109,15 +138,42 @@ async def run_command(
     except FileNotFoundError as exc:
         # WinError 2 的友好化：给出安装/配置指引而非裸堆栈（真实用户终端实测暴露）
         raise ExecutableNotFoundError(args[0]) from exc
+
+    async def _drain_stderr() -> bytes:
+        assert proc.stderr is not None
+        return await proc.stderr.read()
+
+    stderr_task = asyncio.create_task(_drain_stderr())
+    stdout_parts: list[str] = []
+
+    async def _pump_stdout() -> None:
+        assert proc.stdout is not None
+        while True:
+            raw = await proc.stdout.readline()
+            if not raw:
+                return
+            line = raw.decode(_ENCODING, errors="replace")
+            stdout_parts.append(line)
+            if on_line is None:
+                continue
+            try:
+                await on_line(line.rstrip("\r\n"))
+            except Exception:  # noqa: BLE001 - 展示层异常不得中断真实命令
+                logger.debug("process.on_line_failed", exc_info=True)
+
     try:
-        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        await asyncio.wait_for(_pump_stdout(), timeout=timeout)
     except (TimeoutError, asyncio.TimeoutError):
         proc.kill()
         await proc.wait()  # 僵尸进程清理（MUST-13）
+        stderr_task.cancel()
         raise ProcessTimeoutError(f"命令超时({timeout}s): {' '.join(args)}") from None
 
-    stdout = stdout_b.decode(_ENCODING, errors="replace")
+    stderr_b = await stderr_task
+    stdout = "".join(stdout_parts)
     stderr = stderr_b.decode(_ENCODING, errors="replace")
+    # stdout 读到 EOF 不等于进程已退出：显式 wait 才能拿到真实退出码
+    await proc.wait()
     code = proc.returncode if proc.returncode is not None else -1
     if code not in allowed_exit_codes:
         raise ProcessError(args, code, stderr)

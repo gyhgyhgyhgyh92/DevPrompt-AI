@@ -103,7 +103,7 @@ export function PhaseLedger({ rows, animatingId }: PhaseLedgerProps) {
             </div>
             {row.logs.length > 0 ? (
               <div className={s('chat-reply__phase-log')}>
-                {row.logs.map((item) =>
+                {row.logs.map((item, index) =>
                   item.kind === 'text' ? (
                     <TypewriterText
                       key={item.id}
@@ -112,7 +112,7 @@ export function PhaseLedger({ rows, animatingId }: PhaseLedgerProps) {
                       isAnimating={item.id === animatingId}
                     />
                   ) : (
-                    <TraceEntry key={item.id} item={item} />
+                    <TraceEntry key={item.id} item={item} index={index} />
                   ),
                 )}
               </div>

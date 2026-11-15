@@ -757,6 +757,35 @@
 
 .trace-step {
   margin-block-end: var(--space-2);
+  /* 入场动效（2026-11-15）：检索结果逐条浮现，不再整块弹出 */
+  animation: trace-step-in 0.18s ease-out;
+}
+
+@keyframes trace-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 执行中标记（流式期间的范围标签尚未到达） */
+.trace-step__running {
+  padding: 0 var(--space-1);
+  font-size: var(--text-micro);
+  color: var(--color-primary-500);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trace-step {
+    animation: none;
+  }
 }
 
 .trace-step:last-child {

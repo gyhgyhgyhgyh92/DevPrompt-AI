@@ -248,6 +248,9 @@ class _QueueSink:
                 "status": event.action.status,
                 # 真实耗时（2026-11-07）：None 表示未计时，前端据此整段不渲染耗时
                 "duration_ms": event.action.duration_ms,
+                # 流式呈现（2026-11-15）：动作实例 id + 本次增量片段；旧后端无此二者时行为不变
+                "id": event.action.id,
+                "delta": event.action.delta,
             }
         )
 

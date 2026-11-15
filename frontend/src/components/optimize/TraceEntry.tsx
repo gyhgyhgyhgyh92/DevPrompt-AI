@@ -67,8 +67,12 @@ export function formatDuration(ms: number): string {
 }
 
 /** 按条目类型分派（ChatStream 只负责分组，不关心具体渲染）。 */
-export function TraceEntry({ item }: { item: ThinkingItem }) {
-  return item.kind === 'text' ? <TraceThought text={item.text} /> : <TraceAction item={item} />
+export function TraceEntry({ item, index = 0 }: { item: ThinkingItem; index?: number }) {
+  return item.kind === 'text' ? (
+    <TraceThought text={item.text} />
+  ) : (
+    <TraceAction item={item} index={index} />
+  )
 }
 
 /** 思考文字：本阶段正在写的那条由 TypewriterText 渲染，这里只兜底历史数据。 */
@@ -82,7 +86,7 @@ export function TraceThought({ text }: { text: string }) {
  * - 命令 → 终端块（`$` + 命令正文常显 + 右侧退出码胶囊 + 可展开输出）。
  * 两者都显示真实耗时与失败态；耗时缺失时整段不渲染。
  */
-export function TraceAction({ item }: { item: ActionItem }) {
+export function TraceAction({ item, index = 0 }: { item: ActionItem; index?: number }) {
   const { t } = useTranslation()
   const [isOpen, setOpen] = useState(false)
   const [isCopied, setCopied] = useState(false)
@@ -97,6 +101,11 @@ export function TraceAction({ item }: { item: ActionItem }) {
       : t('trace.command_ok')
   const hasOutput = item.output !== ''
   const duration = item.durationMs
+  // 执行中（2026-11-15 流式）：范围标签与耗时都还没到 → 卡片处于「正在产出」状态，
+  // 对齐竞品的工具运行态（Trae/Claude Code 的 in_tool 标记）。
+  const isStreaming = item.scope === '' && item.status !== 'failed'
+  // 错峰延迟：同一阶段内的卡片依次浮现（上限 12 张，避免长列表末尾等待过久）
+  const staggerMs = Math.min(index, 12) * 60
 
   function handleCopy(): void {
     void navigator.clipboard
@@ -114,6 +123,9 @@ export function TraceAction({ item }: { item: ActionItem }) {
             ? 'trace-step'
             : 'trace-step trace-step--cmd',
       )}
+      // 错峰入场（2026-11-15）：短命令的卡片几乎同时挂载，动画会一起播放 →
+      // 递增延迟让它们「逐条浮现」，读起来是流式而不是整块弹出。
+      style={staggerMs > 0 ? { animationDelay: `${staggerMs}ms` } : undefined}
     >
       <div className={s('trace-step__head')}>
         <button
@@ -126,6 +138,9 @@ export function TraceAction({ item }: { item: ActionItem }) {
             {isRead ? <ReadIcon /> : <CommandIcon />}
           </span>
           <span className={s('trace-step__label')}>{label}</span>
+          {isStreaming ? (
+            <span className={s('trace-step__running')}>{t('trace.running')}</span>
+          ) : null}
           {/* 失败命令的 scope 已经并进标题（「命令失败 · Exit code 1」），不再重复 */}
           {item.scope !== '' && !(isFailed && !isRead) ? (
             <span className={s('trace-step__scope')}>{item.scope}</span>

@@ -103,6 +103,9 @@ describe('streamOptimize', () => {
         output: '',
         // 2026-11-04 起 action 帧带 status，旧帧缺省按 ok（见 schemas/stream.ts）
         status: 'ok',
+        // 2026-11-15 起 action 帧带 id/delta（流式归并），旧帧缺省为空串
+        id: '',
+        delta: '',
       },
       '',
     )

@@ -86,6 +86,7 @@
     "read_with_detail": "已读取 {{detail}}",
     "command_failed": "命令失败 · {{scope}}",
     "command_ok": "命令已执行",
+    "running": "执行中",
     "copy_command": "复制命令"
   },
   "clarify": {
