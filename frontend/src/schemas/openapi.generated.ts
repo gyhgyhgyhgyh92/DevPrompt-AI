@@ -2072,6 +2072,10 @@ export interface components {
              * @default
              */
             target: string;
+            /** Thinking */
+            thinking?: {
+                [key: string]: unknown;
+            }[];
             /** Turn Id */
             turn_id: string;
             /** Turn Index */

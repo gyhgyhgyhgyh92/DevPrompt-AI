@@ -2764,6 +2764,14 @@
             "title": "Target",
             "type": "string"
           },
+          "thinking": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Thinking",
+            "type": "array"
+          },
           "turn_id": {
             "title": "Turn Id",
             "type": "string"

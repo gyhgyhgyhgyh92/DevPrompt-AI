@@ -39,7 +39,8 @@ function baseProps(overrides: Partial<Props> = {}): Props {
 
 describe('ChatStream 结构与阶段', () => {
   it('回复块含品牌标识、步骤时间轴与分隔线', () => {
-    render(<ChatStream {...baseProps()} />)
+    // status=null 表示未结束：过程区保持展开（正常结束会自动折叠，见下方用例）
+    render(<ChatStream {...baseProps({ status: null })} />)
 
     expect(screen.getByText('DevPrompt AI')).toBeTruthy()
     expect(document.querySelector('[class*="chat-reply__phases"]')).not.toBeNull()
@@ -260,7 +261,7 @@ describe('ChatStream 结果与反问', () => {
     expect(screen.getByText('网络连接失败')).toBeTruthy()
   })
 
-  it('结束后保持展开，点「折叠过程」才收成一行摘要（2026-11-07 裁定）', async () => {
+  it('正常结束后自动收成一行摘要，点击可展开（2026-11-15 裁定）', async () => {
     const user = userEvent.setup()
     const thinking: ThinkingItem[] = [
       { id: 't1', kind: 'text', text: '符号表就绪', phase: 'RETRIEVING' },
@@ -277,22 +278,16 @@ describe('ChatStream 结果与反问', () => {
     ]
     render(<ChatStream {...baseProps({ thinking, state: 'DONE', elapsedSeconds: 12 })} />)
 
-    // 默认展开：账本与过程文字都在，折叠按钮显示动作名
+    // 结束即折叠：账本不在，摘要行（阶段 · 动作数 · 耗时）在
+    expect(document.querySelector('[class*="chat-reply__phases"]')).toBeNull()
+    expect(screen.getByRole('button', { name: /个动作/ })).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: /个动作/ }))
+
+    // 手动展开后可回看
     expect(document.querySelector('[class*="chat-reply__phases"]')).not.toBeNull()
     expect(screen.getByText('符号表就绪')).toBeTruthy()
     expect(screen.getByRole('button', { name: /折叠过程/ })).toBeTruthy()
-
-    await user.click(screen.getByRole('button', { name: /折叠过程/ }))
-
-    // 收起后只剩一行摘要（阶段 · 动作数 · 耗时）
-    expect(document.querySelector('[class*="chat-reply__phases"]')).toBeNull()
-    expect(screen.queryByText('符号表就绪')).toBeNull()
-    expect(screen.getByText(/已完成 · 1 个动作 · 12s/)).toBeTruthy()
-
-    await user.click(screen.getByRole('button', { name: /已完成 · 1 个动作 · 12s/ }))
-
-    expect(document.querySelector('[class*="chat-reply__phases"]')).not.toBeNull()
-    expect(screen.getByText('符号表就绪')).toBeTruthy()
   })
 
   it('进行中默认展开，也允许提前折叠（过程可见性优先但不强迫）', async () => {
@@ -326,7 +321,7 @@ describe('ChatStream 结果与反问', () => {
       },
     ]
     const { unmount } = render(
-      <ChatStream {...baseProps({ thinking: withDuration, state: 'DONE' })} />,
+      <ChatStream {...baseProps({ thinking: withDuration, state: 'DONE', status: null })} />,
     )
     expect(screen.getByText('42ms')).toBeTruthy()
     unmount()
@@ -343,8 +338,39 @@ describe('ChatStream 结果与反问', () => {
         phase: 'RETRIEVING',
       },
     ]
-    render(<ChatStream {...baseProps({ thinking: withoutDuration, state: 'DONE' })} />)
+    render(
+      <ChatStream {...baseProps({ thinking: withoutDuration, state: 'DONE', status: null })} />,
+    )
     expect(document.querySelector('[class*="trace-step__duration"]')).toBeNull()
+  })
+
+  it('手动折叠后，正常结束也不自动展开或折叠（手动优先）', async () => {
+    const user = userEvent.setup()
+    const thinking: ThinkingItem[] = [
+      { id: 't1', kind: 'text', text: '检索中', phase: 'RETRIEVING' },
+    ]
+    const { rerender } = render(
+      <ChatStream
+        {...baseProps({ thinking, state: 'RETRIEVING', status: null, isThinking: true })}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /折叠过程/ }))
+    expect(document.querySelector('[class*="chat-reply__phases"]')).toBeNull()
+
+    rerender(<ChatStream {...baseProps({ thinking, state: 'DONE', status: 'done' })} />)
+
+    // 用户的选择优先：结束后仍保持折叠
+    expect(document.querySelector('[class*="chat-reply__phases"]')).toBeNull()
+  })
+
+  it('等待答复（ask）时保持展开，不自动折叠', () => {
+    const thinking: ThinkingItem[] = [
+      { id: 't1', kind: 'text', text: '发现缺口', phase: 'PROBING' },
+    ]
+    render(<ChatStream {...baseProps({ thinking, state: 'ASKING', status: 'ask' })} />)
+
+    expect(document.querySelector('[class*="chat-reply__phases"]')).not.toBeNull()
   })
 
   it('失败动作按错误色渲染并带出退出码（2026-11-04）', () => {

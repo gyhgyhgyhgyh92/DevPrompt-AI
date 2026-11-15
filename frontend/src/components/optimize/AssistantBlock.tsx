@@ -2,8 +2,10 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DeliveryGatePayload, VariantPayload } from '../../api/types'
 import type { DomainVerdictPayload } from '../../schemas/optimize'
+import type { ThinkingItem } from '../../schemas/stream'
 import { DeliveryGateCard } from './DeliveryGateCard'
 import { PromptCard } from './PromptCard'
+import { TurnProcess } from './TurnProcess'
 import styles from './ChatStream.module.css'
 import { makeS } from '../../utils/css'
 
@@ -20,6 +22,8 @@ interface AssistantBlockProps {
   timeline?: ReactNode
   /** 「正在规划下一步」提示（当前轮思考静默期）。 */
   planning?: ReactNode
+  /** 历史轮思考帧（后端从 run_events 重建；缺省时回退 steps）。 */
+  thinking?: readonly ThinkingItem[]
   /** 动作序列（历史轮读落库的 steps）。 */
   steps?: readonly Record<string, unknown>[]
   /** 交付证据门结果；undefined/null 表示本轮未过门。 */
@@ -54,6 +58,7 @@ export function AssistantBlock({
   processControls,
   timeline,
   planning,
+  thinking,
   steps,
   gate,
   domainVerdict = null,
@@ -75,9 +80,7 @@ export function AssistantBlock({
         {domainVerdict ? (
           <span className={s('chat-reply__domain')}>
             {t(`domain.${domainVerdict.domain}.name`, domainVerdict.domain)}
-            {domainVerdict.source === 'fallback'
-              ? ` · ${t('domain.badge_fallback')}`
-              : null}
+            {domainVerdict.source === 'fallback' ? ` · ${t('domain.badge_fallback')}` : null}
           </span>
         ) : null}
         {header}
@@ -91,15 +94,7 @@ export function AssistantBlock({
 
       {planning}
 
-      {(steps ?? []).length > 0 ? (
-        <div className={s('turn-steps')}>
-          {(steps ?? []).map((step, index) => (
-            <span className={s('turn-steps__item')} key={`step-${index}`}>
-              {String(step.action ?? '')}
-            </span>
-          ))}
-        </div>
-      ) : null}
+      <TurnProcess thinking={thinking} steps={steps} />
 
       <hr className={s('chat-reply__divider')} />
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { DeliveryGatePayload, UnknownItemPayload, VariantPayload } from '../../api/types'
@@ -6,7 +6,8 @@ import type { DomainVerdictPayload } from '../../schemas/optimize'
 import type { ThinkingItem } from '../../schemas/stream'
 import { AskFlow } from './AskFlow'
 import { AssistantBlock } from './AssistantBlock'
-import { PhaseLedger, type PhaseRow } from './PhaseLedger'
+import { PhaseLedger } from './PhaseLedger'
+import { PHASES, buildPhaseRows } from './turnThinking'
 import styles from './ChatStream.module.css'
 import { makeS } from '../../utils/css'
 
@@ -14,29 +15,6 @@ const s = makeS(styles)
 
 /** 思考静默多久后提示「正在规划下一步」。 */
 const IDLE_HINT_MS = 1500
-
-const PHASES = [
-  'INIT',
-  'RETRIEVING',
-  'PROBING',
-  'ASKING',
-  'CONFIRMING',
-  'GENERATING',
-  'DONE',
-  'ABORTED',
-] as const
-
-/** 状态的展示键与「这一步在做什么」说明键（文案在语言包，2026-11-06 多语言）。 */
-const PHASE_META: Record<(typeof PHASES)[number], { labelKey: string; hintKey: string }> = {
-  INIT: { labelKey: 'chat.phase.INIT.label', hintKey: 'chat.phase.INIT.hint' },
-  RETRIEVING: { labelKey: 'chat.phase.RETRIEVING.label', hintKey: 'chat.phase.RETRIEVING.hint' },
-  PROBING: { labelKey: 'chat.phase.PROBING.label', hintKey: 'chat.phase.PROBING.hint' },
-  ASKING: { labelKey: 'chat.phase.ASKING.label', hintKey: 'chat.phase.ASKING.hint' },
-  CONFIRMING: { labelKey: 'chat.phase.CONFIRMING.label', hintKey: 'chat.phase.CONFIRMING.hint' },
-  GENERATING: { labelKey: 'chat.phase.GENERATING.label', hintKey: 'chat.phase.GENERATING.hint' },
-  DONE: { labelKey: 'chat.phase.DONE.label', hintKey: 'chat.phase.DONE.hint' },
-  ABORTED: { labelKey: 'chat.phase.ABORTED.label', hintKey: 'chat.phase.ABORTED.hint' },
-}
 
 interface ChatStreamProps {
   /** 当前态镜像（后端 9 态字符串）；仅展示不判定（MUST-07）。 */
@@ -112,16 +90,23 @@ export function ChatStream({
   // 阶段按**实际走过的路径**渲染（2026-11-04）：没问过就不出现「等待确认 / 整理答复」，
   // 中止行只在真中止时出现。
   const hadAsk = questions.length > 0 || cleared.length > 0
-  const visiblePhases = PHASES.filter((phase) => {
-    if (phase === 'ASKING' || phase === 'CONFIRMING') return hadAsk
-    if (phase === 'ABORTED') return state === 'ABORTED'
-    return true
-  })
-  const currentIndex = visiblePhases.findIndex((phase) => phase === state)
 
-  // 过程区默认展开；结束后也保持展开，由用户点「折叠过程」收成一行（2026-11-07 用户裁定）。
+  // 过程区：运行中展开，正常结束自动收成一行摘要（2026-11-15 用户裁定）；
+  // 用户手动动过之后本轮不再自动改（手动优先）。
   const hasProcess = thinking.length > 0
   const [isProcessOpen, setProcessOpen] = useState(true)
+  const userToggledRef = useRef(false)
+  useEffect(() => {
+    if (userToggledRef.current) return
+    if (isThinking) {
+      setProcessOpen(true) // 运行中保持展开
+      return
+    }
+    // 只在一轮正常结束时折叠；ask（等答复）、aborted、出错都保持展开
+    if (isResult && status === 'done' && errorMessage === null) {
+      setProcessOpen(false)
+    }
+  }, [isThinking, isResult, status, errorMessage])
 
   const actionCount = thinking.filter((item) => item.kind === 'action').length
   const stepCount = PHASES.filter((phase) =>
@@ -131,32 +116,7 @@ export function ChatStream({
   const lastTextId = [...thinking].reverse().find((item) => item.kind === 'text')?.id ?? null
   const animatingId = isThinking && lastTextId !== null ? lastTextId : null
 
-  const rows: PhaseRow[] = visiblePhases.map((phase, index) => {
-    const isDone = index < currentIndex
-    const isCurrent = phase === state
-    const meta = PHASE_META[phase]
-    // 没有缺口时，研判这一步给出「无需补充」的结论文案，而不是暗示存在缺口
-    const hint = phase === 'PROBING' && !hadAsk ? t('chat.probe_complete') : t(meta.hintKey)
-    // 无阶段标签的旧数据归到当前阶段，避免过程凭空消失
-    const logs = thinking.filter((item) => (item.phase === '' ? state : item.phase) === phase)
-    const phaseActions = logs.filter((item) => item.kind === 'action').length
-    return {
-      phase,
-      label: t(meta.labelKey),
-      hint,
-      meta: phaseActions > 0 ? t('chat.action_count', { count: phaseActions }) : '',
-      tag: isCurrent
-        ? phase === 'DONE'
-          ? t('chat.tag_done')
-          : phase === 'ABORTED'
-            ? t('chat.tag_aborted')
-            : t('chat.tag_running')
-        : null,
-      isCurrent,
-      isDone,
-      logs,
-    }
-  })
+  const rows = buildPhaseRows({ thinking, state, translate: t, isLive: true, hadAsk })
 
   // 恢复的旧会话没有 elapsed（不伪造耗时），此时摘要省略秒数段
   const summary =
@@ -203,7 +163,10 @@ export function ChatStream({
                 type="button"
                 className={s('chat-reply__process-toggle')}
                 aria-expanded={isProcessOpen}
-                onClick={() => setProcessOpen((open) => !open)}
+                onClick={() => {
+                  userToggledRef.current = true
+                  setProcessOpen((open) => !open)
+                }}
               >
                 <span>{isProcessOpen ? t('chat.process_fold') : summary}</span>
                 <span className={s('chat-reply__process-caret')} aria-hidden="true">

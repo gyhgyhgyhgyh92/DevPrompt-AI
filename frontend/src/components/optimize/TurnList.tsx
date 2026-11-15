@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TurnDetailPayload, TurnSummaryPayload } from '../../api/types'
+import type { ThinkingItem } from '../../schemas/stream'
 import { i18n } from '../../i18n'
 import { useOptimizeStore } from '../../stores/useOptimizeStore'
 import { errorMessage } from '../settings/errorMessage'
@@ -97,6 +98,7 @@ export function TurnList({
             <div className={s('chat-stream__row')}>
               <AssistantBlock
                 header={<span className={s('thread__round')}>第 {turn.turn_index + 1} 轮</span>}
+                thinking={detail?.thinking as unknown as readonly ThinkingItem[] | undefined}
                 steps={detail?.steps}
                 variant={detail?.variants?.[0] ?? null}
                 message={detail?.conclusion || turn.conclusion}

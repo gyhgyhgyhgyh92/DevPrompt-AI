@@ -149,6 +149,9 @@ class TurnDetailPayload(TurnSummaryPayload):
     facts: list[FactPayload] = Field(default_factory=list)
     #: 本轮动作序列（2026-11-05 形态层）：历史轮可回看「这一步在做什么」。
     steps: list[dict[str, Any]] = Field(default_factory=list)
+    #: 本轮思考帧重建（2026-11-15）：从 run_events 的 thought/action 还原本轮完整过程，
+    #: action 含工具 output（截断 2000 字）。旧轮无事件记录时为空，前端回退 steps 摘要。
+    thinking: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class PagedTurnSummary(BaseModel):

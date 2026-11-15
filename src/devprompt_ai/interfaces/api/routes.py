@@ -17,6 +17,7 @@ from fastapi.responses import StreamingResponse
 from devprompt_ai.common.i18n import Locale, resolve_locale
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.errors import DevPromptError, StateError
+from devprompt_ai.domain.events import RunEvent
 from devprompt_ai.domain.models import TurnRecord
 from devprompt_ai.domain.progress import ProgressEvent, ProgressSink
 from devprompt_ai.interfaces.api import health
@@ -538,6 +539,102 @@ def _steps_of(turn: TurnRecord) -> list[dict[str, Any]]:
     return [item for item in raw if isinstance(item, dict)]
 
 
+def _clip_output(text: str, limit: int = 2000) -> str:
+    """工具输出截断：/turns 是详情接口，不能让单帧 output 无限放大响应体。"""
+    return text if len(text) <= limit else f"{text[:limit]}\n…（已截断）"
+
+
+def _segments_for_turn(events: list[RunEvent], turn_id: str) -> list[RunEvent]:
+    """按 run.started 切段，并用 snapshot.current_turn_id 归属到具体轮次。
+
+    没有 snapshot 的段（followup 的重新研判 + 生成）归到「此前最近一轮」——
+    它本来就发生在该轮之后、同一 turn 之内。
+    """
+    segments: list[list[RunEvent]] = []
+    current: list[RunEvent] = []
+    for event in events:
+        if event.type == "run.started":
+            if current:
+                segments.append(current)
+            current = [event]
+        elif current:
+            current.append(event)
+    if current:
+        segments.append(current)
+
+    picked: list[RunEvent] = []
+    last_turn = ""
+    for segment in segments:
+        owner = ""
+        for event in segment:
+            if event.type != "snapshot":
+                continue
+            candidate = str(event.payload.get("current_turn_id") or "")
+            if candidate:
+                owner = candidate
+        if owner:
+            last_turn = owner
+        if (owner or last_turn) == turn_id:
+            picked.extend(segment)
+    return picked
+
+
+def _thinking_payload(events: list[RunEvent]) -> list[dict[str, Any]]:
+    """事件段 → 前端 ThinkingItem 同构列表（thought 文字 + action 卡片）。"""
+    shots: list[dict[str, Any]] = []
+    for event in events:
+        phase = str(event.payload.get("phase") or "")
+        if event.type == "thought":
+            text = str(event.payload.get("text") or "").strip()
+            if text:
+                shots.append(
+                    {"id": f"ev-{event.seq}", "kind": "text", "text": text, "phase": phase}
+                )
+            continue
+        if event.type != "action":
+            continue
+        shots.append(
+            {
+                "id": f"ev-{event.seq}",
+                "kind": "action",
+                "phase": phase,
+                "title": str(event.payload.get("title") or ""),
+                "detail": str(event.payload.get("detail") or ""),
+                "scope": str(event.payload.get("scope") or ""),
+                "output": _clip_output(str(event.payload.get("output") or "")),
+                "status": str(event.payload.get("status") or "ok"),
+                "duration_ms": event.payload.get("duration_ms"),
+            }
+        )
+    return shots
+
+
+async def _turn_thinking(turn: TurnRecord) -> list[dict[str, Any]]:
+    """从 run_events 重建历史轮的完整思考帧（2026-11-15）。
+
+    这不是新增落库：流式端点本就把 thought/action（含工具 output）写进 run_events。
+    详情接口从中还原，历史轮即可拥有与当前轮同构的过程时间线。读取失败 fail-open
+    返回空数组——观测旁路不得阻断详情。
+    """
+    try:
+        bundle = await get_runtime(await get_service(), _serialize_snapshot)
+        total = await bundle.bus.last_seq(turn.session_id)
+        if total <= 0:
+            return []
+        events: list[RunEvent] = []
+        cursor = total + 1
+        while cursor > 1:
+            batch = await bundle.bus.history_before(turn.session_id, cursor, limit=500)
+            if not batch:
+                break
+            events = batch + events
+            cursor = batch[0].seq
+    except Exception:  # noqa: BLE001 - 观测旁路 fail-open
+        logger.warning("turn.thinking_load_failed", exc_info=True)
+        return []
+    return _thinking_payload(_segments_for_turn(events, turn.turn_id))
+
+
 @router.get("/turns/{turn_id}")
 async def get_turn(request: Request, turn_id: str) -> ApiResponse[TurnDetailPayload]:
     """单轮全文（历史轮次展开时懒加载）。"""
@@ -555,6 +652,7 @@ async def get_turn(request: Request, turn_id: str) -> ApiResponse[TurnDetailPayl
             variants=[VariantPayload(**item) for item in turn.output],
             facts=[FactPayload(**item) for item in turn.facts],
             steps=_steps_of(turn),
+            thinking=await _turn_thinking(turn),
         ),
         request_id,
     )
