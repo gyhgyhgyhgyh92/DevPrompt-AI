@@ -11,9 +11,7 @@ import {
   getResult,
   getSessionTurns,
   getTurn,
-  getSettings,
   rollbackSession,
-  setSessionModel,
   startRun,
   streamFollowup,
   streamOptimize,
@@ -128,9 +126,6 @@ export function OptimizePage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState<number | null>(null)
-  // F10 会话级模型切换：候选来自设置中心注册表；空串 = 跟随多模型路由
-  const [modelOptions, setModelOptions] = useState<{ id: string; modelId: string }[]>([])
-  const [modelOverride, setModelOverride] = useState('')
   // 模式选择（2026-11-14 多模态）：空串 = 自动路由；选 visual 联动风格与参考图上传。
   const [domainOverride, setDomainOverride] = useState<'' | DomainId>(
     () => storedOrEmpty(DOMAIN_MEMORY_KEY) as '' | DomainId,
@@ -150,28 +145,6 @@ export function OptimizePage() {
   const isStickToBottomRef = useRef(true)
 
   useSSE(sessionId)
-  // F10：会话存在时拉一次模型候选（设置中心注册表）；失败静默（切换控件隐藏选项）。
-  useEffect(() => {
-    if (!sessionId) return
-    let cancelled = false
-    getSettings()
-      .then((settings) => {
-        if (cancelled) return
-        setModelOptions(settings.models.map((m) => ({ id: m.id, modelId: m.model_id })))
-      })
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
-    }
-  }, [sessionId])
-
-  const handleModelSwitch = (id: string): void => {
-    setModelOverride(id)
-    if (!sessionId) return
-    setSessionModel(sessionId, id).catch((error: unknown) => {
-      setErrorMessage(toMessage(error))
-    })
-  }
 
   // 模式/风格切换：选择即持久化（空串 = 清除记忆，回到自动路由）
   function handleDomainSwitch(value: string): void {
@@ -696,23 +669,6 @@ export function OptimizePage() {
               思考中不再整块隐藏（2026-11-05 形态层）：改为禁用输入 + 显式「停止生成」，
               用户可随时中断当前轮（后端 CancelledError → ABORTED）。 */}
           <div className={s('optimize-page__composer')}>
-            {sessionId && modelOptions.length > 0 ? (
-              <label className={s('optimize-page__model-switch')}>
-                <span>{t('optimize.model_switch')}</span>
-                <select
-                  value={modelOverride}
-                  disabled={isThinking}
-                  onChange={(e) => handleModelSwitch(e.target.value)}
-                >
-                  <option value="">{t('optimize.model_follow_routing')}</option>
-                  {modelOptions.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.modelId}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
             <ConsoleInput
               isSubmitting={isSubmitting || isBusy}
               initialProject={project}

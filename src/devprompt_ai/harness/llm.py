@@ -19,7 +19,7 @@ import logging
 import re
 import time
 from collections.abc import Hashable, Mapping
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from typing import Any, Final, Literal, TypeVar, cast
 
 from agents import (
@@ -50,23 +50,20 @@ from devprompt_ai.domain.generate.ports import (
     GenerationContext,
     VariantDraft,
 )
-from devprompt_ai.domain.model.routing import pick_model
 from devprompt_ai.domain.model.tuning import resolve_effort
 from devprompt_ai.domain.model_spec import (
     max_context_length_of,
     model_meta_of,
     resolve_api_mode,
 )
+from devprompt_ai.domain.progress import ProgressEvent, ProgressSink
 from devprompt_ai.domain.prompt_guard import (
     JSON_STRICT_RULES,
     family_note,
 )
 from devprompt_ai.harness.adapters import adapter_kind_for, build_adapter
 from devprompt_ai.harness.ask_tool import ASK_TOOL_DEFINITION, ASK_TOOL_NAME
-from devprompt_ai.harness.model_candidates import (
-    load_candidates,
-    load_routing_stats,
-)
+from devprompt_ai.harness.model_candidates import load_candidates
 from devprompt_ai.harness.model_pool import ModelPool
 from devprompt_ai.harness.retry import (
     RetryBudget,
@@ -75,7 +72,8 @@ from devprompt_ai.harness.retry import (
     next_delay,
 )
 from devprompt_ai.memory.routing_stats import SQLiteRoutingStats
-from devprompt_ai.observability.logging import emit
+from devprompt_ai.memory.settings_store import read_model_registry
+from devprompt_ai.observability.logging import emit, emit_error
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +86,60 @@ _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 #: 重试策略与共享预算（A11）：所有结构化调用共用，避免 provider × agent 相乘。
 _RETRY_POLICY: Final[RetryPolicy] = RetryPolicy()
 _RETRY_BUDGET: Final[RetryBudget] = RetryBudget(capacity=5, window_s=60.0)
+
+#: 生成阶段的增量推送出口（2026-11-15 流式）：用 ContextVar 隔离到当前请求 task，
+#: 避免为改协议签名牵动 GeneratePort 与全部测试替身。
+_GENERATION_SINK: ContextVar[ProgressSink | None] = ContextVar(
+    "devprompt_generation_sink", default=None
+)
+#: 增量推送节流：过密会把 SSE 刷爆，过疏则打字机断断续续。
+_STREAM_EMIT_INTERVAL_S: Final[float] = 0.25
+#: 每次推送保留的尾部字符数（前端只展示「正在写什么」）。
+_STREAM_TAIL_CHARS: Final[int] = 120
+
+
+def set_generation_sink(sink: ProgressSink | None) -> Token[ProgressSink | None]:
+    """设置本轮生成的增量推送出口；调用方负责在 finally 中 ``reset_generation_sink``。"""
+    return _GENERATION_SINK.set(sink)
+
+
+def reset_generation_sink(token: Token[ProgressSink | None]) -> None:
+    _GENERATION_SINK.reset(token)
+
+
+async def _run_streamed_generate(agent: Agent, payload: str | list[Any], timeout: float) -> Any:
+    """生成路径流式累积：增量文本节流推思考帧，完整输出仍由调用方解析（协议不变）。
+
+    首字延迟从「等完整 JSON」降到首个 delta；超时语义与原 ``wait_for`` 一致。
+    """
+    sink = _GENERATION_SINK.get()
+    result = Runner.run_streamed(agent, payload, max_turns=1)
+
+    async def consume() -> Any:
+        buffer: list[str] = []
+        last_emit = 0.0
+        async for event in result.stream_events():
+            if sink is None or getattr(event, "type", "") != "raw_response_event":
+                continue
+            delta = getattr(getattr(event, "data", None), "delta", None)
+            if not isinstance(delta, str) or not delta:
+                continue
+            buffer.append(delta)
+            now = time.monotonic()
+            if now - last_emit < _STREAM_EMIT_INTERVAL_S:
+                continue
+            last_emit = now
+            text = "".join(buffer)[-_STREAM_TAIL_CHARS:]
+            buffer.clear()
+            await sink.emit(ProgressEvent(text=text, phase="GENERATING"))
+        # 收尾 flush：短输出全程未触发节流时也要把内容推出去（否则前端一直空白）
+        if sink is not None and buffer:
+            await sink.emit(
+                ProgressEvent(text="".join(buffer)[-_STREAM_TAIL_CHARS:], phase="GENERATING")
+            )
+        return result
+
+    return await asyncio.wait_for(consume(), timeout=timeout)
 _RETRYABLE_MARKERS: Final[tuple[str, ...]] = (
     "timeout",
     "429",
@@ -120,15 +172,26 @@ def _user_payload(user: str, images: tuple[str, ...]) -> str | list[Any]:
     return [{"role": "user", "content": content}]
 
 
-async def _run_with_retry(agent: Agent, payload: str | list[Any], timeout: float) -> Any:
-    """带退避与共享预算的单次结构化调用（失败抛原始异常，由调用方归类）。"""
+async def _run_with_retry(
+    agent: Agent,
+    payload: str | list[Any],
+    timeout: float,
+    *,
+    retry_on_timeout: bool = True,
+) -> Any:
+    """带退避与共享预算的单次结构化调用（失败抛原始异常，由调用方归类）。
+
+    ``retry_on_timeout=False``：超时直接抛（生成路径用）——重试会与兜底模板叠加。
+    """
     for attempt in range(1, _RETRY_POLICY.max_attempts + 1):
         try:
             return await asyncio.wait_for(Runner.run(agent, payload, max_turns=1), timeout=timeout)
         except Exception as exc:
+            timed_out = isinstance(exc, (TimeoutError, asyncio.TimeoutError))
             if (
                 attempt >= _RETRY_POLICY.max_attempts
                 or not _is_retryable(exc)
+                or (timed_out and not retry_on_timeout)
                 or not _RETRY_BUDGET.take()
             ):
                 raise
@@ -380,6 +443,32 @@ _PURPOSE_TASK_KIND: Final[dict[str, str]] = {
     "decide": "rank",
 }
 
+#: 按用途的思考强度上限（2026-11-15 延迟治理）：只下调不上调，条目显式更低值优先。
+#: 依据：推理型模型的 TTFT 由推理 token 长度决定，决策类短任务无需深思。
+_PURPOSE_EFFORT_CAP: Final[dict[str, str]] = {
+    "probe": "low",
+    "rank": "low",
+    "decide": "low",
+    "generate": "medium",
+    "summarize": "none",
+}
+_EFFORT_RANK: Final[dict[str, int]] = {"none": 0, "low": 1, "medium": 2, "high": 3}
+
+
+def _cfg_with_effort_cap(cfg: AppConfig, purpose: str) -> AppConfig:
+    """按 purpose 给 reasoning_effort 设上限；未登记该参数或已低于上限时原样返回。"""
+    cap = _PURPOSE_EFFORT_CAP.get(purpose)
+    current = cfg.reasoning_effort_value()
+    if cap is None or not current:
+        return cfg
+    if _EFFORT_RANK.get(current, len(_EFFORT_RANK)) <= _EFFORT_RANK.get(
+        cap, len(_EFFORT_RANK)
+    ):
+        return cfg
+    params = dict(cfg.llm_params or {})
+    params["reasoning_effort"] = cap
+    return cfg.model_copy(update={"llm_params": params})
+
 
 def _candidate_cfg(cfg: AppConfig, entry: Mapping[str, Any]) -> AppConfig:
     """把注册表条目落成一个可调用配置（api_mode 空串=按 provider 默认解析）。
@@ -423,32 +512,31 @@ def _candidate_cfg(cfg: AppConfig, entry: Mapping[str, Any]) -> AppConfig:
     )
 
 
-async def _resolve_chain(cfg: AppConfig, *, purpose: str, model_id: str = "") -> list[AppConfig]:
-    """候选链（G2/G9）：空表或单候选时返回 [cfg]（现状路径，字节级行为对等）。
+async def _resolve_chain(cfg: AppConfig) -> list[AppConfig]:
+    """候选链（确定性，2026-11-15 用户裁定：选了什么模型就用什么模型）。
 
-    顺序 = [bandit 选中的主] + 其余按注册顺序（主备序）。
+    空表或未启用多路由时返回 ``[cfg]``（现状路径，字节级行为对等）。
+
+    启用多路由时顺序固定：激活条目（active_model_id）命中则置首；未设或未命中则
+    注册表**首个可用条目**置首；其余条目按注册顺序追加为 failover。
+    **不做随机探索、不做胜率排序**——主模型只由用户的显式选择决定。
     """
     entries = load_candidates()
-    if model_id:
-        picked = [
-            entry
-            for entry in entries
-            if str(entry.get("id") or "") == model_id
-            or str(entry.get("model_id") or "") == model_id
-        ]
-        return [_candidate_cfg(cfg, picked[0])] if picked else [cfg]
     if not cfg.multi_model_routing or len(entries) <= 1:
         return [cfg]
-    task_kind = _PURPOSE_TASK_KIND.get(purpose, "generate")
-    stats = await load_routing_stats(cfg.db_path)
-    primary_id = pick_model(
-        [str(entry.get("model_id")) for entry in entries],
-        stats,
-        task_kind=task_kind,
-    )
+    registry = read_model_registry()
+    active_id = str(registry.get("active_model_id") or "") if isinstance(registry, dict) else ""
+    primary_id = ""
+    if active_id:
+        for entry in entries:
+            if active_id in (str(entry.get("id") or ""), str(entry.get("model_id") or "")):
+                primary_id = str(entry.get("model_id") or "")
+                break
+    if not primary_id:
+        primary_id = str(entries[0].get("model_id") or "")
     ordered = sorted(
         entries,
-        key=lambda entry: str(entry.get("model_id")) != (primary_id or ""),
+        key=lambda entry: str(entry.get("model_id") or "") != primary_id,
     )
     return [_candidate_cfg(cfg, entry) for entry in ordered]
 
@@ -487,20 +575,43 @@ async def _structured_once(
     schema = json.dumps(output_type.model_json_schema(), ensure_ascii=False)
     instructions = _instructions(cfg, system, schema)
     _emit_request_params(cfg, purpose)
+    # 思考强度按用途设上限（只下调）：决策类短任务不再吃 high 的长推理延迟
+    tuned = _cfg_with_effort_cap(cfg, purpose)
     agent = Agent(
         name="devprompt-llm",
         instructions=instructions,
         model=build_model(cfg),
         model_settings=ModelSettings(
-            **cfg.effective_llm_params(),
+            **tuned.effective_llm_params(),
             # reasoning_effort 等 ModelSettings 未建模的参数走 extra_body 真正下发
-            extra_body=cfg.extra_body_params() or None,
+            extra_body=tuned.extra_body_params() or None,
         ),
     )
     started = time.monotonic()
+    payload = _user_payload(user, images)
+    # 生成阶段有推送出口时走流式（首字更早）；否则沿用阻塞式调用
+    use_stream = purpose == "generate" and _GENERATION_SINK.get() is not None
     try:
-        result = await _run_with_retry(agent, _user_payload(user, images), timeout)
+        if use_stream:
+            result = await _run_streamed_generate(agent, payload, timeout)
+        else:
+            # 生成超时不重试（2026-11-15）：重试会与兜底模板叠加成 2×超时 + 一次重跑
+            result = await _run_with_retry(
+                agent,
+                payload,
+                timeout,
+                retry_on_timeout=purpose != "generate",
+            )
     except Exception as exc:
+        # 失败留痕（2026-11-15）：此前只能靠「trace 少一条 response」推断模型超时
+        emit_error(
+            "llm.error",
+            purpose=purpose,
+            model=cfg.llm_model,
+            error=type(exc).__name__,
+            timeout_s=timeout,
+            elapsed_ms=int((time.monotonic() - started) * 1000),
+        )
         # LLM 调用失败 → 细分错误码（5011~5015），供前端给精确文案（M-9）
         await _record_routing_stat(
             cfg,
@@ -608,7 +719,6 @@ async def chat_structured(
     *,
     timeout: float | None = None,
     purpose: RoutingPurpose = "generate",
-    model_id: str = "",
     images: tuple[str, ...] = (),
 ) -> ModelT:
     """单次结构化调用（多模型路由 + 主备，G2–G6/G9）。
@@ -623,7 +733,7 @@ async def chat_structured(
     """
     _assert_request_budget(cfg, system, user, purpose=purpose)
     effective_timeout = timeout if timeout is not None else cfg.llm_timeout
-    chain = await _resolve_chain(cfg, purpose=purpose, model_id=model_id)
+    chain = await _resolve_chain(cfg)
     last_error: DevPromptError | None = None
     for index, candidate in enumerate(chain):
         # 候选级预算：主备模型的窗口可能不同，不能只按激活条目判一次。
@@ -678,14 +788,19 @@ class LLMGenerator:
         tpl = template_for(fallback)
         # 生成类调用输出长（完整方案正文）：timeout 缺省即 cfg.llm_timeout（F-604，默认 60s；
         # 10s 会截断真实生成——4H 端到端实测）
+        # 兜底版只写意图与剩余风险（≤几百字），收紧 max_tokens 换取更快返回（2026-11-15）
+        cfg = (
+            self._cfg.model_copy(update={"llm_max_tokens": 1500})
+            if fallback and self._cfg.llm_max_tokens is None
+            else self._cfg
+        )
         draft = await chat_structured(
-            self._cfg,
+            cfg,
             VariantDraft,
             tpl.system(locale, ctx.domain_id),
             tpl.build_user(ctx, locale),
-            timeout=self._cfg.llm_generate_timeout,
+            timeout=cfg.llm_generate_timeout,
             purpose="generate",
-            model_id=ctx.model_override,
             images=ctx.images,
         )
         validate_variant(draft)
@@ -709,7 +824,6 @@ class LLMGenerator:
             reply_tpl.build_user(ctx, locale),
             timeout=self._cfg.llm_generate_timeout,
             purpose="generate",
-            model_id=ctx.model_override,
         )
         return out.text
 
@@ -911,10 +1025,11 @@ async def _tools_once(
     """
     model = build_model(cfg)
     _emit_request_params(cfg, purpose)
+    tuned = _cfg_with_effort_cap(cfg, purpose)
     settings = ModelSettings(
         tool_choice="auto",
-        **cfg.effective_llm_params(),
-        extra_body=cfg.extra_body_params() or None,
+        **tuned.effective_llm_params(),
+        extra_body=tuned.extra_body_params() or None,
     )
     started = time.monotonic()
     try:
@@ -978,7 +1093,7 @@ async def chat_with_tools(
     """
     _assert_request_budget(cfg, system, user, purpose=purpose)
     effective_timeout = timeout if timeout is not None else cfg.llm_timeout
-    chain = await _resolve_chain(cfg, purpose=purpose, model_id=model_id)
+    chain = await _resolve_chain(cfg)
     last_error: DevPromptError | None = None
     for index, candidate in enumerate(chain):
         _assert_request_budget(candidate, system, user, purpose=purpose)

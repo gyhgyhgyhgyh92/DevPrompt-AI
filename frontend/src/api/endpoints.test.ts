@@ -10,7 +10,6 @@ import {
   postOptimize,
   putSettings,
   scanProject,
-  setSessionModel,
 } from './endpoints'
 import { ApiError, SUCCESS_CODE } from './errors'
 import type { ApiResponse } from './types'
@@ -108,7 +107,7 @@ describe('api/endpoints 12 操作', () => {
     )
   })
 
-  it('Replay/模型切换请求体只编码一次（不得二次 JSON.stringify）', async () => {
+  it('Replay 请求体只编码一次（不得二次 JSON.stringify）', async () => {
     const createMock = stubFetchJson(
       envelope({ run: { run_id: 'r1', status: 'running' }, nodes: [] }),
     )
@@ -121,12 +120,6 @@ describe('api/endpoints 12 操作', () => {
     await compareObsTraces('t1', 't2')
     const compareBody = JSON.parse(String(compareMock.mock.calls[0]?.[1]?.body))
     expect(compareBody).toEqual({ left_trace_id: 't1', right_trace_id: 't2' })
-
-    vi.unstubAllGlobals()
-    const modelMock = stubFetchJson(envelope({ session_id: 's1', model_override: 'm1' }))
-    await setSessionModel('s1', 'm1')
-    const modelBody = JSON.parse(String(modelMock.mock.calls[0]?.[1]?.body))
-    expect(modelBody).toEqual({ model_id: 'm1' })
   })
 
   it('postFollowup 三模式互斥：混合请求体直接拒绝且不发请求', async () => {

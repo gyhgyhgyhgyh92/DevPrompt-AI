@@ -68,7 +68,7 @@ def test_hard_limit_25_truncates() -> None:
     syms.append(_sym("SubmitButton", "src/ui/button.tsx"))
     # 原句命中 SubmitButton + 每个 comp_{i} 含 "comp" 词元
     result = build_candidates("submit button comp", syms)
-    assert len(result.candidates) == MAX_CANDIDATES == 25  # 超限截断不报错（MUST-09）
+    assert len(result.candidates) == MAX_CANDIDATES == 50  # 超限截断不报错（2026-11-15 起 50）
     assert result.candidates[0].name == "SubmitButton"  # 按匹配度截断：高分在前
 
 
@@ -326,3 +326,50 @@ def test_exact_name_bonus_applies_at_df_cap_boundary() -> None:
     syms = [_sym("mount", f"src/a{i}.py") for i in range(_MAX_EXACT_NAME_DF)]
     result = build_candidates("mount 挂载适配器的前缀匹配支持通配符", syms)
     assert all(c.score == 5.0 for c in result.candidates)  # 2 + 3 加成
+
+
+def test_generic_ui_term_does_not_take_exact_bonus() -> None:
+    """真实回归（2026-11-15）：中文「页面」译成 page 后不得靠 +3 压过业务目标。
+
+    实测原句「前端页面中的管理员界面的新增图书按钮改为红色」曾把后端 Java 的
+    page 符号顶到 7.0，而真正目标 BookListPage 只有 6.0。
+    """
+    syms = [
+        _sym("page", "task-back/src/main/java/com/example/book/common/PageResult.java"),
+        _sym("page", "task-front/src/pages/borrow/AvailableBooksPage.tsx"),
+        _sym("BookAddDTO", "task-back/src/main/java/com/example/book/dto/BookAddDTO.java"),
+        _sym("BookListPage", "task-front/src/pages/bookManage/BookListPage.tsx"),
+    ]
+
+    result = build_candidates("将当前项目中的前端页面中的管理员界面中的新增图书按钮改为红色", syms)
+
+    # page 只拿到名字 2 分 + 路径 2 分，精确名加成被泛词豁免
+    assert all(c.score == 4.0 for c in result.candidates if c.name == "page")
+    # 前端业务符号排首位（同分时技术栈优先）
+    assert result.candidates[0].name == "BookListPage"
+    assert result.candidates[0].path.endswith("BookListPage.tsx")
+
+
+def test_literal_english_term_still_takes_exact_bonus() -> None:
+    """用户字面写了英文词时，精确名加成语义不变（比只靠中文映射多 3 分）。"""
+    syms = [_sym("button", "src/ui/button.tsx")]
+
+    with_word = build_candidates("把提交按钮 button 的颜色改掉", syms)
+    without = build_candidates("把提交按钮的颜色改掉", syms)
+
+    assert with_word.candidates[0].score - without.candidates[0].score == 3.0
+
+
+def test_stack_preference_is_tiebreak_only() -> None:
+    """技术栈只作同分档位：分数完全不受影响，跨端同分时才分先后。"""
+    syms = [
+        _sym("Book", "task-back/src/book/Book.java"),
+        _sym("Book", "task-front/src/book/Book.tsx"),
+    ]
+
+    front = build_candidates("前端页面里把图书 Book 的标题改一下", syms)
+    back = build_candidates("后端接口里把图书 Book 的实体改一下", syms)
+
+    assert {c.score for c in front.candidates} == {6.0}  # 名字 2 + 路径 1 + 加成 3
+    assert front.candidates[0].path.endswith(".tsx")
+    assert back.candidates[0].path.endswith(".java")

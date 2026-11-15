@@ -135,7 +135,6 @@ class TracedGenerator:
             input=request,
             attributes={
                 "call_key": call_key,
-                "model_id": str(getattr(ctx, "model_override", "") or "auto"),
                 "purpose": "generate",
             },
         )
@@ -164,7 +163,6 @@ class TracedGenerator:
             input=request,
             attributes={
                 "call_key": call_key,
-                "model_id": str(getattr(ctx, "model_override", "") or "auto"),
                 "purpose": "reply",
             },
         )

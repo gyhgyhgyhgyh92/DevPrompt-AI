@@ -115,5 +115,6 @@ class TestToolsOnceSettings:
         await llm._tools_once(cfg, "sys", "user", timeout=5, purpose="probe")
 
         settings = captured["model_settings"]
-        assert settings.extra_body == {"reasoning_effort": "high"}
+        # 2026-11-15 延迟治理：探针属决策类短任务，思考强度按用途 cap 到 low（只下调不上调）
+        assert settings.extra_body == {"reasoning_effort": "low"}
         assert settings.tool_choice == "auto"

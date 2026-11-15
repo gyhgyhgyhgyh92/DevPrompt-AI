@@ -461,37 +461,6 @@
         "title": "ApiResponse[ScanResponse]",
         "type": "object"
       },
-      "ApiResponse_SessionModelResponse_": {
-        "properties": {
-          "code": {
-            "default": 0,
-            "title": "Code",
-            "type": "integer"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SessionModelResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "message": {
-            "default": "ok",
-            "title": "Message",
-            "type": "string"
-          },
-          "request_id": {
-            "default": "",
-            "title": "Request Id",
-            "type": "string"
-          }
-        },
-        "title": "ApiResponse[SessionModelResponse]",
-        "type": "object"
-      },
       "ApiResponse_SettingsResponse_": {
         "properties": {
           "code": {
@@ -2396,38 +2365,6 @@
           "kind_counts"
         ],
         "title": "ScanResponse",
-        "type": "object"
-      },
-      "SessionModelRequest": {
-        "description": "F10 会话级模型切换：``model_id`` 为注册表条目 id；空串 = 清除覆盖。",
-        "properties": {
-          "model_id": {
-            "default": "",
-            "maxLength": 200,
-            "title": "Model Id",
-            "type": "string"
-          }
-        },
-        "title": "SessionModelRequest",
-        "type": "object"
-      },
-      "SessionModelResponse": {
-        "description": "POST /sessions/{id}/model 数据体：切换后的会话级覆盖；空串表示已清除。",
-        "properties": {
-          "model_id": {
-            "title": "Model Id",
-            "type": "string"
-          },
-          "session_id": {
-            "title": "Session Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "session_id",
-          "model_id"
-        ],
-        "title": "SessionModelResponse",
         "type": "object"
       },
       "SettingsResponse": {
@@ -4449,75 +4386,6 @@
           }
         },
         "summary": "Cancel Run",
-        "tags": [
-          "runtime"
-        ]
-      }
-    },
-    "/api/v1/sessions/{session_id}/model": {
-      "post": {
-        "description": "会话级模型热切换（F10）：写会话覆盖，下一轮生成即生效；空串清除覆盖。",
-        "operationId": "switch_session_model_api_v1_sessions__session_id__model_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "session_id",
-            "required": true,
-            "schema": {
-              "title": "Session Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Request-ID",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Request-Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SessionModelRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_SessionModelResponse_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Switch Session Model",
         "tags": [
           "runtime"
         ]

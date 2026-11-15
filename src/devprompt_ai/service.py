@@ -160,8 +160,7 @@ from devprompt_ai.domain.retrieval.locate import locate_symbol
 from devprompt_ai.domain.retrieval.paths import safe_join
 from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader, SymbolProvider
 from devprompt_ai.harness.guardrails import validate_claims
-from devprompt_ai.harness.llm import LLMGenerator
-from devprompt_ai.harness.model_candidates import load_candidates
+from devprompt_ai.harness.llm import LLMGenerator, reset_generation_sink, set_generation_sink
 from devprompt_ai.harness.overflow import is_context_overflow
 from devprompt_ai.harness.process import LocalCommandRunner, LocalFileReader, SymbolTableProvider
 from devprompt_ai.harness.repo_indexer import impact_for, index_project
@@ -1449,11 +1448,13 @@ class ForgeService:
 
         if action in (AgentAction.PROBE, AgentAction.ASK):
             has_unknowns = await self._act_probe(session, request_id=request_id, progress=progress)
-            if action is AgentAction.ASK and has_unknowns:
+            if has_unknowns:
+                # 研判出未决项就必然反问（2026-11-15）：此前只有 planner 主动选 ask 才进
+                # ASKING，实测出现过「有 2 条缺口却直接生成、清单静态写进方案」的路径。
                 await hop(session, FlowState.ASKING, self._sessions)
                 await self._finish_turn(session)
                 return self._snapshot(session, "ask")
-            return None  # probe 只研判，问不问由下一步决定
+            return None  # 无未决项：交给下一轮调度决定继续取证还是生成
 
         if action is AgentAction.GENERATE:
             # agentic 允许跳过 RETRIEVING/PROBE 直接生成：先查证据新鲜度（改了代码
@@ -1910,35 +1911,6 @@ class ForgeService:
             limit=limit,
             offset=offset,
         )
-
-    async def set_session_model(
-        self, user_id: str, session_id: str, model_id: str
-    ) -> dict[str, Any]:
-        """F10 会话级模型覆盖：写 session.data["model_override"]；空串 = 清除（跟随路由）。
-
-        非空时必须是注册表有效条目（id 或 model_id 匹配），否则 6003（资源不存在）。
-        """
-        session = await self._load_owned(user_id, session_id)
-        wanted = model_id.strip()
-        if wanted:
-            entries = load_candidates()
-            if not any(
-                str(entry.get("id") or "") == wanted or str(entry.get("model_id") or "") == wanted
-                for entry in entries
-            ):
-                raise StateError("未知模型条目：请先在设置中心配置并保存该模型", code=6003)
-        session.data["model_override"] = wanted
-        try:
-            if not await self._sessions.save(session):
-                logger.warning("turn.memory_conflict", extra={"session_id": session.session_id})
-        except Exception:  # noqa: BLE001 - 覆盖落库失败不阻断响应，内存态已生效
-            logger.warning("session.model_save_failed", exc_info=True)
-        emit(
-            "session.model_switch",
-            model_id=wanted,
-            request_id=str(session.data.get("last_request_id", "")),
-        )
-        return {"session_id": session.session_id, "model_override": wanted}
 
     async def list_turns(
         self, user_id: str, session_id: str, *, limit: int = 20, offset: int = 0
@@ -2681,8 +2653,6 @@ class ForgeService:
                     TurnMemory.from_payload(session.data.get("turn_memory")).variants
                 )
             ),
-            # F10 会话级模型覆盖：空串 = 跟随路由
-            model_override=str(session.data.get("model_override", "")),
             # 四段式方案的两路证据（2026-11-11）：超窗压缩时**保留**——
             # 它们是最小充分证据，比上一轮方案正文更不可替代。
             target_excerpt=str(session.data.get("target_excerpt", "")),
@@ -2753,6 +2723,8 @@ class ForgeService:
         session.data["generated_variant_count"] = 0
         ctx = await self._generation_context(session)
         await _notify(session, progress, generation_text(locale))
+        # 流式增量出口（2026-11-15）：生成期间把首个 delta 起就推给前端，首字感知降至秒级
+        sink_token = set_generation_sink(progress)
         try:
             draft = await self._generate_single_guarded(session, ctx, locale)
             self._require_valid_draft(draft)
@@ -2768,6 +2740,8 @@ class ForgeService:
             except Exception:
                 # 兜底也失败：抛原异常，不产出半个方案（错误信息保留主流程原因）
                 raise first_error from None
+        finally:
+            reset_generation_sink(sink_token)
         # slots dataclass 无 __dict__，序列化必须走 model_dump（计划 §6.2 注意事项）
         session.data["variant"] = draft.model_dump()
         # 记录本轮实际生成套数，供调度层区分「继承的旧方案」与「本轮成果」。
@@ -3005,6 +2979,8 @@ class ForgeService:
                     str(variant.get("body", "")),
                     [str(item) for item in variant.get("changes", []) if item],
                 )
+        variant = session.data.get("variant")
+        is_fallback = bool(variant.get("fallback", False)) if isinstance(variant, dict) else False
         return evaluate_delivery(
             DeliveryInput(
                 has_target=bool(session.data.get("target")),
@@ -3014,6 +2990,7 @@ class ForgeService:
                 anchor_invalid_count=anchor_invalid,
                 attribution=attribution,
                 structural=structural,
+                fallback=is_fallback,
             ),
             _session_locale(session),
         )
@@ -3461,10 +3438,17 @@ class ForgeService:
         emit("cache.miss", request_id=request_id, candidates=len(candidates))
         try:
             out = await self._decider.rank_components(sentence, candidates)
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "ranking.rank_failed",
                 extra={"reason": "decider-failed", "request_id": request_id},
+            )
+            # 排序失败直接回退分数第一名（2026-11-15）：留痕，避免「悄悄降级」无从定位
+            emit(
+                "decision.rank_degraded",
+                candidates=len(candidates),
+                reason=type(exc).__name__,
+                request_id=request_id,
             )
             return candidates[0]
         _RANK_CACHE[key] = (now + _RANK_CACHE_TTL_SECONDS, list(out.order))
@@ -3512,7 +3496,13 @@ class ForgeService:
             total_tokens=llm_tokens,
             llm_source="actual" if llm_tokens > 0 else "no_call",
         )
-        questions = [_unknown_from(raw) for raw in session.data.get("unknowns", [])]
+        # 反问只属于 ask 状态（2026-11-15）：DONE/ABORTED 等状态不得携带未问出口的 unknowns，
+        # 否则前端会渲染「等待确认」提示却无处可答（实测：done 快照仍带 2 条含选项的问题）。
+        questions = (
+            [_unknown_from(raw) for raw in session.data.get("unknowns", [])]
+            if status == "ask"
+            else []
+        )
         variant_data = session.data.get("variant")
         target_data = session.data.get("target")
         target = (

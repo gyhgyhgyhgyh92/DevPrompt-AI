@@ -33,6 +33,25 @@ interface BridgeResponse {
 
 let seq = 0
 
+/** 扩展注入标记（content script 写在共享 DOM 上，见 browser-extension/content.js）。 */
+const READY_ATTR = 'data-devprompt-native'
+
+/**
+ * 扩展桥是否已就绪（扩展 content script 已注入本页）。
+ *
+ * 用于**点击前**的同步探测：扩展未加载/未启用/页面未刷新时，postMessage
+ * 无人应答，请求会悬挂到超时——此时应立即给出可执行提示，而非长时间空转。
+ */
+export function isNativeBridgeReady(): boolean {
+  if (typeof document === 'undefined') return false
+  return document.documentElement?.getAttribute(READY_ATTR) === '1'
+}
+
+/** 扩展缺席时的提示（取当前界面语言）。 */
+export function nativeBridgeMissingHint(): string {
+  return i18n.t('native_picker.extension_missing')
+}
+
 /** 把异常转成用户可读文案（与设置面板同一口径）。 */
 export function nativePickErrorText(error: unknown): string {
   return errorMessage(error, i18n.t('native_picker.unavailable'))

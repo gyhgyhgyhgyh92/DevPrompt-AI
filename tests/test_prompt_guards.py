@@ -79,8 +79,15 @@ class TestTaskBoundary:
             assert TASK_NOT_EXECUTE in tpl.system("zh-CN", "code"), f"{name} 模板缺边界声明"
 
     def test_templates_keep_their_original_constraints(self) -> None:
-        """边界声明是**附加**，不得覆盖各模板原有约束。"""
-        assert "待确认清单" in CONSERVATIVE_TEMPLATE.system("zh-CN", "code")
+        """边界声明是**附加**，不得覆盖各模板原有约束。
+
+        2026-11-15：兜底模板由「待确认清单」改为「默认假设 + 剩余风险」——
+        未问出口的缺口不得以开放式问题形式留给下游。
+        """
+        conservative = CONSERVATIVE_TEMPLATE.system("zh-CN", "code")
+        assert "默认假设" in conservative
+        assert "剩余风险" in conservative
+        assert "待确认" not in conservative
         assert "（推断）" in STANDARD_TEMPLATE.system("zh-CN", "code")
         assert "禁止编造" in STANDARD_TEMPLATE.system("zh-CN", "code")
 

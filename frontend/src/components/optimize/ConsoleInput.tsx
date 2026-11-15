@@ -1,7 +1,12 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { putSettings, scanProject } from '../../api/endpoints'
-import { nativePickErrorText, pickFolderViaNative } from '../../api/nativeFolder'
+import {
+  isNativeBridgeReady,
+  nativeBridgeMissingHint,
+  nativePickErrorText,
+  pickFolderViaNative,
+} from '../../api/nativeFolder'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { errorMessage } from '../settings/errorMessage'
 import { ModelPicker, type ModelTuning } from './ModelPicker'
@@ -173,6 +178,11 @@ export function ConsoleInput({
    * → native messaging host）。取消（空串）时保持原状；未装扩展等失败给明确文案。
    */
   async function handlePickFolder(): Promise<void> {
+    // 扩展未注入本页（没装/没启用/没刷新页面）→ 立即提示，不进入悬挂等待
+    if (!isNativeBridgeReady()) {
+      setProjectError(nativeBridgeMissingHint())
+      return
+    }
     if (isPickingFolder) return
     setPickingFolder(true)
     try {

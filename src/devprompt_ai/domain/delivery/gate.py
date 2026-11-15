@@ -49,6 +49,9 @@ class DeliveryInput:
     #: 通用域结构化校验结果（2026-11-14 领域包）：非 None 时走结构化分支，
     #: 忽略检索/取证/锚点/claims（通用域没有这些证据源）
     structural: StructuralCheck | None = None
+    #: 是否由兜底模板产出（2026-11-15）：True 时追加「不可直接交付」披露，
+    #: 因为兜底方案缺前后代码、验收与回滚，下游 Agent 无法据此启动任务。
+    fallback: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,7 +94,7 @@ def _evaluate_structural(data: DeliveryInput, locale: Locale) -> DeliveryVerdict
     return DeliveryVerdict(status="GREEN", reasons=(), disclosure="", tone="ok")
 
 
-def evaluate_delivery(data: DeliveryInput, locale: Locale = DEFAULT_LOCALE) -> DeliveryVerdict:
+def _evaluate_verdict(data: DeliveryInput, locale: Locale = DEFAULT_LOCALE) -> DeliveryVerdict:
     """按 RED → YELLOW → GREEN 优先级判定，命中即返回。
 
     ``structural`` 非 None（通用域）时改核结构完整性：无仓库证据可查，
@@ -155,3 +158,21 @@ def evaluate_delivery(data: DeliveryInput, locale: Locale = DEFAULT_LOCALE) -> D
         )
 
     return DeliveryVerdict(status="GREEN", reasons=(), disclosure="", tone="ok")
+
+
+def evaluate_delivery(data: DeliveryInput, locale: Locale = DEFAULT_LOCALE) -> DeliveryVerdict:
+    """在基础判定之上追加「兜底产出」披露（2026-11-15）。
+
+    兜底方案（fallback=True）缺前后代码对照、验收步骤与回滚方式，不可直接交付
+    下游执行；该结论以披露形式追加，不改动原有 RED/YELLOW/GREEN 判定逻辑。
+    """
+    verdict = _evaluate_verdict(data, locale)
+    if not data.fallback:
+        return verdict
+    notice = tr("gate.fallback_not_deliverable", locale)
+    return DeliveryVerdict(
+        status=verdict.status,
+        reasons=verdict.reasons + (notice,),
+        disclosure=(f"{verdict.disclosure}\n{notice}" if verdict.disclosure else notice),
+        tone=verdict.tone if verdict.status != "GREEN" else "warn",
+    )

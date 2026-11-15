@@ -661,13 +661,6 @@ class ArtifactResponse(BaseModel):
     content: str
 
 
-class SessionModelResponse(BaseModel):
-    """POST /sessions/{id}/model 数据体：切换后的会话级覆盖；空串表示已清除。"""
-
-    session_id: str
-    model_id: str
-
-
 class ApiResponse(BaseModel, Generic[DataT]):
     """统一响应信封：code=0 成功；非 0 为架构文档 §3.3 错误码。"""
 

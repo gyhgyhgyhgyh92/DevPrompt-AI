@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse, SettingsResponse } from '../../api/types'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { ConsoleInput } from './ConsoleInput'
-import { pickFolderViaNative } from '../../api/nativeFolder'
+import { isNativeBridgeReady, pickFolderViaNative } from '../../api/nativeFolder'
 
 const PROMPT_HINT = '帮你优化每一段提示词，从理清需求到上线-端到端交付生产级结果'
 
@@ -14,6 +14,8 @@ function envelope<T>(data: T): ApiResponse<T> {
 
 vi.mock('../../api/nativeFolder', () => ({
   NOT_INSTALLED_HINT: '未安装扩展',
+  isNativeBridgeReady: vi.fn(() => true),
+  nativeBridgeMissingHint: () => '未检测到扩展，请刷新页面',
   nativePickErrorText: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   pickFolderViaNative: vi.fn(async () => ({ path: '' })),
 }))
@@ -310,5 +312,18 @@ describe('ConsoleInput 原生文件夹选择器（2026-10-19 扩展桥）', () =
     await userEvent.setup().click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
 
     expect(await screen.findByText('native host not found')).toBeTruthy()
+  })
+
+  it('扩展未注入本页：立即提示且不发起请求（不空转到超时）', async () => {
+    vi.mocked(isNativeBridgeReady).mockReturnValueOnce(false)
+    useSettingsStore.setState({ settings: settingsFixture })
+    render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
+
+    await userEvent.setup().click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
+
+    expect(await screen.findByText('未检测到扩展，请刷新页面')).toBeTruthy()
+    expect(pickFolderViaNative).not.toHaveBeenCalled()
+    // 按钮立即恢复可点（未进入「正在打开」悬挂态）
+    expect(screen.getByRole('button', { name: '选择文件夹（本地）' })).toBeTruthy()
   })
 })

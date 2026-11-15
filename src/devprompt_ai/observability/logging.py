@@ -47,6 +47,10 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "evidence.reused",
         "evidence.stale_reprobe",
         "generate.fallback",
+        # 生成/决策调用失败留痕（2026-11-15）：此前只能靠「trace 少一条 response」推断
+        "llm.error",
+        # 排序失败回退分数第一名（2026-11-15）：降级可见，不静默
+        "decision.rank_degraded",
         "evidence.claim_uncovered",
         "evidence.claim_undeclared",
         "evidence.anchor_invalid",

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import random
 from typing import Any
 
 import pytest
@@ -13,7 +12,6 @@ from devprompt_ai.domain.model.registry import (
     default_registry,
     infer_cache_kind,
 )
-from devprompt_ai.domain.model.routing import RoutingStat, bandit_score, pick_model
 from devprompt_ai.domain.model.task_inferrer import (
     TaskKind,
     complexity_score,
@@ -57,34 +55,6 @@ def test_task_inference_and_tiers() -> None:
 def test_complexity_grows_with_paths_and_length() -> None:
     assert complexity_score("") == 0.0
     assert complexity_score("改一下 src/a.py 里的导出，并补测试") > complexity_score("改一下")
-
-
-def test_bandit_score_prefers_success_and_fast() -> None:
-    fast = RoutingStat(attempts=10, successes=9, total_latency_ms=5_000)
-    slow = RoutingStat(attempts=10, successes=9, total_latency_ms=60_000)
-    flaky = RoutingStat(attempts=10, successes=3, total_latency_ms=5_000)
-
-    assert bandit_score(fast) > bandit_score(slow)
-    assert bandit_score(fast) > bandit_score(flaky)
-    assert bandit_score(RoutingStat()) == 0.5, "无样本给中性先验"
-
-
-def test_pick_model_uses_stats_and_can_explore() -> None:
-    stats = {
-        ("cheap", "probe"): (10, 5, 1000),
-        ("strong", "probe"): (10, 10, 1000),
-    }
-
-    assert pick_model(["cheap", "strong"], stats, task_kind="probe", epsilon=0) == "strong"
-    assert pick_model([], stats, task_kind="probe") is None
-    assert pick_model(["only"], stats, task_kind="probe") == "only"
-
-    rng = random.Random(0)
-    picks = {
-        pick_model(["cheap", "strong"], stats, task_kind="probe", epsilon=1, rng=rng)
-        for _ in range(10)
-    }
-    assert picks <= {"cheap", "strong"}
 
 
 def test_model_pool_is_lru() -> None:

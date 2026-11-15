@@ -138,7 +138,9 @@ class AppConfig(BaseSettings):
     context_ledger_enabled: bool = False
     # 多模型路由（G2–G6）：按 purpose 从 settings 注册表选模型，bandit 在线学习，
     # 失败按注册顺序主备切换。候选 ≤1 时自动退化为现状路径（行为对等）。
-    multi_model_routing: bool = True
+    #: 多候选链（2026-11-15 用户裁定）：默认关闭随机/胜率择优——模型只由用户在设置中的
+    #: 显式选择决定（激活条目 → 首个可用），其余条目仅作固定顺序 failover。
+    multi_model_routing: bool = False
     # B11 LLM 摘要：压缩触发时把被丢弃的历史段交给 cheap 槽摘要；失败回退确定性 handoff。
     # 默认关闭——每次压缩多一次 LLM 调用，实测摘要质量优于 80 字规则摘要后再开。
     summary_llm_enabled: bool = False

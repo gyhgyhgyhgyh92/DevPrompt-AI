@@ -1,4 +1,8 @@
-"""多模型路由链（G2/G6/G9）测试：候选解析、bandit 主选、主备降级与单候选退化。"""
+"""多模型候选链（确定性）测试：主选解析、主备降级与单候选退化。
+
+2026-11-15 用户裁定：候选链不再随机/按胜率排序——主模型只由
+「注册表激活条目 → 首个可用条目」确定性解析，其余条目仅作固定顺序 failover。
+"""
 
 from __future__ import annotations
 
@@ -17,12 +21,8 @@ class _Probe(BaseModel):
 
 
 @pytest.fixture(autouse=True)
-def _clean_stats_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+def _clean_stats_cache() -> None:
     invalidate_routing_stats_cache()
-    # 禁用 ε-探索：路由测试要求主选确定（平手按注册顺序）
-    import devprompt_ai.domain.model.routing as routing_mod
-
-    monkeypatch.setattr(routing_mod, "should_explore", lambda *a, **k: False)
 
 
 def _entry(entry_id: str, model_id: str) -> dict[str, object]:
@@ -36,66 +36,94 @@ def _entry(entry_id: str, model_id: str) -> dict[str, object]:
     }
 
 
+def _cfg(**overrides: object) -> AppConfig:
+    """启用多路由的配置：候选链才会展开为多条目。"""
+    fields: dict[str, object] = {"multi_model_routing": True}
+    fields.update(overrides)
+    return AppConfig(_env_file=None, **fields)  # type: ignore[call-arg]
+
+
+def _active(active_id: str) -> object:
+    """构造 read_model_registry 的替身（只关心激活位）。"""
+
+    def _read() -> dict[str, object]:
+        return {"providers": [], "models": [], "active_model_id": active_id}
+
+    return _read
+
+
 async def test_single_candidate_degrades_to_current_cfg(monkeypatch: pytest.MonkeyPatch) -> None:
     """候选 ≤1（含空表）时退化为现状路径：链上只有原 cfg，行为字节级对等。"""
     monkeypatch.setattr(llm_mod, "load_candidates", lambda: [])
-    cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
+    cfg = _cfg()
 
-    assert await _resolve_chain(cfg, purpose="generate") == [cfg]
+    assert await _resolve_chain(cfg) == [cfg]
 
 
-async def test_multi_candidates_bandit_prefers_primary_order(
+async def test_multi_candidates_primary_from_registry_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """未设激活模型：注册表首个可用条目置首，其余按注册顺序（确定性）。"""
     monkeypatch.setattr(
         llm_mod, "load_candidates", lambda: [_entry("a", "model-a"), _entry("b", "model-b")]
     )
-    # 无统计 → 平手按传入顺序，主 = 注册表第一个
-    monkeypatch.setattr(llm_mod, "load_routing_stats", _stats_stub({}))
+    monkeypatch.setattr(llm_mod, "read_model_registry", _active(""))
 
-    cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
-    chain = await _resolve_chain(cfg, purpose="probe")
+    chain = await _resolve_chain(_cfg())
 
     assert [c.llm_model for c in chain] == ["model-a", "model-b"]
     assert chain[0].llm_base_url.endswith("/a")
     assert chain[0].llm_api_key == "k-a"
 
 
-async def test_multi_candidates_bandit_uses_stats(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_active_model_placed_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    """激活条目命中（按 id 或 model_id）→ 置首；其余条目按注册顺序作为 failover。"""
     monkeypatch.setattr(
         llm_mod, "load_candidates", lambda: [_entry("a", "model-a"), _entry("b", "model-b")]
     )
-    # model-a 探针 2 连败且慢，model-b 全胜 → bandit 应把 b 排前
-    monkeypatch.setattr(
-        llm_mod,
-        "load_routing_stats",
-        _stats_stub(
-            {
-                ("model-a", "probe"): (2, 0, 40_000),
-                ("model-b", "probe"): (2, 2, 2_000),
-            }
-        ),
-    )
+    monkeypatch.setattr(llm_mod, "read_model_registry", _active("b"))
 
-    cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
-    chain = await _resolve_chain(cfg, purpose="probe")
+    chain = await _resolve_chain(_cfg())
 
     assert [c.llm_model for c in chain] == ["model-b", "model-a"]
 
 
-async def test_model_override_pins_exact_candidate(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_active_model_resolves_by_model_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """激活位按 model_id 也能命中（注册表里 id 与 model_id 可能不同）。"""
     monkeypatch.setattr(
         llm_mod, "load_candidates", lambda: [_entry("a", "model-a"), _entry("b", "model-b")]
     )
+    monkeypatch.setattr(llm_mod, "read_model_registry", _active("model-b"))
 
-    cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
-    pinned = await _resolve_chain(cfg, purpose="generate", model_id="b")
-    unknown = await _resolve_chain(cfg, purpose="generate", model_id="missing")
+    chain = await _resolve_chain(_cfg())
 
-    assert [c.llm_model for c in pinned] == ["model-b"]
-    assert unknown == [cfg], "未知覆盖 id 退化为现状，不得臆造模型"
+    assert [c.llm_model for c in chain] == ["model-b", "model-a"]
+
+
+async def test_unknown_active_falls_back_to_first_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """激活位指向已删除条目 → 回落注册表首个条目，不臆造模型、不随机。"""
+    monkeypatch.setattr(
+        llm_mod, "load_candidates", lambda: [_entry("a", "model-a"), _entry("b", "model-b")]
+    )
+    monkeypatch.setattr(llm_mod, "read_model_registry", _active("missing"))
+
+    chain = await _resolve_chain(_cfg())
+
+    assert [c.llm_model for c in chain] == ["model-a", "model-b"]
+
+
+async def test_chain_is_stable_across_repeated_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """多次解析结果完全一致（无随机探索）。"""
+    monkeypatch.setattr(
+        llm_mod, "load_candidates", lambda: [_entry("a", "model-a"), _entry("b", "model-b")]
+    )
+    monkeypatch.setattr(llm_mod, "read_model_registry", _active(""))
+
+    orders = {tuple(c.llm_model for c in await _resolve_chain(_cfg())) for _ in range(5)}
+
+    assert orders == {("model-a", "model-b")}
 
 
 async def test_failover_switches_to_next_candidate(
@@ -105,7 +133,7 @@ async def test_failover_switches_to_next_candidate(
     monkeypatch.setattr(
         llm_mod, "load_candidates", lambda: [_entry("a", "model-a"), _entry("b", "model-b")]
     )
-    monkeypatch.setattr(llm_mod, "load_routing_stats", _stats_stub({}))
+    monkeypatch.setattr(llm_mod, "read_model_registry", _active(""))
     calls: list[str] = []
 
     async def fake_once(cfg: AppConfig, *_args: object, **_kw: object) -> _Probe:
@@ -116,9 +144,8 @@ async def test_failover_switches_to_next_candidate(
         return _Probe()
 
     monkeypatch.setattr(llm_mod, "_structured_once", fake_once)
-    cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
 
-    result = await chat_structured(cfg, _Probe, "sys", "user")
+    result = await chat_structured(_cfg(), _Probe, "sys", "user")
 
     assert result.value == "ok"
     assert calls == ["model-a", "model-b"]
@@ -129,7 +156,7 @@ async def test_auth_failure_does_not_failover(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(
         llm_mod, "load_candidates", lambda: [_entry("a", "model-a"), _entry("b", "model-b")]
     )
-    monkeypatch.setattr(llm_mod, "load_routing_stats", _stats_stub({}))
+    monkeypatch.setattr(llm_mod, "read_model_registry", _active(""))
     calls: list[str] = []
 
     async def fake_once(cfg: AppConfig, *_args: object, **_kw: object) -> _Probe:
@@ -138,10 +165,9 @@ async def test_auth_failure_does_not_failover(monkeypatch: pytest.MonkeyPatch) -
         raise llm_mod.GenerationError("bad key", code=code, context={})
 
     monkeypatch.setattr(llm_mod, "_structured_once", fake_once)
-    cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
 
     with pytest.raises(llm_mod.GenerationError):
-        await chat_structured(cfg, _Probe, "sys", "user")
+        await chat_structured(_cfg(), _Probe, "sys", "user")
     assert calls == ["model-a"]
 
 
@@ -158,7 +184,7 @@ async def test_quota_failure_failovers_to_next_candidate(
     monkeypatch.setattr(
         llm_mod, "load_candidates", lambda: [_entry("a", "model-a"), _entry("b", "model-b")]
     )
-    monkeypatch.setattr(llm_mod, "load_routing_stats", _stats_stub({}))
+    monkeypatch.setattr(llm_mod, "read_model_registry", _active(""))
     calls: list[str] = []
 
     async def fake_once(cfg: AppConfig, *_args: object, **_kw: object) -> _Probe:
@@ -171,9 +197,8 @@ async def test_quota_failure_failovers_to_next_candidate(
         return _Probe()
 
     monkeypatch.setattr(llm_mod, "_structured_once", fake_once)
-    cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
 
-    result = await chat_structured(cfg, _Probe, "sys", "user")
+    result = await chat_structured(_cfg(), _Probe, "sys", "user")
 
     assert result.value == "ok"
     assert calls == ["model-a", "model-b"]
@@ -182,7 +207,7 @@ async def test_quota_failure_failovers_to_next_candidate(
 async def test_routing_stats_recorded_per_attempt(
     monkeypatch: pytest.MonkeyPatch, tmp_path: object
 ) -> None:
-    """G9：每次尝试落账（成功/失败与耗时），供 bandit 下次决策。"""
+    """G9：每次尝试落账（成功/失败与耗时），仅供观测，不参与候选选择。"""
     db_path = str(tmp_path) + "/ledger.db"  # type: ignore[operator]
     cfg = AppConfig(  # type: ignore[call-arg]
         _env_file=None,
@@ -192,9 +217,8 @@ async def test_routing_stats_recorded_per_attempt(
         llm_api_key="k-x",
     )
     monkeypatch.setattr(llm_mod, "load_candidates", lambda: [])
-    monkeypatch.setattr(llm_mod, "load_routing_stats", _stats_stub({}))
 
-    async def fake_run(agent: object, user: str, timeout: float) -> object:
+    async def fake_run(agent: object, payload: object, timeout: float, **_kw: object) -> object:
         class _R:
             final_output = '{"value": "ok"}'
             usage = None
@@ -208,12 +232,3 @@ async def test_routing_stats_recorded_per_attempt(
     stats = await SQLiteRoutingStats(db_path).load_all()
     assert stats[("model-x", "probe")][0] == 1
     assert stats[("model-x", "probe")][1] == 1
-
-
-def _stats_stub(data: dict[tuple[str, str], tuple[int, int, int]]) -> object:
-    """构造 load_routing_stats 的异步替身（返回固定统计）。"""
-
-    async def _load(_db_path: str) -> dict[tuple[str, str], tuple[int, int, int]]:
-        return data
-
-    return _load

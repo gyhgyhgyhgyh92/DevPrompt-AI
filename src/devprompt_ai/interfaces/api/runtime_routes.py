@@ -17,11 +17,10 @@ from pydantic import BaseModel, Field, model_validator
 
 from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale
 from devprompt_ai.domain.errors import DevPromptError, StateError
-from devprompt_ai.interfaces.api.routes import _USER_ID, _snapshot_payload, get_service
+from devprompt_ai.interfaces.api.routes import _snapshot_payload, get_service
 from devprompt_ai.interfaces.api.schemas import (
     ApiResponse,
     ArtifactResponse,
-    SessionModelResponse,
     validate_images,
 )
 from devprompt_ai.runtime.artifacts import read_tool_artifact
@@ -88,12 +87,6 @@ class InterventionAnswerRequest(BaseModel):
 
     decision: Literal["approve", "deny", "answer"]
     answer: str = ""
-
-
-class SessionModelRequest(BaseModel):
-    """F10 会话级模型切换：``model_id`` 为注册表条目 id；空串 = 清除覆盖。"""
-
-    model_id: str = Field(default="", max_length=200)
 
 
 def _serialize(snapshot: FlowSnapshot) -> dict[str, Any]:
@@ -236,28 +229,6 @@ async def list_events(
     bundle = await _bundle()
     events = await bundle.bus.history_before(session_id, before, limit=limit)
     return ApiResponse(data=[event.to_wire() for event in events])
-
-
-@router.post(
-    "/sessions/{session_id}/model",
-    response_model=ApiResponse[SessionModelResponse],
-    description="会话级模型热切换（F10）：写会话覆盖，下一轮生成即生效；空串清除覆盖。",
-)
-async def switch_session_model(
-    request: Request,
-    session_id: str,
-    req: SessionModelRequest,
-    x_request_id: Annotated[str | None, Header(alias="X-Request-ID")] = None,
-) -> ApiResponse[SessionModelResponse]:
-    service = await get_service()
-    data = await service.set_session_model(_USER_ID, session_id, req.model_id)
-    return ApiResponse(
-        data=SessionModelResponse(
-            session_id=str(data.get("session_id", session_id)),
-            model_id=str(data.get("model_override", req.model_id)),
-        ),
-        request_id=_request_id(request, x_request_id),
-    )
 
 
 @router.get(

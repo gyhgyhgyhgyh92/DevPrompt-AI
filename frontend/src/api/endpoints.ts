@@ -113,8 +113,6 @@ export const ENDPOINTS = {
     `${API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}/stream?since=${since}`,
   interventionAnswer: (requestId: string) =>
     `${API_BASE_URL}/interventions/${encodeURIComponent(requestId)}/answer`,
-  sessionModel: (sessionId: string) =>
-    `${API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}/model`,
   events: (sessionId: string, before: number, limit = 200) =>
     `${API_BASE_URL}/events?session_id=${encodeURIComponent(sessionId)}&before=${before}&limit=${limit}`,
   // ---- 可观测性三模块（2026-11-12，独立 API）----
@@ -607,27 +605,6 @@ export async function cancelRun(runId: string, signal?: AbortSignal): Promise<vo
     hasSideEffect: true,
     signal,
   })
-}
-
-const SessionModelResponseSchema = z.object({
-  session_id: z.string(),
-  model_override: z.string(),
-})
-
-/** POST /sessions/{id}/model：会话级模型热切换（F10）；空串 = 清除覆盖（有副作用，禁重试 MUST-15）。 */
-export async function setSessionModel(
-  sessionId: string,
-  modelId: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  const data = await request(ENDPOINTS.sessionModel(sessionId), {
-    method: 'POST',
-    schema: SessionModelResponseSchema,
-    body: { model_id: modelId },
-    hasSideEffect: true,
-    signal,
-  })
-  return data.model_override
 }
 
 /**

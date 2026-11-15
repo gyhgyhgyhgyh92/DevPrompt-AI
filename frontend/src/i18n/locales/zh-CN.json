@@ -43,6 +43,7 @@
   },
   "native_picker": {
     "not_installed": "未能调起系统文件夹选择器：需要安装 DevPrompt AI 原生文件夹选择器扩展（仅 Chrome/Edge 系；先运行 pwsh -File scripts/install_native_picker.ps1，再在扩展页加载已解压的扩展）",
+    "extension_missing": "未检测到「原生文件夹选择器」扩展：本页尚未注入扩展脚本。请到浏览器扩展页（chrome://extensions，Edge 用 edge://extensions）确认扩展已加载并启用，然后**刷新本页面**再试（扩展仅在页面加载时注入）。",
     "unavailable": "系统文件夹选择器不可用",
     "no_browser": "非浏览器环境，无法调起系统文件夹选择器"
   },
@@ -61,8 +62,6 @@
   "optimize": {
     "stop_generation": "停止生成",
     "fallback_notice": "本轮生成异常，已降级为保守输出；内容可能不完整，建议重试。",
-    "model_switch": "模型",
-    "model_follow_routing": "跟随路由",
     "domain_switch": "模式",
     "domain_auto": "自动识别",
     "style_switch": "风格",

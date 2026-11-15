@@ -716,8 +716,8 @@ async def test_update_settings_writes_applies_and_masks(
     assert svc._cfg.llm_base_url == "https://api.x"
     assert svc._cfg.followup_soft_round_guard == 7
     assert svc._cfg.telemetry is False
-    # 锁定项恒 25（MUST-09），不接受修改
-    assert view["locked"]["candidate_limit"] == 25
+    # 锁定项恒为后端常量（2026-11-15 起 50），不接受修改
+    assert view["locked"]["candidate_limit"] == 50
 
     # 空 api_key = 保持不变
     view2 = await svc.update_settings({"model_service": {"api_key": ""}})
@@ -1190,51 +1190,6 @@ async def test_snapshot_current_turn_id_none_without_turn_store() -> None:
     snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
 
     assert snap.current_turn_id is None
-
-
-async def test_set_session_model_writes_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    """F10：切换写 session.data['model_override']，生成上下文随后可读。"""
-    svc, store = _service()
-    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
-    monkeypatch.setattr(
-        "devprompt_ai.service.load_candidates",
-        lambda: [{"id": "m1", "model_id": "model-a", "base_url": "https://x"}],
-    )
-
-    out = await svc.set_session_model("local", snap.session_id, "m1")
-
-    assert out == {"session_id": snap.session_id, "model_override": "m1"}
-    assert store.items[snap.session_id].data["model_override"] == "m1"
-
-
-async def test_set_session_model_rejects_unknown_entry(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    svc, _ = _service()
-    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
-    monkeypatch.setattr("devprompt_ai.service.load_candidates", lambda: [])
-
-    with pytest.raises(StateError) as ei:
-        await svc.set_session_model("local", snap.session_id, "nope")
-    assert ei.value.code == 6003
-
-
-async def test_set_session_model_empty_clears_override(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """空串 = 清除覆盖（跟随多模型路由），不校验注册表。"""
-    svc, store = _service()
-    snap = await svc.optimize("local", ".", "改提交按钮", request_id="r1")
-    monkeypatch.setattr(
-        "devprompt_ai.service.load_candidates",
-        lambda: [{"id": "m1", "model_id": "model-a", "base_url": "https://x"}],
-    )
-    await svc.set_session_model("local", snap.session_id, "m1")
-
-    out = await svc.set_session_model("local", snap.session_id, "")
-
-    assert out["model_override"] == ""
-    assert store.items[snap.session_id].data["model_override"] == ""
 
 
 async def test_answer_guarded_retries_once_after_overflow() -> None:

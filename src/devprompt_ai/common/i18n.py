@@ -52,6 +52,10 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "gate.yellow.coverage": "断言覆盖率 {coverage}，低于 {threshold}",
         "gate.yellow.impact_uncovered": "影响半径内 {count} 个关联文件未被方案覆盖",
         "gate.disclosure.yellow": "本轮证据可用但未达阈值，方案照常提供：{reasons}。",
+        "gate.fallback_not_deliverable": (
+            "本方案由兜底模板产出（已降级）：缺少「原代码 → 新代码」对照、验收步骤与回滚方式，"
+            "不可直接交付下游执行方，请补齐证据后重新生成。"
+        ),
         "claims.render.undeclared": "未声明引用，证据链无法核对",
         "claims.render.summary": "已核对断言 {covered}/{total}，{missing} 处未取证",
         "claims.render.absent": "（其中 {count} 处为已确认不存在）",
@@ -77,7 +81,9 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         ),
         "template.a.role": (
             "你是提示词优化师。信息有限，输出保守版提示词：只陈述用户意图与可执行要点，"
-            "禁止编造文件路径、行号、token 名；结尾必须列出待确认清单。只输出 JSON。"
+            "禁止编造文件路径、行号、token 名；缺失信息一律取最合理的默认值并以"
+            "「默认假设：按 X 处理」逐条写明，结尾列出「剩余风险」；"
+            "禁止留开放式问题（如「请确认」「需要确认」「待补充」）。只输出 JSON。"
         ),
         "template.a.fallback_only": (
             "\n\n【兜底声明】本模板仅用于异常兜底：主流程失败后才启用，"
@@ -94,7 +100,11 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
             "2. 「实施修改」段必须逐条给出「原代码 → 新代码」的对照，不得只写「修改为 …」；\n"
             "3. 正文必须严格按四段式组织，小标题只能是："
             "「## 一、定位文件与组件」「## 二、实施修改」「## 三、一致性检查」"
-            "「## 四、输出要求」，缺段或改名均视为结构不合法。"
+            "「## 四、输出要求」，缺段或改名均视为结构不合法；\n"
+            "4. 第四段必须含三项：验收步骤（rg 检索命令、测试命令、页面确认方式）、"
+            "影响面文件清单、回滚方式；\n"
+            "5. 输出预算：正文不超过 1200 字，changes 不超过 6 条，claims 不超过 8 条；"
+            "禁止复述输入原文或罗列已确认信息。"
         ),
         "template.reply.role": (
             "你是提示词优化师，此刻在回答用户对已产出方案的追问，而不是产出新方案。"
@@ -129,7 +139,9 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
             "\n\n硬性要求（违反任一条即视为无效输出）：\n"
             "1. 正文里的细节只能来自下方证据，证据中没有的一律标注（推断），禁止编造；\n"
             "2. 正文必须严格按四段式组织，小标题与各段内容以下方「body 的语义」为准，"
-            "缺段或改名均视为结构不合法。"
+            "缺段或改名均视为结构不合法；\n"
+            "3. 末段必须含验收方式（检索/测试/人工确认）与剩余风险；\n"
+            "4. 输出预算：正文不超过 1200 字，changes 不超过 6 条；禁止复述输入原文。"
         ),
         "template.claims_rules_generic": (
             "claims 规则：本领域不依赖代码仓库证据，无需声明代码断言，claims 给空数组即可；"
@@ -142,12 +154,14 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "template.field.none_design_tokens": "（未找到项目设计令牌定义）",
         "template.sections.a": (
             "\n\n兜底模板四段式：第一段写「未能定位具体文件」；第二段只写意图层面的动作，"
-            "并逐条标「待确认」；第三段写「无令牌证据」；第四段改为「待确认清单」。"
+            "缺失信息逐条写「默认假设：按 X 处理」；第三段写「无令牌证据」；"
+            "第四段改为「剩余风险（不可阻断，按默认假设处理）」，禁止开放式问题。"
         ),
         "template.sections.b": (
             "\n\n标准模板四段式：第一段必须给出文件相对路径（来自片段头）；"
             "第二段允许以「（推断）」标注未证实的细节；"
-            "第三段无令牌证据时必须明说「未取证到项目令牌定义」。"
+            "第三段无令牌证据时必须明说「未取证到项目令牌定义」；"
+            "第四段必须给出可复制执行的验收步骤、影响面文件清单与回滚方式。"
         ),
         "domain.code.name": "代码工程",
         "domain.code.repo_required": "代码领域需要项目路径：请选择目标项目目录后再提交。",
@@ -499,6 +513,11 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
             "Evidence is usable but below the required threshold; "
             "the plan is still provided: {reasons}."
         ),
+        "gate.fallback_not_deliverable": (
+            "This plan was produced by the fallback template (downgraded): it lacks an "
+            "original-code -> new-code comparison, verification steps and rollback guidance, "
+            "so it must not be handed to a downstream executor; regenerate with evidence."
+        ),
         "claims.render.undeclared": "No references declared; the evidence chain cannot be verified",
         "claims.render.summary": "Verified {covered}/{total} claims, {missing} unverified",
         "claims.render.absent": " ({count} confirmed absent)",
@@ -531,8 +550,10 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "template.a.role": (
             "You are a prompt engineer. Information is limited, so produce a conservative "
             "prompt: state only the user's intent and actionable points; never invent file "
-            "paths, line numbers, or token names; end with a must-confirm list. "
-            "Output JSON only."
+            "paths, line numbers, or token names; resolve every missing detail with the most "
+            'reasonable default and write it as "Default assumption: handled as X"; end with '
+            '"Remaining risks". Never leave open questions (no "please confirm", no "need '
+            'confirmation", no "to be filled"). Output JSON only.'
         ),
         "template.b.role": (
             "You are a prompt engineer. Based on the located symbol paths, produce a standard "
@@ -547,7 +568,11 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
             'just "change it to ...";\n'
             "3. The body must use exactly these four headings: `## 1. Locate the file and "
             "component`, `## 2. Apply the change`, `## 3. Consistency check`, "
-            "`## 4. Deliverables`. Missing or renamed sections make the structure invalid."
+            "`## 4. Deliverables`. Missing or renamed sections make the structure invalid;\n"
+            "4. Section 4 must contain verification steps (rg commands, test commands, manual "
+            "checks), the list of affected files, and how to roll back;\n"
+            "5. Output budget: body under 1200 characters, at most 6 changes, at most 8 "
+            "claims; never restate the input or list already-confirmed facts."
         ),
         "template.a.fallback_only": (
             "\n\n[Fallback notice] This template is used only as an exception fallback: it runs "
@@ -594,7 +619,10 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
             "from it must be marked (inferred); never fabricate.\n"
             "2. The body must follow the four-section structure exactly; headings and section "
             'content follow "the semantics of body" below; a missing or renamed section is '
-            "structurally invalid."
+            "structurally invalid;\n"
+            "3. The final section must include verification and remaining risks;\n"
+            "4. Output budget: body under 1200 characters and at most 6 changes; never restate "
+            "the input."
         ),
         "template.claims_rules_generic": (
             "claims rules: this domain does not rely on repository evidence, so no code "
@@ -608,13 +636,17 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "template.field.none_design_tokens": "(no project design token definition found)",
         "template.sections.a": (
             "\n\nThe fallback template's four sections: section 1 states that no concrete file "
-            'could be located; section 2 lists intent-level actions each marked "to confirm"; '
-            'section 3 states "no token evidence"; section 4 becomes a must-confirm checklist.'
+            "could be located; section 2 lists intent-level actions, resolving each missing "
+            'detail as "Default assumption: handled as X"; section 3 states "no token '
+            'evidence"; section 4 becomes "Remaining risks (non-blocking, covered by the '
+            'default assumptions)" — never an open question list.'
         ),
         "template.sections.b": (
             "\n\nThe standard template's four sections: section 1 must give the repo-relative file "
             "path (from the excerpt header); section 2 may mark unverified details with "
-            '"(inferred)"; section 3 must say explicitly when no token evidence was found.'
+            '"(inferred)"; section 3 must say explicitly when no token evidence was found; '
+            "section 4 must provide copy-pasteable verification steps, the affected-file list "
+            "and how to roll back."
         ),
         "domain.code.name": "Code Engineering",
         "domain.code.repo_required": (

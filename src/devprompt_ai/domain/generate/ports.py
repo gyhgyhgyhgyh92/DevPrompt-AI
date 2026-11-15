@@ -33,8 +33,6 @@ class GenerationContext(BaseModel):
     #: 上一轮推荐判定摘要（2026-11-05）：marked / reason / gap / 各档分数。
     #: 回答「为什么这样改」必须有它，否则模型只能如实说「上下文里没有依据」。
     ranking_summary: str = ""
-    #: F10 会话级模型覆盖（2026-11-08）：空串 = 跟随多模型路由；非空 = 指定模型条目。
-    model_override: str = ""
     #: 目标代码片段（带行号，2026-11-11）。只供生成层，理由见类 docstring。
     target_excerpt: str = ""
     #: 设计令牌证据（rg 命中行，2026-11-11），供「一致性检查」段引用。

@@ -522,26 +522,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/sessions/{session_id}/model": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Switch Session Model
-         * @description 会话级模型热切换（F10）：写会话覆盖，下一轮生成即生效；空串清除覆盖。
-         */
-        post: operations["switch_session_model_api_v1_sessions__session_id__model_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/sessions/{session_id}/stream": {
         parameters: {
             query?: never;
@@ -925,25 +905,6 @@ export interface components {
              */
             code: number;
             data?: components["schemas"]["ScanResponse"] | null;
-            /**
-             * Message
-             * @default ok
-             */
-            message: string;
-            /**
-             * Request Id
-             * @default
-             */
-            request_id: string;
-        };
-        /** ApiResponse[SessionModelResponse] */
-        ApiResponse_SessionModelResponse_: {
-            /**
-             * Code
-             * @default 0
-             */
-            code: number;
-            data?: components["schemas"]["SessionModelResponse"] | null;
             /**
              * Message
              * @default ok
@@ -1916,27 +1877,6 @@ export interface components {
             total_files: number;
             /** Total Symbols */
             total_symbols: number;
-        };
-        /**
-         * SessionModelRequest
-         * @description F10 会话级模型切换：``model_id`` 为注册表条目 id；空串 = 清除覆盖。
-         */
-        SessionModelRequest: {
-            /**
-             * Model Id
-             * @default
-             */
-            model_id: string;
-        };
-        /**
-         * SessionModelResponse
-         * @description POST /sessions/{id}/model 数据体：切换后的会话级覆盖；空串表示已清除。
-         */
-        SessionModelResponse: {
-            /** Model Id */
-            model_id: string;
-            /** Session Id */
-            session_id: string;
         };
         /**
          * SettingsResponse
@@ -3160,43 +3100,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_dict_str__Any__"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    switch_session_model_api_v1_sessions__session_id__model_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "X-Request-ID"?: string | null;
-            };
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SessionModelRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SessionModelResponse_"];
                 };
             };
             /** @description Validation Error */

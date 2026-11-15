@@ -43,6 +43,7 @@
   },
   "native_picker": {
     "not_installed": "Could not open the system folder picker: install the DevPrompt AI native folder picker extension (Chromium only; run pwsh -File scripts/install_native_picker.ps1, then load the unpacked extension)",
+    "extension_missing": "Native folder picker extension not detected on this page. Open the browser extensions page (chrome://extensions, or edge://extensions in Edge), make sure the extension is loaded and enabled, then **reload this page** and try again (the extension is injected only on page load).",
     "unavailable": "System folder picker unavailable",
     "no_browser": "Not a browser environment; cannot open the system folder picker"
   },
@@ -61,8 +62,6 @@
   "optimize": {
     "stop_generation": "Stop generating",
     "fallback_notice": "Generation failed this turn and fell back to a conservative draft; the result may be incomplete — retry for a full plan.",
-    "model_switch": "Model",
-    "model_follow_routing": "Follow routing",
     "domain_switch": "Mode",
     "domain_auto": "Auto detect",
     "style_switch": "Style",

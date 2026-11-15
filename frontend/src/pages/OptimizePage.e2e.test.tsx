@@ -10,6 +10,8 @@ import { OptimizePage } from './OptimizePage'
 // 2026-10-19：项目路径改由「浏览器扩展 + native messaging host」的系统对话框取得，
 // jsdom 里没有扩展，故 mock 掉桥；页内文件夹浏览器已下线。
 vi.mock('../api/nativeFolder', () => ({
+  isNativeBridgeReady: () => true,
+  nativeBridgeMissingHint: () => '未检测到扩展，请刷新页面',
   notInstalledHint: () => '未安装扩展',
   nativePickErrorText: (e: unknown) => String(e),
   pickFolderViaNative: vi.fn(async () => ({ path: 'D:/ws/repo' })),

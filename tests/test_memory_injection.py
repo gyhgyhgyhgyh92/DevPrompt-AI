@@ -116,8 +116,6 @@ async def test_l2_project_notes_off_flow_completes() -> None:
             "previous_variants",
             # 2026-11-05 推荐依据：回答「为什么选 B」时必须看到判定结果
             "ranking_summary",
-            # 2026-11-08 F10 会话级模型覆盖
-            "model_override",
             # 2026-11-11 四段式方案的两路证据（代码片段 / 设计令牌）
             "target_excerpt",
             "design_tokens",
