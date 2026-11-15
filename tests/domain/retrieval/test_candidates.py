@@ -360,6 +360,43 @@ def test_literal_english_term_still_takes_exact_bonus() -> None:
     assert with_word.candidates[0].score - without.candidates[0].score == 3.0
 
 
+#: 泛词集合的维护契约：这些中文键的译词必须都在 _GENERIC_UI_TERMS 里。
+#: 新增/修改 UI 映射时漏登记会让本测试失败——这就是「词表与泛词集合漂移」的闸门。
+_UI_ZH_KEYS = (
+    "按钮", "输入", "输入框", "表单", "表格", "列表", "弹窗", "对话框", "提示",
+    "标签", "标签页", "菜单", "导航", "面包屑", "分页", "头像", "徽标", "骨架",
+    "骨架屏", "占位", "通知", "消息", "搜索框", "下拉", "复选", "单选", "开关",
+    "滑块", "进度", "抽屉", "气泡", "轮播", "遮罩", "悬停", "点击", "选中",
+    "禁用", "启用", "只读", "高亮", "边框", "圆角", "阴影", "间距", "宽度",
+    "高度", "尺寸", "布局", "样式", "主题", "字体", "行高", "透明度", "动画",
+    "过渡", "响应式", "适配", "页面", "界面", "首页", "视图", "组件", "模块",
+    "应用", "入口", "侧边栏", "工具栏", "页头", "页脚", "斑马纹",
+)
+
+
+def test_generic_ui_terms_stay_in_sync_with_ui_mappings() -> None:
+    """漂移闸门：UI 词表改了就同步泛词集合，否则 page/button 类误判会复发。"""
+    from devprompt_ai.domain.retrieval.candidates import _GENERIC_UI_TERMS
+
+    for key in _UI_ZH_KEYS:
+        assert key in ZH_EN_MAP, f"UI 键 {key!r} 不在 ZH_EN_MAP"
+        for word in ZH_EN_MAP[key].split():
+            assert word in _GENERIC_UI_TERMS, f"{key} → {word!r} 未登记为泛词"
+
+
+def test_unknown_suffix_does_not_take_stack_preference() -> None:
+    """未列入白名单的语言（如 .md）不参与偏好，退化为原行为（按名字长度/路径）。"""
+    syms = [
+        _sym("Book", "docs/book/Book.md"),
+        _sym("Book", "task-front/src/book/Book.tsx"),
+    ]
+
+    result = build_candidates("前端页面里把图书 Book 的标题改一下", syms)
+
+    # 前端 .tsx 仍优先；.md 不因偏好被误判成后端而额外受益
+    assert result.candidates[0].path.endswith(".tsx")
+
+
 def test_stack_preference_is_tiebreak_only() -> None:
     """技术栈只作同分档位：分数完全不受影响，跨端同分时才分先后。"""
     syms = [

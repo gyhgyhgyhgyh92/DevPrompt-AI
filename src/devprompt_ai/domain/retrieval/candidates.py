@@ -59,7 +59,7 @@ _GENERIC_UI_TERMS: Final[frozenset[str]] = frozenset(
         "badge", "skeleton", "screen", "placeholder", "notification", "message",
         "search", "box", "dropdown", "checkbox", "radio", "switch", "slider",
         "progress", "drawer", "popover", "carousel", "mask", "layout", "style",
-        "theme", "font", "border", "radius", "shadow", "spacing", "width", "height",
+        "theme", "font", "border", "radius", "shadow", "spacing", "width", "height", "line",
         "size", "opacity", "animation", "transition", "responsive", "adaptive",
         "hover", "click", "selected", "disabled", "enabled", "readonly", "highlight",
         "mobile", "desktop", "horizontal", "vertical", "fullscreen", "top", "bottom",
@@ -81,6 +81,7 @@ _FRONTEND_SUFFIXES: Final[tuple[str, ...]] = (
 )
 _BACKEND_SUFFIXES: Final[tuple[str, ...]] = (
     ".java", ".py", ".go", ".kt", ".cs", ".rb", ".php", ".sql",
+    ".rs", ".swift", ".scala", ".lua", ".ex", ".dart", ".c", ".cpp", ".h",
 )
 
 

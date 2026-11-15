@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import dataclasses
 import json
+import logging
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, TypeVar
@@ -47,8 +48,11 @@ from devprompt_ai.interfaces.api.schemas import (
     UnknownItemPayload,
     VariantPayload,
 )
+from devprompt_ai.runtime.bootstrap import get_runtime
 from devprompt_ai.runtime.events import BufferedEventSink
 from devprompt_ai.service import FlowSnapshot, ForgeService, build_default
+
+logger = logging.getLogger(__name__)
 
 DataT = TypeVar("DataT")
 
@@ -383,6 +387,22 @@ async def get_progress(request: Request, flow_id: str) -> StreamingResponse:
     return StreamingResponse(_events(), media_type="text/event-stream")
 
 
+def _serialize_snapshot(snapshot: FlowSnapshot) -> dict[str, Any]:
+    """RuntimeBundle 需要注入快照序列化器（事件落库本身不用它）。"""
+    return _snapshot_payload(snapshot).model_dump(mode="json")
+
+
+async def _append_followup_event(
+    session_id: str, event_type: str, payload: dict[str, Any], run_id: str
+) -> None:
+    """答复路径的事件落库（2026-11-15）：失败只降级为跳过，绝不阻断业务。"""
+    try:
+        bundle = await get_runtime(await get_service(), _serialize_snapshot)
+        await bundle.bus.append(session_id, event_type, payload, run_id=run_id)
+    except Exception:  # noqa: BLE001 - 观测 fail-open
+        logger.debug("followup.event_append_failed", exc_info=True)
+
+
 async def _run_followup(
     svc: ForgeService,
     flow_id: str,
@@ -391,16 +411,42 @@ async def _run_followup(
     request_id: str,
     progress: ProgressSink | None = None,
 ) -> FlowSnapshot:
-    """三模式分发（互斥由契约校验保证）：批量答复 / 逃生 / 软护栏裁决（MUST-26）。"""
-    if req.escape:
-        return await svc.escape(_USER_ID, flow_id, request_id=request_id)
-    if req.guardrail_action is not None:
-        return await svc.guardrail_confirm(
-            _USER_ID, flow_id, req.guardrail_action == "continue", request_id=request_id
-        )
-    return await svc.ask_followup(
-        _USER_ID, flow_id, req.answers or {}, request_id=request_id, progress=progress
+    """三模式分发（互斥由契约校验保证）：批量答复 / 逃生 / 软护栏裁决（MUST-26）。
+
+    2026-11-15：答复也写 run_events（run.started → stop）。此前第二段（重新研判 + 生成）
+    只在 trace 里有记录，Session Log 面板看不到答复后的流程。不写 snapshot 帧——
+    终态由进度流的 snapshot 帧负责，避免前端重复应用。
+    """
+    run_id = f"followup-{request_id}" if request_id else "followup"
+    await _append_followup_event(
+        flow_id,
+        "run.started",
+        {"run_id": run_id, "request_id": request_id, "mode": "followup"},
+        run_id,
     )
+    try:
+        if req.escape:
+            snapshot = await svc.escape(_USER_ID, flow_id, request_id=request_id)
+        elif req.guardrail_action is not None:
+            snapshot = await svc.guardrail_confirm(
+                _USER_ID, flow_id, req.guardrail_action == "continue", request_id=request_id
+            )
+        else:
+            snapshot = await svc.ask_followup(
+                _USER_ID, flow_id, req.answers or {}, request_id=request_id, progress=progress
+            )
+    except Exception:
+        await _append_followup_event(
+            flow_id, "stop", {"status": "failed", "state": "aborted"}, run_id
+        )
+        raise
+    await _append_followup_event(
+        flow_id,
+        "stop",
+        {"status": snapshot.status, "state": snapshot.state},
+        run_id,
+    )
+    return snapshot
 
 
 @router.post("/followup/{flow_id}")
