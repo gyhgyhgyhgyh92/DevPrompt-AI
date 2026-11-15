@@ -177,7 +177,7 @@
       },
       "RETRIEVING": {
         "label": "Retrieve code",
-        "hint": "Scan symbol table, cap candidates at 25"
+        "hint": "Scan the symbol table and rank candidates by relevance"
       },
       "PROBING": {
         "label": "Probe facts",

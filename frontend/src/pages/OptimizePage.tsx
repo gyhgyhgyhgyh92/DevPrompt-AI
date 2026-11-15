@@ -29,6 +29,7 @@ import { useRunStream } from '../hooks/useRunStream'
 import { useOptimizeStore } from '../stores/useOptimizeStore'
 import { useHistoryStore } from '../stores/useHistoryStore'
 import { MAX_IMAGES, MAX_IMAGE_BYTES, type DomainId, type VisualStyle } from '../schemas/optimize'
+import type { ThinkingItem } from '../schemas/stream'
 import { makeS } from '../utils/css'
 import chatStyles from '../components/optimize/ChatStream.module.css'
 import styles from './OptimizePage.module.css'
@@ -84,6 +85,7 @@ export function OptimizePage() {
     variant,
     isSubmitting,
     thinking,
+    turnBodies,
     isThinking,
     turns,
     hasMoreTurns,
@@ -97,6 +99,7 @@ export function OptimizePage() {
     domain: domainVerdict,
   } = useOptimizeStore(
     useShallow((s) => ({
+      turnBodies: s.turnBodies,
       sessionId: s.sessionId,
       state: s.state,
       status: s.status,
@@ -277,6 +280,14 @@ export function OptimizePage() {
         if (!belongs && page.items.length > 0) {
           store.setCurrentTurnId(page.items.at(-1)?.turn_id ?? null)
         }
+        // 恢复会话：当前轮由 ChatStream 渲染，其思考帧只在内存里（刷新/切换会话后为空）。
+        // 从详情接口补一次，历史轮的执行过程才不会在最后一轮突然消失。
+        const restoreId = store.currentTurnId ?? page.items.at(-1)?.turn_id ?? null
+        if (restoreId !== null && store.turnBodies[restoreId] === undefined) {
+          void getTurn(restoreId)
+            .then((detail) => store.setTurnBody(restoreId, detail))
+            .catch(() => undefined)
+        }
       })
       .catch(() => undefined)
     return () => {
@@ -322,6 +333,14 @@ export function OptimizePage() {
       isCancelled = true
     }
   }, [])
+
+  // 恢复的会话：当前轮的思考帧来自详情接口（内存 thinking 为空时回退），
+  // 流式期间以实时帧为准（thinking 非空优先）。
+  const restoredThinking = currentTurnId !== null ? turnBodies[currentTurnId]?.thinking : undefined
+  const chatThinking: readonly ThinkingItem[] =
+    thinking.length > 0
+      ? thinking
+      : ((restoredThinking ?? []) as unknown as readonly ThinkingItem[])
 
   // 耗时计时：自提交时刻起每秒推进，DONE/ABORTED 后冻结（恢复的旧会话无 startedAt 仅显状态）。
   useEffect(() => {
@@ -646,7 +665,7 @@ export function OptimizePage() {
               state={state}
               status={status}
               sentence={sentence}
-              thinking={thinking}
+              thinking={chatThinking}
               isThinking={isThinking}
               message={message}
               replyText={replyText}
