@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { ProviderDirectoryEntry } from '../../schemas/settings'
+import { makeS } from '../../utils/css'
+import styles from './settings.module.css'
+
+const s = makeS(styles)
 
 /** 契约侧类型（api/types.ts 由 openapi 生成），比 Zod 推断更贴近服务端实际下发。 */
 type ProviderEntry = Omit<
@@ -33,8 +38,8 @@ export interface ProviderSelectProps {
   placeholder?: string
 }
 
-/** 默认占位文案（不预设厂商，用户自选）。 */
-const PLACEHOLDER = '选择供应商…'
+/** 默认占位文案键（不预设厂商，用户自选）。 */
+const PLACEHOLDER_KEY = 'settings.provider.placeholder'
 
 /**
  * 供应商下拉（2026-09-17 多供应商扩展 W8）。
@@ -48,21 +53,22 @@ export function ProviderSelect({
   value,
   onChange,
   disabled,
-  placeholder = PLACEHOLDER,
+  placeholder,
 }: ProviderSelectProps) {
+  const { t } = useTranslation()
   return (
     <select
-      className="settings-select"
+      className={s('settings-select')}
       value={value}
       disabled={disabled}
-      aria-label="供应商"
+      aria-label={t('settings.provider.aria')}
       onChange={(event) => onChange(event.currentTarget.value)}
     >
-      <option value="">{placeholder}</option>
+      <option value="">{placeholder ?? t(PLACEHOLDER_KEY)}</option>
       {(providers ?? []).map((item) => (
         <option key={item.id} value={item.id}>
           {item.label}
-          {item.base_url === '' ? '（端点未登记）' : ''}
+          {item.base_url === '' ? t('settings.provider.unregistered') : ''}
         </option>
       ))}
     </select>
@@ -89,12 +95,27 @@ export function findProvider(
   )
 }
 
-/** 上下文窗口的人类可读形式（1K / 1M）；未知返回 null 由调用方决定展示。 */
+/** 上下文窗口的人类可读形式：只给短标签（`128K` / `300K` / `1M`），不展示精确 token 值。
+ *
+ * 口径：优先按 1K = 1024 识别二进制整档（128K/256K/300K/600K/1M），
+ * 厂商原始十进制值（64K/200K/272K）仍按十进制展示。
+ */
 export function formatWindow(tokens: number | null | undefined): string | null {
   if (typeof tokens !== 'number' || tokens <= 0) return null
-  if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}M`
-  if (tokens >= 1000) return `${Math.round(tokens / 1000)}K`
-  return String(tokens)
+  // 厂商常用十进制整千值（64000/128000/200000/272000）优先按十进制。
+  if (tokens >= 1000 && tokens % 1000 === 0) {
+    return tokens >= 1_000_000
+      ? `${Math.round(tokens / 100_000) / 10}M`
+      : `${Math.round(tokens / 1000)}K`
+  }
+  // 二进制整档：128K=131072、256K=262144、300K=307200、600K=614400、1M=1048576。
+  if (tokens % 1024 === 0) {
+    const kib = tokens / 1024
+    return kib % 1024 === 0 ? `${kib / 1024}M` : `${kib}K`
+  }
+  // 不足 1K 的值没有更粗的刻度可用，直接给精确值。
+  if (tokens < 1000) return String(tokens)
+  return `${Math.round(tokens / 1000)}K`
 }
 
 /** 供外部复用的钩子：目录变化时保持选中项有效（条目被删则回落到空）。 */

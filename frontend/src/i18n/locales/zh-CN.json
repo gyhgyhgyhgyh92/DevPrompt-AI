@@ -1,0 +1,604 @@
+{
+  "domain": {
+    "badge_fallback": "已回退",
+    "code": { "name": "代码" },
+    "work": { "name": "工作" },
+    "life": { "name": "生活" },
+    "creative": { "name": "创意" },
+    "learning": { "name": "学习" },
+    "data": { "name": "数据" },
+    "marketing": { "name": "营销" },
+    "translation": { "name": "翻译" },
+    "legal": { "name": "法律" },
+    "medical": { "name": "医疗" },
+    "finance": { "name": "财务" },
+    "game": { "name": "游戏" },
+    "av": { "name": "音视频" },
+    "visual": { "name": "视觉生成" },
+    "operations": { "name": "运营" }
+  },
+  "app": {
+    "status_checking": "API 检测中",
+    "status_ok": "API 正常",
+    "status_down": "API 异常",
+    "open_sidebar": "打开侧边栏",
+    "close_sidebar": "关闭侧边栏",
+    "no_project": "未选择项目",
+    "settings": "设置",
+    "none": "无"
+  },
+  "api": {
+    "network_failed": "网络请求失败",
+    "json_invalid": "响应不是合法 JSON（HTTP {{status}}）",
+    "contract_envelope": "响应外壳不符合契约",
+    "contract_data": "响应 data 不符合契约",
+    "body_contract": "请求体不符合契约",
+    "stream_unavailable": "流式端点不可用，请确认后端已重启到最新版本",
+    "stream_unsupported": "响应不支持流式读取",
+    "stream_broken": "流式连接中断",
+    "http_plain": "服务返回 HTTP {{status}}",
+    "http_detail": "{{detail}}（HTTP {{status}}）",
+    "timeout": "请求超时",
+    "aborted": "请求已中止"
+  },
+  "native_picker": {
+    "not_installed": "未能调起系统文件夹选择器：需要安装 DevPrompt AI 原生文件夹选择器扩展（仅 Chrome/Edge 系；先运行 pwsh -File scripts/install_native_picker.ps1，再在扩展页加载已解压的扩展）",
+    "extension_missing": "未检测到「原生文件夹选择器」扩展：本页尚未注入扩展脚本。请到浏览器扩展页（chrome://extensions，Edge 用 edge://extensions）确认扩展已加载并启用，然后**刷新本页面**再试（扩展仅在页面加载时注入）。",
+    "unavailable": "系统文件夹选择器不可用",
+    "no_browser": "非浏览器环境，无法调起系统文件夹选择器"
+  },
+  "common": {
+    "close": "关闭",
+    "request_failed": "请求失败",
+    "copied": "已复制",
+    "copy": "复制",
+    "cancel": "取消",
+    "processing": "处理中…",
+    "list_sep": "；",
+    "loading": "加载中…",
+    "reload": "重新加载",
+    "open": "打开"
+  },
+  "optimize": {
+    "stop_generation": "停止生成",
+    "fallback_notice": "本轮生成异常，已降级为保守输出；内容可能不完整，建议重试。",
+    "domain_switch": "模式",
+    "domain_auto": "自动识别",
+    "style_switch": "风格",
+    "style_general": "通用",
+    "style_photography": "摄影向",
+    "style_creative": "创意解构",
+    "style_chinese_model": "中文美学",
+    "style_json_structured": "JSON 结构化",
+    "style_video": "视频生成",
+    "image_add": "添加参考图",
+    "image_remove": "移除图片",
+    "image_limit": "参考图最多 {{max}} 张",
+    "image_format": "仅支持 PNG/JPEG/WebP 图片",
+    "image_size": "单张图片不得超过 4MB",
+    "image_read_failed": "图片读取失败"
+  },
+  "validation": {
+    "followup_mode_exclusive": "answers / escape / guardrail_action 三种模式必须且只能启用一种"
+  },
+  "trace": {
+    "read_file": "读取文件",
+    "read_with_detail": "已读取 {{detail}}",
+    "command_failed": "命令失败 · {{scope}}",
+    "command_ok": "命令已执行",
+    "running": "执行中",
+    "copy_command": "复制命令"
+  },
+  "clarify": {
+    "multi": "多选",
+    "single": "单选",
+    "custom_input": "输入自定义回答",
+    "custom_placeholder": "输入自定义回答...",
+    "esc_hint": "Esc 取消 · 有多选时可勾多项",
+    "generate_direct": "直接生成",
+    "submit": "提交",
+    "continue_asking": "继续追问",
+    "generate_conservative": "直接生成（保守版）",
+    "answered_prefix": "已澄清：",
+    "adopt_guess": "采用推断",
+    "best_guess": "当前最佳推断：{{guess}}"
+  },
+  "model": {
+    "thinking_mode": "思考模式",
+    "thinking_effort": "思考强度",
+    "effort_requires_mode": "先开启思考模式才能选择强度",
+    "aria_select": "选择模型",
+    "not_configured": "未配置模型",
+    "context_length": "上下文长度",
+    "context_budget_hint": "影响本地上下文预算与压缩，不改变供应商窗口参数",
+    "nominal_only": "该模型仅支持标称窗口，无可选档位"
+  },
+  "turn": {
+    "continue": "以此轮继续",
+    "continue_hint": "以这一轮的方案为起点，重新生成一轮",
+    "rollback": "撤销到此轮",
+    "rollback_hint": "回到这一轮完成时的状态，删除其后的所有轮次",
+    "rollback_confirm": "撤销到这一轮？其后的所有轮次将被永久删除，且无法恢复。",
+    "load_failed": "轮次加载失败",
+    "loading_earlier": "正在加载更早的轮次…",
+    "load_earlier": "加载更早的轮次"
+  },
+  "console": {
+    "prompt_hint": "帮你优化每一段提示词，从理清需求到上线-端到端交付生产级结果",
+    "brand_name": "DevPrompt AI",
+    "hero_claim": "把一句模糊需求，变成 Agent 能精准执行的高质量提示词",
+    "hero_sub": "探索真实项目，提问关键未知",
+    "save_failed": "参数保存失败，请稍后重试",
+    "switch_failed": "模型切换失败，请稍后重试",
+    "scan_failed": "项目路径不存在或无法扫描",
+    "aria_sentence": "优化原句",
+    "aria_send": "发送",
+    "aria_pick_folder": "选择文件夹（本地）",
+    "opening": "正在打开…",
+    "pick_folder": "选择文件夹（本地）"
+  },
+  "chat": {
+    "aria_reply": "AI 回复",
+    "elapsed": "耗时 {{seconds}}s",
+    "done": "完成",
+    "thinking_meta": "思考 {{seconds}} · {{actions}} 个动作 · {{steps}} 个步骤",
+    "phases": "执行过程",
+    "process_fold": "折叠过程",
+    "process_unfold": "展开过程",
+    "process_summary": "{{phase}} · {{actions}} 个动作 · {{seconds}}",
+    "process_summary_short": "{{phase}} · {{actions}} 个动作",
+    "action_count": "{{count}} 个动作",
+    "step_count": "{{steps}} 步",
+    "turn_process": "执行过程 · {{count}} 步",
+    "turn_steps": "动作记录 · {{count}} 步",
+    "step_none": "（该步无说明）",
+    "probe_complete": "七项取证完成，未发现需要确认的缺口",
+    "tag_done": "已完成",
+    "tag_aborted": "已中止",
+    "tag_running": "进行中",
+    "planning": "正在规划下一步",
+    "deciding": "决策中",
+    "answer": "回答",
+    "open_items": "待确认：{{items}}",
+    "action": {
+      "retrieve": "检索目标",
+      "probe": "研判取证",
+      "ask": "向你提问",
+      "generate": "生成方案",
+      "deliver": "交付",
+      "abort": "中止本轮"
+    },
+    "phase": {
+      "INIT": {
+        "label": "初始化",
+        "hint": "建立会话与轮次，核对参数"
+      },
+      "RETRIEVING": {
+        "label": "检索代码",
+        "hint": "扫描符号表，候选按相关度排序"
+      },
+      "PROBING": {
+        "label": "研判信息",
+        "hint": "七项取证，判断信息是否足够"
+      },
+      "ASKING": {
+        "label": "等待确认",
+        "hint": "存在信息缺口，等你回答"
+      },
+      "CONFIRMING": {
+        "label": "整理答复",
+        "hint": "重新研判，缺口是否补齐"
+      },
+      "GENERATING": {
+        "label": "生成方案",
+        "hint": "一次调用产出 1 套方案"
+      },
+      "DONE": {
+        "label": "已完成",
+        "hint": "结果已产出"
+      },
+      "ABORTED": {
+        "label": "已中止",
+        "hint": "异常或连接断开，会话已安全关闭"
+      }
+    },
+    "agent_step": "第 {{step}} 步"
+  },
+  "history": {
+    "load_result_failed": "会话结果加载失败",
+    "pinned": "已置顶",
+    "unpinned": "已取消置顶",
+    "pin_failed": "置顶操作失败",
+    "renamed": "已重命名",
+    "rename_failed": "重命名失败",
+    "deleted": "已删除",
+    "delete_failed": "删除失败",
+    "copied": "已复制",
+    "copy_failed": "复制失败",
+    "loading": "正在加载…",
+    "load_more": "加载更多会话",
+    "aria_rename": "重命名会话",
+    "aria_more": "更多操作",
+    "confirm_delete_title": "删除会话",
+    "menu_label": "会话操作",
+    "menu_pin": "置顶任务",
+    "menu_copy_path": "复制项目路径",
+    "menu_rename": "重命名",
+    "menu_delete": "删除任务",
+    "delete_project_failed": "删除项目失败",
+    "sidebar_label": "项目",
+    "aria_collapse": "收起侧边栏",
+    "footer_nav": "侧栏导航",
+    "confirm_delete_project": "删除项目",
+    "title": "历史记录",
+    "back_workbench": "← 工作台",
+    "load_failed_page": "历史记录加载失败，请检查服务是否运行。",
+    "tag_current": "进行中",
+    "empty": "暂无历史记录",
+    "empty_sessions": "暂无历史会话",
+    "link_history": "历史记录 →"
+  },
+  "settings": {
+    "modal": {
+      "title": "设置"
+    },
+    "model": {
+      "load_list_failed": "模型列表读取失败",
+      "need_provider": "每个供应商都要选厂商并填写 Base URL",
+      "saved": "已保存",
+      "save_failed": "保存失败",
+      "refresh_failed": "刷新失败",
+      "connect_ok": "连接成功",
+      "connect_failed": "连接失败",
+      "provider_list": "供应商列表",
+      "new_provider": "新供应商",
+      "not_configured": "未配置",
+      "current_key": "当前密钥",
+      "last_refresh": "上次刷新",
+      "never_refreshed": "尚未刷新过",
+      "refreshing": "刷新中…",
+      "refresh": "刷新模型列表",
+      "testing": "测试中…",
+      "test": "测试连接",
+      "lead": "按供应商配置一次 Base URL 与 API Key，刷新获取可用模型列表，勾选需要的模型后保存；当前生效项在启动页切换。",
+      "empty_hint": "尚未配置任何供应商，点击「新增供应商」开始。",
+      "endpoint_unknown": "官方端点未登记，请自行查询该厂商文档填写",
+      "available": "可用模型（勾选即启用，未勾选的将删除）",
+      "refresh_first": "先点「刷新模型列表」获取该端点的可用模型",
+      "current": "当前",
+      "not_in_list": "不在当前列表",
+      "provider_switched": "已切换供应商，原有模型勾选与目录已清空，请重新刷新并勾选",
+      "delete_provider": "删除供应商",
+      "save": "保存",
+      "add_provider": "新增供应商"
+    },
+    "nav": {
+      "label": "设置分组"
+    },
+    "load_failed": "设置加载失败",
+    "loading": "设置加载中…",
+    "saved": "已保存",
+    "save_failed": "保存失败",
+    "appearance": {
+      "title": "通用外观",
+      "theme": "主题",
+      "theme_light": "浅色",
+      "theme_dark": "深色",
+      "theme_system": "跟随系统",
+      "locale": "界面语言",
+      "locale_hint": "切换后界面文案即时生效",
+      "code_font": "代码字体",
+      "restore_session": "启动时恢复上次会话",
+      "desktop_notification": "桌面通知"
+    },
+    "capability": {
+      "tools": "工具调用",
+      "tools_hint": "该模型可调用函数工具",
+      "reasoning": "推理",
+      "reasoning_hint": "该模型具备推理能力",
+      "aria": "模型能力",
+      "context": "上下文 {{length}}",
+      "unknown": "未知"
+    },
+    "provider": {
+      "placeholder": "选择供应商…",
+      "aria": "供应商",
+      "unregistered": "（端点未登记）"
+    },
+    "security": {
+      "title": "流程与安全",
+      "round_guard": "反问软护栏轮数",
+      "cost_budget": "反问成本预算",
+      "candidate_limit": "候选集上限（宪法 MUST-09 锁定）",
+      "candidate_limit_hint": "值来自后端 locked.candidate_limit，只读下发不接受修改",
+      "save_params": "保存流程参数",
+      "telemetry": "遥测",
+      "clear": "清除本地数据",
+      "confirm_clear": "确认清除？",
+      "clear_note": "仅清除本机 devprompt:v1: 本地留存（会话与记忆缓存），服务端记录不受影响",
+      "cleared": "已清除本地数据",
+      "numeric_required": "护栏参数必须是数字"
+    },
+    "tab": {
+      "model-service": "模型服务",
+      "appearance": "通用外观",
+      "observability": "可观测性",
+      "security": "流程与安全"
+    },
+    "api_mode": "API 形态",
+    "api_mode_only": "{{mode}}（该供应商仅支持这一种形态）"
+  },
+  "observability": {
+    "title": "可观测性",
+    "back_workbench": "← 工作台",
+    "subtitle": "Session Log 运行时台账 + Trace / Metrics / Replay 三个独立模块（只读）",
+    "tips": {
+      "sections": {
+        "definition": "定义",
+        "features": "核心功能",
+        "scenarios": "使用场景"
+      },
+      "session-log": {
+        "title": "Session Log：运行事件台账",
+        "definition": "把一次运行中发生的事按时间顺序记下来，包括开始、思考、工具动作、结果与结束。",
+        "features": "保留完整事件流水，可按会话和事件类型筛选，也支持导出。",
+        "scenarios": "排查运行中断、报错，或想复现某次操作步骤时使用。"
+      },
+      "trace": {
+        "title": "Trace：调用链追踪",
+        "definition": "把一次优化内部的决策、检索、工具、文件读取和大模型调用串成一条调用链。",
+        "features": "展示每一步的层级、先后顺序和耗时，点击节点可查看完整输入输出。",
+        "scenarios": "定位慢在哪一步，确认某一步是否真的被调用。"
+      },
+      "metrics": {
+        "title": "Metrics：指标与告警",
+        "definition": "把大量运行事件汇总成数量、耗时、失败率和 token 用量等指标。",
+        "features": "按类型、模型或轮次查看趋势，超过阈值时自动生成分级告警。",
+        "scenarios": "观察整体性能、发现异常耗时或失败率、评估模型成本。"
+      },
+      "replay": {
+        "title": "Replay：确定性回放",
+        "definition": "用已记录的调用链把一次运行重跑一遍，检查结果是否与当时一致。",
+        "features": "支持单条调用链自校验，也支持两条调用链逐步对比差异。",
+        "scenarios": "改动后做回归验证，排查两次运行结果为什么不一致。"
+      }
+    },
+    "loading": "加载中…",
+    "empty": "暂无数据",
+    "retry": "重试",
+    "module": {
+      "session_log": "Session Log",
+      "trace_replay": "Trace Metrics Replay"
+    },
+    "sessions": {
+      "title": "会话",
+      "search_placeholder": "搜索会话标题或项目",
+      "all_projects": "全部项目",
+      "load_more": "加载更多",
+      "no_match": "没有匹配的会话"
+    },
+    "modules": {
+      "title": "模块开关",
+      "trace": "Trace 采集",
+      "metrics": "Metrics 指标",
+      "replay": "Replay 回放",
+      "retention": "Trace 保留天数",
+      "save": "保存",
+      "saved": "已保存，立即生效",
+      "save_failed": "保存失败",
+      "disabled": "该模块未启用，可在上方开关中开启",
+      "none_enabled": "三个模块均已停用。开启任一模块后即可查看对应数据。"
+    },
+    "toolbar": {
+      "aria": "会话日志工具栏",
+      "search_placeholder": "搜索记录内容",
+      "fold_turns": "折叠全部轮次",
+      "unfold_turns": "展开全部轮次",
+      "fold_calls": "折叠全部调用",
+      "unfold_calls": "展开全部调用",
+      "live_follow": "实时跟随",
+      "refresh": "刷新",
+      "export_json": "导出 JSON",
+      "export_csv": "导出 CSV",
+      "export_all": "导出全部",
+      "exporting": "导出中…",
+      "back_to_latest": "回到最新"
+    },
+    "record": {
+      "user": "用户",
+      "assistant": "助手",
+      "tool": "工具",
+      "thought": "思考",
+      "phase": "阶段",
+      "ask": "提问",
+      "approval": "审批",
+      "stop": "结束",
+      "error": "错误",
+      "system": "系统",
+      "checkpoint": "检查点",
+      "delegation": "委派"
+    },
+    "inspector": {
+      "title": "记录详情",
+      "raw": "原始数据",
+      "copy": "复制",
+      "copied": "已复制",
+      "close": "关闭详情",
+      "seq": "序号",
+      "phase": "阶段",
+      "duration": "耗时",
+      "tokens": "Tokens"
+    },
+    "log": {
+      "load_older": "加载更早",
+      "no_events": "当前筛选下没有记录",
+      "no_session": "请选择左侧会话查看日志",
+      "unassigned": "未归属"
+    },
+    "replay": {
+      "play": "播放",
+      "pause": "暂停",
+      "restart": "重播",
+      "step_back": "上一步",
+      "step_forward": "下一步",
+      "speed": "速度",
+      "clear_filters": "清除区间",
+      "no_events": "该会话没有可回放的运行时事件（旧会话或未执行）",
+      "open_in_log": "在 Session Log 中查看",
+      "quality_truncated": "事件超过指标上限，指标按最近 5000 条计算",
+      "quality_no_timestamps": "部分事件缺少时间戳，墙钟时长与时间轴仅供参考"
+    },
+    "metrics": {
+      "title": "链路指标与时间轴",
+      "events": "事件",
+      "actions": "动作",
+      "failures": "失败动作",
+      "tokens": "Tokens",
+      "wall_clock": "墙钟时长",
+      "p50": "P50 耗时",
+      "p95": "P95 耗时",
+      "distribution": "事件类型分布",
+      "slowest": "最慢动作",
+      "token_series": "每轮 Token",
+      "sensorium": "六维感知",
+      "score": "总分",
+      "no_data": "暂无数据",
+      "alerts": "告警历史",
+      "note_unfiltered": "指标为整会话口径，不随下方筛选变化"
+    },
+    "timeline": {
+      "aria": "事件时间轴",
+      "hint": "单击定位 · 拖动选区间 · 滚轮缩放 · 右键清除/拖拽平移"
+    },
+    "export": {
+      "all_truncated": "导出已达到分页上限（2000 条事件），更早的记录未包含"
+    }
+  },
+  "errors": {
+    "1001": "缺少必填参数，请检查输入",
+    "1002": "参数类型有误",
+    "1003": "参数超出允许范围",
+    "1004": "请求格式有误",
+    "2001": "找不到该项目路径，请确认目录是否存在",
+    "2002": "项目路径不可读，请检查访问权限",
+    "2003": "代码检索工具（ripgrep）执行失败，请重试",
+    "2004": "符号表工具（ctags）执行失败，请重试",
+    "2005": "未能定位到候选组件，请补充组件名或文件路径",
+    "2006": "候选结果过多，请缩小检索范围",
+    "3001": "决策服务暂不可用，请稍后重试",
+    "3002": "信息置信度不足，已按保守策略处理",
+    "3003": "上下文超出长度上限，请补充组件名以缩小范围",
+    "3004": "请求过于频繁，请稍后重试",
+    "4001": "提示词生成失败，请重试",
+    "4002": "模型服务不可达，请检查模型配置",
+    "4003": "模型返回格式异常，请重试",
+    "5001": "缺少外部工具，请检查 ripgrep / ctags 是否已安装",
+    "5011": "模型调用超时，请稍后重试或调大超时设置",
+    "5012": "服务商限流，请稍后重试",
+    "5013": "服务商余额或配额不足，请充值后重试",
+    "5014": "模型鉴权失败，请检查 API Key 是否正确",
+    "5015": "模型服务异常，请稍后重试",
+    "5021": "模型列表拉取失败，请检查该服务商的接口地址与密钥后重试",
+    "6001": "当前状态不允许该操作，请刷新页面后重试",
+    "6002": "追问轮次已达上限，请选择继续追问或直接生成",
+    "6003": "该流程不存在或已过期",
+    "6004": "该可观测性模块未启用，请在设置中心开启后重试",
+    "9001": "内部错误，请重试",
+    "9002": "配置不完整或校验未通过，请检查设置",
+    "kind": {
+      "contract": "服务返回的数据不符合契约，请稍后重试",
+      "network": "网络连接失败，请检查网络后重试",
+      "timeout": "请求超时，请稍后重试",
+      "aborted": "请求已取消"
+    }
+  },
+  "gate": {
+    "evidence_stale": "交付前检测到目标项目文件已变更，本方案基于上一轮取证结果，引用的行号与 token 出处可能已过期。建议重新提交一次以获得最新证据。"
+  },
+  "tooltip": {
+    "label_purpose": "作用",
+    "label_usage": "用法",
+    "domain": {
+      "auto": {
+        "title": "自动识别",
+        "purpose": "由系统判断你的需求属于哪一类，自动选择处理方式（检索代码库、追问澄清、产出提示词）。",
+        "usage": "直接描述你要做的事即可。带明显领域词（周报、分镜、文生图等）时会自动归类；需要精确控制时再手动指定模式。"
+      },
+      "code": {
+        "title": "代码工程",
+        "purpose": "在真实代码库里定位问题，产出带文件与行号锚点、可被 ripgrep 反向复核的工程级提示词。",
+        "usage": "填写项目路径并说明要改什么。系统会先取证、必要时反问，最后给出一套可执行方案。"
+      },
+      "work": {
+        "title": "工作事务",
+        "purpose": "产出周报、汇报、方案、邮件等事务类文档正文。",
+        "usage": "说明事项背景与受众；未指明篇幅或格式时按通用公文处理并标注（推断）。"
+      },
+      "life": {
+        "title": "生活事务",
+        "purpose": "行程、采购、健身、装修等生活事务的清单、流程与建议。",
+        "usage": "说明时间、地点、预算与个人偏好；缺项按通用方案处理并标注（推断）。"
+      },
+      "creative": {
+        "title": "创意创作",
+        "purpose": "故事、命名、口号、脑暴等创意类内容产出。",
+        "usage": "给出主题、载体与调性；可要求多个方向备选。"
+      },
+      "learning": {
+        "title": "学习教育",
+        "purpose": "课程、教案、复习计划、论文与考试等学习方案。",
+        "usage": "说明学习目标、当前水平与可用时间。"
+      },
+      "data": {
+        "title": "数据分析",
+        "purpose": "指标解读、数据清洗与可视化方案、报表结论梳理。",
+        "usage": "说明数据来源、统计口径与你要回答的问题；不接入真实数据。"
+      },
+      "marketing": {
+        "title": "文案营销",
+        "purpose": "营销文案、投放素材、社媒内容与增长策划。",
+        "usage": "说明品牌调性、投放渠道与目标人群；可要求多版本对比。"
+      },
+      "translation": {
+        "title": "翻译本地化",
+        "purpose": "多语言翻译与本地化改写，保持术语与语气一致。",
+        "usage": "给出原文与目标语言或地区；可指定术语表与禁用表达。"
+      },
+      "legal": {
+        "title": "法律合同",
+        "purpose": "合同、协议、合规文书的条款梳理与风险提示。",
+        "usage": "说明文书类型、关注条款与适用地区；不替代律师意见。"
+      },
+      "medical": {
+        "title": "医疗健康",
+        "purpose": "症状梳理、就医准备材料与康复记录整理。",
+        "usage": "描述症状、持续时间与既往情况；不作诊断，急症请及时就医。"
+      },
+      "finance": {
+        "title": "金融财务",
+        "purpose": "财报、税务、报销、预算等财务口径的解读与测算思路。",
+        "usage": "提供数据口径、统计期间与要回答的问题。"
+      },
+      "game": {
+        "title": "游戏设计",
+        "purpose": "玩法、关卡、数值与剧情的设计文档。",
+        "usage": "说明品类、目标体验与平台约束。"
+      },
+      "visual": {
+        "title": "视觉生成",
+        "purpose": "产出可直接粘贴进 Midjourney、即梦、Sora 的画面与视频提示词。",
+        "usage": "用大白话描述画面，可另选风格并添加参考图；不生成图片本身。"
+      },
+      "av": {
+        "title": "音视频脚本",
+        "purpose": "分镜表、口播稿、播客脚本等可直接开拍或录制的脚本。",
+        "usage": "说明时长、受众、平台与风格；未指明时按通用短视频处理并标注（推断）。"
+      },
+      "operations": {
+        "title": "运营策划",
+        "purpose": "活动、社群、用户增长与内容排期等运营方案。",
+        "usage": "说明目标、可投入资源、预算与时间节点。"
+      }
+    }
+  }
+}

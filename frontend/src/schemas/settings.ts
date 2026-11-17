@@ -35,6 +35,16 @@ export const LockedSchema = z.object({
   candidate_limit: z.number(),
 })
 
+/** 可观测性三模块开关视图（契约 ObservabilitySettings；各模块独立启停）。 */
+export const ObservabilitySchema = z.object({
+  trace_enabled: z.boolean(),
+  trace_retention_days: z.number(),
+  metrics_enabled: z.boolean(),
+  replay_enabled: z.boolean(),
+})
+
+export type ObservabilitySettings = z.infer<typeof ObservabilitySchema>
+
 /** 模型注册表条目脱敏视图（契约 ModelEntryView；api_key 恒脱敏，MUST-19）。 */
 export const ModelEntryViewSchema = z.object({
   id: z.string(),
@@ -169,6 +179,7 @@ export const SettingsResponseSchema = z.object({
   providers: z.array(ProviderDirectoryEntrySchema).optional(),
   model_service: ModelServiceSchema,
   process: ProcessSchema,
+  observability: ObservabilitySchema,
 })
 
 /** PUT /settings 模型段（契约 ModelServiceUpdate；None/空=不变，api_key 仅入参明文）。 */
@@ -189,6 +200,14 @@ export const ProcessUpdateSchema = z.object({
   telemetry: z.boolean().nullish(),
 })
 
+/** PUT /settings 可观测性段（契约 ObservabilityUpdate；None=不变，保存后即时生效）。 */
+export const ObservabilityUpdateSchema = z.object({
+  trace_enabled: z.boolean().nullish(),
+  trace_retention_days: z.number().nullish(),
+  metrics_enabled: z.boolean().nullish(),
+  replay_enabled: z.boolean().nullish(),
+})
+
 /** PUT /settings 请求体（契约 SettingsUpdate；models 整表替换，active_model_id 切换生效项）。 */
 export const SettingsUpdateSchema = z.object({
   provider_configs: z.array(ProviderConfigUpdateSchema).nullish(),
@@ -196,4 +215,5 @@ export const SettingsUpdateSchema = z.object({
   active_model_id: z.string().nullish(),
   model_service: ModelServiceUpdateSchema.nullish(),
   process: ProcessUpdateSchema.nullish(),
+  observability: ObservabilityUpdateSchema.nullish(),
 })

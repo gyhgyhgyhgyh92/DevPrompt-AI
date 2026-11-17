@@ -3,8 +3,40 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>DevPrompt AI</title>
+    <style>
+      /* 首帧防闪白：CSS 产物加载前用浏览器原生 color-scheme 决定画布底色（不引入任何色值）。 */
+      html {
+        color-scheme: light;
+      }
+
+      html[data-theme='dark'] {
+        color-scheme: dark;
+      }
+    </style>
+    <script>
+      /* 首帧主题预置：键名与 stores/useSettingsStore.ts 的 APPEARANCE_KEY 一致，口径同 applyAppearanceTheme。
+       * 渲染前先落 data-theme，避免暗色偏好用户看到一帧白屏。 */
+      ;(function () {
+        var theme = 'light'
+        try {
+          var raw = localStorage.getItem('devprompt:v1:appearance')
+          var stored = raw ? JSON.parse(raw) : null
+          if (stored && typeof stored.theme === 'string') theme = stored.theme
+        } catch (error) {
+          theme = 'light'
+        }
+        if (theme === 'system') {
+          theme =
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+        }
+        document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light'
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

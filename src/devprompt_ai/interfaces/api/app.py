@@ -18,7 +18,13 @@ from starlette.types import Scope
 from devprompt_ai.common.process import ProcessError, ProcessTimeoutError
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.errors import DevPromptError
-from devprompt_ai.interfaces.api import routes
+from devprompt_ai.interfaces.api import (
+    obs_metrics_routes,
+    obs_replay_routes,
+    obs_trace_routes,
+    routes,
+    runtime_routes,
+)
 from devprompt_ai.interfaces.api.schemas import ApiResponse
 
 
@@ -104,12 +110,53 @@ def _error_code(exc: Exception) -> int:
     return 5001
 
 
+#: 业务码 → HTTP 状态（架构文档 §3.3 逐码表，2026-11-04 落地）。
+#: 此前统一返回 500，导致「会话不存在(6003)」「状态不允许(6001)」这类调用方可恢复的
+#: 错误被外部监控/网关当成服务端故障。5021 文档逐码表未列，按同段「外部依赖」给 502。
+_HTTP_STATUS_BY_CODE: dict[int, int] = {
+    1001: 400,
+    1002: 400,
+    1003: 400,
+    1004: 400,
+    2001: 404,
+    2002: 403,
+    2003: 500,
+    2004: 500,
+    2005: 422,
+    2006: 400,
+    3001: 503,
+    3002: 200,
+    3003: 422,
+    3004: 429,
+    4001: 502,
+    4002: 503,
+    4003: 502,
+    5001: 503,
+    5011: 503,
+    5012: 429,
+    5013: 402,
+    5014: 401,
+    5015: 502,
+    5021: 502,
+    6001: 409,
+    6002: 409,
+    6003: 404,
+    6004: 404,
+    9001: 500,
+    9002: 500,
+}
+
+
+def _http_status(code: int) -> int:
+    """业务码 → HTTP 状态；未登记的码按内部异常处理（500）。"""
+    return _HTTP_STATUS_BY_CODE.get(code, 500)
+
+
 async def _render_error(request: Request, exc: Exception) -> JSONResponse:
     """统一错误渲染：仅 code + message + request_id，不回传堆栈（MUST-19）。"""
-    body: ApiResponse[None] = ApiResponse(
-        code=_error_code(exc), message=str(exc), request_id=uuid.uuid4().hex
-    )
-    return JSONResponse(status_code=500, content=body.model_dump())
+    code = _error_code(exc)
+    body: ApiResponse[None] = ApiResponse(code=code, message=str(exc), request_id=uuid.uuid4().hex)
+    return JSONResponse(status_code=_http_status(code), content=body.model_dump())
 
 
 def create_app() -> FastAPI:
@@ -138,6 +185,10 @@ def create_app() -> FastAPI:
         return response
 
     app.include_router(routes.router)
+    app.include_router(runtime_routes.router)
+    app.include_router(obs_trace_routes.router)
+    app.include_router(obs_metrics_routes.router)
+    app.include_router(obs_replay_routes.router)
     for exc_type in (DevPromptError, ProcessError, ProcessTimeoutError, TimeoutError):
         app.add_exception_handler(exc_type, _render_error)
     # py3.10 下 asyncio.TimeoutError 与内建 TimeoutError 非同一类，显式覆盖

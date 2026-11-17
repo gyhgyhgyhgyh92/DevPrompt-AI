@@ -22,25 +22,69 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "flow.completed",
         "recommendation.made",
         "recommendation.skipped",
+        "recommendation.recovered",
         "state.truncated",
         "followup.guardrail",
+        "followup.clarifications_invalidated",
         "followup.escaped",
         "decision.tools_unsupported",
         "decision.ask_args_invalid",
+        "decision.probe_empty",
+        "retrieval.impact",
         "followup.task_kind",
         "followup.question_lint",
+        "followup.question_suppressed",
         "cache.hit",
         "cache.miss",
         "startup.repair",
         "settings.updated",
         "model_catalog.refreshed",
         "model_catalog.refresh_failed",
+        "agent.step",
+        "agent.hook_halt",
+        "agent.sensorium",
+        "agent.loop_terminated",
+        "evidence.reused",
+        "evidence.stale_reprobe",
+        "generate.fallback",
+        # 生成/决策调用失败留痕（2026-11-15）：此前只能靠「trace 少一条 response」推断
+        "llm.error",
+        # 排序失败回退分数第一名（2026-11-15）：降级可见，不静默
+        "decision.rank_degraded",
+        "evidence.claim_uncovered",
+        "evidence.claim_undeclared",
+        "evidence.anchor_invalid",
+        "delivery.gate",
+        "session.rolled_back",
+        "session.model_switch",
+        "agent.finish_gate_blocked",
+        "context.overflow_retry",
+        "delegation.rejected",
+        "delegation.wave",
+        "context.append_violation",
+        "context.compacted",
+        "followup.expect_unmet",
+        "hook.failed",
+        "hook.ran",
+        "evidence.stale_on_deliver",
+        "llm.request_params",
+        "context.tier_changed",
+        "trace.write_failed",
+        "domain.classify_failed",
+        "domain.classify_invalid",
+        "domain.classify_low_confidence",
+        "domain.inherit_invalid",
+        "agent.action_filtered",
     }
 )
-"""SHOULD-08 固定事件名全集（十三名；made/skipped 同族计一项）。emit 之外的诊断日志用普通logging。
+"""SHOULD-08 固定事件名全集（made/skipped 同族计一项）。emit 之外的诊断日志用普通 logging。
 
 2026-10-15 移除「决策层切换」事件：决策层统一为单一 LLM 实现（无降级切换），该事件已无发射点。
 2026-10-17 新增模型目录两事件：刷新成功（含模型条数）/ 刷新失败（回落旧快照）。
+2026-11-04 星型拓扑新增两事件：每步动作（action/index/duration_ms）与循环终止（reason）。
+2026-11-07 新增 decision.probe_empty：模型未给出任何判定（judgments 为空，参数畸形分支）。
+2026-11-08 新增 session.model_switch：F10 会话级模型热切换。
+2026-11-14 新增领域路由三事件：LLM 分类失败/非法领域回退、会话继承载荷畸形。
 """
 
 _telemetry_enabled = True

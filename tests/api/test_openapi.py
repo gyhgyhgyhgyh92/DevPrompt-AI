@@ -24,23 +24,47 @@ def _load_export_module() -> Any:
     return mod
 
 
-def test_openapi_covers_eighteen_operations() -> None:
-    """15 路径 / 18 操作：preference/settings 各 GET+PUT，history PATCH+DELETE。
+def test_openapi_covers_all_operations() -> None:
+    """22 路径 / 25 操作：preference/settings 各 GET+PUT，history PATCH+DELETE。
 
-    2026-10-17 动态模型目录新增 2 操作（读取 + 刷新 `/settings/models/catalog`），
-    下线，改走浏览器扩展 + native messaging），故再改为 **14/17**——BREAKING。
-    2026-10-19 思考过程流式展示新增 `POST /optimize/stream`，改为 **15/18**（向后兼容，
-    旧 `POST /optimize` 保留）。
+    2026-10-19 思考过程流式展示新增 `POST /optimize/stream`，改为 **15/18**；
+    2026-11-03 答复过程流式化新增 `POST /followup/{flow_id}/stream`：**15/18**。
+    2026-11-07 多端运行时协议新增 5 个操作（runs / sessions stream / interventions /
+    cancel / events）：**21 路径 / 24 操作**——BREAKING，旧流式端点保留兼容壳。
+    2026-11-08 工具输出治理新增 `GET /artifacts/{id}` 回读：**22 路径 / 25 操作**。
+    2026-11-08 F10 会话级模型热切换新增 `POST /sessions/{id}/model`：**23 路径 / 26 操作**。
+    2026-11-12 可观测性拆分为 Trace / Metrics / Replay 三模块（BREAKING：旧
+    `GET /sessions/{id}/observability` 下线，新增 10 条独立路径）：**33 路径 / 36 操作**。
+    2026-11-15 删除会话级模型热切换（`POST /sessions/{id}/model`）：**32 路径 / 35 操作**。
     """
     doc = create_app().openapi()
     paths: dict[str, Any] = doc["paths"]
-    assert len(paths) == 14
+    assert len(paths) == 32
     assert all(p.startswith("/api/v1/") for p in paths)
     operations = sum(
         len([m for m in ops if m in {"get", "put", "post", "patch", "delete"}])
         for ops in paths.values()
     )
-    assert operations == 16
+    assert operations == 35
+    assert "get" in paths["/api/v1/obs/trace/sessions/{session_id}/traces"]
+    assert "get" in paths["/api/v1/obs/trace/sessions/{session_id}/events"]
+    assert "get" in paths["/api/v1/obs/trace/traces/{trace_id}"]
+    assert "get" in paths["/api/v1/obs/trace/events/{event_id}"]
+    assert "get" in paths["/api/v1/obs/metrics/summary"]
+    assert "get" in paths["/api/v1/obs/metrics/alerts"]
+    assert "get" in paths["/api/v1/obs/metrics/config"]
+    assert "post" in paths["/api/v1/obs/replay/runs"]
+    assert "get" in paths["/api/v1/obs/replay/runs/{run_id}"]
+    assert "post" in paths["/api/v1/obs/replay/compare"]
+    assert "get" not in paths.get("/api/v1/sessions/{session_id}/observability", {})
+    assert "get" in paths["/api/v1/artifacts/{artifact_id}"]
+    # 2026-11-15 删除会话级模型热切换：端点必须从契约中消失
+    assert "/api/v1/sessions/{session_id}/model" not in paths
+    assert "post" in paths["/api/v1/runs"]
+    assert "get" in paths["/api/v1/sessions/{session_id}/stream"]
+    assert "post" in paths["/api/v1/interventions/{request_id}/answer"]
+    assert {"get", "delete"} <= set(paths["/api/v1/history"])
+    assert "post" in paths["/api/v1/followup/{flow_id}/stream"]
     assert "get" in paths["/api/v1/settings/models/catalog"]
     assert "post" in paths["/api/v1/settings/models/catalog/refresh"]
     assert set(paths["/api/v1/settings"]) >= {"get", "put"}
@@ -118,12 +142,17 @@ class TestContextWindowTierContract:
         assert "ParameterDefinitionView" not in doc
 
     def test_path_and_operation_count_unchanged(self) -> None:
-        """档位契约改动**不新增路径**（2026-10-17）；2026-10-19 删除 browse 后为 14/17，
-        同日新增 /optimize/stream 后为 15/18。"""
+        """档位契约改动**不新增路径**（2026-10-17）。
+
+        2026-11-07 多端运行时协议新增 5 个操作后为 21 路径 / 24 操作（BREAKING）；
+        2026-11-08 工具输出治理新增 `GET /artifacts/{id}`、F10 新增 `POST /sessions/{id}/model`
+        后为 **23 路径 / 26 操作**；2026-11-12 可观测性三模块拆分（旧端点下线 + 10 条新路径）
+        后为 **33 路径 / 36 操作**；2026-11-15 删会话级模型热度切换后为 **32 路径 / 35 操作**。
+        """
         doc = create_app().openapi()
-        assert len(doc["paths"]) == 14
+        assert len(doc["paths"]) == 32
         operations = sum(
             len([k for k in v if k in {"get", "post", "put", "patch", "delete"}])
             for v in doc["paths"].values()
         )
-        assert operations == 16
+        assert operations == 35

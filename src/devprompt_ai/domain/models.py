@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol
+from typing import Any, Generic, Literal, Protocol, TypeVar
+
+T = TypeVar("T")
 
 SymbolKind = Literal["function", "class", "variable", "other"]
 CandidateSource = Literal["symbol", "path"]
@@ -20,23 +22,33 @@ FactKey = Literal[
 
 @dataclass(frozen=True, slots=True)
 class Symbol:
-    """F-101 输出：符号名 + 相对路径(POSIX) + 行号 + 类型。"""
+    """F-101 输出：符号名 + 相对路径(POSIX) + 行号 + 类型 + 签名。
+
+    ``signature``（2026-11-05）：ctags 的 ``{signature}`` 字段，仅参数列表，≤1 行 ≤120 字符。
+    默认空字符串保证旧数据反序列化与既有位置参数零变化。
+    """
 
     name: str
     path: str
     line: int
     kind: SymbolKind
+    signature: str = ""
 
 
 @dataclass(frozen=True, slots=True)
 class Candidate:
-    """F-102 输出元素：仅符号名与路径，不含代码正文（MUST-09）。"""
+    """F-102 输出元素：符号名、路径与签名，**不含代码正文**（MUST-09）。
+
+    ``signature``（2026-11-05）：允许携带 ≤1 行签名，用于让排序决策层区分同名同路径候选；
+    仍不含函数体（MUST-09 的硬边界不变）。
+    """
 
     name: str
     path: str
     line: int
     score: float
     source: CandidateSource
+    signature: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,15 +61,45 @@ class CodeLocation:
     selectors: list[str] = field(default_factory=list)
     tokens: list[str] = field(default_factory=list)
     test_paths: list[str] = field(default_factory=list)
+    #: 带行号的代码片段（形如 "233|<Button ...>"）。仅供生成层：四段式方案的
+    #: 「定位」与「实施」两段要写出组件属性与「原代码 → 新代码」，没有片段只能编。
+    #: 刻意不进 ``facts_summary``——后者同时被研判与打分消费（MUST-09）。
+    excerpt: str = ""
+    #: 设计令牌证据（rg 命中行，≤3 条）。供「一致性检查」段引用路径与色值。
+    token_hits: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Page(Generic[T]):
+    """分页结果（2026-11-05）：列表端点的统一返回形态。
+
+    ``has_more`` 而非 ``total``：存储层按「取 limit+1 条」探测还有没有下一页，
+    不必额外做一次 COUNT 查询，也不必把总数算准。裸数组无法表达「还有更多」，
+    前端只能硬顶（20 轮 / 50 会话）。
+
+    不加 ``slots=True``：``dataclass(slots=True)`` 与 ``Generic`` 在 Python 3.10
+    （项目最低版本）组合会出问题，frozen 已足够。
+    """
+
+    items: tuple[T, ...]
+    has_more: bool
+    limit: int
+    offset: int
 
 
 @dataclass(frozen=True, slots=True)
 class FactResult:
-    """F-104 输出元素：七项事实之一，布尔 + 证据，无「未知」。"""
+    """F-104 输出元素：七项事实之一，布尔 + 证据，无「未知」。
+
+    ``applicable``（2026-11-05）：该事实在当前目标文件类型下是否有意义。
+    默认 ``True`` 保证旧数据反序列化、旧调用方位置参数与既有断言零变化；
+    非前端项目把样式类三项标为不适用，档位判定从此只看适用项。
+    """
 
     key: FactKey
     passed: bool
     evidence: str
+    applicable: bool = True
 
 
 @dataclass(slots=True)
@@ -168,11 +210,25 @@ class TurnStore(Protocol):
         """回填占位 turn 的产出（一轮只写一行，不回写历史）。"""
         ...
 
-    async def list_for_session(self, session_id: str) -> list[TurnRecord]:
-        """按 turn_index 升序返回该会话全部轮次（摘要 + 正文一起读，正文调用方可忽略）。"""
+    async def list_for_session(
+        self, session_id: str, *, limit: int | None = None, offset: int = 0
+    ) -> list[TurnRecord]:
+        """按 turn_index 升序返回该会话轮次（摘要 + 正文一起读，正文调用方可忽略）。
+
+        分页语义：``limit=None`` 取全部（升序）；给定 ``limit`` 时**从最新一轮往回数**
+        ``offset`` 条、取 ``limit`` 条，返回仍按 turn_index 升序——「加载更早」用。
+        """
         ...
 
     async def load(self, turn_id: str) -> TurnRecord | None: ...
+
+    async def delete_after(self, session_id: str, turn_index: int) -> int:
+        """物理删除 turn_index 之后的所有轮次，返回删除行数（2026-11-05 撤销）。
+
+        MUST-32 修订：撤销是**显式用户操作**，允许物理删除其后的轮次；
+        策略判断（终态校验、归属校验、事件留痕）在 service 层，存储层只管执行。
+        """
+        ...
 
 
 class SessionStore(Protocol):
@@ -184,10 +240,19 @@ class SessionStore(Protocol):
         """CAS 写入：WHERE version=旧值；0 行更新返回 False。"""
         ...
 
-    async def list_recent(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
-        """最近会话摘要（pinned 优先 + updated_at 倒序）；项目名 = project_root basename。"""
+    async def list_recent(
+        self, user_id: str, *, limit: int = 50, offset: int = 0
+    ) -> list[SessionSummary]:
+        """最近会话摘要（pinned 优先 + updated_at 倒序）；项目名 = project_root basename。
+
+        分页语义：排序后从第 ``offset`` 条起取 ``limit`` 条。
+        """
         ...
 
     async def delete(self, session_id: str) -> bool:
         """物理删除会话；rowcount>0 为 True（不存在返回 False）。"""
+        ...
+
+    async def delete_by_project(self, user_id: str, project_root: str) -> int:
+        """项目级批量删除：按 payload.project_root 匹配后一次删净，返回删除条数。"""
         ...

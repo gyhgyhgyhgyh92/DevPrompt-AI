@@ -1,0 +1,1103 @@
+/* 正式界面对话流（图五 1:1，spec Task 6）：颜色/间距/字号全部取 tokens.css 变量，禁硬编码色值。 */
+
+.chat-stream {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  inline-size: 100%;
+  max-inline-size: 820px;
+  margin-inline: auto;
+  padding: var(--space-6) var(--space-5);
+}
+
+/* 窄屏（<768）：气泡放宽至 90%，对话流单列不溢出 */
+@media (max-width: 767.98px) {
+  .chat-user-bubble {
+    max-inline-size: 90%;
+  }
+}
+
+.chat-stream__row {
+  display: flex;
+  inline-size: 100%;
+}
+
+.chat-stream__row--user {
+  justify-content: flex-end;
+}
+
+/* 用户消息：右对齐、1px 描边 + 浅色底（终端工具：不用大色块，也不加尾巴） */
+.chat-user-bubble {
+  max-inline-size: 78%;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-body-sm);
+  line-height: var(--line-height-body);
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  background: var(--bubble);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+}
+
+/* AI 回复块：左对齐 */
+
+.chat-reply {
+  display: flex;
+  flex-direction: column;
+  inline-size: 100%;
+}
+
+.chat-reply__head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.chat-reply__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--space-5);
+  block-size: var(--space-5);
+  color: var(--color-text-inverse);
+  background: var(--color-text-primary);
+  border-radius: var(--radius-sm);
+}
+
+/* 品牌行：色块 + 等宽名称 + 右对齐耗时（不摆头像徽章，减少「聊天应用」观感） */
+.chat-reply__mark {
+  inline-size: 8px;
+  block-size: 8px;
+  background: var(--color-primary-500);
+  border-radius: 2px;
+}
+
+.chat-reply__brand {
+  font: var(--font-code-medium);
+  font-size: var(--text-micro);
+  letter-spacing: 0.02em;
+  color: var(--color-text-secondary);
+}
+
+.chat-reply__elapsed {
+  margin-inline-start: auto;
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+}
+
+/* 领域徽标（2026-11-14 领域包）：品牌行右侧小型 pill；fallback 源随文案附注 */
+.chat-reply__domain {
+  padding: 2px var(--space-2);
+  font-size: var(--text-micro);
+  color: var(--color-primary-700);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-full);
+}
+
+/* 多轮全文流（2026-10-20）：每轮完整铺开——用户气泡靠右、助手块靠左。
+ * 2026-11-02 实测：历史轮次此前无列宽约束，铺满主区（1180）而当前轮是 820 居中，
+ * 两段内容左右错位约 200px；此处与 .chat-stream 对齐（同列宽 + 同内边距）。 */
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  inline-size: 100%;
+  max-inline-size: 820px;
+  margin-inline: auto;
+  padding: var(--space-6) var(--space-5) 0;
+}
+
+.thread__omitted,
+.thread__loading,
+.thread__open {
+  margin: 0;
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+}
+
+/* 「加载更早的轮次」按钮（2026-11-05 分页增量加载，取代 20 轮硬顶） */
+.thread__more {
+  align-self: center;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border-subtle, currentColor);
+  border-radius: var(--radius-md, 6px);
+  cursor: pointer;
+}
+
+.thread__more:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* 轮级操作条（2026-11-05 形态层）：以基线轮继续 */
+.turn-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
+.turn-actions__btn {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border-subtle, currentColor);
+  border-radius: var(--radius-md, 6px);
+  cursor: pointer;
+}
+
+.turn-actions__btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* 破坏性操作（撤销）：与普通操作拉开视觉差距，但仍克制（不用大面积红底） */
+.turn-actions__btn--danger {
+  color: var(--color-danger, #b91c1c);
+  border-color: var(--color-danger, currentColor);
+}
+
+/* 交付证据门卡片（2026-11-05）：色阶由后端 tone 决定，前端只选样式 */
+.delivery-gate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  font-size: var(--text-body-xs);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-subtle, currentColor);
+  border-radius: var(--radius-md, 6px);
+}
+
+.delivery-gate__status {
+  font-weight: 600;
+}
+
+.delivery-gate__text {
+  margin: 0;
+}
+
+/* 历史轮过程区（2026-11-15）：默认折叠成一行摘要，点开回看完整过程 */
+.turn-process {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-block: var(--space-2);
+}
+
+.turn-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+  list-style: none;
+}
+
+.turn-steps__row {
+  border-inline-start: 2px solid transparent;
+}
+
+.turn-steps__row--failed {
+  border-inline-start-color: var(--color-danger-500);
+}
+
+.turn-steps__head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  inline-size: 100%;
+  padding: var(--space-1) var(--space-2);
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.turn-steps__head:hover {
+  background: var(--hover);
+}
+
+.turn-steps__action {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.turn-steps__duration {
+  font-family: var(--font-family-code);
+  font-size: var(--text-micro);
+  opacity: 0.7;
+}
+
+.turn-steps__caret {
+  transition: transform 0.12s ease;
+}
+
+.turn-steps__head[aria-expanded='true'] .turn-steps__caret {
+  transform: rotate(90deg);
+}
+
+.turn-steps__note {
+  margin: 0 0 var(--space-1) var(--space-3);
+  padding-inline-start: var(--space-2);
+  font-size: var(--text-caption-sm);
+  line-height: 1.6;
+  border-inline-start: 1px solid var(--color-border-subtle);
+}
+
+.thread__turn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.thread__round {
+  padding: 0 var(--space-2);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-muted);
+  background: var(--color-border-subtle);
+  border-radius: var(--radius-full);
+}
+
+.thread__variant {
+  margin-block-start: var(--space-3);
+  padding-inline-start: var(--space-3);
+  border-inline-start: 2px solid var(--color-border-subtle);
+}
+
+.thread__variant-title {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0;
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.thread__level {
+  padding: 0 var(--space-2);
+  font: var(--font-code-medium);
+  color: var(--color-text-brand);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-sm);
+}
+
+.thread__variant-body {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-body-xs);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* hidden 属性会被上面的 display:flex/inline-flex 覆盖，需显式收口 */
+.chat-reply__status[hidden],
+.chat-reply__actions[hidden] {
+  display: none;
+}
+
+/* 状态 / 耗时折叠行（替代原状态步进器信息位，MUST-07 只镜像） */
+.chat-reply__status {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  align-self: flex-start;
+  margin-block-start: var(--space-1);
+  padding: 0;
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+
+.chat-reply__status:hover {
+  color: var(--color-text-secondary);
+}
+
+.chat-reply__state {
+  font: var(--font-code-medium);
+}
+
+.chat-reply__caret {
+  font-size: var(--text-body-sm);
+  transition: transform 0.15s ease;
+}
+
+.chat-reply__status[aria-expanded='true'] .chat-reply__caret {
+  transform: rotate(90deg);
+}
+
+/* 过程区标题栏：左「执行过程 + 步数」，右折叠控制（2026-11-07） */
+.chat-reply__process-bar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  margin-block-start: var(--space-3);
+  padding-block-end: var(--space-1);
+}
+
+.chat-reply__process-title {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  font: var(--font-code-medium);
+  font-size: var(--text-micro);
+  letter-spacing: var(--track-wide);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.chat-reply__process-count {
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  letter-spacing: 0;
+  color: var(--text-faint);
+  text-transform: none;
+}
+
+/* 折叠控制：等宽微标签，展开态显示动作名、折叠态直接显示摘要 */
+.chat-reply__process-toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: var(--space-2);
+  align-items: center;
+  max-inline-size: 100%;
+  padding: 2px var(--space-2);
+  overflow: hidden;
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.chat-reply__process-toggle:hover {
+  color: var(--color-text-primary);
+  background: var(--hover);
+  border-color: var(--color-border-subtle);
+}
+
+.chat-reply__process-caret {
+  color: var(--color-text-muted);
+}
+
+/* 执行账本（2026-11-07）：每阶段一行，行间发丝分隔线，不用进度条语义 */
+.chat-reply__phases {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-block-start: 1px solid var(--divider);
+}
+
+.chat-reply__phase {
+  display: block;
+  color: var(--color-text-muted);
+}
+
+.chat-reply__phase-head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-block-size: 28px;
+  padding-block: 2px;
+  border-block-end: 1px solid var(--divider);
+}
+
+.chat-reply__phase--done {
+  color: var(--color-text-secondary);
+}
+
+.chat-reply__phase--current {
+  color: var(--color-text-primary);
+}
+
+.chat-reply__phase-mark {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  inline-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.chat-reply__phase-mark--done {
+  color: var(--color-text-muted);
+}
+
+.chat-reply__phase-mark--running {
+  color: var(--color-running-500);
+  animation: phase-breathe 1.6s ease-in-out infinite;
+}
+
+.chat-reply__phase-label {
+  flex-shrink: 0;
+  min-inline-size: 76px;
+  font: var(--font-code-medium);
+  font-size: var(--text-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+}
+
+.chat-reply__phase-hint {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-reply__phase--current .chat-reply__phase-hint {
+  color: var(--color-text-secondary);
+}
+
+.chat-reply__phase-meta {
+  flex-shrink: 0;
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  color: var(--text-faint);
+}
+
+/* 「进行中」是绿色唯一允许出现的过程状态（成功/进行中语义） */
+.chat-reply__phase-tag {
+  flex-shrink: 0;
+  padding: 0 var(--space-2);
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  color: var(--color-running-500);
+  background: var(--color-running-soft);
+  border-radius: var(--radius-full);
+}
+
+@keyframes phase-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-reply__phase-mark--running {
+    animation: none;
+  }
+}
+
+/* 每个阶段下方的过程：文字段 + 工具卡，左侧 1px 竖轨串起整段 */
+.chat-reply__phase-log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) 0 var(--space-2) var(--space-3);
+  list-style: none;
+  border-block-end: 1px solid var(--divider);
+  border-inline-start: 1px solid var(--divider);
+}
+
+.chat-reply__phase-text {
+  margin: 0;
+  font-size: var(--text-body-sm);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* 打字光标：6px 方块，1s 步进闪烁（不做平滑过渡，终端感） */
+.chat-reply__caret {
+  display: inline-block;
+  inline-size: 6px;
+  block-size: 13px;
+  margin-inline-start: 2px;
+  vertical-align: -2px;
+  background: var(--color-text-secondary);
+  animation: caret-blink 1s steps(1, end) infinite;
+}
+
+@keyframes caret-blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-reply__caret {
+    animation: none;
+  }
+}
+
+.chat-reply__phase-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-code);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.chat-reply__phase-card-title {
+  font-size: var(--text-caption-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.chat-reply__phase-card-detail {
+  flex: 1;
+  overflow: hidden;
+  font: var(--font-code-regular);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-reply__phase-card-scope {
+  font: var(--font-code-regular);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-muted);
+}
+
+.chat-reply__divider {
+  block-size: 1px;
+  margin: var(--space-3) 0;
+  background: var(--divider);
+  border: none;
+}
+
+.chat-reply__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.chat-reply__error {
+  font-size: var(--text-body-sm);
+  color: var(--color-danger-500);
+}
+
+.chat-reply__message {
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+}
+
+/* 底部建议胶囊：浅灰胶囊按钮组（图五底部样式，含 → 箭头） */
+.chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block-start: var(--space-1);
+}
+
+.chat-suggestion {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+  font: var(--font-body-medium);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  background: var(--color-surface-code);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
+}
+
+.chat-suggestion:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.chat-suggestion:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* 底部操作栏：左图标组（16px 灰，悬停深）+ 右「由 AI 生成」 */
+.chat-reply__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block-start: var(--space-3);
+}
+
+.chat-reply__actions-left {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.chat-reply__action {
+  display: inline-flex;
+  padding: 0;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+
+.chat-reply__action:hover:not(:disabled) {
+  color: var(--color-text-primary);
+}
+
+.chat-reply__action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.chat-reply__generated {
+  font-size: var(--text-caption-sm);
+  color: var(--text-faint);
+}
+
+/* 上下文信息内嵌小节（原上下文面板的目标定位/取证事实重排进正文） */
+.chat-context {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-block-start: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-surface-code);
+  border-radius: var(--radius-md);
+}
+
+.chat-context__block {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.chat-context__label {
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-muted);
+}
+
+.chat-context__target {
+  padding: var(--space-1) var(--space-2);
+  overflow-wrap: anywhere;
+}
+
+.chat-context__empty {
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+}
+
+.chat-context__facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-body-xs);
+  color: var(--color-text-secondary);
+}
+
+.chat-context__fact-key {
+  font: var(--font-code-regular);
+  color: var(--color-text-primary);
+}
+
+.chat-context__fact-evidence {
+  margin-inline-start: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+/* 工具动作（2026-11-07 两形态）：
+ * 读取 = 瘦胶囊行；命令 = 终端块（命令常显 + 退出码胶囊 + 可展开输出）。 */
+.trace-thought {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-body-sm);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-code);
+  border-radius: var(--radius-sm);
+}
+
+.trace-step {
+  margin-block-end: var(--space-2);
+  /* 入场动效（2026-11-15）：检索结果逐条浮现，不再整块弹出 */
+  animation: trace-step-in 0.18s ease-out;
+}
+
+@keyframes trace-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 执行中标记（流式期间的范围标签尚未到达） */
+.trace-step__running {
+  padding: 0 var(--space-1);
+  font-size: var(--text-micro);
+  color: var(--color-primary-500);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trace-step {
+    animation: none;
+  }
+}
+
+.trace-step:last-child {
+  margin-block-end: 0;
+}
+
+.trace-step__head {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.trace-step__toggle {
+  display: flex;
+  flex: 1;
+  gap: var(--space-2);
+  align-items: center;
+  min-inline-size: 0;
+  padding: 2px var(--space-2);
+  font-size: var(--text-body-xs);
+  color: var(--color-text-secondary);
+  text-align: start;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.trace-step__toggle:hover {
+  background: var(--hover);
+}
+
+.trace-step__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+/* 胶囊行里的路径是主信息：等宽、可截断，不换行 */
+.trace-step__label {
+  min-inline-size: 0;
+  overflow: hidden;
+  font-family: var(--font-family-code);
+  font-size: var(--text-caption-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-step__scope {
+  flex-shrink: 0;
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  color: var(--text-faint);
+}
+
+/* 耗时：右对齐等宽，弱色（可核对但不抢视线） */
+.trace-step__duration {
+  flex-shrink: 0;
+  margin-inline-start: auto;
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+}
+
+.trace-step__caret {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.trace-step__toggle[aria-expanded='true'] .trace-step__caret {
+  transform: rotate(90deg);
+}
+
+.trace-step__copy {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 2px;
+  color: var(--text-faint);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.trace-step__copy:hover {
+  color: var(--color-text-secondary);
+}
+
+/* 命令正文行：$ 命令 ─────────── exit 0 */
+.trace-step--cmd .trace-step__head {
+  padding-block-end: 2px;
+}
+
+.trace-step__cmd {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  min-inline-size: 0;
+  padding: var(--space-1) var(--space-2);
+  overflow: hidden;
+  font-family: var(--font-family-code);
+  background: var(--color-surface-code);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.trace-step__cmd-prompt {
+  flex-shrink: 0;
+  font-size: var(--text-micro);
+  color: var(--color-primary-500);
+}
+
+.trace-step__cmd-text {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  color: var(--color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+}
+
+.trace-step__exit {
+  flex-shrink: 0;
+  padding: 0 var(--space-2);
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
+}
+
+.trace-step__exit--failed {
+  color: var(--color-danger-500);
+  border-color: var(--color-danger-500);
+}
+
+.trace-step__body {
+  margin-block-start: var(--space-1);
+  padding: var(--space-2);
+  background: var(--color-surface-code);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.trace-step__code {
+  max-block-size: 240px;
+  margin: 0;
+  overflow: auto;
+  font: var(--font-code-regular);
+  font-size: var(--text-micro);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.trace-step__code--output {
+  padding-block-start: var(--space-1);
+  color: var(--color-text-muted);
+}
+
+/* 失败态（2026-11-04）：标题与退出码转错误色，折叠时也能看出失败 */
+.trace-step--failed .trace-step__toggle,
+.trace-step--failed .trace-step__icon,
+.trace-step--failed .trace-step__scope {
+  color: var(--color-danger-500);
+}
+
+.trace-step--failed .trace-step__cmd {
+  border-color: var(--color-danger-500);
+}
+
+.chat-reply__planning {
+  margin: var(--space-1) 0 0;
+  padding-inline-start: 20px;
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-muted);
+  animation: planning-breathe 2s ease-in-out infinite;
+}
+
+@keyframes planning-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-reply__planning {
+    animation: none;
+  }
+}
+
+/* 纯回答块（2026-11-05）：左侧 2px 竖线 + 极浅底，与方案卡片区分开 */
+.chat-reply__answer {
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  background: var(--color-primary-soft);
+  border-inline-start: 2px solid var(--color-primary-500);
+  border-radius: var(--radius-sm);
+}
+
+.chat-reply__answer-label {
+  display: inline-block;
+  margin-block-end: var(--space-1);
+  font: var(--font-code-medium);
+  font-size: var(--text-micro);
+  letter-spacing: var(--track-wide);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.chat-reply__answer-text {
+  margin: 0;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+/* 对话线程的头部小块（从 global.css 迁入，2026-11-07） */
+
+.thread__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+}
+
+.thread__chip {
+  padding: 0 var(--space-2);
+  font: var(--font-code-regular);
+  color: var(--color-text-brand);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-full);
+}
+
+.thread__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.thread__error {
+  color: var(--color-danger-500);
+}
+
+/* agentic 循环进度（2026-11-07 从行内 Tailwind 类迁入：生产从未加载 Tailwind，这些类此前无样式） */
+.agent-timeline {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-body-xs);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-code);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.agent-timeline__dot {
+  display: inline-block;
+  flex-shrink: 0;
+  inline-size: var(--space-2);
+  block-size: var(--space-2);
+  background: var(--color-running-500);
+  border-radius: var(--radius-full);
+  animation: agent-pulse 1.6s ease-in-out infinite;
+}
+
+.agent-timeline__label {
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.agent-timeline__meta {
+  margin-inline-start: auto;
+  font-family: var(--font-family-code);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+
+@keyframes agent-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* 证据过期披露：左侧琥珀竖线，不铺底色 */
+.evidence-stale {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-body-xs);
+  color: var(--color-text-secondary);
+  border-inline-start: 2px solid var(--color-warning-500);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-timeline__dot {
+    animation: none;
+  }
+}

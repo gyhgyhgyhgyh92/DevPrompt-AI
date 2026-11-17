@@ -19,11 +19,16 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Final
 
 from devprompt_ai.common.text import split_identifier, tokenize_sentence
 from devprompt_ai.domain.models import Candidate, CandidateSource, Symbol
+from devprompt_ai.domain.retrieval.bm25 import BM25Index, rrf
+from devprompt_ai.domain.retrieval.salience import path_weight
 
-MAX_CANDIDATES = 25  # MUST-09 硬约束：超出按匹配度截断，不报错
+#: 候选上限（2026-11-15 用户裁定 25 → 50：提升召回，减少真目标被截断的概率）。
+#: 成本：排序提示词增量约 1.5-3k tokens，仍在 max_state_tokens=30000 预算内。
+MAX_CANDIDATES = 50
 MIN_CANDIDATES = 3  # F-102：少于 3 条触发人工指定流程
 
 _SYMBOL_WEIGHT = 2.0
@@ -40,6 +45,61 @@ _EXACT_NAME_BONUS = 3.0
 # 噪声侧 cli=237、store=133、cmd=76、option=291、version=1288——
 # 高频通名加全名加成会让数百同分候选霸满 25 席（MUST-09 截断），故超限不加成。
 _MAX_EXACT_NAME_DF = 20
+
+#: 直译 UI 泛词的英文词元（对齐 ZH_EN_MAP 的 UI 段）：这些词由中文（页面/按钮/样式…）
+#: 机器翻译而来，不能视为「用户点名」——否则 page 这类通名会靠 +3.0 精确名加成压过真正
+#: 的多词元业务符号（实测：BookListPage 6.0 < page 7.0，需求却被引到 Java 的 PageResult）。
+#: 用户字面写了英文词（如「提交按钮 button」）时仍享受加成，故按 literal_terms 放行。
+_GENERIC_UI_TERMS: Final[frozenset[str]] = frozenset(
+    {
+        "page", "ui", "interface", "home", "profile", "center", "detail", "view",
+        "component", "module", "app", "entry", "main", "sidebar", "toolbar",
+        "button", "input", "form", "table", "list", "modal", "dialog", "tooltip",
+        "tag", "tab", "menu", "navigation", "breadcrumb", "pagination", "avatar",
+        "badge", "skeleton", "screen", "placeholder", "notification", "message",
+        "search", "box", "dropdown", "checkbox", "radio", "switch", "slider",
+        "progress", "drawer", "popover", "carousel", "mask", "layout", "style",
+        "theme", "font", "border", "radius", "shadow", "spacing", "width", "height", "line",
+        "size", "opacity", "animation", "transition", "responsive", "adaptive",
+        "hover", "click", "selected", "disabled", "enabled", "readonly", "highlight",
+        "mobile", "desktop", "horizontal", "vertical", "fullscreen", "top", "bottom",
+        "header", "footer", "zebra",
+    }
+)
+
+#: 技术栈提示词（2026-11-15）：原句明确只提一侧时，同分候选优先该侧文件。
+#: 跨端仓库里「前端按钮」与后端同名符号同分时，靠这一档分出胜负；两侧都提则不干预。
+_FRONTEND_HINTS: Final[tuple[str, ...]] = (
+    "前端", "页面", "界面", "按钮", "样式", "组件", "弹窗", "表单", "布局", "配色",
+)
+_BACKEND_HINTS: Final[tuple[str, ...]] = (
+    "后端", "接口", "控制器", "服务", "实体", "数据库", "表结构", "事务",
+    "mapper", "controller", "service",
+)
+_FRONTEND_SUFFIXES: Final[tuple[str, ...]] = (
+    ".tsx", ".ts", ".jsx", ".js", ".vue", ".css", ".scss", ".less", ".html",
+)
+_BACKEND_SUFFIXES: Final[tuple[str, ...]] = (
+    ".java", ".py", ".go", ".kt", ".cs", ".rb", ".php", ".sql",
+    ".rs", ".swift", ".scala", ".lua", ".ex", ".dart", ".c", ".cpp", ".h",
+)
+
+
+def _prefer_stack(sentence: str) -> str | None:
+    """原句只提一侧技术栈时返回 "front"/"back"；两侧都提或都没提返回 None。"""
+    front = any(hint in sentence for hint in _FRONTEND_HINTS)
+    back = any(hint in sentence.lower() for hint in _BACKEND_HINTS)
+    if front == back:
+        return None
+    return "front" if front else "back"
+
+
+def _stack_rank(symbol: Symbol, prefer: str | None) -> int:
+    """同分档位：偏好栈命中取 0，其它取 1；prefer 为 None 时恒 0（退化为原行为）。"""
+    if prefer is None:
+        return 0
+    suffixes = _FRONTEND_SUFFIXES if prefer == "front" else _BACKEND_SUFFIXES
+    return 0 if symbol.path.lower().endswith(suffixes) else 1
 
 # 连续 CJK 段（与 common.text 同一字符区间定义，避免反向依赖其私有正则）
 _CJK_RUN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+")
@@ -199,6 +259,9 @@ ZH_EN_MAP: dict[str, str] = {
     "响应式": "responsive",
     "适配": "adaptive",
     "颜色": "color",
+    "红色": "red danger",
+    "主色": "primary",
+    "危险": "danger",
     "背景": "background",
     # ── UI · 布局与方向 ──
     "移动端": "mobile",
@@ -213,6 +276,7 @@ ZH_EN_MAP: dict[str, str] = {
     "斑马纹": "zebra",
     # ── 页面与结构 ──
     "页面": "page",
+    "界面": "ui interface",
     "首页": "home",
     "主页": "home",
     "个人": "profile",
@@ -242,6 +306,7 @@ ZH_EN_MAP: dict[str, str] = {
     "账号": "account",
     "密码": "password",
     "角色": "role",
+    "管理员": "admin",
     "权限": "permission",
     "鉴权": "auth",
     "认证": "auth",
@@ -266,6 +331,9 @@ ZH_EN_MAP: dict[str, str] = {
     "点赞": "like",
     "评价": "review",
     "评论": "comment",
+    # ── 图书借阅领域 ──
+    "图书": "book",
+    "书籍": "book",
     # ── 数据与接口 ──
     "数据": "data",
     "模型": "model",
@@ -447,6 +515,32 @@ class CandidateResult:
     manual_required: bool
 
 
+def reorder_by_lexicon(candidates: list[Candidate], sentence: str) -> list[Candidate]:
+    """I1–I3 词汇重排：BM25 名次 + 符号分名次做 RRF 融合，再乘路径权重。
+
+    只调整顺序，**不增不减候选**（MUST-09）；单候选或空集原样返回。
+    与 build_candidates 的符号打分互补：同分多候选时用字面证据二次裁决，
+    测试/文档路径在同分时让位给实现文件。
+    """
+    if len(candidates) < 2:
+        return candidates
+    docs = {str(i): f"{c.name} {c.signature}".strip() for i, c in enumerate(candidates)}
+    bm25_rank = BM25Index(docs).search(sentence, limit=len(candidates))
+    base_rank = sorted(range(len(candidates)), key=lambda i: candidates[i].score, reverse=True)
+    fused = rrf(
+        [
+            [str(i) for i in base_rank],
+            [key for key, _score in bm25_rank],
+        ]
+    )
+    order = sorted(
+        range(len(candidates)),
+        key=lambda i: fused.get(str(i), 0.0) * path_weight(candidates[i].path),
+        reverse=True,
+    )
+    return [candidates[i] for i in order]
+
+
 def _bonus_key(symbol: Symbol) -> tuple[str, str]:
     """精确名加成的两个候选键：全名归一形式 + 去 sigil 拼接形式。
 
@@ -459,7 +553,10 @@ def _bonus_key(symbol: Symbol) -> tuple[str, str]:
 
 
 def _score_symbol(
-    sentence_terms: set[str], symbol: Symbol, name_df: dict[str, int]
+    sentence_terms: set[str],
+    symbol: Symbol,
+    name_df: dict[str, int],
+    literal_terms: frozenset[str],
 ) -> tuple[float, CandidateSource, int, bool] | None:
     """词元重叠打分：符号名命中权重 2、路径词元命中权重 1；零命中返回 None。
 
@@ -468,6 +565,9 @@ def _score_symbol(
     且该名字在符号表中足够稀疏（DF ≤ _MAX_EXACT_NAME_DF）时加固定 bonus——
     全名匹配是强于部分词元重叠的信号，用于在数百同分候选中把正确目标顶入前列
     （F-801 同分截断）；高频通名不加成，避免同分群体霸满候选集。
+
+    2026-11-15：直译 UI 泛词（page/button/style…）且用户未字面写该英文词时不给加成——
+    否则「前端页面」会被译成 page 并靠 bonus 压过 BookListPage 这类多词元业务符号。
     返回 (score, source, name_hits, is_exact)，后两项供 tie-break 使用。
     """
     name_terms = {_normalize_term(t) for t in split_identifier(symbol.name)}
@@ -482,9 +582,12 @@ def _score_symbol(
 
     is_exact = False
     for key in _bonus_key(symbol):
-        if key in sentence_terms and name_df.get(key, 0) <= _MAX_EXACT_NAME_DF:
-            is_exact = True
-            break
+        if key not in sentence_terms or name_df.get(key, 0) > _MAX_EXACT_NAME_DF:
+            continue
+        if key in _GENERIC_UI_TERMS and key not in literal_terms:
+            continue
+        is_exact = True
+        break
     if is_exact:
         score += _EXACT_NAME_BONUS
 
@@ -499,6 +602,9 @@ def build_candidates(sentence: str, symbols: list[Symbol]) -> CandidateResult:
     sentence_terms = {_normalize_term(t) for t in tokenize_sentence(sentence)} | {
         _normalize_term(t) for t in expand_zh_en(sentence)
     }
+    # 用户字面写出的英文词元（split_identifier 只取 ASCII 段，不含中文二元组）：
+    # 直译泛词靠它区分「用户点名 page」与「中文『页面』被译成 page」
+    literal_terms = frozenset(_normalize_term(t) for t in split_identifier(sentence))
 
     # 全名 DF：统计每个加成候选键在全符号表中的出现次数（纯内存计算，零 I/O）；
     # 单 token 名两键相同，只计一次，否则 DF 被翻倍
@@ -511,16 +617,26 @@ def build_candidates(sentence: str, symbols: list[Symbol]) -> CandidateResult:
 
     scored: list[tuple[float, int, bool, Symbol]] = []
     for sym in symbols:
-        hit = _score_symbol(sentence_terms, sym, name_df)
+        hit = _score_symbol(sentence_terms, sym, name_df, literal_terms)
         if hit is None:
             continue
         score, source, name_hits, is_exact = hit
         scored.append((score, name_hits, is_exact, sym))
 
     # tie-break：同分时依次比 ①符号名命中数（重叠更多=证据更强）
-    # ②精确名加成（全名匹配强于部分匹配）③名字更短（更具体的信号，保留原序）
-    # ④路径字典序（保证确定性，保留原序）。均为通用规则，无个案特判。
-    scored.sort(key=lambda t: (-t[0], -t[1], -t[2], len(t[3].name), t[3].path))
+    # ②精确名加成（全名匹配强于部分匹配）③偏好技术栈（跨端仓库只按同分档位，不改分数）
+    # ④名字更短（更具体的信号，保留原序）⑤路径字典序（保证确定性，保留原序）。
+    prefer = _prefer_stack(sentence)
+    scored.sort(
+        key=lambda t: (
+            -t[0],
+            -t[1],
+            -t[2],
+            _stack_rank(t[3], prefer),
+            len(t[3].name),
+            t[3].path,
+        )
+    )
 
     total_matched = len(scored)
     # 超限截断而非报错（MUST-09）
@@ -531,6 +647,7 @@ def build_candidates(sentence: str, symbols: list[Symbol]) -> CandidateResult:
             line=sym.line,
             score=score,
             source="symbol" if name_hits > 0 else "path",
+            signature=sym.signature,
         )
         for score, name_hits, _exact, sym in scored[:MAX_CANDIDATES]
     ]

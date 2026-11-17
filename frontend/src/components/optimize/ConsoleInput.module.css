@@ -1,0 +1,355 @@
+/* 启动页居中主视觉卡片（图一 1:1）：颜色/间距全部取 tokens.css 变量，禁硬编码色值。 */
+
+.console-input {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  align-items: center;
+  justify-content: center;
+  inline-size: 100%;
+}
+
+/* 启动页主视觉：品牌行 → 主张 → 副标题 → 能力标签（结果页 composer 不渲染这层） */
+.console-input__hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: center;
+  text-align: center;
+}
+
+.console-input__brand {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  font: var(--font-code-medium);
+  font-size: var(--text-micro);
+  letter-spacing: 0.02em;
+  color: var(--color-text-muted);
+}
+
+.console-input__brand-swatch {
+  inline-size: 8px;
+  block-size: 8px;
+  background: var(--color-primary-500);
+  border-radius: 2px;
+}
+
+.console-input__claim {
+  /* 22px 下 760px 约可容纳整句（中文断言不按词断行，过窄会出现「直/接」跨行） */
+  max-inline-size: 760px;
+  margin: 0;
+  font-size: var(--text-display);
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--color-text-primary);
+  text-wrap: balance;
+}
+
+.console-input__sub {
+  max-inline-size: 46ch;
+  font-size: var(--text-body-sm);
+  line-height: var(--line-height-body);
+  color: var(--color-text-secondary);
+}
+
+.console-input__card {
+  display: flex;
+  flex-direction: column;
+  inline-size: min(720px, calc(100% - 48px));
+  max-inline-size: 720px;
+  padding: var(--space-4);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-lg);
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+/* 聚焦时整卡描边转靛蓝 + 极淡光环（比只亮 textarea 更明确「正在输入」） */
+.console-input__card:focus-within {
+  border-color: var(--color-primary-500);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+/* 结果页 composer 更矮：单行起高，去掉分隔线与多余留白（启动页才需要那层仪式感） */
+.console-input:not(.console-input--hero) .console-input__card {
+  padding: var(--space-2) var(--space-3);
+}
+
+.console-input:not(.console-input--hero) .console-input__divider {
+  display: none;
+}
+
+.console-input:not(.console-input--hero) .console-input__folder {
+  margin-block-start: var(--space-1);
+}
+
+.console-input__text {
+  inline-size: 100%;
+  /* 自动增高上限 = 6 行 + 上下内边距（与 ConsoleInput.tsx 的 MAX_TEXT_ROWS 对应） */
+  max-block-size: calc(var(--line-height-body) * 6 + var(--space-4));
+  padding: var(--space-2) var(--space-1);
+  overflow-y: auto;
+  font: var(--font-body-regular);
+  font-size: var(--text-body-md);
+  line-height: var(--line-height-body);
+  color: var(--color-text-primary);
+  resize: none;
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+.console-input__text::placeholder {
+  font-size: var(--text-body-md);
+  color: var(--color-text-muted);
+}
+
+/* 工具行（输入区底部）：左侧留空，右侧仅模型名只读 + 发送按钮 */
+.console-input__tools {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.console-input__spacer {
+  flex: 1;
+}
+
+/* 模型选择器（2026-10-18 改造）：下拉列出全部已配置条目，hover 条目从右侧飞出参数面板 */
+.model-picker {
+  position: relative;
+}
+
+.console-input__model-select {
+  max-inline-size: 180px;
+  padding: var(--space-1) var(--space-1);
+  overflow: hidden;
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.console-input__model-select:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.console-input__model-select:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* 模型列表默认向下展开（2026-11-03）：启动页卡片居中，向上弹会盖住输入区上方内容 */
+.model-picker__menu {
+  position: absolute;
+  inset-block-start: calc(100% + var(--space-1));
+  inset-inline-end: 0;
+  z-index: 20;
+  min-inline-size: 180px;
+  padding: var(--space-1);
+  background: var(--color-surface-overlay);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-menu);
+  box-shadow: var(--shadow-menu);
+}
+
+/* 结果页 composer 贴底：向下会超出视口被裁，这里回退为向上 */
+.optimize-page__composer .model-picker__menu {
+  inset-block-start: auto;
+  inset-block-end: calc(100% + var(--space-1));
+}
+
+.model-picker__item {
+  position: relative;
+}
+
+.model-picker__pick {
+  display: block;
+  inline-size: 100%;
+  padding: var(--space-2) var(--space-2);
+  overflow: hidden;
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.model-picker__pick:hover {
+  background: var(--hover);
+}
+
+.model-picker__pick[aria-pressed='true'] {
+  color: var(--brand);
+  background: var(--brand-btn);
+}
+
+/* 参数面板：从 hover 的模型项右侧飞出（不遮住模型列表）。
+   左侧必须**紧贴**模型项（inset-inline-start: 100%，不留间隙）：面板是模型项的 DOM
+   子节点，一旦中间有间隙，指针穿过间隙时就落在了菜单的 padding 上（不再是该项的后代），
+   mouseleave 立刻触发、面板消失——用户根本移不过去。 */
+.model-picker__panel {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 100%;
+  z-index: 30;
+  min-inline-size: 168px;
+  padding: var(--space-2);
+  background: var(--color-surface-overlay);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-menu);
+  box-shadow: var(--shadow-menu);
+}
+
+.model-picker__panel-title {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-muted);
+}
+
+.model-picker__panel-title--split {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  margin-block-start: var(--space-2);
+  padding-block-start: var(--space-2);
+  border-block-start: 1px solid var(--divider);
+}
+
+.model-picker__options {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.model-picker__option {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  inline-size: 100%;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+  text-align: start;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.model-picker__option:hover {
+  background: var(--hover);
+}
+
+.model-picker__check {
+  color: var(--brand);
+}
+
+/* 目录里有但尚未配置的模型 */
+.model-picker__tag {
+  margin-inline-start: auto;
+  padding: 0 var(--space-1);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-faint);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
+}
+
+/* 发送键：靛蓝实心方块（全站唯一的高饱和填充，位置固定 = 最强的动作暗示） */
+.console-input__send {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--space-8);
+  block-size: var(--space-8);
+  font-size: var(--text-title-md);
+  color: var(--color-text-inverse);
+  cursor: pointer;
+  background: var(--color-primary-500);
+  border: none;
+  border-radius: var(--radius-sm);
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.console-input__send:hover:not(:disabled) {
+  background: var(--color-primary-700);
+}
+
+.console-input__send:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.console-input__divider {
+  block-size: 1px;
+  margin: var(--space-3) 0;
+  background: var(--divider);
+}
+
+/* 第二行：选择文件夹（本地，页内浏览器模态） */
+.console-input__folder {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.console-input__folder-toggle {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-body-xs);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.console-input__folder-toggle:hover {
+  background: var(--hover);
+}
+
+/* 「选择项目」行右侧插槽：页面层注入的模式/风格/参考图控件（2026-11-14 多模态）。
+   >label/>div 归零 padding——注入的控件自带 composer 行距，卡片内不需要。 */
+.console-input__mode-slot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+.console-input__mode-slot > label,
+.console-input__mode-slot > div {
+  padding-inline: 0;
+}
+
+.console-input__error {
+  margin-block-start: var(--space-2);
+  font-size: var(--text-body-xs);
+  color: var(--danger);
+}
+
+/* 窄屏（≤480）单列：卡片收窄至「视口 - 32px」，两侧留白不溢出 */
+@media (max-width: 480px) {
+  .console-input__card {
+    inline-size: calc(100% - var(--space-8));
+  }
+}

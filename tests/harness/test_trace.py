@@ -6,8 +6,14 @@ from typing import Any
 
 import pytest
 
+from devprompt_ai.common.process import (
+    ExecutableNotFoundError,
+    ProcessError,
+    ProcessTimeoutError,
+)
 from devprompt_ai.domain.progress import ActionInfo, ProgressEvent
 from devprompt_ai.harness.trace import TracingReader, TracingRunner, redact
+from devprompt_ai.runtime.artifacts import read_tool_artifact
 
 _ROOT = "D:/proj"
 
@@ -121,6 +127,53 @@ async def test_reader_reports_relative_path_and_line_range() -> None:
     assert action.scope == "L1-3"
 
 
+class FakeClock:
+    """替换 trace 模块里的 `time` 引用（不改进程级 time 模块，避免影响 pytest 自身）。"""
+
+    def __init__(self, *ticks: float) -> None:
+        self._ticks = iter(ticks)
+
+    def monotonic(self) -> float:
+        return next(self._ticks)
+
+
+async def test_runner_measures_duration(monkeypatch: pytest.MonkeyPatch) -> None:
+    """命令真实耗时随卡片下发（2026-11-07）：时钟被替换成两拍固定值。"""
+    monkeypatch.setattr("devprompt_ai.harness.trace.time", FakeClock(100.0, 100.42))
+    sink = FakeSink()
+    runner = TracingRunner(FakeRunner("hit\n"), sink, _ROOT)
+
+    await runner.run(["rg", "-n", "Foo", "."])
+
+    assert sink.actions()[0].duration_ms == 420
+
+
+async def test_reader_measures_duration(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 用二进制可精确表示的差值（0.5s），避免 0.018 这类浮点误差把 int() 截断成 17
+    monkeypatch.setattr("devprompt_ai.harness.trace.time", FakeClock(5.0, 5.5))
+    sink = FakeSink()
+    reader = TracingReader(FakeReader("a\nb\n"), sink, _ROOT)
+
+    await reader.read("D:/proj/src/a.ts")
+
+    assert sink.actions()[0].duration_ms == 500
+
+
+async def test_exit_code_failure_still_measures_duration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """失败分支同样带耗时：只显示失败不显示耗时等于把「跑了多久」藏起来。"""
+    monkeypatch.setattr("devprompt_ai.harness.trace.time", FakeClock(7.0, 7.25))
+    sink = FakeSink()
+    runner = TracingRunner(FakeRunner(fail=ProcessError(["rg", "Foo"], 1, "err")), sink, _ROOT)
+
+    await runner.run(["rg", "-n", "Foo", "."])
+
+    action = sink.actions()[0]
+    assert action.status == "failed"
+    assert action.duration_ms == 250
+
+
 async def test_exists_is_not_reported() -> None:
     """一次取证做 5 次存在性检查，逐条上报只会刷噪音卡。"""
     sink = FakeSink()
@@ -196,3 +249,170 @@ class TestOutputCapture:
         await reader.read("D:/proj/src/a.ts")
 
         assert sink.actions()[0].output == "a\nb\nc"
+
+
+class TestOutputGovernance:
+    """C1–C5 接线（2026-11-08）：超阈值先落盘全量，卡片只给摘要 + 回读指针。"""
+
+    async def test_long_output_persists_and_appends_pointer(self) -> None:
+        sink = FakeSink()
+        raw = "\n".join(f"line{i}" for i in range(2000))
+        runner = TracingRunner(FakeRunner(raw), sink, _ROOT)
+
+        await runner.run(["rg", "x"])
+
+        output = sink.actions()[0].output
+        assert "/api/v1/artifacts/" in output
+        assert "不要重跑命令" in output
+        assert len(output.splitlines()) <= 20, "MUST-19：卡片不超过 20 行"
+
+        # 回读 API 能取回全量原文，且已脱敏
+        artifact_id = output.split("/api/v1/artifacts/")[1].split(" ")[0]
+        content = await read_tool_artifact(artifact_id)
+        assert content is not None
+        assert "line1999" in content
+
+    async def test_reader_long_file_also_governed(self) -> None:
+        sink = FakeSink()
+        reader = TracingReader(FakeReader("\n".join(f"row{i}" for i in range(2000))), sink, _ROOT)
+
+        await reader.read("D:/proj/src/big.ts")
+
+        output = sink.actions()[0].output
+        assert "/api/v1/artifacts/" in output
+        assert "row0" not in output, "成功摘要只留尾部，头部让位给回读指针"
+
+    async def test_invalid_artifact_id_is_rejected(self) -> None:
+        assert await read_tool_artifact("../etc/passwd") is None
+        assert await read_tool_artifact("") is None
+
+    async def test_governance_off_falls_back_to_legacy_clip(self) -> None:
+        """tool_output_governance 关闭：退回旧 20 行截断口径，无落盘回读指针。"""
+        sink = FakeSink()
+        raw = "\n".join(f"line{i}" for i in range(2000))
+        runner = TracingRunner(FakeRunner(raw), sink, _ROOT, governance=False)
+
+        await runner.run(["rg", "x"])
+
+        output = sink.actions()[0].output
+        assert "/api/v1/artifacts/" not in output
+        assert "不要重跑命令" not in output
+        assert "line0" in output, "旧口径保留头部"
+        assert "…（已截断）" in output
+
+
+class TestFailureDegrade:
+    """失败降级（2026-11-04）：普通退出码降级为「该次取证不通过」，工具缺失/超时仍抛。"""
+
+    async def test_process_error_emits_failed_card_and_returns_empty(self) -> None:
+        sink = FakeSink()
+        tracer = TracingRunner(
+            FakeRunner(fail=ProcessError(["rg", "-n", "Foo"], 1, "D:/proj/src: no match")),
+            sink,
+            _ROOT,
+        )
+
+        assert await tracer.run(["rg", "-n", "Foo", "--route-key=symbol:."]) == ""
+
+        card = sink.actions()[0]
+        assert card.status == "failed"
+        assert card.scope == "Exit code 1"
+        assert card.title == "检索符号"
+        # stderr 先脱敏再进卡片：绝不出现盘符绝对路径（MUST-19）
+        assert "D:/" not in card.output
+        assert "no match" in card.output
+
+    async def test_executable_missing_still_raises(self) -> None:
+        """工具没装不属于「没匹配到」：降级会让用户只看到保守方案却查不到真因。"""
+        sink = FakeSink()
+        tracer = TracingRunner(FakeRunner(fail=ExecutableNotFoundError("rg")), sink, _ROOT)
+
+        with pytest.raises(ExecutableNotFoundError):
+            await tracer.run(["rg", "x"])
+        assert sink.events == []
+
+    async def test_timeout_still_raises(self) -> None:
+        sink = FakeSink()
+        tracer = TracingRunner(FakeRunner(fail=ProcessTimeoutError("timeout")), sink, _ROOT)
+
+        with pytest.raises(ProcessTimeoutError):
+            await tracer.run(["rg", "x"])
+        assert sink.events == []
+
+
+class StreamRunner:
+    """支持流式的 runner（2026-11-15）：逐行回调。"""
+
+    def __init__(self, lines: list[str]) -> None:
+        self.lines = lines
+
+    async def run(
+        self,
+        args: list[str],
+        *,
+        timeout: float = 10.0,
+        allowed_exit_codes: frozenset[int] = frozenset({0}),
+        cwd: str | None = None,
+    ) -> str:
+        return "\n".join(self.lines)
+
+    async def run_stream(
+        self,
+        args: list[str],
+        *,
+        on_line: Any,
+        timeout: float = 10.0,
+        allowed_exit_codes: frozenset[int] = frozenset({0}),
+        cwd: str | None = None,
+    ) -> str:
+        for line in self.lines:
+            await on_line(line)
+        return "\n".join(self.lines)
+
+
+class TestStreamingRunner:
+    """流式动作卡（2026-11-15）：增量帧与完成帧的语义。"""
+
+    async def test_delta_frames_then_completion_frame(self) -> None:
+        sink = FakeSink()
+        tracer = TracingRunner(StreamRunner(["hit-1", "hit-2"]), sink, _ROOT)
+
+        out = await tracer.run(["rg", "-n", "Foo", "."])
+
+        assert out == "hit-1\nhit-2"
+        actions = sink.actions()
+        deltas = [a for a in actions if a.delta != ""]
+        finals = [a for a in actions if a.delta == ""]
+        assert deltas, "必须有增量帧"
+        # 同一次调用的增量帧共享动作 id，前端据此归并到同一张卡
+        assert all(a.id == deltas[0].id for a in deltas)
+        assert "hit-1" in "".join(a.delta for a in deltas)
+        assert "hit-2" in "".join(a.delta for a in deltas)
+        # 结束必须补一张完成帧：范围标签、耗时、共享 id
+        assert finals, "结束必须补完成帧"
+        assert finals[-1].scope == "命中 2 行"
+        assert finals[-1].id == deltas[0].id
+        assert finals[-1].duration_ms is not None
+
+    async def test_incremental_delta_is_redacted(self) -> None:
+        """增量片段同样脱敏（MUST-19）：不得出现绝对路径。"""
+        sink = FakeSink()
+        tracer = TracingRunner(StreamRunner(["D:/proj/src/ui/Button.tsx:12:x"]), sink, _ROOT)
+
+        await tracer.run(["rg", "-n", "Button", "."])
+
+        deltas = [a for a in sink.actions() if a.delta != ""]
+        assert deltas
+        assert "D:/proj" not in "".join(a.delta for a in deltas)
+
+    async def test_runner_without_stream_support_keeps_old_path(self) -> None:
+        """不支持流式的实现（测试替身）走原路径：一次完成帧，无增量。"""
+        sink = FakeSink()
+        tracer = TracingRunner(FakeRunner(out="hit-1\nhit-2"), sink, _ROOT)
+
+        await tracer.run(["rg", "-n", "Foo", "."])
+
+        actions = sink.actions()
+        assert len(actions) == 1
+        assert actions[0].delta == ""
+        assert actions[0].scope == "命中 2 行"

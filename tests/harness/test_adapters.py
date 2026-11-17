@@ -193,6 +193,30 @@ class TestAnthropicProtocolMapping:
 
         assert self.model._max_tokens(_S2()) == 2048
 
+    def test_effort_maps_to_thinking_budget_and_drops_sampling(self) -> None:
+        """Anthropic 用 thinking budget 表达强度；启用时 temperature/top_p 必须省略。"""
+
+        class _S:
+            max_tokens = 32_768
+            temperature = 0.7
+            top_p = 0.9
+            extra_body = {"reasoning_effort": "high"}
+
+        request = self.model._build_request("", [], [], _S())
+        assert request["thinking"] == {"type": "enabled", "budget_tokens": 16_384}
+        assert "temperature" not in request
+        assert "top_p" not in request
+
+    def test_none_disables_thinking(self) -> None:
+        class _S:
+            max_tokens = 8_192
+            temperature = None
+            top_p = None
+            extra_body = {"reasoning_effort": "none"}
+
+        request = self.model._build_request("", [], [], _S())
+        assert request["thinking"] == {"type": "disabled"}
+
     def test_mixed_content_blocks(self) -> None:
         """content blocks 混合 text 与 tool_use；text 要抽出来，tool_use 要转 function_call。"""
 
@@ -306,6 +330,30 @@ class TestGeminiProtocolMapping:
                 ]
             }
         ]
+
+    @_GEMINI_SKIP
+    def test_effort_maps_to_thinking_config(self) -> None:
+        """Gemini 用 thinking_config.thinking_budget 表达强度。"""
+
+        class _S:
+            temperature = None
+            top_p = None
+            max_tokens = 2_048
+            extra_body = {"reasoning_effort": "high"}
+
+        config = self.model._build_config("", [], _S())
+        assert config.thinking_config.thinking_budget == 8_192
+
+    @_GEMINI_SKIP
+    def test_none_disables_thinking(self) -> None:
+        class _S:
+            temperature = None
+            top_p = None
+            max_tokens = 2_048
+            extra_body = {"reasoning_effort": "none"}
+
+        config = self.model._build_config("", [], _S())
+        assert config.thinking_config.thinking_budget == 0
 
     def test_function_call_args_are_json_encoded(self) -> None:
         """Gemini 的 functionCall.args 是原生 dict，必须 json.dumps 才进 agents item。
@@ -903,12 +951,12 @@ class TestEntryFieldNormalization:
                 "model_id": "m",
                 "api_mode": "responses",
                 "reasoning_effort": "high",
-                "max_context_length": 64000,
+                "max_context_length": 131_072,
             }
         )
         assert entry["api_mode"] == "responses"
         assert entry["reasoning_effort"] == "high"
-        assert entry["max_context_length"] == 64000
+        assert entry["max_context_length"] == 131_072
 
 
 class TestApiModeRouting:

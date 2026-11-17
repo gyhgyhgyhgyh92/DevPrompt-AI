@@ -4,6 +4,46 @@
  */
 
 export interface paths {
+    "/api/v1/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Artifact
+         * @description 回读被截断工具的全量输出；内容可能含代码正文，禁止写入日志（MUST-19）。
+         */
+        get: operations["read_artifact_api_v1_artifacts__artifact_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Events
+         * @description 冷启动回填：取 seq 之前的事件（分页）。
+         */
+        get: operations["list_events_api_v1_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/followup/{flow_id}": {
         parameters: {
             query?: never;
@@ -15,9 +55,29 @@ export interface paths {
         put?: never;
         /**
          * Post Followup
-         * @description 三模式分发（互斥由契约校验保证）：批量答复 / 逃生 / 软护栏裁决（MUST-26）。
+         * @description 答复 / 逃生 / 护栏裁决（一次性 JSON，保留给非流式调用方）。
          */
         post: operations["post_followup_api_v1_followup__flow_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/followup/{flow_id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Followup Stream
+         * @description 流式版 /followup（SSE）：thought/action 帧推送重新研判与生成过程，终帧为 snapshot 或 error。有副作用端点：禁止客户端自动重试（MUST-15）。
+         */
+        post: operations["post_followup_stream_api_v1_followup__flow_id__stream_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -51,11 +111,17 @@ export interface paths {
         /**
          * Get History
          * @description T6-11 转正：脱敏会话摘要（id/时间/state/项目名/标题/置顶，无原句明文，MUST-19）。
+         *
+         *     分页：置顶优先 + updated_at 倒序后，从第 ``offset`` 条起取 ``limit`` 条。
          */
         get: operations["get_history_api_v1_history_get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Project History
+         * @description 项目级批量删除（2026-11-01）：删该 project_root 下全部会话记录，磁盘文件不动。
+         */
+        delete: operations["delete_project_history_api_v1_history_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -85,6 +151,28 @@ export interface paths {
         patch: operations["patch_history_api_v1_history__session_id__patch"];
         trace?: never;
     };
+    "/api/v1/history/{session_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rollback Session
+         * @description 撤销到某一轮（2026-11-05）：物理删除其后轮次，会话回到该轮完成时的状态。
+         *
+         *     显式破坏性操作（MUST-32 修订）：删除不可恢复，前端必须二次确认后才能调用。
+         */
+        post: operations["rollback_session_api_v1_history__session_id__rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/history/{session_id}/turns": {
         parameters: {
             query?: never;
@@ -95,8 +183,200 @@ export interface paths {
         /**
          * Get Session Turns
          * @description 会话的轮次摘要（升序）；不含原句与方案正文。
+         *
+         *     分页：``offset`` 从最新一轮往回数（前端「加载更早」）。
          */
         get: operations["get_session_turns_api_v1_history__session_id__turns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interventions/{request_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Intervention
+         * @description 审批/提问应答；第一应答获胜，重复应答返回 6001。
+         */
+        post: operations["answer_intervention_api_v1_interventions__request_id__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/obs/metrics/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Alerts */
+        get: operations["alerts_api_v1_obs_metrics_alerts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/obs/metrics/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Config */
+        get: operations["get_config_api_v1_obs_metrics_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/obs/metrics/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Summary */
+        get: operations["summary_api_v1_obs_metrics_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/obs/replay/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Compare */
+        post: operations["compare_api_v1_obs_replay_compare_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/obs/replay/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Run */
+        post: operations["create_run_api_v1_obs_replay_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/obs/replay/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_api_v1_obs_replay_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/obs/trace/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Event */
+        get: operations["get_event_api_v1_obs_trace_events__event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/obs/trace/sessions/{session_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Events */
+        get: operations["list_events_api_v1_obs_trace_sessions__session_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/obs/trace/sessions/{session_id}/traces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Traces */
+        get: operations["list_traces_api_v1_obs_trace_sessions__session_id__traces_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/obs/trace/traces/{trace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Trace */
+        get: operations["get_trace_api_v1_obs_trace_traces__trace_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -155,6 +435,9 @@ export interface paths {
         /**
          * Get Progress
          * @description SSE 进度流：1s 轮询快照；DONE/ABORTED/ASKING/护栏推送后关闭；客户端断开即停。
+         *
+         *     星型拓扑（2026-11-04）：AGENTIC 期间快照 status 为 "running"，**不在关闭集合内**，
+         *     因此 agentic 循环可以持续推送进度而不是中途断流。
          */
         get: operations["get_progress_api_v1_progress__flow_id__get"];
         put?: never;
@@ -191,6 +474,66 @@ export interface paths {
         };
         /** Get Result */
         get: operations["get_result_api_v1_result__flow_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Run
+         * @description 启动一次运行；执行在服务端独立进行，连接断开不取消。
+         */
+        post: operations["start_run_api_v1_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Run
+         * @description 取消运行；执行体收到 CancelledError 后以 aborted 收尾。
+         */
+        post: operations["cancel_run_api_v1_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Session
+         * @description 订阅会话事件流；?since=N 只补差，建连先收 seq=0 合成快照。
+         */
+        get: operations["stream_session_api_v1_sessions__session_id__stream_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -290,6 +633,60 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AlertListPayload */
+        AlertListPayload: {
+            /** Items */
+            items: {
+                [key: string]: unknown;
+            }[];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+        };
+        /** ApiResponse[AlertListPayload] */
+        ApiResponse_AlertListPayload_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["AlertListPayload"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
+        /** ApiResponse[ArtifactResponse] */
+        ApiResponse_ArtifactResponse_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["ArtifactResponse"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
         /** ApiResponse[FlowSnapshotResponse] */
         ApiResponse_FlowSnapshotResponse_: {
             /**
@@ -317,6 +714,44 @@ export interface components {
              */
             code: number;
             data?: components["schemas"]["HealthResponse"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
+        /** ApiResponse[MetricSummaryPayload] */
+        ApiResponse_MetricSummaryPayload_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["MetricSummaryPayload"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
+        /** ApiResponse[MetricsConfigPayload] */
+        ApiResponse_MetricsConfigPayload_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["MetricsConfigPayload"] | null;
             /**
              * Message
              * @default ok
@@ -367,6 +802,101 @@ export interface components {
              */
             request_id: string;
         };
+        /** ApiResponse[PagedHistoryItem] */
+        ApiResponse_PagedHistoryItem_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["PagedHistoryItem"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
+        /** ApiResponse[PagedTurnSummary] */
+        ApiResponse_PagedTurnSummary_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["PagedTurnSummary"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
+        /** ApiResponse[ProjectDeleteResponse] */
+        ApiResponse_ProjectDeleteResponse_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["ProjectDeleteResponse"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
+        /** ApiResponse[ReplayComparePayload] */
+        ApiResponse_ReplayComparePayload_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["ReplayComparePayload"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
+        /** ApiResponse[ReplayRunPayload] */
+        ApiResponse_ReplayRunPayload_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["ReplayRunPayload"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
         /** ApiResponse[ScanResponse] */
         ApiResponse_ScanResponse_: {
             /**
@@ -405,6 +935,82 @@ export interface components {
              */
             request_id: string;
         };
+        /** ApiResponse[TraceEventPayload] */
+        ApiResponse_TraceEventPayload_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["TraceEventPayload"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
+        /** ApiResponse[TraceEventsPayload] */
+        ApiResponse_TraceEventsPayload_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["TraceEventsPayload"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
+        /** ApiResponse[TraceListPayload] */
+        ApiResponse_TraceListPayload_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["TraceListPayload"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
+        /** ApiResponse[TraceTreePayload] */
+        ApiResponse_TraceTreePayload_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["TraceTreePayload"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
         /** ApiResponse[TurnDetailPayload] */
         ApiResponse_TurnDetailPayload_: {
             /**
@@ -424,15 +1030,17 @@ export interface components {
              */
             request_id: string;
         };
-        /** ApiResponse[list[HistoryItemPayload]] */
-        ApiResponse_list_HistoryItemPayload__: {
+        /** ApiResponse[dict[str, Any]] */
+        ApiResponse_dict_str__Any__: {
             /**
              * Code
              * @default 0
              */
             code: number;
             /** Data */
-            data?: components["schemas"]["HistoryItemPayload"][] | null;
+            data?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Message
              * @default ok
@@ -444,15 +1052,17 @@ export interface components {
              */
             request_id: string;
         };
-        /** ApiResponse[list[TurnSummaryPayload]] */
-        ApiResponse_list_TurnSummaryPayload__: {
+        /** ApiResponse[list[dict[str, Any]]] */
+        ApiResponse_list_dict_str__Any___: {
             /**
              * Code
              * @default 0
              */
             code: number;
             /** Data */
-            data?: components["schemas"]["TurnSummaryPayload"][] | null;
+            data?: {
+                [key: string]: unknown;
+            }[] | null;
             /**
              * Message
              * @default ok
@@ -463,6 +1073,16 @@ export interface components {
              * @default
              */
             request_id: string;
+        };
+        /**
+         * ArtifactResponse
+         * @description GET /artifacts/{id} 数据体：被截断工具的全量输出（可能含代码正文，MUST-19）。
+         */
+        ArtifactResponse: {
+            /** Artifact Id */
+            artifact_id: string;
+            /** Content */
+            content: string;
         };
         /**
          * AskOptionPayload
@@ -496,8 +1116,48 @@ export interface components {
             total_tokens: number;
         };
         /**
+         * DeliveryGatePayload
+         * @description 交付证据门结果（2026-11-05，additive）：只披露质量标记，不阻断交付。
+         *
+         *     ``tone`` 由**后端领域层**给出（ok / warn / error），前端只按它选样式，
+         *     不得自行把 status 映射成语义（MUST-08 / MUST-33）。
+         */
+        DeliveryGatePayload: {
+            /**
+             * Disclosure
+             * @default
+             */
+            disclosure: string;
+            /** Reasons */
+            reasons?: string[];
+            /**
+             * Status
+             * @default
+             */
+            status: string;
+            /**
+             * Tone
+             * @default ok
+             */
+            tone: string;
+        };
+        /**
+         * DomainVerdictPayload
+         * @description 领域路由结论（2026-11-14 领域包）：domain/source/confidence 三要素。
+         */
+        DomainVerdictPayload: {
+            /** Confidence */
+            confidence: number;
+            /** Domain */
+            domain: string;
+            /** Source */
+            source: string;
+        };
+        /**
          * FactPayload
          * @description 取证事实只读透出（F-104 七项判定结果）。
+         *
+         *     ``applicable`` 不进契约：它是内部档位判定依据，前端不需要按项目类型分支渲染。
          */
         FactPayload: {
             /** Evidence */
@@ -511,12 +1171,28 @@ export interface components {
          * FlowSnapshotResponse
          * @description FlowSnapshot 的 HTTP 渲染形态（status 含 SSE 专有扩展值 "aborted"）。
          *
-         *     v2（BREAKING）：variant 单数字段 → variants 列表 + ranking 推荐视图。
+         *     v3（BREAKING，2026-11-11 单套输出）：``variant`` 单对象承载方案；
+         *     ``variants`` / ``ranking`` / ``ranking_skip_reason`` 已删除。
          */
         FlowSnapshotResponse: {
+            /** Agent Action */
+            agent_action?: string | null;
+            /** Agent Elapsed Ms */
+            agent_elapsed_ms?: number | null;
+            /** Agent Step */
+            agent_step?: number | null;
             /** Cleared */
             cleared?: string[];
             cost?: components["schemas"]["CostDetailPayload"] | null;
+            /** Current Turn Id */
+            current_turn_id?: string | null;
+            delivery_gate?: components["schemas"]["DeliveryGatePayload"] | null;
+            domain?: components["schemas"]["DomainVerdictPayload"] | null;
+            /**
+             * Evidence Stale
+             * @default false
+             */
+            evidence_stale: boolean;
             /** Facts */
             facts?: components["schemas"]["FactPayload"][];
             /**
@@ -526,7 +1202,11 @@ export interface components {
             message: string;
             /** Questions */
             questions?: components["schemas"]["UnknownItemPayload"][];
-            ranking?: components["schemas"]["RankingViewPayload"] | null;
+            /**
+             * Reply Text
+             * @default
+             */
+            reply_text: string;
             /** Session Id */
             session_id: string;
             /** State */
@@ -534,8 +1214,7 @@ export interface components {
             /** Status */
             status: string;
             target?: components["schemas"]["SymbolPayload"] | null;
-            /** Variants */
-            variants?: components["schemas"]["VariantPayload"][];
+            variant?: components["schemas"]["VariantPayload"] | null;
         };
         /**
          * FollowupRequest
@@ -624,12 +1303,52 @@ export interface components {
             title?: string | null;
         };
         /**
+         * InterventionAnswerRequest
+         * @description 审批/提问的应答；``decision`` 必填，缺字段由 422 拒绝（不默认批准）。
+         */
+        InterventionAnswerRequest: {
+            /**
+             * Answer
+             * @default
+             */
+            answer: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "deny" | "answer";
+        };
+        /**
          * LockedSettings
          * @description 宪法锁定项（MUST-09）：候选集上限只读下发，不接受设置修改。
          */
         LockedSettings: {
             /** Candidate Limit */
             candidate_limit: number;
+        };
+        /** MetricSummaryPayload */
+        MetricSummaryPayload: {
+            /** Items */
+            items: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+        };
+        /** MetricsConfigPayload */
+        MetricsConfigPayload: {
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
         };
         /**
          * ModelCapabilitiesView
@@ -854,6 +1573,38 @@ export interface components {
             timeout?: number | null;
         };
         /**
+         * ObservabilitySettings
+         * @description 可观测性三模块开关视图（2026-11-12）：各模块独立启用，互不影响。
+         *
+         *     只下发「启停 + Trace 保留天数」这类运行级配置；阈值与告警冷却走
+         *     `GET /obs/metrics/config`（Metrics 模块自己的只读端点），避免设置段与
+         *     模块实现细节耦合。
+         */
+        ObservabilitySettings: {
+            /** Metrics Enabled */
+            metrics_enabled: boolean;
+            /** Replay Enabled */
+            replay_enabled: boolean;
+            /** Trace Enabled */
+            trace_enabled: boolean;
+            /** Trace Retention Days */
+            trace_retention_days: number;
+        };
+        /**
+         * ObservabilityUpdate
+         * @description PUT /settings 可观测性段：None = 保持不变；保存后立即作用于运行中的模块。
+         */
+        ObservabilityUpdate: {
+            /** Metrics Enabled */
+            metrics_enabled?: boolean | null;
+            /** Replay Enabled */
+            replay_enabled?: boolean | null;
+            /** Trace Enabled */
+            trace_enabled?: boolean | null;
+            /** Trace Retention Days */
+            trace_retention_days?: number | null;
+        };
+        /**
          * OptimizeRequest
          * @description POST /optimize 请求体（该端点有副作用，客户端禁重试，MUST-15）。
          *
@@ -861,14 +1612,62 @@ export interface components {
          */
         OptimizeRequest: {
             /**
+             * Base Turn Id
+             * @default
+             */
+            base_turn_id: string;
+            /** Domain */
+            domain?: ("code" | "work" | "life" | "creative" | "learning" | "data" | "marketing" | "translation" | "legal" | "medical" | "finance" | "game" | "visual" | "av" | "operations") | null;
+            /** Images */
+            images?: string[] | null;
+            /**
              * Project
              * @default
              */
             project: string;
-            /** Sentence */
+            /**
+             * Sentence
+             * @default
+             */
             sentence: string;
             /** Session Id */
             session_id?: string | null;
+            /** Style */
+            style?: ("general" | "photography" | "creative" | "chinese-model" | "json-structured" | "video") | null;
+        };
+        /**
+         * PagedHistoryItem
+         * @description 分页会话摘要（2026-11-05，BREAKING）：裸数组 → 包装对象。
+         *
+         *     裸数组无法表达「还有更多」，前端只能硬顶（50 会话）。
+         *     四个字段一律必填——带默认值会在 OpenAPI 里变成可选，前端类型随之变松。
+         */
+        PagedHistoryItem: {
+            /** Has More */
+            has_more: boolean;
+            /** Items */
+            items: components["schemas"]["HistoryItemPayload"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /**
+         * PagedTurnSummary
+         * @description 分页轮次摘要（2026-11-05，BREAKING）：列表端点统一返回形态。
+         *
+         *     裸数组无法表达「还有更多」，前端只能硬顶（20 轮）。
+         *     四个字段一律必填——带默认值会在 OpenAPI 里变成可选，前端类型随之变松。
+         */
+        PagedTurnSummary: {
+            /** Has More */
+            has_more: boolean;
+            /** Items */
+            items: components["schemas"]["TurnSummaryPayload"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
         };
         /**
          * ProcessSettings
@@ -877,7 +1676,7 @@ export interface components {
         ProcessSettings: {
             /**
              * Followup Cost Budget
-             * @default 0
+             * @default 50000
              */
             followup_cost_budget: number;
             /**
@@ -902,6 +1701,14 @@ export interface components {
             followup_soft_round_guard?: number | null;
             /** Telemetry */
             telemetry?: boolean | null;
+        };
+        /**
+         * ProjectDeleteResponse
+         * @description DELETE /history?project_root= 数据体：实际删除的会话条数（0 = 该项目无会话）。
+         */
+        ProjectDeleteResponse: {
+            /** Deleted */
+            deleted: number;
         };
         /**
          * ProviderConfigUpdate
@@ -994,25 +1801,68 @@ export interface components {
              */
             supports_reasoning: boolean;
         };
+        /** ReplayComparePayload */
+        ReplayComparePayload: {
+            /** Final */
+            final: {
+                [key: string]: unknown;
+            };
+            /** Nodes */
+            nodes: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+        };
+        /** ReplayCompareRequest */
+        ReplayCompareRequest: {
+            /** Left Trace Id */
+            left_trace_id: string;
+            /** Right Trace Id */
+            right_trace_id: string;
+        };
+        /** ReplayCreateRequest */
+        ReplayCreateRequest: {
+            /** Left Trace Id */
+            left_trace_id: string;
+            /**
+             * Mode
+             * @default verify
+             * @enum {string}
+             */
+            mode: "verify" | "compare";
+            /**
+             * Right Trace Id
+             * @default
+             */
+            right_trace_id: string;
+        };
+        /** ReplayRunPayload */
+        ReplayRunPayload: {
+            /** Nodes */
+            nodes: {
+                [key: string]: unknown;
+            }[];
+            /** Run */
+            run: {
+                [key: string]: unknown;
+            };
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+        };
         /**
-         * RankingViewPayload
-         * @description service.RankingView 的契约镜像（F-403/F-404 加权推荐视图）。
+         * RollbackRequest
+         * @description 撤销请求（POST /history/{session_id}/rollback）：撤销到 turn_id 这一轮完成时。
          */
-        RankingViewPayload: {
-            /** Confidence */
-            confidence: number;
-            /** Fit */
-            fit: number;
-            /** Gap */
-            gap: number;
-            /** Marked */
-            marked: boolean;
-            /** Reason */
-            reason: string;
-            /** Total */
-            total: number;
-            /** Variant */
-            variant: string;
+        RollbackRequest: {
+            /** Turn Id */
+            turn_id: string;
         };
         /**
          * ScanResponse
@@ -1046,6 +1896,7 @@ export interface components {
             model_service: components["schemas"]["ModelServiceSettings"];
             /** Models */
             models: components["schemas"]["ModelEntryView"][];
+            observability: components["schemas"]["ObservabilitySettings"];
             process: components["schemas"]["ProcessSettings"];
             /** Provider Configs */
             provider_configs?: components["schemas"]["ProviderConfigView"][];
@@ -1078,9 +1929,44 @@ export interface components {
             model_service?: components["schemas"]["ModelServiceUpdate"] | null;
             /** Models */
             models?: components["schemas"]["ModelEntryUpdate"][] | null;
+            observability?: components["schemas"]["ObservabilityUpdate"] | null;
             process?: components["schemas"]["ProcessUpdate"] | null;
             /** Provider Configs */
             provider_configs?: components["schemas"]["ProviderConfigUpdate"][] | null;
+        };
+        /**
+         * StartRunRequest
+         * @description 启动一次运行。``session_id`` 由前端生成，便于立刻订阅。
+         */
+        StartRunRequest: {
+            /**
+             * Base Turn Id
+             * @default
+             */
+            base_turn_id: string;
+            /** Domain */
+            domain?: ("code" | "work" | "life" | "creative" | "learning" | "data" | "marketing" | "translation" | "legal" | "medical" | "finance" | "game" | "visual" | "av" | "operations") | null;
+            /** Images */
+            images?: string[] | null;
+            /**
+             * Locale
+             * @default zh-CN
+             */
+            locale: string;
+            /**
+             * Project
+             * @default
+             */
+            project: string;
+            /**
+             * Sentence
+             * @default
+             */
+            sentence: string;
+            /** Session Id */
+            session_id: string;
+            /** Style */
+            style?: ("general" | "photography" | "creative" | "chinese-model" | "json-structured" | "video") | null;
         };
         /**
          * SymbolPayload
@@ -1096,6 +1982,60 @@ export interface components {
             name: string;
             /** Path */
             path: string;
+        };
+        /** TraceEventPayload */
+        TraceEventPayload: {
+            /** Event */
+            event?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+        };
+        /** TraceEventsPayload */
+        TraceEventsPayload: {
+            /** Has More */
+            has_more: boolean;
+            /** Items */
+            items: {
+                [key: string]: unknown;
+            }[];
+            /** Next Cursor */
+            next_cursor: number;
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+        };
+        /** TraceListPayload */
+        TraceListPayload: {
+            /** Items */
+            items: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+        };
+        /** TraceTreePayload */
+        TraceTreePayload: {
+            /** Items */
+            items: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+            /** Trace Id */
+            trace_id: string;
         };
         /**
          * TurnDetailPayload
@@ -1123,11 +2063,19 @@ export interface components {
             open_items?: string[];
             /** State */
             state: string;
+            /** Steps */
+            steps?: {
+                [key: string]: unknown;
+            }[];
             /**
              * Target
              * @default
              */
             target: string;
+            /** Thinking */
+            thinking?: {
+                [key: string]: unknown;
+            }[];
             /** Turn Id */
             turn_id: string;
             /** Turn Index */
@@ -1208,15 +2156,24 @@ export interface components {
         };
         /**
          * VariantPayload
-         * @description domain VariantDraft 的契约镜像（F-301 结构化方案）。
+         * @description domain VariantDraft 的契约镜像（F-301 单套方案）。
+         *
+         *     ``fallback`` 标记本轮由兜底模板（A 保守版）产出，前端须披露「已降级为保守输出」。
          */
         VariantPayload: {
             /** Body */
             body: string;
             /** Changes */
             changes?: string[];
-            /** Level */
-            level: string;
+            /** Claims */
+            claims?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Fallback
+             * @default false
+             */
+            fallback: boolean;
             /** Title */
             title: string;
         };
@@ -1229,6 +2186,70 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    read_artifact_api_v1_artifacts__artifact_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ArtifactResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_events_api_v1_events_get: {
+        parameters: {
+            query: {
+                session_id: string;
+                before?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_dict_str__Any___"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_followup_api_v1_followup__flow_id__post: {
         parameters: {
             query?: never;
@@ -1264,6 +2285,41 @@ export interface operations {
             };
         };
     };
+    post_followup_stream_api_v1_followup__flow_id__stream_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                flow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FollowupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_health_api_v1_health_get: {
         parameters: {
             query?: never;
@@ -1286,7 +2342,10 @@ export interface operations {
     };
     get_history_api_v1_history_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1299,7 +2358,47 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_list_HistoryItemPayload__"];
+                    "application/json": components["schemas"]["ApiResponse_PagedHistoryItem_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_project_history_api_v1_history_delete: {
+        parameters: {
+            query?: {
+                project_root?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProjectDeleteResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1370,9 +2469,47 @@ export interface operations {
             };
         };
     };
-    get_session_turns_api_v1_history__session_id__turns_get: {
+    rollback_session_api_v1_history__session_id__rollback_post: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RollbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_FlowSnapshotResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_turns_api_v1_history__session_id__turns_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: never;
             path: {
                 session_id: string;
@@ -1387,7 +2524,361 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_list_TurnSummaryPayload__"];
+                    "application/json": components["schemas"]["ApiResponse_PagedTurnSummary_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_intervention_api_v1_interventions__request_id__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InterventionAnswerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    alerts_api_v1_obs_metrics_alerts_get: {
+        parameters: {
+            query?: {
+                status?: "" | "active" | "resolved";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_AlertListPayload_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_config_api_v1_obs_metrics_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_MetricsConfigPayload_"];
+                };
+            };
+        };
+    };
+    summary_api_v1_obs_metrics_summary_get: {
+        parameters: {
+            query?: {
+                session_id?: string;
+                trace_id?: string;
+                from_ts?: string;
+                to_ts?: string;
+                group_by?: "kind" | "name" | "model" | "turn" | "status";
+                bucket?: "none" | "minute" | "hour" | "day";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_MetricSummaryPayload_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    compare_api_v1_obs_replay_compare_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplayCompareRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ReplayComparePayload_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_run_api_v1_obs_replay_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplayCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ReplayRunPayload_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_api_v1_obs_replay_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ReplayRunPayload_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_event_api_v1_obs_trace_events__event_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_TraceEventPayload_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_events_api_v1_obs_trace_sessions__session_id__events_get: {
+        parameters: {
+            query?: {
+                kind?: string;
+                cursor?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_TraceEventsPayload_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_traces_api_v1_obs_trace_sessions__session_id__traces_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_TraceListPayload_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_trace_api_v1_obs_trace_traces__trace_id__get: {
+        parameters: {
+            query?: {
+                full?: boolean;
+            };
+            header?: never;
+            path: {
+                trace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_TraceTreePayload_"];
                 };
             };
             /** @description Validation Error */
@@ -1547,6 +3038,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_FlowSnapshotResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_run_api_v1_runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Request-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_run_api_v1_runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stream_session_api_v1_sessions__session_id__stream_get: {
+        parameters: {
+            query?: {
+                since?: number;
+            };
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

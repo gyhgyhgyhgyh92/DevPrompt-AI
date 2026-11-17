@@ -6,7 +6,6 @@ __pycache__/
 node_modules/
 frontend/dist/
 desktop/dist/
-.tmp/
 *.tsbuildinfo
 .logs/
 *.db
@@ -23,3 +22,8 @@ eval/repos/
 .mypy_cache/
 .ruff_cache/
 .codebuddy/
+.tmp/
+.playwright-cli/
+eval/obs/runs/
+devprompt-ai-e2e-flow/
+.trae-html-share-packages/

@@ -9,8 +9,7 @@ const snapshot = {
   message: '',
   questions: [],
   cleared: [],
-  variants: [{ title: 'A', body: 'b', level: 'A', changes: [] }],
-  ranking: null,
+  variant: { title: '标准方案', body: 'b', changes: [], claims: [], fallback: false },
 }
 
 /** 手写 reader：不依赖 jsdom 是否实现 ReadableStream。 */
@@ -62,7 +61,7 @@ describe('streamOptimize', () => {
     ])
     const spy = handlers()
 
-    await streamOptimize({ sentence: '改按钮', project: '.' }, spy)
+    await streamOptimize({ sentence: '改按钮', project: '.', base_turn_id: '' }, spy)
 
     expect(spy.onThought.mock.calls).toEqual([
       ['先检索代码', ''],
@@ -78,7 +77,7 @@ describe('streamOptimize', () => {
     stubFetch([frame.slice(0, 12), frame.slice(12)])
 
     const spy = handlers()
-    await streamOptimize({ sentence: '改按钮', project: '.' }, spy)
+    await streamOptimize({ sentence: '改按钮', project: '.', base_turn_id: '' }, spy)
 
     expect(spy.onThought).toHaveBeenCalledWith('检索到 25 条候选', '')
   })
@@ -94,7 +93,7 @@ describe('streamOptimize', () => {
     ])
     const spy = handlers()
 
-    await streamOptimize({ sentence: '改按钮', project: '.' }, spy)
+    await streamOptimize({ sentence: '改按钮', project: '.', base_turn_id: '' }, spy)
 
     expect(spy.onAction).toHaveBeenCalledWith(
       {
@@ -102,6 +101,11 @@ describe('streamOptimize', () => {
         detail: 'rg -n Foo --glob src/a.ts',
         scope: '命中 2 行',
         output: '',
+        // 2026-11-04 起 action 帧带 status，旧帧缺省按 ok（见 schemas/stream.ts）
+        status: 'ok',
+        // 2026-11-15 起 action 帧带 id/delta（流式归并），旧帧缺省为空串
+        id: '',
+        delta: '',
       },
       '',
     )
@@ -111,7 +115,7 @@ describe('streamOptimize', () => {
     stubFetch([`data: ${JSON.stringify({ type: 'action', title: '检索' })}\n\n`])
     const spy = handlers()
 
-    await streamOptimize({ sentence: '改按钮', project: '.' }, spy)
+    await streamOptimize({ sentence: '改按钮', project: '.', base_turn_id: '' }, spy)
 
     expect(spy.onAction).not.toHaveBeenCalled()
     expect(spy.onError).not.toHaveBeenCalled()
@@ -125,7 +129,7 @@ describe('streamOptimize', () => {
     ])
 
     const spy = handlers()
-    await streamOptimize({ sentence: '改按钮', project: '.' }, spy)
+    await streamOptimize({ sentence: '改按钮', project: '.', base_turn_id: '' }, spy)
 
     expect(spy.onThought.mock.calls).toEqual([['继续', '']])
     expect(spy.onError).not.toHaveBeenCalled()
@@ -137,7 +141,7 @@ describe('streamOptimize', () => {
     ])
 
     const spy = handlers()
-    await streamOptimize({ sentence: '改按钮', project: '.' }, spy)
+    await streamOptimize({ sentence: '改按钮', project: '.', base_turn_id: '' }, spy)
 
     const error = spy.onError.mock.calls[0]?.[0]
     expect(error).toBeInstanceOf(ApiError)
@@ -150,7 +154,7 @@ describe('streamOptimize', () => {
     const mock = stubFetch([])
     const sentence = '把提交按钮改成 primary-500'
 
-    await streamOptimize({ sentence, project: 'D:/repo' }, handlers())
+    await streamOptimize({ sentence, project: 'D:/repo', base_turn_id: '' }, handlers())
 
     const call = mock.mock.calls[0]
     if (call === undefined) throw new Error('fetch 未被调用')

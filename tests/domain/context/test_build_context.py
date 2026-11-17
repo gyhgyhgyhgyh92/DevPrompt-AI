@@ -63,6 +63,25 @@ class TestLayers:
 
 
 class TestTrimming:
+    def test_larger_state_budget_keeps_more_history(self) -> None:
+        """档位预算越大，历史块 token 单调不减（token 正相关的确定性来源）。"""
+        from devprompt_ai.domain.context.build_context import estimate_tokens
+
+        turns = [_turn(i) for i in range(1000)]
+        sizes = [
+            estimate_tokens(
+                build_context(
+                    turns,
+                    _current(),
+                    budget=ContextBudget(total=budget),
+                ).history_block
+            )
+            for budget in (30_000, 60_000, 100_000)
+        ]
+
+        assert sizes[0] <= sizes[1] <= sizes[2]
+        assert sizes[2] > sizes[0], "预算放大后必须真实保留更多历史"
+
     def test_recent_degrades_before_dropping(self) -> None:
         budget = ContextBudget(total=80, weights=(0.1, 0.1, 0.1, 0.1, 0.6))
         payload = build_context([_turn(0), _turn(1)], _current(), budget=budget)

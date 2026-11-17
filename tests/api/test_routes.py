@@ -10,10 +10,12 @@ import httpx
 import pytest
 
 from devprompt_ai.domain.errors import DevPromptError, StateError
-from devprompt_ai.domain.models import SessionSummary, TurnRecord
+from devprompt_ai.domain.generate.ports import VariantDraft
+from devprompt_ai.domain.models import Page, SessionSummary, TurnRecord
+from devprompt_ai.domain.progress import ActionInfo, ProgressEvent
 from devprompt_ai.interfaces.api import health, routes
 from devprompt_ai.interfaces.api.app import create_app
-from devprompt_ai.service import FlowSnapshot, RankingView, SnapshotStatus
+from devprompt_ai.service import FlowSnapshot, SnapshotStatus
 
 
 def _snap(
@@ -37,6 +39,7 @@ class FakeForgeService:
         self.rename_calls: list[tuple[str, str]] = []
         self.pin_calls: list[tuple[str, bool]] = []
         self.delete_calls: list[str] = []
+        self.delete_project_calls: list[str] = []
         self.turns: list[TurnRecord] = []
         self.optimize_calls: list[dict[str, Any]] = []
         self.settings_view: dict[str, Any] = {
@@ -71,6 +74,12 @@ class FakeForgeService:
                 "followup_cost_budget": 0.0,
                 "telemetry": True,
             },
+            "observability": {
+                "trace_enabled": True,
+                "trace_retention_days": 30,
+                "metrics_enabled": True,
+                "replay_enabled": True,
+            },
             "locked": {"candidate_limit": 25},
         }
         self.scan: dict[str, Any] = {
@@ -88,13 +97,46 @@ class FakeForgeService:
         request_id: str,
         progress: Any = None,
         session_id: str | None = None,
+        base_turn_id: str = "",
+        locale: str = "zh-CN",
+        domain_override: str | None = None,
+        style: str | None = None,
+        images: list[str] | None = None,
     ) -> FlowSnapshot:
-        self.optimize_calls.append({"session_id": session_id, "sentence": sentence})
+        self.optimize_calls.append(
+            {
+                "session_id": session_id,
+                "sentence": sentence,
+                "base_turn_id": base_turn_id,
+                "locale": locale,
+            }
+        )
         return self._next()
 
     async def ask_followup(
-        self, user_id: str, session_id: str, answers: dict[str, str], *, request_id: str
+        self,
+        user_id: str,
+        session_id: str,
+        answers: dict[str, str],
+        *,
+        request_id: str,
+        progress: Any = None,
     ) -> FlowSnapshot:
+        # 流式端点测试用：主动推一帧文字 + 一帧失败动作（2026-11-04）
+        if progress is not None:
+            await progress.emit(ProgressEvent(text="正在根据你的答复重新研判", phase="CONFIRMING"))
+            await progress.emit(
+                ProgressEvent(
+                    action=ActionInfo(
+                        title="检索符号",
+                        detail="rg -n Foo --glob src",
+                        scope="Exit code 1",
+                        output="src: no match",
+                        status="failed",
+                    ),
+                    phase="CONFIRMING",
+                )
+            )
         return self._next()
 
     async def escape(self, user_id: str, session_id: str, *, request_id: str) -> FlowSnapshot:
@@ -127,21 +169,35 @@ class FakeForgeService:
         merged.update(values)
         return merged
 
-    async def list_history(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
-        return [
-            SessionSummary(
-                session_id="s1",
-                state="DONE",
-                project="demo",
-                updated_at="2026-10-12T00:00:00Z",
-                title="示例标题",
-                pinned=True,
-                project_root="/tmp/demo",
-            )
-        ]
+    async def list_history(
+        self, user_id: str, *, limit: int = 50, offset: int = 0
+    ) -> Page[SessionSummary]:
+        return Page(
+            items=(
+                SessionSummary(
+                    session_id="s1",
+                    state="DONE",
+                    project="demo",
+                    updated_at="2026-10-12T00:00:00Z",
+                    title="示例标题",
+                    pinned=True,
+                    project_root="/tmp/demo",
+                ),
+            ),
+            has_more=False,
+            limit=limit,
+            offset=offset,
+        )
 
-    async def list_turns(self, user_id: str, session_id: str) -> list[TurnRecord]:
-        return list(self.turns)
+    async def list_turns(
+        self, user_id: str, session_id: str, *, limit: int = 20, offset: int = 0
+    ) -> Page[TurnRecord]:
+        return Page(
+            items=tuple(self.turns),
+            has_more=False,
+            limit=limit,
+            offset=offset,
+        )
 
     async def load_turn(self, user_id: str, turn_id: str) -> TurnRecord:
         for turn in self.turns:
@@ -158,7 +214,11 @@ class FakeForgeService:
     async def delete_session(self, user_id: str, session_id: str) -> None:
         self.delete_calls.append(session_id)
 
-    async def get_settings(self) -> dict[str, Any]:
+    async def delete_project_sessions(self, user_id: str, project_root: str) -> int:
+        self.delete_project_calls.append(project_root)
+        return 2
+
+    async def get_settings(self, locale: str = "zh-CN") -> dict[str, Any]:
         return dict(self.settings_view)
 
     async def update_settings(
@@ -257,6 +317,53 @@ async def test_optimize_returns_snapshot(
     assert fake_service.state == "ASKING"
 
 
+async def test_optimize_writes_session_log(
+    client: httpx.AsyncClient,
+    fake_service: FakeForgeService,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    """D-05：旧入口 /optimize 也写 run_events（Session Log 不再有盲区）。"""
+    from types import SimpleNamespace
+
+    from devprompt_ai.interfaces.api import runtime_routes
+    from devprompt_ai.memory.event_store import SQLiteEventStore
+    from devprompt_ai.runtime.events import EventBus
+
+    bus = EventBus(SQLiteEventStore(str(tmp_path / "events.db")))
+
+    async def _fake_bundle() -> Any:
+        return SimpleNamespace(bus=bus)
+
+    monkeypatch.setattr(runtime_routes, "_bundle", _fake_bundle)
+    fake_service.config = object()  # type: ignore[attr-defined]  # 让路由认为运行时可用
+
+    resp = await client.post(
+        "/api/v1/optimize",
+        json={"sentence": "改按钮", "project": ".", "session_id": "s1"},
+    )
+    assert resp.status_code == 200
+    events = await bus.replay("s1", 0)
+    assert [event.type for event in events] == ["run.started", "snapshot", "stop"]
+    assert events[0].payload["request_id"] == resp.json()["request_id"]
+
+
+async def test_optimize_forwards_accept_language(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """界面语言经 Accept-Language 解析后传给 service（2026-11-06，F-209 后端双语）。"""
+    await client.post(
+        "/api/v1/optimize",
+        json={"sentence": "改按钮", "project": "."},
+        headers={"accept-language": "en-US,en;q=0.9"},
+    )
+    assert fake_service.optimize_calls[-1]["locale"] == "en"
+
+    # 无头（或未知语言）回落 zh-CN，不报错也不变成第三种语言
+    await client.post("/api/v1/optimize", json={"sentence": "改按钮", "project": "."})
+    assert fake_service.optimize_calls[-1]["locale"] == "zh-CN"
+
+
 async def test_optimize_missing_fields_422(client: httpx.AsyncClient) -> None:
     resp = await client.post("/api/v1/optimize", json={})
     assert resp.status_code == 422
@@ -305,7 +412,7 @@ async def test_result_reads_snapshot(
     assert resp.json()["data"]["session_id"] == "s1"
 
 
-async def test_snapshot_renders_variants_and_ranking(
+async def test_snapshot_renders_single_variant(
     client: httpx.AsyncClient, fake_service: FakeForgeService
 ) -> None:
     fake_service.status = "done"
@@ -314,24 +421,22 @@ async def test_snapshot_renders_variants_and_ranking(
         session_id="s1",
         status="done",
         state="DONE",
-        ranking=RankingView(
-            variant="B",
-            gap=0.2,
-            confidence=0.9,
-            marked=True,
-            reason="分差较小",
-            fit=0.75,
-            total=0.802,
+        variant=VariantDraft(
+            title="标准版方案",
+            body="正文",
+            changes=[],
+            fallback=False,
         ),
     )
     resp = await client.get("/api/v1/result/s1")
     assert resp.status_code == 200
     data = resp.json()["data"]
-    assert data["variants"] == []  # 未注入方案时默认空表
-    assert data["ranking"] is not None
-    assert data["ranking"]["variant"] == "B"
-    assert data["ranking"]["marked"] is True
-    assert "variant" not in data  # 旧单数字段已删除（BREAKING）
+    assert data["variant"]["title"] == "标准版方案"
+    assert data["variant"]["fallback"] is False
+    # 旧契约字段已删除（BREAKING，2026-11-11 单套输出）
+    assert "variants" not in data
+    assert "ranking" not in data
+    assert "ranking_skip_reason" not in data
 
 
 async def test_get_history_returns_summaries(
@@ -340,8 +445,8 @@ async def test_get_history_returns_summaries(
     """T6-11/T1.4：GET /history 仅 id/时间/state/名/路径/标题/置顶（无原句明文，MUST-19）。"""
     resp = await client.get("/api/v1/history")
     assert resp.status_code == 200
-    items = resp.json()["data"]
-    assert items == [
+    data = resp.json()["data"]
+    assert data["items"] == [
         {
             "session_id": "s1",
             "state": "DONE",
@@ -352,7 +457,8 @@ async def test_get_history_returns_summaries(
             "project_root": "/tmp/demo",
         }
     ]
-    assert "sentence" not in items[0]
+    assert data["has_more"] is False
+    assert "sentence" not in data["items"][0]
 
 
 async def test_patch_history_rename_and_pin_passthrough(
@@ -381,6 +487,63 @@ async def test_patch_history_empty_422(client: httpx.AsyncClient) -> None:
     assert resp.status_code == 422
 
 
+async def test_followup_stream_ends_with_snapshot_frame(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """流式答复端点（2026-11-03）：SSE 帧以 snapshot 收尾（此前只有一次性 JSON）。"""
+    resp = await client.post(
+        "/api/v1/followup/s1/stream", json={"answers": {"请确认 q": "a"}, "escape": False}
+    )
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+    assert '"type": "snapshot"' in resp.text
+
+
+async def test_followup_stream_frame_order_and_action_fields(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """帧顺序契约（2026-11-04）：thought → action → snapshot，snapshot 必须是最后一帧。
+
+    同时校验动作帧字段白名单与失败态（status/Exit code 由后端给出，前端只渲染）。
+    """
+    resp = await client.post(
+        "/api/v1/followup/s1/stream", json={"answers": {"请确认 q": "a"}, "escape": False}
+    )
+
+    frames = [
+        json.loads(line[len("data: ") :])
+        for line in resp.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    types = [frame["type"] for frame in frames]
+
+    assert types == ["thought", "action", "snapshot"]
+    assert types[-1] == "snapshot"
+    assert "snapshot" not in types[:-1]
+
+    action = frames[1]
+    assert action["status"] == "failed"
+    assert action["scope"] == "Exit code 1"
+    # duration_ms（2026-11-07）：未计时的动作下发 None，前端据此不渲染耗时
+    assert set(action) == {
+        "type",
+        "phase",
+        "title",
+        "detail",
+        "scope",
+        "output",
+        "status",
+        "duration_ms",
+        # 流式归并（2026-11-15）：动作实例 id 与本次增量片段
+        "id",
+        "delta",
+    }
+    assert action["duration_ms"] is None
+    # 帧里不得出现绝对路径（MUST-19）
+    assert "D:/" not in json.dumps(action, ensure_ascii=False)
+
+
 async def test_delete_history_passthrough(
     client: httpx.AsyncClient, fake_service: FakeForgeService
 ) -> None:
@@ -388,6 +551,16 @@ async def test_delete_history_passthrough(
     assert resp.status_code == 200
     assert resp.json()["data"] is None
     assert fake_service.delete_calls == ["s1"]
+
+
+async def test_delete_project_history_passthrough(
+    client: httpx.AsyncClient, fake_service: FakeForgeService
+) -> None:
+    """项目级批量删除（2026-11-01）：query 透传 project_root，返回实际删除条数。"""
+    resp = await client.delete("/api/v1/history", params={"project_root": "/tmp/demo"})
+    assert resp.status_code == 200
+    assert resp.json()["data"] == {"deleted": 2}
+    assert fake_service.delete_project_calls == ["/tmp/demo"]
 
 
 async def test_settings_get_put_roundtrip(
@@ -463,7 +636,7 @@ async def test_session_turns_are_summaries_only(
             turn_index=0,
             state="DONE",
             input="把按钮改成红色",
-            output=[{"title": "x", "body": "正文", "level": "A", "changes": []}],
+            output=[{"title": "x", "body": "正文", "changes": []}],
             summary={"target": "Button", "conclusion": "复用令牌", "open": ["对比度"]},
         )
     ]
@@ -472,11 +645,13 @@ async def test_session_turns_are_summaries_only(
 
     assert resp.status_code == 200
     data = resp.json()["data"]
-    assert [turn["turn_id"] for turn in data] == ["t1"]
-    assert data[0]["target"] == "Button"
-    assert data[0]["open_items"] == ["对比度"]
-    assert "input" not in data[0]
-    assert "variants" not in data[0]
+    items = data["items"]
+    assert [turn["turn_id"] for turn in items] == ["t1"]
+    assert items[0]["target"] == "Button"
+    assert items[0]["open_items"] == ["对比度"]
+    assert "input" not in items[0]
+    assert "variants" not in items[0]
+    assert data["has_more"] is False
 
 
 async def test_turn_detail_carries_body(
@@ -489,7 +664,7 @@ async def test_turn_detail_carries_body(
             turn_index=0,
             state="DONE",
             input="把按钮改成红色",
-            output=[{"title": "保守版", "body": "改按钮", "level": "A", "changes": ["改色"]}],
+            output=[{"title": "保守版", "body": "改按钮", "changes": ["改色"]}],
             facts=[{"key": "token_defined", "passed": False, "evidence": "未找到"}],
         )
     ]
@@ -536,7 +711,8 @@ async def test_error_response_uniform_shape(
 ) -> None:
     fake_service.fail_with = StateError("流程 ID 不存在", code=6003)
     resp = await client.post("/api/v1/optimize", json={"sentence": "改按钮", "project": "."})
-    assert resp.status_code == 500
+    # 6003 → 404（架构文档 §3.3 逐码表；2026-11-04 前一律 500）
+    assert resp.status_code == 404
     body = resp.json()
     assert body["code"] == 6003
     assert body["message"] == "流程 ID 不存在"
@@ -544,6 +720,33 @@ async def test_error_response_uniform_shape(
     serialized = json.dumps(body)
     assert "stack" not in serialized and "traceback" not in serialized
     assert "detail" not in body  # FastAPI 默认错误键已被统一渲染替换
+
+
+@pytest.mark.parametrize(
+    ("code", "status"),
+    [
+        (1001, 400),
+        (2001, 404),
+        (2003, 500),
+        (2005, 422),
+        (3004, 429),
+        (4002, 503),
+        (5011, 503),
+        (5014, 401),
+        (6001, 409),
+        (9001, 500),
+    ],
+)
+async def test_error_http_status_follows_spec_table(
+    client: httpx.AsyncClient, fake_service: FakeForgeService, code: int, status: int
+) -> None:
+    """HTTP 状态按架构文档 §3.3 逐码表映射，不再一律 500（2026-11-04）。"""
+    fake_service.fail_with = StateError("x", code=code)
+
+    resp = await client.post("/api/v1/optimize", json={"sentence": "改按钮", "project": "."})
+
+    assert resp.status_code == status
+    assert resp.json()["code"] == code
 
 
 async def _collect_sse(client: httpx.AsyncClient, url: str) -> list[dict[str, Any]]:

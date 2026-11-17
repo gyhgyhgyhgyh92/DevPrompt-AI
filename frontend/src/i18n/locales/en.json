@@ -1,0 +1,604 @@
+{
+  "domain": {
+    "badge_fallback": "fallback",
+    "code": { "name": "Code" },
+    "work": { "name": "Work" },
+    "life": { "name": "Life" },
+    "creative": { "name": "Creative" },
+    "learning": { "name": "Learning" },
+    "data": { "name": "Data" },
+    "marketing": { "name": "Marketing" },
+    "translation": { "name": "Translation" },
+    "legal": { "name": "Legal" },
+    "medical": { "name": "Medical" },
+    "finance": { "name": "Finance" },
+    "game": { "name": "Game" },
+    "av": { "name": "A/V" },
+    "visual": { "name": "Visual" },
+    "operations": { "name": "Operations" }
+  },
+  "app": {
+    "status_checking": "Checking API",
+    "status_ok": "API OK",
+    "status_down": "API error",
+    "open_sidebar": "Open sidebar",
+    "close_sidebar": "Close sidebar",
+    "no_project": "No project selected",
+    "settings": "Settings",
+    "none": "none"
+  },
+  "api": {
+    "network_failed": "Network request failed",
+    "json_invalid": "Response is not valid JSON (HTTP {{status}})",
+    "contract_envelope": "Response envelope violates the contract",
+    "contract_data": "Response data violates the contract",
+    "body_contract": "Request body violates the contract",
+    "stream_unavailable": "Streaming endpoint unavailable; make sure the backend is restarted on the latest version",
+    "stream_unsupported": "Response does not support streaming",
+    "stream_broken": "Streaming connection interrupted",
+    "http_plain": "Server returned HTTP {{status}}",
+    "http_detail": "{{detail}} (HTTP {{status}})",
+    "timeout": "Request timed out",
+    "aborted": "Request aborted"
+  },
+  "native_picker": {
+    "not_installed": "Could not open the system folder picker: install the DevPrompt AI native folder picker extension (Chromium only; run pwsh -File scripts/install_native_picker.ps1, then load the unpacked extension)",
+    "extension_missing": "Native folder picker extension not detected on this page. Open the browser extensions page (chrome://extensions, or edge://extensions in Edge), make sure the extension is loaded and enabled, then **reload this page** and try again (the extension is injected only on page load).",
+    "unavailable": "System folder picker unavailable",
+    "no_browser": "Not a browser environment; cannot open the system folder picker"
+  },
+  "common": {
+    "close": "Close",
+    "request_failed": "Request failed",
+    "copied": "Copied",
+    "copy": "Copy",
+    "cancel": "Cancel",
+    "processing": "Working…",
+    "list_sep": "; ",
+    "loading": "Loading…",
+    "reload": "Reload",
+    "open": "Open"
+  },
+  "optimize": {
+    "stop_generation": "Stop generating",
+    "fallback_notice": "Generation failed this turn and fell back to a conservative draft; the result may be incomplete — retry for a full plan.",
+    "domain_switch": "Mode",
+    "domain_auto": "Auto detect",
+    "style_switch": "Style",
+    "style_general": "General",
+    "style_photography": "Photography",
+    "style_creative": "Creative",
+    "style_chinese_model": "Chinese aesthetics",
+    "style_json_structured": "JSON structured",
+    "style_video": "Video",
+    "image_add": "Add reference image",
+    "image_remove": "Remove image",
+    "image_limit": "Up to {{max}} reference images",
+    "image_format": "Only PNG/JPEG/WebP images are supported",
+    "image_size": "Each image must be 4MB or less",
+    "image_read_failed": "Failed to read image"
+  },
+  "validation": {
+    "followup_mode_exclusive": "Exactly one of answers / escape / guardrail_action must be set"
+  },
+  "trace": {
+    "read_file": "Read file",
+    "read_with_detail": "Read {{detail}}",
+    "command_failed": "Command failed · {{scope}}",
+    "command_ok": "Command executed",
+    "running": "Running",
+    "copy_command": "Copy command"
+  },
+  "clarify": {
+    "multi": "Multi-select",
+    "single": "Single choice",
+    "custom_input": "Enter a custom answer",
+    "custom_placeholder": "Enter a custom answer...",
+    "esc_hint": "Esc to cancel · Tick multiple options when allowed",
+    "generate_direct": "Generate now",
+    "submit": "Submit",
+    "continue_asking": "Keep asking",
+    "generate_conservative": "Generate now (conservative)",
+    "answered_prefix": "Clarified:",
+    "adopt_guess": "Use guess",
+    "best_guess": "Current best guess: {{guess}}"
+  },
+  "model": {
+    "thinking_mode": "Thinking mode",
+    "thinking_effort": "Thinking effort",
+    "effort_requires_mode": "Enable thinking mode first to pick effort",
+    "aria_select": "Select model",
+    "not_configured": "No model configured",
+    "context_length": "Context length",
+    "context_budget_hint": "Affects local context budget and compaction; does not change the provider window",
+    "nominal_only": "This model only supports its nominal window; no tiers available"
+  },
+  "turn": {
+    "continue": "Continue from here",
+    "continue_hint": "Start a new turn from this turn's plan",
+    "rollback": "Roll back to here",
+    "rollback_hint": "Restore the state at the end of this turn and delete all later turns",
+    "rollback_confirm": "Roll back to this turn? All later turns will be permanently deleted and cannot be recovered.",
+    "load_failed": "Failed to load the turn",
+    "loading_earlier": "Loading earlier turns…",
+    "load_earlier": "Load earlier turns"
+  },
+  "console": {
+    "prompt_hint": "Polish every prompt end-to-end — from clarifying needs to shipping production results",
+    "save_failed": "Failed to save settings, please retry later",
+    "switch_failed": "Failed to switch model, please retry later",
+    "scan_failed": "Project path does not exist or cannot be scanned",
+    "aria_sentence": "Requirement sentence",
+    "brand_name": "DevPrompt AI",
+    "hero_claim": "Turn a vague requirement into a high-quality prompt an agent can execute precisely",
+    "hero_sub": "Explore the real project, ask about the key unknowns",
+    "aria_send": "Send",
+    "aria_pick_folder": "Choose folder (local)",
+    "opening": "Opening…",
+    "pick_folder": "Choose folder (local)"
+  },
+  "chat": {
+    "aria_reply": "AI reply",
+    "elapsed": "Elapsed {{seconds}}s",
+    "done": "done",
+    "thinking_meta": "Thinking {{seconds}} · {{actions}} actions · {{steps}} steps",
+    "phases": "Execution timeline",
+    "process_fold": "Collapse",
+    "process_unfold": "Expand",
+    "process_summary": "{{phase}} · {{actions}} actions · {{seconds}}",
+    "process_summary_short": "{{phase}} · {{actions}} actions",
+    "action_count": "{{count}} actions",
+    "step_count": "{{steps}} steps",
+    "turn_process": "Process · {{count}} steps",
+    "turn_steps": "Actions · {{count}} steps",
+    "step_none": "(no note for this step)",
+    "probe_complete": "All seven fact checks passed; no open questions found",
+    "tag_done": "Done",
+    "tag_aborted": "Aborted",
+    "tag_running": "Running",
+    "planning": "Planning next step…",
+    "deciding": "Deciding",
+    "answer": "Answer",
+    "open_items": "To confirm: {{items}}",
+    "action": {
+      "retrieve": "Retrieving target",
+      "probe": "Probing facts",
+      "ask": "Asking you",
+      "generate": "Generating variant",
+      "deliver": "Delivering",
+      "abort": "Aborting turn"
+    },
+    "phase": {
+      "INIT": {
+        "label": "Initialize",
+        "hint": "Create session and turn, verify parameters"
+      },
+      "RETRIEVING": {
+        "label": "Retrieve code",
+        "hint": "Scan the symbol table and rank candidates by relevance"
+      },
+      "PROBING": {
+        "label": "Probe facts",
+        "hint": "Seven fact checks, judge if info suffices"
+      },
+      "ASKING": {
+        "label": "Awaiting answers",
+        "hint": "Information gaps found, waiting for you"
+      },
+      "CONFIRMING": {
+        "label": "Integrating answers",
+        "hint": "Re-probing to see if gaps are filled"
+      },
+      "GENERATING": {
+        "label": "Generating plan",
+        "hint": "One call produces a single variant"
+      },
+      "DONE": {
+        "label": "Completed",
+        "hint": "Result produced"
+      },
+      "ABORTED": {
+        "label": "Aborted",
+        "hint": "Abnormal or connection lost; session closed safely"
+      }
+    },
+    "agent_step": "step {{step}}"
+  },
+  "history": {
+    "load_result_failed": "Failed to load the session result",
+    "pinned": "Pinned",
+    "unpinned": "Unpinned",
+    "pin_failed": "Pin operation failed",
+    "renamed": "Renamed",
+    "rename_failed": "Rename failed",
+    "deleted": "Deleted",
+    "delete_failed": "Delete failed",
+    "copied": "Copied",
+    "copy_failed": "Copy failed",
+    "loading": "Loading…",
+    "load_more": "Load more sessions",
+    "aria_rename": "Rename session",
+    "aria_more": "More actions",
+    "confirm_delete_title": "Delete session",
+    "menu_label": "Session actions",
+    "menu_pin": "Pin to top",
+    "menu_copy_path": "Copy project path",
+    "menu_rename": "Rename",
+    "menu_delete": "Delete task",
+    "delete_project_failed": "Failed to delete the project",
+    "sidebar_label": "Projects",
+    "aria_collapse": "Collapse sidebar",
+    "footer_nav": "Sidebar navigation",
+    "confirm_delete_project": "Delete project",
+    "title": "History",
+    "back_workbench": "← Workspace",
+    "load_failed_page": "Failed to load history; check that the service is running.",
+    "tag_current": "In progress",
+    "empty": "No history yet",
+    "empty_sessions": "No sessions yet",
+    "link_history": "History →"
+  },
+  "settings": {
+    "modal": {
+      "title": "Settings"
+    },
+    "model": {
+      "load_list_failed": "Failed to load the model list",
+      "need_provider": "Every provider needs a vendor and Base URL",
+      "saved": "Saved",
+      "save_failed": "Failed to save",
+      "refresh_failed": "Failed to refresh",
+      "connect_ok": "Connection OK",
+      "connect_failed": "Connection failed",
+      "provider_list": "Provider list",
+      "new_provider": "New provider",
+      "not_configured": "Not configured",
+      "current_key": "Current key",
+      "last_refresh": "Last refreshed",
+      "never_refreshed": "Never refreshed",
+      "refreshing": "Refreshing…",
+      "refresh": "Refresh model list",
+      "testing": "Testing…",
+      "test": "Test connection",
+      "lead": "Configure the Base URL and API key once per provider, refresh to fetch available models, tick the ones you need and save; switch the active model on the launcher.",
+      "empty_hint": "No provider configured yet; click \"New provider\" to start.",
+      "endpoint_unknown": "The official endpoint is not registered; check the vendor documentation and fill it in",
+      "available": "Available models (ticked = enabled; unticked will be deleted)",
+      "refresh_first": "Click \"Refresh model list\" first to fetch the models of this endpoint",
+      "current": "Current",
+      "not_in_list": "Not in current list",
+      "provider_switched": "Provider switched; previous selections and catalog were cleared. Refresh and select again.",
+      "delete_provider": "Delete provider",
+      "save": "Save",
+      "add_provider": "Add provider"
+    },
+    "nav": {
+      "label": "Settings sections"
+    },
+    "load_failed": "Failed to load settings",
+    "loading": "Loading settings…",
+    "saved": "Saved",
+    "save_failed": "Failed to save",
+    "appearance": {
+      "title": "Appearance",
+      "theme": "Theme",
+      "theme_light": "Light",
+      "theme_dark": "Dark",
+      "theme_system": "Follow system",
+      "locale": "UI language",
+      "locale_hint": "Changes take effect immediately",
+      "code_font": "Code font",
+      "restore_session": "Restore last session on launch",
+      "desktop_notification": "Desktop notifications"
+    },
+    "capability": {
+      "tools": "Tool calling",
+      "tools_hint": "This model can call function tools",
+      "reasoning": "Reasoning",
+      "reasoning_hint": "This model supports reasoning",
+      "aria": "Model capabilities",
+      "context": "Context {{length}}",
+      "unknown": "Unknown"
+    },
+    "provider": {
+      "placeholder": "Choose a provider…",
+      "aria": "Provider",
+      "unregistered": " (endpoint not registered)"
+    },
+    "security": {
+      "title": "Flow & security",
+      "round_guard": "Follow-up soft round guard",
+      "cost_budget": "Follow-up cost budget",
+      "candidate_limit": "Candidate limit (locked by MUST-09)",
+      "candidate_limit_hint": "Value comes from backend locked.candidate_limit; read-only",
+      "save_params": "Save flow parameters",
+      "telemetry": "Telemetry",
+      "clear": "Clear local data",
+      "confirm_clear": "Confirm clear?",
+      "clear_note": "Only clears local devprompt:v1: data (sessions and caches); server records are untouched",
+      "cleared": "Local data cleared",
+      "numeric_required": "Guard parameters must be numbers"
+    },
+    "tab": {
+      "model-service": "Model service",
+      "appearance": "Appearance",
+      "observability": "Observability",
+      "security": "Flow & security"
+    },
+    "api_mode": "API mode",
+    "api_mode_only": "{{mode}} (this provider only supports this mode)"
+  },
+  "observability": {
+    "title": "Observability",
+    "back_workbench": "← Workspace",
+    "subtitle": "Session Log runtime ledger plus Trace / Metrics / Replay as three independent modules (read-only)",
+    "tips": {
+      "sections": {
+        "definition": "Definition",
+        "features": "Core features",
+        "scenarios": "Use cases"
+      },
+      "session-log": {
+        "title": "Session Log: runtime event ledger",
+        "definition": "Records what happened during a run in time order: start, thoughts, tool actions, results, and finish.",
+        "features": "Keeps the full event stream, filters by session and event type, and supports export.",
+        "scenarios": "Debug interruptions or errors, and replay the steps of a previous run."
+      },
+      "trace": {
+        "title": "Trace: call-chain tracing",
+        "definition": "Links decisions, retrieval, tools, file reads, and model calls of one optimization into a single call chain.",
+        "features": "Shows hierarchy, ordering, and duration, with full input and output for each node.",
+        "scenarios": "Find which step is slow, and confirm whether a step actually ran."
+      },
+      "metrics": {
+        "title": "Metrics: indicators and alerts",
+        "definition": "Aggregates run events into counts, latency, failure rate, and token usage.",
+        "features": "Trends by type, model, or turn, with graded alerts when thresholds are exceeded.",
+        "scenarios": "Watch overall performance, spot abnormal latency or failures, and estimate model cost."
+      },
+      "replay": {
+        "title": "Replay: deterministic re-execution",
+        "definition": "Re-runs a recorded call chain to check whether the result matches the original run.",
+        "features": "Self-verifies one call chain and compares two call chains node by node.",
+        "scenarios": "Run regression checks after changes, and investigate why two runs differ."
+      }
+    },
+    "loading": "Loading…",
+    "empty": "No data",
+    "retry": "Retry",
+    "module": {
+      "session_log": "Session Log",
+      "trace_replay": "Trace Metrics Replay"
+    },
+    "sessions": {
+      "title": "Sessions",
+      "search_placeholder": "Search session title or project",
+      "all_projects": "All projects",
+      "load_more": "Load more",
+      "no_match": "No matching sessions"
+    },
+    "modules": {
+      "title": "Modules",
+      "trace": "Trace capture",
+      "metrics": "Metrics",
+      "replay": "Replay",
+      "retention": "Trace retention (days)",
+      "save": "Save",
+      "saved": "Saved, effective immediately",
+      "save_failed": "Save failed",
+      "disabled": "This module is disabled. Turn it on in the switches above.",
+      "none_enabled": "All three modules are disabled. Enable any module to view its data."
+    },
+    "toolbar": {
+      "aria": "Session log toolbar",
+      "search_placeholder": "Search records",
+      "fold_turns": "Fold all turns",
+      "unfold_turns": "Unfold all turns",
+      "fold_calls": "Fold all calls",
+      "unfold_calls": "Unfold all calls",
+      "live_follow": "Live follow",
+      "refresh": "Refresh",
+      "export_json": "Export JSON",
+      "export_csv": "Export CSV",
+      "export_all": "Export all",
+      "exporting": "Exporting…",
+      "back_to_latest": "Back to latest"
+    },
+    "record": {
+      "user": "User",
+      "assistant": "Assistant",
+      "tool": "Tool",
+      "thought": "Thought",
+      "phase": "Phase",
+      "ask": "Ask",
+      "approval": "Approval",
+      "stop": "Stop",
+      "error": "Error",
+      "system": "System",
+      "checkpoint": "Checkpoint",
+      "delegation": "Delegation"
+    },
+    "inspector": {
+      "title": "Record details",
+      "raw": "Raw payload",
+      "copy": "Copy",
+      "copied": "Copied",
+      "close": "Close details",
+      "seq": "Seq",
+      "phase": "Phase",
+      "duration": "Duration",
+      "tokens": "Tokens"
+    },
+    "log": {
+      "load_older": "Load older",
+      "no_events": "No records under current filters",
+      "no_session": "Select a session on the left to inspect its log",
+      "unassigned": "Unassigned"
+    },
+    "replay": {
+      "play": "Play",
+      "pause": "Pause",
+      "restart": "Restart",
+      "step_back": "Step back",
+      "step_forward": "Step forward",
+      "speed": "Speed",
+      "clear_filters": "Clear range",
+      "no_events": "This session has no runtime events to replay (legacy or never executed)",
+      "open_in_log": "Open in Session Log",
+      "quality_truncated": "Events exceed the metrics cap; metrics cover the latest 5000 events",
+      "quality_no_timestamps": "Some events lack timestamps; wall clock and timeline are indicative only"
+    },
+    "metrics": {
+      "title": "Trace metrics and timeline",
+      "events": "Events",
+      "actions": "Actions",
+      "failures": "Failed actions",
+      "tokens": "Tokens",
+      "wall_clock": "Wall clock",
+      "p50": "P50 duration",
+      "p95": "P95 duration",
+      "distribution": "Event type distribution",
+      "slowest": "Slowest actions",
+      "token_series": "Tokens per turn",
+      "sensorium": "Sensorium",
+      "score": "Score",
+      "no_data": "No data",
+      "alerts": "Alert history",
+      "note_unfiltered": "Metrics cover the whole session and do not follow the filters below"
+    },
+    "timeline": {
+      "aria": "Event timeline",
+      "hint": "Click to seek · drag to select · wheel to zoom · right-click to clear/pan"
+    },
+    "export": {
+      "all_truncated": "Export hit the paging cap (2000 events); older records are not included"
+    }
+  },
+  "errors": {
+    "1001": "Missing required parameters, please check your input",
+    "1002": "Invalid parameter type",
+    "1003": "Parameter out of allowed range",
+    "1004": "Malformed request",
+    "2001": "Project path not found, please confirm the directory exists",
+    "2002": "Project path is not readable, please check access permissions",
+    "2003": "Code search tool (ripgrep) failed, please retry",
+    "2004": "Symbol table tool (ctags) failed, please retry",
+    "2005": "No candidate component located, please add the component name or file path",
+    "2006": "Too many candidates, please narrow down the search",
+    "3001": "Decision service unavailable, please retry later",
+    "3002": "Insufficient information confidence, handled conservatively",
+    "3003": "Context exceeds the length limit, add a component name to narrow it down",
+    "3004": "Too many requests, please retry later",
+    "4001": "Prompt generation failed, please retry",
+    "4002": "Model service unreachable, please check the model settings",
+    "4003": "Unexpected model output format, please retry",
+    "5001": "Missing external tool, please check that ripgrep / ctags are installed",
+    "5011": "Model call timed out, retry later or increase the timeout setting",
+    "5012": "Provider rate limited, please retry later",
+    "5013": "Provider balance or quota exhausted, please top up and retry",
+    "5014": "Model authentication failed, please check the API key",
+    "5015": "Model service error, please retry later",
+    "5021": "Failed to fetch the model list, check the provider endpoint and key and retry",
+    "6001": "This action is not allowed in the current state, refresh and retry",
+    "6002": "Follow-up round limit reached, choose to continue asking or generate directly",
+    "6003": "This flow does not exist or has expired",
+    "6004": "This observability module is disabled. Enable it in settings and retry.",
+    "9001": "Internal error, please retry",
+    "9002": "Configuration incomplete or failed validation, please check the settings",
+    "kind": {
+      "contract": "The response data does not match the contract, please retry later",
+      "network": "Network connection failed, please check your network and retry",
+      "timeout": "Request timed out, please retry later",
+      "aborted": "Request cancelled"
+    }
+  },
+  "gate": {
+    "evidence_stale": "Project files changed before delivery; this plan is based on the previous turn's evidence, so the referenced line numbers and tokens may be stale. Submit again to refresh the evidence."
+  },
+  "tooltip": {
+    "label_purpose": "What it does",
+    "label_usage": "How to use",
+    "domain": {
+      "auto": {
+        "title": "Auto detect",
+        "purpose": "The system decides which kind of request this is and picks the handling path (repo search, clarifying questions, prompt drafting).",
+        "usage": "Just describe what you need. Obvious domain words (weekly report, storyboard, text-to-image) route automatically; pick a mode manually only when you need precise control."
+      },
+      "code": {
+        "title": "Code engineering",
+        "purpose": "Locates the issue in a real repository and produces an engineering-grade prompt with file and line anchors that ripgrep can re-verify.",
+        "usage": "Fill in the project path and describe the change. The system gathers evidence, asks when needed, then returns one actionable plan."
+      },
+      "work": {
+        "title": "Work & documents",
+        "purpose": "Drafts weekly reports, summaries, proposals, emails and similar business documents.",
+        "usage": "Describe the context and the audience; unspecified length or format falls back to a generic official style and is marked as inferred."
+      },
+      "life": {
+        "title": "Everyday planning",
+        "purpose": "Lists, procedures and advice for travel, purchases, fitness, moving and home projects.",
+        "usage": "Mention timing, location, budget and personal preferences; missing details fall back to a generic plan and are marked as inferred."
+      },
+      "creative": {
+        "title": "Creative writing",
+        "purpose": "Stories, naming, slogans and brainstorming output.",
+        "usage": "Give the theme, medium and tone; ask for several directions if you want alternatives."
+      },
+      "learning": {
+        "title": "Learning & teaching",
+        "purpose": "Course outlines, lesson plans, revision schedules, papers and exam prep.",
+        "usage": "State the learning goal, current level and available study time."
+      },
+      "data": {
+        "title": "Data analysis",
+        "purpose": "Metric interpretation, cleaning and visualization plans, and report takeaways.",
+        "usage": "Describe the data source, statistical definitions and the questions to answer; no live data is connected."
+      },
+      "marketing": {
+        "title": "Marketing copy",
+        "purpose": "Campaign copy, ad creatives, social posts and growth plans.",
+        "usage": "Describe brand voice, channel and audience; request side-by-side variants if useful."
+      },
+      "translation": {
+        "title": "Translation & localization",
+        "purpose": "Translation and localized rewriting with consistent terminology and tone.",
+        "usage": "Provide the source text and target language or region; optionally specify a glossary and forbidden wording."
+      },
+      "legal": {
+        "title": "Legal & contracts",
+        "purpose": "Clause breakdown and risk notes for contracts, agreements and compliance documents.",
+        "usage": "State the document type, clauses of interest and jurisdiction; this does not replace legal advice."
+      },
+      "medical": {
+        "title": "Medical & health",
+        "purpose": "Symptom organization, preparation material for appointments and recovery notes.",
+        "usage": "Describe symptoms, duration and history; this is not a diagnosis — seek care for emergencies."
+      },
+      "finance": {
+        "title": "Finance & accounting",
+        "purpose": "Interpretation and calculation approaches for reports, tax, expenses and budgets.",
+        "usage": "Provide the data definitions, the period and the questions to answer."
+      },
+      "game": {
+        "title": "Game design",
+        "purpose": "Design documents for mechanics, levels, numbers and narrative.",
+        "usage": "State the genre, target experience and platform constraints."
+      },
+      "visual": {
+        "title": "Visual generation",
+        "purpose": "Produces image and video prompts you can paste straight into Midjourney, Jimeng or Sora.",
+        "usage": "Describe the scene in plain language, optionally pick a style and attach reference images; it does not render images."
+      },
+      "av": {
+        "title": "Audio & video scripts",
+        "purpose": "Storyboards, voiceover drafts and podcast scripts that are ready to shoot or record.",
+        "usage": "State duration, audience, platform and style; unspecified items fall back to a generic short video and are marked as inferred."
+      },
+      "operations": {
+        "title": "Operations planning",
+        "purpose": "Campaign, community, growth and content scheduling plans.",
+        "usage": "Describe the goal, available resources, budget and timeline."
+      }
+    }
+  }
+}

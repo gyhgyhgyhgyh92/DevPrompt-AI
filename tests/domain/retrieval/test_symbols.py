@@ -2,6 +2,7 @@
 
 from devprompt_ai.domain.retrieval.symbols import (
     EXCLUDED_DIRS,
+    SIGNATURE_LIMIT,
     build_ctags_args,
     cache_key,
     parse_ctags_output,
@@ -69,7 +70,8 @@ def test_build_ctags_args_contains_excludes_and_root() -> None:
     args = build_ctags_args("C:/proj")
     assert args[0] == "ctags"
     assert "--output-format=json" in args
-    assert "--fields=+n" in args
+    # 签名是排序阶段唯一缺失的判别性上下文（W3 实测归因）
+    assert "--fields=+n+{signature}" in args
     # ctags 6.1.0 默认不映射 .tsx（实测零 tag），必须显式补映射
     assert "--map-TypeScript=+.tsx" in args
     # md 标题会混入符号表污染候选名额，保持符号表 = 纯代码符号
@@ -77,6 +79,48 @@ def test_build_ctags_args_contains_excludes_and_root() -> None:
     assert args[-1] == "C:/proj"
     for d in EXCLUDED_DIRS:
         assert f"--exclude={d}" in args
+
+
+def test_build_ctags_args_can_drop_signature_for_old_ctags() -> None:
+    """老版 ctags 不认 {signature} → 降级参数必须可构造（harness 侧据此重试）。"""
+    args = build_ctags_args("C:/proj", with_signature=False)
+
+    assert "--fields=+n" in args
+    assert "--fields=+n+{signature}" not in args
+
+
+def test_parse_ctags_output_reads_signature() -> None:
+    """签名取首行并压空白——它要作为一行可读的判别信息给决策层看。"""
+    raw = (
+        '{"_type":"tag","name":"expand_levels","path":"a.py","line":17,"kind":"function",'
+        '"signature":"(level:  Literal[\\"A\\",\\"B\\"])\\n  -> list"}'
+    )
+
+    symbols = parse_ctags_output(raw)
+
+    assert symbols[0].signature == '(level: Literal["A","B"])'
+
+
+def test_signature_is_truncated_to_limit() -> None:
+    """超长签名必须截断，避免候选集把 state 撑爆（MUST-09 压缩精神）。"""
+    raw = (
+        '{"_type":"tag","name":"f","path":"a.py","line":1,"kind":"function",'
+        f'"signature":"{"x" * 300}"}}'
+    )
+
+    symbols = parse_ctags_output(raw)
+
+    assert len(symbols[0].signature) == SIGNATURE_LIMIT
+
+
+def test_missing_signature_yields_empty_string() -> None:
+    """老版 ctags / 非函数符号没有签名 → 空字符串，不影响其余字段。"""
+    raw = '{"_type":"tag","name":"ok","path":"ok.py","line":9,"kind":"function"}'
+
+    symbols = parse_ctags_output(raw)
+
+    assert symbols[0].signature == ""
+    assert symbols[0].name == "ok"
 
 
 def test_cache_key_changes_with_mtime() -> None:

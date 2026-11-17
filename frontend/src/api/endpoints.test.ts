@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  compareObsTraces,
+  createObsReplay,
   getHealth,
   getHistory,
   getResult,
@@ -37,8 +39,13 @@ const snapshot = {
   message: '',
   questions: [{ key: 'target', reason: '缺失', best_guess: 'Foo', ask: '改哪里？' }],
   cleared: ['scope'],
-  variants: [{ title: 'A', body: 'b', level: 'A', changes: [] }],
-  ranking: null,
+  variant: {
+    title: '标准方案',
+    body: 'b',
+    changes: [],
+    claims: [],
+    fallback: false,
+  },
 }
 
 const settings = {
@@ -56,6 +63,12 @@ const settings = {
     followup_cost_budget: 1,
     followup_soft_round_guard: 10,
     telemetry: true,
+  },
+  observability: {
+    trace_enabled: true,
+    trace_retention_days: 30,
+    metrics_enabled: true,
+    replay_enabled: true,
   },
   locked: { candidate_limit: 25 },
 }
@@ -83,13 +96,30 @@ describe('api/endpoints 12 操作', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(postOptimize({ sentence: '加个按钮', project: 'D:/repo' })).rejects.toBeInstanceOf(
-      ApiError,
-    )
+    await expect(
+      postOptimize({ sentence: '加个按钮', project: 'D:/repo', base_turn_id: '' }),
+    ).rejects.toBeInstanceOf(ApiError)
     expect(fetchMock.mock.calls).toHaveLength(1)
     const init = fetchMock.mock.calls[0]?.[1]
     expect(init?.method).toBe('POST')
-    expect(init?.body).toBe(JSON.stringify({ sentence: '加个按钮', project: 'D:/repo' }))
+    expect(init?.body).toBe(
+      JSON.stringify({ sentence: '加个按钮', project: 'D:/repo', base_turn_id: '' }),
+    )
+  })
+
+  it('Replay 请求体只编码一次（不得二次 JSON.stringify）', async () => {
+    const createMock = stubFetchJson(
+      envelope({ run: { run_id: 'r1', status: 'running' }, nodes: [] }),
+    )
+    await createObsReplay({ mode: 'verify', left_trace_id: 't1' })
+    const createBody = JSON.parse(String(createMock.mock.calls[0]?.[1]?.body))
+    expect(createBody).toEqual({ mode: 'verify', left_trace_id: 't1' })
+
+    vi.unstubAllGlobals()
+    const compareMock = stubFetchJson(envelope({ nodes: [], final: {} }))
+    await compareObsTraces('t1', 't2')
+    const compareBody = JSON.parse(String(compareMock.mock.calls[0]?.[1]?.body))
+    expect(compareBody).toEqual({ left_trace_id: 't1', right_trace_id: 't2' })
   })
 
   it('postFollowup 三模式互斥：混合请求体直接拒绝且不发请求', async () => {
@@ -130,22 +160,39 @@ describe('api/endpoints 12 操作', () => {
 })
 
 describe('api/endpoints 偏好与设置', () => {
-  it('getHistory 返回会话摘要列表', async () => {
+  it('getHistory 返回分页会话摘要', async () => {
     stubFetchJson(
-      envelope([
-        {
-          session_id: 'sess-1',
-          state: 'DONE',
-          project: 'D:/repo',
-          project_root: 'D:/repo',
-          title: '加个导出按钮',
-          pinned: false,
-          updated_at: '2026-10-12T00:00:00Z',
-        },
-      ]),
+      envelope({
+        items: [
+          {
+            session_id: 'sess-1',
+            state: 'DONE',
+            project: 'D:/repo',
+            project_root: 'D:/repo',
+            title: '加个导出按钮',
+            pinned: false,
+            updated_at: '2026-10-12T00:00:00Z',
+          },
+        ],
+        has_more: true,
+        limit: 50,
+        offset: 0,
+      }),
     )
 
-    await expect(getHistory()).resolves.toHaveLength(1)
+    const page = await getHistory()
+    expect(page.items).toHaveLength(1)
+    expect(page.has_more).toBe(true)
+    expect(page.items[0]?.session_id).toBe('sess-1')
+  })
+
+  it('getHistory 透传分页参数到查询串', async () => {
+    const fetchMock = stubFetchJson(envelope({ items: [], has_more: false, limit: 20, offset: 40 }))
+
+    await getHistory({ limit: 20, offset: 40 })
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('limit=20')
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('offset=40')
   })
 
   it('getSettings / putSettings 读写设置视图', async () => {

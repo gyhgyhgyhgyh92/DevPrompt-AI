@@ -1,0 +1,90 @@
+/* 历史记录页（HistoryPage）：条目行 + 操作区 + 失败提示 */
+
+/* 页头常驻（2026-11-01 桌面化）：只有列表区滚动，标题与返回链接不随内容滚走 */
+.history-page__head {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-block-end: var(--space-4);
+  padding-block-end: var(--space-2);
+  background: var(--color-surface-base);
+}
+
+.history-page__head h1 {
+  margin: 0;
+  font-size: var(--text-title-lg);
+  font-weight: 600;
+}
+
+.history-page__notice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.history-page__item {
+  position: relative;
+}
+
+.history-page__item-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  inline-size: 100%;
+  text-align: start;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+.history-page__item-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font: var(--font-body-medium);
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* 置顶标记：线性图钉 + 弱色（不用 📌 emoji，红色过重且跨平台渲染不一） */
+.history-page__pin {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.history-page__item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  font: var(--font-code-regular);
+  font-size: var(--text-body-xs);
+  color: var(--color-text-muted);
+}
+
+.history-page__tag {
+  padding-inline: var(--space-2);
+  font: var(--font-code-regular);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-inverse);
+  background: var(--color-primary-500);
+  border-radius: var(--radius-full);
+}
+
+.history-page__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-block-start: var(--space-2);
+}

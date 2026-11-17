@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import webbrowser
 from typing import TYPE_CHECKING
 
@@ -65,14 +66,13 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-RELOAD_WARNING = (
-    "[警告] Windows 下 --reload 会把 asyncio 事件循环切成 Selector（"
-    "uvicorn 为监控文件变化而生子进程），"
-    "子进程不可用：\n"
-    "  · rg / ctags / git 版本探测会抛 NotImplementedError（体检三项黄的原因）\n"
-    "  · 原生文件夹选择器（native host 调 pwsh）同样弹不出来\n"
+RELOAD_REJECTED = (
+    "[拒绝启动] Windows 下 --reload 会把 asyncio 事件循环切成 Selector"
+    "（uvicorn 为监控文件变化而生子进程），子进程不可用：\n"
+    "  · rg / ctags / git 版本探测会抛 NotImplementedError（体检三项黄）\n"
+    "  · 原生文件夹选择器（native host 调 pwsh）弹不出来\n"
     "  · 符号表扫描（ripgrep）不可用\n"
-    "请去掉 --reload 启动（前端有 Vite HMR，不受影响）。"
+    "请去掉 --reload 重新启动（前端 Vite HMR 不受影响；后端改完手动重启）。"
 )
 
 
@@ -89,12 +89,16 @@ def main(argv: list[str] | None = None) -> int:
     """
     args = _parse_args(argv)
 
+    if args.reload and sys.platform == "win32":
+        # 2026-10-19 实测：热重载把事件循环切成 Selector，子进程能力全灭；
+        # 警告后继续跑是半坏状态最难排查，2026-11-06 业主裁定改为明确拒绝。
+        print(RELOAD_REJECTED)
+        return 2
+
     import uvicorn
 
     url = _display_url(args.host, args.port)
     print(f"DevPrompt AI 启动中 → {url}（Ctrl+C 停止）")
-    if args.reload:
-        print(RELOAD_WARNING)
     if args.open_browser:
         webbrowser.open(url)
     uvicorn.run(

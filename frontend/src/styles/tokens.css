@@ -1,9 +1,13 @@
 /*
  * 设计 token（架构文档 §5.4）：全部视觉变量集中于此，组件内禁止硬编码颜色与间距。
  *
- * 主题基调（对话式重构 Task 2 / spec 假设 1）：默认即浅色（第一视觉，对照参考图一~五），
- * [data-theme='light'] 显式同值（供主题预览嵌套点色），[data-theme='dark'] 保留深色可切换。
- * 品牌色由蓝改绿（brand-btn / 发送按钮 / 强调绿）；变量名沿用既有命名，避免大面积改组件。
+ * 2026-11-07 全站落地 S2「终端工具」：
+ * - 强调色由品牌绿改为石墨靛蓝（--color-primary-* / --brand* 全部指向靛蓝），
+ *   115 处既有引用自动跟随，不需要逐文件改样式。
+ * - 绿色下沉为**状态语义**：--color-success-*（成功，含 API 正常）与
+ *   --color-running-*（进行中）。按钮 / 链接 / 选中态 / 聚焦环一律不再使用绿色。
+ * - 中性面改为冷灰递进（#EBEFF5 画布 / #FFFFFF 卡片），层级靠描边而非投影。
+ * - 排版密度收紧：正文 13px，新增 11px micro 与 12px meta（微型标签一律等宽大写）。
  */
 
 :root {
@@ -19,40 +23,55 @@
   --space-8: 32px;
   --space-10: 40px;
 
-  /* 字体栈（PingFang SC / SF Pro Text 优先，参考图西文观感） */
+  /* 字体栈（中文优先系统无衬线；等宽用于阶段名/耗时/路径等元信息） */
   --font-family-body:
     'PingFang SC', 'SF Pro Text', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-family-code: 'JetBrains Mono', ui-monospace, Consolas, monospace;
-  --font-body-regular: 400 14px/22px var(--font-family-body);
-  --font-body-medium: 500 14px/22px var(--font-family-body);
-  --font-body-bold: 600 14px/22px var(--font-family-body);
-  --font-code-regular: 400 13px/20px var(--font-family-code);
-  --font-code-medium: 500 13px/20px var(--font-family-code);
+  --font-family-code: ui-monospace, 'Cascadia Mono', Consolas, 'Courier New', monospace;
+  --font-body-regular: 400 13px/20px var(--font-family-body);
+  --font-body-medium: 500 13px/20px var(--font-family-body);
+  --font-body-bold: 600 13px/20px var(--font-family-body);
+  --font-code-regular: 400 12px/18px var(--font-family-code);
+  --font-code-medium: 500 12px/18px var(--font-family-code);
 
-  /* 字号角色（正文 14 / 小字 13 / 辅助 12 / 标题 15-16） */
-  --text-caption-sm: 12px;
-  --text-body-xs: 13px;
-  --text-body-sm: 14px;
-  --text-body-md: 15px;
-  --text-title-md: 15px;
+  /* 字号角色（display 22 / title 16 / lead 14 / body 13 / meta 12 / micro 11） */
+  --text-display: 22px;
   --text-title-lg: 16px;
+  --text-title-md: 15px;
+  --text-body-md: 14px;
+  --text-body-sm: 13px;
+  --text-body-xs: 12px;
+  --text-caption-sm: 11px;
+  --text-micro: 11px;
+  --text-meta: 12px;
 
   /* 行高基线 */
-  --line-height-caption: 18px;
-  --line-height-sm: 20px;
-  --line-height-body: 22px;
+  --line-height-caption: 16px;
+  --line-height-sm: 18px;
+  --line-height-body: 20px;
 
-  /* 圆角（卡片/气泡 16、菜单 10、按钮 8、胶囊 999） */
+  /* 圆角（卡片 8、菜单 8、按钮 8、胶囊 999） */
   --radius-sm: 8px;
-  --radius-md: 16px;
-  --radius-lg: 16px;
-  --radius-menu: 10px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-menu: 8px;
   --radius-full: 999px;
 
   /* 尺寸规格 */
-  --sidebar-width: 260px;
+  --sidebar-width: 248px;
+  --titlebar-height: 48px;
+  /* 品牌标识前景（方块内的气泡/火花，浅深主题同为白） */
+  --color-brand-on: #ffffff;
   --icon-size: 16px;
-  --menu-item-height: 34px;
+  --menu-item-height: 30px;
+
+  /* 微型标签字距（等宽大写，形成日志感） */
+  --track-micro: 0.08em;
+  --track-wide: 0.14em;
+
+  /* 动效曲线（终端工具：短、线性偏硬） */
+  --ease-out: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --dur-fast: 120ms;
+  --dur-base: 160ms;
 
   /* 断点（移动优先 360/768/1024/1440/1920；媒体查询无法读取变量，实际 @media 见 global.css） */
   --bp-sm: 360px;
@@ -68,109 +87,121 @@
 [data-theme='light'] {
   color-scheme: light;
 
-  /* 品牌色阶（tech-green） */
-  --color-primary-100: #e9f9ef;
-  --color-primary-500: #1fa34a;
-  --color-primary-700: #188a3f;
-  --color-primary-900: #0f5c2a;
-  --color-primary-soft: #dff5e6;
+  /* 强调色阶（graphite-indigo）：只用于动作、选中、聚焦、当前阶段 */
+  --color-primary-100: #eef2ff;
+  --color-primary-500: #4f46e5;
+  --color-primary-700: #4338ca;
+  --color-primary-900: #312e81;
+  --color-primary-soft: #eef2ff;
 
-  /* 中性表面 */
-  --color-surface-base: #ffffff;
+  /* 状态语义：绿只表示「成功」，绿点表示「进行中」。
+   * 500 档必须能在浅画布上作小字（「已完成」「复制成功」），故取 green-700 而非 500。 */
+  --color-success-500: #137a3a;
+  --color-success-soft: rgba(19, 122, 58, 0.12);
+  --color-running-500: #137a3a;
+  --color-running-soft: rgba(19, 122, 58, 0.12);
+
+  /* 中性表面（冷灰递进） */
+  --color-surface-base: #ebeff5;
   --color-surface-raised: #ffffff;
   --color-surface-overlay: #ffffff;
-  --color-surface-code: #f5f6f7;
+  --color-surface-code: #e3e9f1;
 
-  /* 边框 / 分隔线 */
-  --color-border-subtle: #e8eaed;
-  --color-border-strong: #d9dce0;
-  --divider: #edeff2;
+  /* 边框 / 分隔线（发丝线是唯一的层级手段） */
+  --color-border-subtle: #ccd4e0;
+  --color-border-strong: #b6c1d0;
+  /* 控件边界：WCAG 1.4.11 要求可交互控件的轮廓 3:1（发丝线只用于分隔） */
+  --color-border-control: #7b8697;
+  --divider: #dbe2ec;
 
-  /* 文字 */
-  --color-text-primary: #1f2329;
-  --color-text-secondary: #646a73;
-  --color-text-muted: #8f959e;
+  /* 文字（四级层次都按 WCAG AA 正文口径定值：primary 15:1 → faint 4.5:1） */
+  --color-text-primary: #12161c;
+  --color-text-secondary: #4a5464;
+  --color-text-muted: #525d6d;
   --color-text-inverse: #ffffff;
-  --color-text-brand: #1fa34a;
-  --text-faint: #bbbfc4;
+  --color-text-brand: #4f46e5;
+  --text-faint: #636d7b;
 
-  /* 语义色 */
-  --color-success-500: #22c55e;
-  --color-success-soft: rgba(31, 163, 74, 0.12);
-  --color-warning-500: #f59e0b;
-  --color-warning-soft: rgba(245, 158, 11, 0.14);
-  --color-danger-500: #e5484d;
-  --color-danger-soft: rgba(229, 72, 77, 0.12);
-  --color-overlay: rgba(0, 0, 0, 0.4);
-  --danger: #e5484d;
+  /* 语义色（500 档同时承担小字与图标，故取 700 档以保证 4.5:1） */
+  --color-warning-500: #b45309;
+  --color-warning-soft: rgba(180, 83, 9, 0.12);
+  --color-danger-500: #b91c1c;
+  --color-danger-soft: rgba(185, 28, 28, 0.1);
+  --color-overlay: rgba(9, 12, 18, 0.42);
+  --danger: #b91c1c;
 
-  /* 对话式 UI 语义 token（Task 2 新增） */
-  --bubble: #f2f3f5;
-  --hover: #f5f6f7;
-  --selected: #eff0f2;
+  /* 对话式 UI 语义 token */
+  --bubble: #e3e9f1;
+  --hover: #f1f4f9;
+  --selected: #e5eaf6;
   --brand: var(--color-text-brand);
-  --brand-btn: #dff5e6;
-  --brand-btn-hover: #d2f0dc;
+  --brand-btn: #eef2ff;
+  --brand-btn-hover: #e0e7ff;
 
-  /* 阴影（卡片 0 2px 8px rgba(0,0,0,.04)） */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
-  --shadow-menu: 0 4px 16px rgba(0, 0, 0, 0.12);
+  /* 阴影：卡片不用投影，只有浮层（菜单/弹窗）有 */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 0 0 transparent;
+  --shadow-lg: 0 12px 32px -12px rgba(16, 24, 40, 0.24);
+  --shadow-menu: 0 12px 32px -12px rgba(16, 24, 40, 0.24);
 }
 
-/* ===== 深色主题（保留可切换；品牌同改绿系适配） ===== */
+/* ===== 深色主题（同等精修：靠表面递进 + 白色低透明度描边，不用投影） ===== */
 
 [data-theme='dark'] {
   color-scheme: dark;
 
-  /* 品牌色阶（tech-green · 暗色适配） */
-  --color-primary-100: #123a22;
-  --color-primary-500: #34c46e;
-  --color-primary-700: #2aa85c;
-  --color-primary-900: #1b7a3f;
-  --color-primary-soft: rgba(52, 196, 110, 0.16);
+  /* 强调色阶（暗底需要更亮的靛蓝才够对比） */
+  --color-primary-100: #1e1b4b;
+  --color-primary-500: #818cf8;
+  --color-primary-700: #6366f1;
+  --color-primary-900: #312e81;
+  --color-primary-soft: rgba(129, 140, 248, 0.16);
 
-  /* 中性表面 */
-  --color-surface-base: #171717;
-  --color-surface-raised: #262626;
-  --color-surface-overlay: #101010;
-  --color-surface-code: #0f0f0f;
-
-  /* 边框 / 分隔线 */
-  --color-border-subtle: rgba(255, 255, 255, 0.12);
-  --color-border-strong: rgba(255, 255, 255, 0.24);
-  --divider: rgba(255, 255, 255, 0.08);
-
-  /* 文字 */
-  --color-text-primary: #f5f5f5;
-  --color-text-secondary: #a3a3a3;
-  --color-text-muted: #737373;
-  --color-text-inverse: #171717;
-  --color-text-brand: #6ee7a0;
-  --text-faint: #5c5c5c;
-
-  /* 语义色 */
+  /* 状态语义 */
   --color-success-500: #22c55e;
   --color-success-soft: rgba(34, 197, 94, 0.16);
-  --color-warning-500: #f59e0b;
-  --color-warning-soft: rgba(245, 158, 11, 0.16);
-  --color-danger-500: #e5484d;
-  --color-danger-soft: rgba(229, 72, 77, 0.16);
-  --color-overlay: rgba(0, 0, 0, 0.6);
-  --danger: #e5484d;
+  --color-running-500: #22c55e;
+  --color-running-soft: rgba(34, 197, 94, 0.16);
 
-  /* 对话式 UI 语义 token（深色同套） */
-  --bubble: #262626;
-  --hover: #2a2a2a;
-  --selected: #303030;
+  /* 中性表面（三层递进） */
+  --color-surface-base: #080a0d;
+  --color-surface-raised: #11151a;
+  --color-surface-overlay: #171c23;
+  --color-surface-code: #0d1117;
+
+  /* 边框 / 分隔线 */
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.14);
+  --color-border-control: rgba(255, 255, 255, 0.38);
+  --divider: rgba(255, 255, 255, 0.06);
+
+  /* 文字 */
+  --color-text-primary: #e6eaf0;
+  --color-text-secondary: #a7b0be;
+  --color-text-muted: #8b95a3;
+  --color-text-inverse: #0b0e13;
+  --color-text-brand: #818cf8;
+  --text-faint: #737d8b;
+
+  /* 语义色 */
+  --color-warning-500: #f59e0b;
+  --color-warning-soft: rgba(245, 158, 11, 0.14);
+  --color-danger-500: #f87171;
+  --color-danger-soft: rgba(248, 113, 113, 0.14);
+  --color-overlay: rgba(0, 0, 0, 0.62);
+  --danger: #f87171;
+
+  /* 对话式 UI 语义 token */
+  --bubble: #11151a;
+  --hover: #161b22;
+  --selected: #1b212a;
   --brand: var(--color-text-brand);
-  --brand-btn: rgba(52, 196, 110, 0.16);
-  --brand-btn-hover: rgba(52, 196, 110, 0.24);
+  --brand-btn: rgba(129, 140, 248, 0.16);
+  --brand-btn-hover: rgba(129, 140, 248, 0.24);
 
   /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.52);
-  --shadow-menu: 0 4px 16px rgba(0, 0, 0, 0.32);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 0 0 transparent;
+  --shadow-lg: 0 16px 40px -16px rgba(0, 0, 0, 0.7);
+  --shadow-menu: 0 16px 40px -16px rgba(0, 0, 0, 0.7);
 }

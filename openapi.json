@@ -1,6 +1,100 @@
 {
   "components": {
     "schemas": {
+      "AlertListPayload": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "offset"
+        ],
+        "title": "AlertListPayload",
+        "type": "object"
+      },
+      "ApiResponse_AlertListPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AlertListPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[AlertListPayload]",
+        "type": "object"
+      },
+      "ApiResponse_ArtifactResponse_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArtifactResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[ArtifactResponse]",
+        "type": "object"
+      },
       "ApiResponse_FlowSnapshotResponse_": {
         "properties": {
           "code": {
@@ -63,6 +157,68 @@
         "title": "ApiResponse[HealthResponse]",
         "type": "object"
       },
+      "ApiResponse_MetricSummaryPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MetricSummaryPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[MetricSummaryPayload]",
+        "type": "object"
+      },
+      "ApiResponse_MetricsConfigPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MetricsConfigPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[MetricsConfigPayload]",
+        "type": "object"
+      },
       "ApiResponse_ModelCatalogResponse_": {
         "properties": {
           "code": {
@@ -117,6 +273,161 @@
           }
         },
         "title": "ApiResponse[NoneType]",
+        "type": "object"
+      },
+      "ApiResponse_PagedHistoryItem_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PagedHistoryItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[PagedHistoryItem]",
+        "type": "object"
+      },
+      "ApiResponse_PagedTurnSummary_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PagedTurnSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[PagedTurnSummary]",
+        "type": "object"
+      },
+      "ApiResponse_ProjectDeleteResponse_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectDeleteResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[ProjectDeleteResponse]",
+        "type": "object"
+      },
+      "ApiResponse_ReplayComparePayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplayComparePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[ReplayComparePayload]",
+        "type": "object"
+      },
+      "ApiResponse_ReplayRunPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplayRunPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[ReplayRunPayload]",
         "type": "object"
       },
       "ApiResponse_ScanResponse_": {
@@ -181,6 +492,130 @@
         "title": "ApiResponse[SettingsResponse]",
         "type": "object"
       },
+      "ApiResponse_TraceEventPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TraceEventPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[TraceEventPayload]",
+        "type": "object"
+      },
+      "ApiResponse_TraceEventsPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TraceEventsPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[TraceEventsPayload]",
+        "type": "object"
+      },
+      "ApiResponse_TraceListPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TraceListPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[TraceListPayload]",
+        "type": "object"
+      },
+      "ApiResponse_TraceTreePayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TraceTreePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[TraceTreePayload]",
+        "type": "object"
+      },
       "ApiResponse_TurnDetailPayload_": {
         "properties": {
           "code": {
@@ -212,7 +647,7 @@
         "title": "ApiResponse[TurnDetailPayload]",
         "type": "object"
       },
-      "ApiResponse_list_HistoryItemPayload__": {
+      "ApiResponse_dict_str__Any__": {
         "properties": {
           "code": {
             "default": 0,
@@ -222,10 +657,8 @@
           "data": {
             "anyOf": [
               {
-                "items": {
-                  "$ref": "#/components/schemas/HistoryItemPayload"
-                },
-                "type": "array"
+                "additionalProperties": true,
+                "type": "object"
               },
               {
                 "type": "null"
@@ -244,10 +677,10 @@
             "type": "string"
           }
         },
-        "title": "ApiResponse[list[HistoryItemPayload]]",
+        "title": "ApiResponse[dict[str, Any]]",
         "type": "object"
       },
-      "ApiResponse_list_TurnSummaryPayload__": {
+      "ApiResponse_list_dict_str__Any___": {
         "properties": {
           "code": {
             "default": 0,
@@ -258,7 +691,8 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/TurnSummaryPayload"
+                  "additionalProperties": true,
+                  "type": "object"
                 },
                 "type": "array"
               },
@@ -279,7 +713,26 @@
             "type": "string"
           }
         },
-        "title": "ApiResponse[list[TurnSummaryPayload]]",
+        "title": "ApiResponse[list[dict[str, Any]]]",
+        "type": "object"
+      },
+      "ArtifactResponse": {
+        "description": "GET /artifacts/{id} 数据体：被截断工具的全量输出（可能含代码正文，MUST-19）。",
+        "properties": {
+          "artifact_id": {
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "content"
+        ],
+        "title": "ArtifactResponse",
         "type": "object"
       },
       "AskOptionPayload": {
@@ -329,8 +782,61 @@
         "title": "CostDetailPayload",
         "type": "object"
       },
+      "DeliveryGatePayload": {
+        "description": "交付证据门结果（2026-11-05，additive）：只披露质量标记，不阻断交付。\n\n``tone`` 由**后端领域层**给出（ok / warn / error），前端只按它选样式，\n不得自行把 status 映射成语义（MUST-08 / MUST-33）。",
+        "properties": {
+          "disclosure": {
+            "default": "",
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "status": {
+            "default": "",
+            "title": "Status",
+            "type": "string"
+          },
+          "tone": {
+            "default": "ok",
+            "title": "Tone",
+            "type": "string"
+          }
+        },
+        "title": "DeliveryGatePayload",
+        "type": "object"
+      },
+      "DomainVerdictPayload": {
+        "description": "领域路由结论（2026-11-14 领域包）：domain/source/confidence 三要素。",
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain",
+          "source",
+          "confidence"
+        ],
+        "title": "DomainVerdictPayload",
+        "type": "object"
+      },
       "FactPayload": {
-        "description": "取证事实只读透出（F-104 七项判定结果）。",
+        "description": "取证事实只读透出（F-104 七项判定结果）。\n\n``applicable`` 不进契约：它是内部档位判定依据，前端不需要按项目类型分支渲染。",
         "properties": {
           "evidence": {
             "title": "Evidence",
@@ -354,8 +860,41 @@
         "type": "object"
       },
       "FlowSnapshotResponse": {
-        "description": "FlowSnapshot 的 HTTP 渲染形态（status 含 SSE 专有扩展值 \"aborted\"）。\n\nv2（BREAKING）：variant 单数字段 → variants 列表 + ranking 推荐视图。",
+        "description": "FlowSnapshot 的 HTTP 渲染形态（status 含 SSE 专有扩展值 \"aborted\"）。\n\nv3（BREAKING，2026-11-11 单套输出）：``variant`` 单对象承载方案；\n``variants`` / ``ranking`` / ``ranking_skip_reason`` 已删除。",
         "properties": {
+          "agent_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Action"
+          },
+          "agent_elapsed_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Elapsed Ms"
+          },
+          "agent_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Step"
+          },
           "cleared": {
             "items": {
               "type": "string"
@@ -372,6 +911,42 @@
                 "type": "null"
               }
             ]
+          },
+          "current_turn_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Turn Id"
+          },
+          "delivery_gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryGatePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DomainVerdictPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence_stale": {
+            "default": false,
+            "title": "Evidence Stale",
+            "type": "boolean"
           },
           "facts": {
             "items": {
@@ -392,15 +967,10 @@
             "title": "Questions",
             "type": "array"
           },
-          "ranking": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RankingViewPayload"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "reply_text": {
+            "default": "",
+            "title": "Reply Text",
+            "type": "string"
           },
           "session_id": {
             "title": "Session Id",
@@ -424,12 +994,15 @@
               }
             ]
           },
-          "variants": {
-            "items": {
-              "$ref": "#/components/schemas/VariantPayload"
-            },
-            "title": "Variants",
-            "type": "array"
+          "variant": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VariantPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -613,6 +1186,30 @@
         "title": "HistoryUpdateRequest",
         "type": "object"
       },
+      "InterventionAnswerRequest": {
+        "description": "审批/提问的应答；``decision`` 必填，缺字段由 422 拒绝（不默认批准）。",
+        "properties": {
+          "answer": {
+            "default": "",
+            "title": "Answer",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "approve",
+              "deny",
+              "answer"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "InterventionAnswerRequest",
+        "type": "object"
+      },
       "LockedSettings": {
         "description": "宪法锁定项（MUST-09）：候选集上限只读下发，不接受设置修改。",
         "properties": {
@@ -625,6 +1222,47 @@
           "candidate_limit"
         ],
         "title": "LockedSettings",
+        "type": "object"
+      },
+      "MetricSummaryPayload": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "MetricSummaryPayload",
+        "type": "object"
+      },
+      "MetricsConfigPayload": {
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "config"
+        ],
+        "title": "MetricsConfigPayload",
         "type": "object"
       },
       "ModelCapabilitiesView": {
@@ -1110,15 +1748,145 @@
         "title": "ModelServiceUpdate",
         "type": "object"
       },
+      "ObservabilitySettings": {
+        "description": "可观测性三模块开关视图（2026-11-12）：各模块独立启用，互不影响。\n\n只下发「启停 + Trace 保留天数」这类运行级配置；阈值与告警冷却走\n`GET /obs/metrics/config`（Metrics 模块自己的只读端点），避免设置段与\n模块实现细节耦合。",
+        "properties": {
+          "metrics_enabled": {
+            "title": "Metrics Enabled",
+            "type": "boolean"
+          },
+          "replay_enabled": {
+            "title": "Replay Enabled",
+            "type": "boolean"
+          },
+          "trace_enabled": {
+            "title": "Trace Enabled",
+            "type": "boolean"
+          },
+          "trace_retention_days": {
+            "title": "Trace Retention Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "trace_enabled",
+          "trace_retention_days",
+          "metrics_enabled",
+          "replay_enabled"
+        ],
+        "title": "ObservabilitySettings",
+        "type": "object"
+      },
+      "ObservabilityUpdate": {
+        "description": "PUT /settings 可观测性段：None = 保持不变；保存后立即作用于运行中的模块。",
+        "properties": {
+          "metrics_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metrics Enabled"
+          },
+          "replay_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replay Enabled"
+          },
+          "trace_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace Enabled"
+          },
+          "trace_retention_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace Retention Days"
+          }
+        },
+        "title": "ObservabilityUpdate",
+        "type": "object"
+      },
       "OptimizeRequest": {
         "description": "POST /optimize 请求体（该端点有副作用，客户端禁重试，MUST-15）。\n\n``session_id`` 非空表示在同一会话开启新一轮（多轮，2026-10-20）；为空则新建会话。",
         "properties": {
+          "base_turn_id": {
+            "default": "",
+            "title": "Base Turn Id",
+            "type": "string"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "enum": [
+                  "code",
+                  "work",
+                  "life",
+                  "creative",
+                  "learning",
+                  "data",
+                  "marketing",
+                  "translation",
+                  "legal",
+                  "medical",
+                  "finance",
+                  "game",
+                  "visual",
+                  "av",
+                  "operations"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "images": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Images"
+          },
           "project": {
             "default": "",
             "title": "Project",
             "type": "string"
           },
           "sentence": {
+            "default": "",
             "title": "Sentence",
             "type": "string"
           },
@@ -1132,19 +1900,99 @@
               }
             ],
             "title": "Session Id"
+          },
+          "style": {
+            "anyOf": [
+              {
+                "enum": [
+                  "general",
+                  "photography",
+                  "creative",
+                  "chinese-model",
+                  "json-structured",
+                  "video"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style"
+          }
+        },
+        "title": "OptimizeRequest",
+        "type": "object"
+      },
+      "PagedHistoryItem": {
+        "description": "分页会话摘要（2026-11-05，BREAKING）：裸数组 → 包装对象。\n\n裸数组无法表达「还有更多」，前端只能硬顶（50 会话）。\n四个字段一律必填——带默认值会在 OpenAPI 里变成可选，前端类型随之变松。",
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryItemPayload"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
           }
         },
         "required": [
-          "sentence"
+          "items",
+          "has_more",
+          "limit",
+          "offset"
         ],
-        "title": "OptimizeRequest",
+        "title": "PagedHistoryItem",
+        "type": "object"
+      },
+      "PagedTurnSummary": {
+        "description": "分页轮次摘要（2026-11-05，BREAKING）：列表端点统一返回形态。\n\n裸数组无法表达「还有更多」，前端只能硬顶（20 轮）。\n四个字段一律必填——带默认值会在 OpenAPI 里变成可选，前端类型随之变松。",
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TurnSummaryPayload"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "has_more",
+          "limit",
+          "offset"
+        ],
+        "title": "PagedTurnSummary",
         "type": "object"
       },
       "ProcessSettings": {
         "description": "F-604 流程参数视图（app_settings 表持久化）。",
         "properties": {
           "followup_cost_budget": {
-            "default": 0.0,
+            "default": 50000.0,
             "title": "Followup Cost Budget",
             "type": "number"
           },
@@ -1202,6 +2050,20 @@
           }
         },
         "title": "ProcessUpdate",
+        "type": "object"
+      },
+      "ProjectDeleteResponse": {
+        "description": "DELETE /history?project_root= 数据体：实际删除的会话条数（0 = 该项目无会话）。",
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "title": "ProjectDeleteResponse",
         "type": "object"
       },
       "ProviderConfigUpdate": {
@@ -1360,48 +2222,122 @@
         "title": "ProviderDirectoryEntry",
         "type": "object"
       },
-      "RankingViewPayload": {
-        "description": "service.RankingView 的契约镜像（F-403/F-404 加权推荐视图）。",
+      "ReplayComparePayload": {
         "properties": {
-          "confidence": {
-            "title": "Confidence",
-            "type": "number"
+          "final": {
+            "additionalProperties": true,
+            "title": "Final",
+            "type": "object"
           },
-          "fit": {
-            "title": "Fit",
-            "type": "number"
+          "nodes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Nodes",
+            "type": "array"
           },
-          "gap": {
-            "title": "Gap",
-            "type": "number"
-          },
-          "marked": {
-            "title": "Marked",
-            "type": "boolean"
-          },
-          "reason": {
-            "title": "Reason",
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "nodes",
+          "final"
+        ],
+        "title": "ReplayComparePayload",
+        "type": "object"
+      },
+      "ReplayCompareRequest": {
+        "properties": {
+          "left_trace_id": {
+            "minLength": 1,
+            "title": "Left Trace Id",
             "type": "string"
           },
-          "total": {
-            "title": "Total",
-            "type": "number"
-          },
-          "variant": {
-            "title": "Variant",
+          "right_trace_id": {
+            "minLength": 1,
+            "title": "Right Trace Id",
             "type": "string"
           }
         },
         "required": [
-          "variant",
-          "gap",
-          "confidence",
-          "marked",
-          "reason",
-          "fit",
-          "total"
+          "left_trace_id",
+          "right_trace_id"
         ],
-        "title": "RankingViewPayload",
+        "title": "ReplayCompareRequest",
+        "type": "object"
+      },
+      "ReplayCreateRequest": {
+        "properties": {
+          "left_trace_id": {
+            "minLength": 1,
+            "title": "Left Trace Id",
+            "type": "string"
+          },
+          "mode": {
+            "default": "verify",
+            "enum": [
+              "verify",
+              "compare"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "right_trace_id": {
+            "default": "",
+            "title": "Right Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "left_trace_id"
+        ],
+        "title": "ReplayCreateRequest",
+        "type": "object"
+      },
+      "ReplayRunPayload": {
+        "properties": {
+          "nodes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "run": {
+            "additionalProperties": true,
+            "title": "Run",
+            "type": "object"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run",
+          "nodes"
+        ],
+        "title": "ReplayRunPayload",
+        "type": "object"
+      },
+      "RollbackRequest": {
+        "description": "撤销请求（POST /history/{session_id}/rollback）：撤销到 turn_id 这一轮完成时。",
+        "properties": {
+          "turn_id": {
+            "title": "Turn Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "turn_id"
+        ],
+        "title": "RollbackRequest",
         "type": "object"
       },
       "ScanResponse": {
@@ -1447,6 +2383,9 @@
             "title": "Models",
             "type": "array"
           },
+          "observability": {
+            "$ref": "#/components/schemas/ObservabilitySettings"
+          },
           "process": {
             "$ref": "#/components/schemas/ProcessSettings"
           },
@@ -1469,6 +2408,7 @@
           "models",
           "model_service",
           "process",
+          "observability",
           "locked"
         ],
         "title": "SettingsResponse",
@@ -1512,6 +2452,16 @@
             ],
             "title": "Models"
           },
+          "observability": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObservabilityUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "process": {
             "anyOf": [
               {
@@ -1540,6 +2490,103 @@
         "title": "SettingsUpdate",
         "type": "object"
       },
+      "StartRunRequest": {
+        "description": "启动一次运行。``session_id`` 由前端生成，便于立刻订阅。",
+        "properties": {
+          "base_turn_id": {
+            "default": "",
+            "title": "Base Turn Id",
+            "type": "string"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "enum": [
+                  "code",
+                  "work",
+                  "life",
+                  "creative",
+                  "learning",
+                  "data",
+                  "marketing",
+                  "translation",
+                  "legal",
+                  "medical",
+                  "finance",
+                  "game",
+                  "visual",
+                  "av",
+                  "operations"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "images": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Images"
+          },
+          "locale": {
+            "default": "zh-CN",
+            "title": "Locale",
+            "type": "string"
+          },
+          "project": {
+            "default": "",
+            "title": "Project",
+            "type": "string"
+          },
+          "sentence": {
+            "default": "",
+            "title": "Sentence",
+            "type": "string"
+          },
+          "session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "style": {
+            "anyOf": [
+              {
+                "enum": [
+                  "general",
+                  "photography",
+                  "creative",
+                  "chinese-model",
+                  "json-structured",
+                  "video"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "title": "StartRunRequest",
+        "type": "object"
+      },
       "SymbolPayload": {
         "description": "目标定位（上下文面板，设计 §1.2）：symbol@path:line。",
         "properties": {
@@ -1562,6 +2609,110 @@
           "path"
         ],
         "title": "SymbolPayload",
+        "type": "object"
+      },
+      "TraceEventPayload": {
+        "properties": {
+          "event": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "title": "TraceEventPayload",
+        "type": "object"
+      },
+      "TraceEventsPayload": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "has_more",
+          "next_cursor"
+        ],
+        "title": "TraceEventsPayload",
+        "type": "object"
+      },
+      "TraceListPayload": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "TraceListPayload",
+        "type": "object"
+      },
+      "TraceTreePayload": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "items"
+        ],
+        "title": "TraceTreePayload",
         "type": "object"
       },
       "TurnDetailPayload": {
@@ -1600,10 +2751,26 @@
             "title": "State",
             "type": "string"
           },
+          "steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
           "target": {
             "default": "",
             "title": "Target",
             "type": "string"
+          },
+          "thinking": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Thinking",
+            "type": "array"
           },
           "turn_id": {
             "title": "Turn Id",
@@ -1762,7 +2929,7 @@
         "type": "object"
       },
       "VariantPayload": {
-        "description": "domain VariantDraft 的契约镜像（F-301 结构化方案）。",
+        "description": "domain VariantDraft 的契约镜像（F-301 单套方案）。\n\n``fallback`` 标记本轮由兜底模板（A 保守版）产出，前端须披露「已降级为保守输出」。",
         "properties": {
           "body": {
             "title": "Body",
@@ -1775,9 +2942,18 @@
             "title": "Changes",
             "type": "array"
           },
-          "level": {
-            "title": "Level",
-            "type": "string"
+          "claims": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Claims",
+            "type": "array"
+          },
+          "fallback": {
+            "default": false,
+            "title": "Fallback",
+            "type": "boolean"
           },
           "title": {
             "title": "Title",
@@ -1786,8 +2962,7 @@
         },
         "required": [
           "title",
-          "body",
-          "level"
+          "body"
         ],
         "title": "VariantPayload",
         "type": "object"
@@ -1800,9 +2975,118 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/artifacts/{artifact_id}": {
+      "get": {
+        "description": "回读被截断工具的全量输出；内容可能含代码正文，禁止写入日志（MUST-19）。",
+        "operationId": "read_artifact_api_v1_artifacts__artifact_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ArtifactResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Artifact",
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "description": "冷启动回填：取 seq 之前的事件（分页）。",
+        "operationId": "list_events_api_v1_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "default": 1073741824,
+              "minimum": 1,
+              "title": "Before",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 2000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_dict_str__Any___"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Events",
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
     "/api/v1/followup/{flow_id}": {
       "post": {
-        "description": "三模式分发（互斥由契约校验保证）：批量答复 / 逃生 / 软护栏裁决（MUST-26）。",
+        "description": "答复 / 逃生 / 护栏裁决（一次性 JSON，保留给非流式调用方）。",
         "operationId": "post_followup_api_v1_followup__flow_id__post",
         "parameters": [
           {
@@ -1850,6 +3134,54 @@
         "summary": "Post Followup"
       }
     },
+    "/api/v1/followup/{flow_id}/stream": {
+      "post": {
+        "description": "流式版 /followup（SSE）：thought/action 帧推送重新研判与生成过程，终帧为 snapshot 或 error。有副作用端点：禁止客户端自动重试（MUST-15）。",
+        "operationId": "post_followup_stream_api_v1_followup__flow_id__stream_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FollowupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Followup Stream"
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "get_health_api_v1_health_get",
@@ -1869,19 +3201,93 @@
       }
     },
     "/api/v1/history": {
-      "get": {
-        "description": "T6-11 转正：脱敏会话摘要（id/时间/state/项目名/标题/置顶，无原句明文，MUST-19）。",
-        "operationId": "get_history_api_v1_history_get",
+      "delete": {
+        "description": "项目级批量删除（2026-11-01）：删该 project_root 下全部会话记录，磁盘文件不动。",
+        "operationId": "delete_project_history_api_v1_history_delete",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_root",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Project Root",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_list_HistoryItemPayload__"
+                  "$ref": "#/components/schemas/ApiResponse_ProjectDeleteResponse_"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Project History"
+      },
+      "get": {
+        "description": "T6-11 转正：脱敏会话摘要（id/时间/state/项目名/标题/置顶，无原句明文，MUST-19）。\n\n分页：置顶优先 + updated_at 倒序后，从第 ``offset`` 条起取 ``limit`` 条。",
+        "operationId": "get_history_api_v1_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PagedHistoryItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Get History"
@@ -1975,10 +3381,10 @@
         "summary": "Patch History"
       }
     },
-    "/api/v1/history/{session_id}/turns": {
-      "get": {
-        "description": "会话的轮次摘要（升序）；不含原句与方案正文。",
-        "operationId": "get_session_turns_api_v1_history__session_id__turns_get",
+    "/api/v1/history/{session_id}/rollback": {
+      "post": {
+        "description": "撤销到某一轮（2026-11-05）：物理删除其后轮次，会话回到该轮完成时的状态。\n\n显式破坏性操作（MUST-32 修订）：删除不可恢复，前端必须二次确认后才能调用。",
+        "operationId": "rollback_session_api_v1_history__session_id__rollback_post",
         "parameters": [
           {
             "in": "path",
@@ -1990,12 +3396,85 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_list_TurnSummaryPayload__"
+                  "$ref": "#/components/schemas/ApiResponse_FlowSnapshotResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rollback Session"
+      }
+    },
+    "/api/v1/history/{session_id}/turns": {
+      "get": {
+        "description": "会话的轮次摘要（升序）；不含原句与方案正文。\n\n分页：``offset`` 从最新一轮往回数（前端「加载更早」）。",
+        "operationId": "get_session_turns_api_v1_history__session_id__turns_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PagedTurnSummary_"
                 }
               }
             },
@@ -2013,6 +3492,616 @@
           }
         },
         "summary": "Get Session Turns"
+      }
+    },
+    "/api/v1/interventions/{request_id}/answer": {
+      "post": {
+        "description": "审批/提问应答；第一应答获胜，重复应答返回 6001。",
+        "operationId": "answer_intervention_api_v1_interventions__request_id__answer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterventionAnswerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Answer Intervention",
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
+    "/api/v1/obs/metrics/alerts": {
+      "get": {
+        "operationId": "alerts_api_v1_obs_metrics_alerts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "",
+              "enum": [
+                "",
+                "active",
+                "resolved"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_AlertListPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Alerts",
+        "tags": [
+          "obs-metrics"
+        ]
+      }
+    },
+    "/api/v1/obs/metrics/config": {
+      "get": {
+        "operationId": "get_config_api_v1_obs_metrics_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_MetricsConfigPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Config",
+        "tags": [
+          "obs-metrics"
+        ]
+      }
+    },
+    "/api/v1/obs/metrics/summary": {
+      "get": {
+        "operationId": "summary_api_v1_obs_metrics_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trace_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Trace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from_ts",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "From Ts",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_ts",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "To Ts",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "default": "kind",
+              "enum": [
+                "kind",
+                "name",
+                "model",
+                "turn",
+                "status"
+              ],
+              "title": "Group By",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "default": "none",
+              "enum": [
+                "none",
+                "minute",
+                "hour",
+                "day"
+              ],
+              "title": "Bucket",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_MetricSummaryPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Summary",
+        "tags": [
+          "obs-metrics"
+        ]
+      }
+    },
+    "/api/v1/obs/replay/compare": {
+      "post": {
+        "operationId": "compare_api_v1_obs_replay_compare_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayCompareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ReplayComparePayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare",
+        "tags": [
+          "obs-replay"
+        ]
+      }
+    },
+    "/api/v1/obs/replay/runs": {
+      "post": {
+        "operationId": "create_run_api_v1_obs_replay_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ReplayRunPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Run",
+        "tags": [
+          "obs-replay"
+        ]
+      }
+    },
+    "/api/v1/obs/replay/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_api_v1_obs_replay_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ReplayRunPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run",
+        "tags": [
+          "obs-replay"
+        ]
+      }
+    },
+    "/api/v1/obs/trace/events/{event_id}": {
+      "get": {
+        "operationId": "get_event_api_v1_obs_trace_events__event_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TraceEventPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Event",
+        "tags": [
+          "obs-trace"
+        ]
+      }
+    },
+    "/api/v1/obs/trace/sessions/{session_id}/events": {
+      "get": {
+        "operationId": "list_events_api_v1_obs_trace_sessions__session_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Cursor",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TraceEventsPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Events",
+        "tags": [
+          "obs-trace"
+        ]
+      }
+    },
+    "/api/v1/obs/trace/sessions/{session_id}/traces": {
+      "get": {
+        "operationId": "list_traces_api_v1_obs_trace_sessions__session_id__traces_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TraceListPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Traces",
+        "tags": [
+          "obs-trace"
+        ]
+      }
+    },
+    "/api/v1/obs/trace/traces/{trace_id}": {
+      "get": {
+        "operationId": "get_trace_api_v1_obs_trace_traces__trace_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trace_id",
+            "required": true,
+            "schema": {
+              "title": "Trace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "full",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Full",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TraceTreePayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Trace",
+        "tags": [
+          "obs-trace"
+        ]
       }
     },
     "/api/v1/optimize": {
@@ -2093,7 +4182,7 @@
     },
     "/api/v1/progress/{flow_id}": {
       "get": {
-        "description": "SSE 进度流：1s 轮询快照；DONE/ABORTED/ASKING/护栏推送后关闭；客户端断开即停。",
+        "description": "SSE 进度流：1s 轮询快照；DONE/ABORTED/ASKING/护栏推送后关闭；客户端断开即停。\n\n星型拓扑（2026-11-04）：AGENTIC 期间快照 status 为 \"running\"，**不在关闭集合内**，\n因此 agentic 循环可以持续推送进度而不是中途断流。",
         "operationId": "get_progress_api_v1_progress__flow_id__get",
         "parameters": [
           {
@@ -2205,6 +4294,161 @@
           }
         },
         "summary": "Get Result"
+      }
+    },
+    "/api/v1/runs": {
+      "post": {
+        "description": "启动一次运行；执行在服务端独立进行，连接断开不取消。",
+        "operationId": "start_run_api_v1_runs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Request-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Run",
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
+    "/api/v1/runs/{run_id}/cancel": {
+      "post": {
+        "description": "取消运行；执行体收到 CancelledError 后以 aborted 收尾。",
+        "operationId": "cancel_run_api_v1_runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Run",
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
+    "/api/v1/sessions/{session_id}/stream": {
+      "get": {
+        "description": "订阅会话事件流；?since=N 只补差，建连先收 seq=0 合成快照。",
+        "operationId": "stream_session_api_v1_sessions__session_id__stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Since",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream Session",
+        "tags": [
+          "runtime"
+        ]
       }
     },
     "/api/v1/settings": {

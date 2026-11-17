@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiResponse, SettingsResponse } from '../../api/types'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { ConsoleInput } from './ConsoleInput'
-import { pickFolderViaNative } from '../../api/nativeFolder'
+import { isNativeBridgeReady, pickFolderViaNative } from '../../api/nativeFolder'
 
 const PROMPT_HINT = '帮你优化每一段提示词，从理清需求到上线-端到端交付生产级结果'
 
@@ -14,6 +14,8 @@ function envelope<T>(data: T): ApiResponse<T> {
 
 vi.mock('../../api/nativeFolder', () => ({
   NOT_INSTALLED_HINT: '未安装扩展',
+  isNativeBridgeReady: vi.fn(() => true),
+  nativeBridgeMissingHint: () => '未检测到扩展，请刷新页面',
   nativePickErrorText: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   pickFolderViaNative: vi.fn(async () => ({ path: '' })),
 }))
@@ -61,6 +63,12 @@ const settingsFixture: SettingsResponse = {
     timeout: 60,
   },
   process: { followup_cost_budget: 1, followup_soft_round_guard: 10, telemetry: true },
+  observability: {
+    trace_enabled: true,
+    trace_retention_days: 30,
+    metrics_enabled: true,
+    replay_enabled: true,
+  },
   locked: { candidate_limit: 25 },
 }
 
@@ -102,8 +110,8 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
   it('渲染居中卡片结构（console-input 容器 + 卡片）', () => {
     render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
 
-    expect(document.querySelector('.console-input')).not.toBeNull()
-    expect(document.querySelector('.console-input__card')).not.toBeNull()
+    expect(document.querySelector('[class*="console-input"]')).not.toBeNull()
+    expect(document.querySelector('[class*="console-input__card"]')).not.toBeNull()
   })
 
   it('输入区展示固定文案占位（逐字）', () => {
@@ -127,6 +135,20 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
     expect(screen.queryByRole('button', { name: /附件|审批|麦克风|音频|文件类型/ })).toBeNull()
     // 独立「本地」选择器零存在（文件夹按钮命名为「选择文件夹（本地）」，非独立本地项）
     expect(screen.queryByRole('button', { name: '本地' })).toBeNull()
+  })
+
+  it('输入换行时按行数增高，最多 6 行（jsdom 无 scrollHeight，走 fallback 行数）', () => {
+    render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
+    const box = screen.getByRole('textbox', { name: '优化原句' })
+
+    expect(box.getAttribute('rows')).toBe('1')
+
+    fireEvent.change(box, { target: { value: '第一行\n第二行\n第三行' } })
+    expect(box.getAttribute('rows')).toBe('3')
+
+    const many = Array.from({ length: 9 }, (_, index) => `第 ${index} 行`).join('\n')
+    fireEvent.change(box, { target: { value: many } })
+    expect(box.getAttribute('rows')).toBe('6')
   })
 
   it('无输入时发送按钮禁用（防重复/防误触，MUST-15）', () => {
@@ -186,13 +208,13 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
           default_api_mode: 'chat_completions',
           supported_api_modes: ['chat_completions'],
           max_context_length: 1_048_576,
-          context_window_tiers: [524_288, 1_048_576],
+          context_window_tiers: [307_200, 614_400, 1_048_576],
           models: [
             {
               model_id: 'deepseek-flash',
               label: 'Flash',
               max_context_length: 1_048_576,
-              context_window_tiers: [524_288, 1_048_576],
+              context_window_tiers: [307_200, 614_400, 1_048_576],
               reasoning_efforts: ['low', 'high', 'max'],
               default_effort: 'high',
             },
@@ -213,7 +235,7 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
 
     fireEvent.click(modelTrigger())
     fireEvent.mouseEnter(screen.getByRole('button', { name: /deepseek-flash/ }).parentElement!)
-    fireEvent.click(await screen.findByRole('button', { name: '524K' }))
+    fireEvent.click(await screen.findByRole('button', { name: '300K' }))
 
     await waitFor(() => {
       const putCall = fetchMock.mock.calls.find(
@@ -221,7 +243,7 @@ describe('ConsoleInput 启动页主视觉卡片', () => {
       )
       expect(putCall).toBeTruthy()
       const body = String(putCall?.[1]?.body)
-      expect(body).toContain('"max_context_length":524288')
+      expect(body).toContain('"max_context_length":307200')
       // 凭据在 providers 段，条目只带 provider_id 引用（MUST-19）
       expect(body).toContain('"provider_id":"p-deepseek"')
       // 整表替换语义：另一条目必须一起提交，否则会被后端视为删除
@@ -290,5 +312,18 @@ describe('ConsoleInput 原生文件夹选择器（2026-10-19 扩展桥）', () =
     await userEvent.setup().click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
 
     expect(await screen.findByText('native host not found')).toBeTruthy()
+  })
+
+  it('扩展未注入本页：立即提示且不发起请求（不空转到超时）', async () => {
+    vi.mocked(isNativeBridgeReady).mockReturnValueOnce(false)
+    useSettingsStore.setState({ settings: settingsFixture })
+    render(<ConsoleInput isSubmitting={false} onSubmit={vi.fn()} />)
+
+    await userEvent.setup().click(screen.getByRole('button', { name: '选择文件夹（本地）' }))
+
+    expect(await screen.findByText('未检测到扩展，请刷新页面')).toBeTruthy()
+    expect(pickFolderViaNative).not.toHaveBeenCalled()
+    // 按钮立即恢复可点（未进入「正在打开」悬挂态）
+    expect(screen.getByRole('button', { name: '选择文件夹（本地）' })).toBeTruthy()
   })
 })

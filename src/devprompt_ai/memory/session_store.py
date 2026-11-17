@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sqlite3
 from pathlib import Path
 
@@ -11,6 +12,22 @@ from devprompt_ai.domain.models import FlowSession, SessionSummary
 from devprompt_ai.memory.schema import SESSIONS_DDL
 
 _BUSY_TIMEOUT_MS = 5000
+
+
+def _scan_ids(conn: sqlite3.Connection, user_id: str, target_norm: str) -> list[str]:
+    """全表归一化比对（索引未命中时的兜底）：Windows 大小写/分隔符差异靠这里兜住。"""
+    rows = conn.execute(
+        "SELECT session_id, payload FROM forge_sessions WHERE user_id = ?", (user_id,)
+    ).fetchall()
+    ids: list[str] = []
+    for session_id, payload_raw in rows:
+        try:
+            payload = json.loads(payload_raw)
+        except json.JSONDecodeError:
+            continue
+        if os.path.normcase(str(payload.get("project_root", ""))) == target_norm:
+            ids.append(session_id)
+    return ids
 
 
 class SQLiteSessionStore:
@@ -90,7 +107,9 @@ class SQLiteSessionStore:
 
         return await asyncio.to_thread(_run)
 
-    async def list_recent(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
+    async def list_recent(
+        self, user_id: str, *, limit: int = 50, offset: int = 0
+    ) -> list[SessionSummary]:
         """GET /history 数据源：pinned 优先 + updated_at 倒序；脱敏——payload 仅取路径/名/标题。"""
 
         def _run() -> list[SessionSummary]:
@@ -124,7 +143,7 @@ class SQLiteSessionStore:
             # 全部取出后 Python 排序再截取：置顶优先 + updated_at 倒序。
             # 会话量小（本地工具），避免 SQL 排序先行截断导致置顶项被 limit 丢出。
             out.sort(key=lambda s: (s.pinned, s.updated_at), reverse=True)
-            return out[:limit]
+            return out[offset : offset + limit]
 
         return await asyncio.to_thread(_run)
 
@@ -135,5 +154,39 @@ class SQLiteSessionStore:
             with self._connect() as conn:
                 cur = conn.execute("DELETE FROM forge_sessions WHERE session_id = ?", (session_id,))
                 return cur.rowcount > 0
+
+        return await asyncio.to_thread(_run)
+
+    async def delete_by_project(self, user_id: str, project_root: str) -> int:
+        """项目级批量删除：先走索引精确匹配，未命中再全表归一化比对（2026-11-07）。
+
+        索引是**表达式索引**（`json_extract(payload,'$.project_root')` + `json_valid` 部分索引），
+        见 `schema.SESSIONS_DDL`。精确匹配用不上时（Windows 大小写/路径分隔符差异）退回
+        原来的全表 normcase 比对——行为不变，只是常见情形从 O(全表) 变成 O(命中行)。
+        """
+        if project_root.strip() == "":
+            return 0
+
+        def _run() -> int:
+            with self._connect() as conn:
+                ids = [
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT session_id FROM forge_sessions"
+                        " WHERE user_id = ? AND json_valid(payload)"
+                        "   AND json_extract(payload, '$.project_root') = ?",
+                        (user_id, project_root),
+                    ).fetchall()
+                ]
+                if not ids:
+                    ids = _scan_ids(conn, user_id, os.path.normcase(project_root))
+                if not ids:
+                    return 0
+                placeholders = ", ".join("?" * len(ids))
+                cur = conn.execute(
+                    f"DELETE FROM forge_sessions WHERE session_id IN ({placeholders})",
+                    ids,
+                )
+                return cur.rowcount
 
         return await asyncio.to_thread(_run)

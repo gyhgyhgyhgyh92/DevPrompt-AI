@@ -1,0 +1,72 @@
+/* optimize 组件组样式（T6-5）：颜色/间距全部取 tokens.css 变量，禁硬编码色值。 */
+
+/* 单方案卡片（2026-11-11 单套输出） */
+.prompt-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.prompt-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+/* 兜底降级提示：左侧 2px 琥珀竖线 + 透明底（与披露类提示一致） */
+.prompt-card__fallback {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-body-xs);
+  color: var(--color-text-secondary);
+  background: transparent;
+  border-inline-start: 2px solid var(--color-warning-500);
+}
+
+.prompt-card__body {
+  margin: 0;
+  padding: var(--space-3);
+  overflow-x: auto;
+  font: var(--font-code-regular);
+  color: var(--color-text-primary);
+  background: var(--color-surface-code);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+}
+
+.prompt-card__changes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding-inline-start: var(--space-5);
+  color: var(--color-text-secondary);
+}
+
+.prompt-card__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.copy-button {
+  padding: var(--space-1) var(--space-3);
+  font: var(--font-body-medium);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  background: var(--color-surface-code);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.copy-button--done {
+  color: var(--color-success-500);
+  border-color: var(--color-success-500);
+}

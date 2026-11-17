@@ -1,15 +1,24 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { putSettings, scanProject } from '../../api/endpoints'
-import { nativePickErrorText, pickFolderViaNative } from '../../api/nativeFolder'
+import {
+  isNativeBridgeReady,
+  nativeBridgeMissingHint,
+  nativePickErrorText,
+  pickFolderViaNative,
+} from '../../api/nativeFolder'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { errorMessage } from '../settings/errorMessage'
 import { ModelPicker, type ModelTuning } from './ModelPicker'
-import './ConsoleInput.css'
+import styles from './ConsoleInput.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 /** 启动页主视觉固定文案（逐字，spec Task 3）：作为输入区占位展示，用户输入时隐藏。 */
-const PROMPT_HINT = '帮你优化每一段提示词，从理清需求到上线-端到端交付生产级结果'
+const PROMPT_HINT_KEY = 'console.prompt_hint'
 
-/** 输入自适应高度区间（1~6 行），超出由 textarea 内部滚动。 */
+/** 输入自适应高度区间（1~6 行），超出由 textarea 内部滚动（上限见 ConsoleInput.css）。 */
 const MIN_TEXT_ROWS = 1
 const MAX_TEXT_ROWS = 6
 
@@ -18,16 +27,23 @@ interface ConsoleInputProps {
   isSubmitting: boolean
   /** 多轮 composer：项目路径沿用会话，允许空（后端按 session 继承）。 */
   projectOptional?: boolean
+  /** 整体禁用（2026-11-05 形态层）：思考中输入区不再整块隐藏，改为禁用输入 + 停止按钮。 */
+  disabled?: boolean
   /** 重挂载回填：思考视图切换会卸载本组件，失败退回输入页时草稿不能丢。 */
   initialSentence?: string
   initialProject?: string
-  /** 提交原句与项目路径（草稿不进 store，上抛交页面调 optimize 流）。 */
+  /** 启动页主视觉（品牌行 + 主张 + 能力标签）；结果页 composer 不传，保持单行轻量。 */
+  isHero?: boolean
+  /** 「选择项目」行右侧插槽（2026-11-14 多模态）：页面层注入模式/风格/参考图控件。 */
+  modeControls?: ReactNode
+  /** 提交原句与项目路径（草稿不进 store，上抛交页面调 optimize 流；领域由后端自动路由）。 */
   onSubmit: (sentence: string, project: string) => void
 }
 
-function textRows(value: string): number {
+/** `minRows` 用于启动页：占位文案较长，1 行会被裁掉。 */
+function textRows(value: string, minRows: number = MIN_TEXT_ROWS): number {
   const lines = value.split('\n').length
-  return Math.min(MAX_TEXT_ROWS, Math.max(MIN_TEXT_ROWS, lines))
+  return Math.min(MAX_TEXT_ROWS, Math.max(minRows, lines))
 }
 
 /** 路径末段展示（与侧栏同口径，纯展示非业务判定）。 */
@@ -58,8 +74,12 @@ export function ConsoleInput({
   initialSentence = '',
   initialProject = '',
   projectOptional = false,
+  disabled = false,
+  isHero = false,
+  modeControls,
   onSubmit,
 }: ConsoleInputProps) {
+  const { t } = useTranslation()
   // 订阅 settings 单字段（selector 内禁返回新引用：`?? []` 会触发无限重渲染，MUST-16）
   const settings = useSettingsStore((s) => s.settings)
   const setSettings = useSettingsStore((s) => s.setSettings)
@@ -69,9 +89,28 @@ export function ConsoleInput({
   const [isPickingFolder, setPickingFolder] = useState(false)
   const [isSwitchingModel, setSwitchingModel] = useState(false)
   const [projectError, setProjectError] = useState<string | null>(null)
+  const textRef = useRef<HTMLTextAreaElement | null>(null)
+
+  // 随内容自动增高（含自动换行，不只是 \n 行数）：先复位再量 scrollHeight，上限由 CSS 收口。
+  // shortcut: jsdom 的 scrollHeight 恒为 0，此时不写内联高度，退回 rows 按行数估算
+  useLayoutEffect(() => {
+    const node = textRef.current
+    if (node === null) return
+    // 空输入交回 rows 的自然高度：实测窄屏下清空后量到 2 行（placeholder 折行），高度回不去
+    if (sentence === '') {
+      node.style.height = ''
+      return
+    }
+    node.style.height = 'auto'
+    if (node.scrollHeight === 0) return
+    node.style.height = `${node.scrollHeight}px`
+  }, [sentence])
 
   const isDisabled =
-    isSubmitting || sentence.trim() === '' || (!projectOptional && project.trim() === '')
+    disabled ||
+    isSubmitting ||
+    sentence.trim() === '' ||
+    (!projectOptional && project.trim() === '')
 
   // 当前生效条目（默认展示其完整名称 label）；无激活位时回退首条（防御未激活态）
   const activeEntry = entries.find((m) => m.is_active) ?? entries[0]
@@ -96,7 +135,7 @@ export function ConsoleInput({
       setSettings(next)
       setProjectError(null)
     } catch {
-      setProjectError('参数保存失败，请稍后重试')
+      setProjectError(t('console.save_failed'))
     }
   }
 
@@ -108,7 +147,7 @@ export function ConsoleInput({
       setSettings(next)
       setProjectError(null)
     } catch {
-      setProjectError('模型切换失败，请稍后重试')
+      setProjectError(t('console.switch_failed'))
     } finally {
       setSwitchingModel(false)
     }
@@ -126,7 +165,7 @@ export function ConsoleInput({
       setProjectError(null)
     } catch (error) {
       // 按错误码查文案（2001 路径不存在 / 2004 工具失败 / 其余降级），不再一律说「路径不存在」
-      setProjectError(errorMessage(error, '项目路径不存在或无法扫描'))
+      setProjectError(errorMessage(error, t('console.scan_failed')))
     }
   }
 
@@ -136,6 +175,11 @@ export function ConsoleInput({
    * → native messaging host）。取消（空串）时保持原状；未装扩展等失败给明确文案。
    */
   async function handlePickFolder(): Promise<void> {
+    // 扩展未注入本页（没装/没启用/没刷新页面）→ 立即提示，不进入悬挂等待
+    if (!isNativeBridgeReady()) {
+      setProjectError(nativeBridgeMissingHint())
+      return
+    }
     if (isPickingFolder) return
     setPickingFolder(true)
     try {
@@ -152,9 +196,19 @@ export function ConsoleInput({
   }
 
   return (
-    <div className="console-input">
+    <div className={s(isHero ? 'console-input console-input--hero' : 'console-input')}>
+      {isHero ? (
+        <header className={s('console-input__hero')}>
+          <span className={s('console-input__brand')}>
+            <span aria-hidden="true" className={s('console-input__brand-swatch')} />
+            <span>{t('console.brand_name')}</span>
+          </span>
+          <h1 className={s('console-input__claim')}>{t('console.hero_claim')}</h1>
+          <p className={s('console-input__sub')}>{t('console.hero_sub')}</p>
+        </header>
+      ) : null}
       <form
-        className="console-input__card"
+        className={s('console-input__card')}
         onSubmit={(event) => {
           event.preventDefault()
           if (isDisabled) return
@@ -162,15 +216,17 @@ export function ConsoleInput({
         }}
       >
         <textarea
-          aria-label="优化原句"
-          className="console-input__text"
+          ref={textRef}
+          aria-label={t('console.aria_sentence')}
+          className={s('console-input__text')}
           value={sentence}
-          rows={textRows(sentence)}
-          placeholder={PROMPT_HINT}
+          rows={textRows(sentence, isHero ? 2 : MIN_TEXT_ROWS)}
+          placeholder={t(PROMPT_HINT_KEY)}
+          disabled={disabled}
           onChange={(event) => setSentence(event.currentTarget.value)}
         />
-        <div className="console-input__tools">
-          <span className="console-input__spacer" />
+        <div className={s('console-input__tools')}>
+          <span className={s('console-input__spacer')} />
           <ModelPicker
             entries={entries}
             providers={settings?.providers}
@@ -181,19 +237,19 @@ export function ConsoleInput({
           />
           <button
             type="submit"
-            className="console-input__send"
-            aria-label="发送"
+            className={s('console-input__send')}
+            aria-label={t('console.aria_send')}
             disabled={isDisabled}
           >
             <span aria-hidden="true">↑</span>
           </button>
         </div>
-        <div className="console-input__divider" />
-        <div className="console-input__folder">
+        <div className={s('console-input__divider')} />
+        <div className={s('console-input__folder')}>
           <button
             type="button"
-            className="console-input__folder-toggle"
-            aria-label="选择文件夹（本地）"
+            className={s('console-input__folder-toggle')}
+            aria-label={t('console.aria_pick_folder')}
             title={project.trim() !== '' ? project : undefined}
             onClick={() => void handlePickFolder()}
             disabled={isPickingFolder}
@@ -201,14 +257,17 @@ export function ConsoleInput({
             <FolderIcon />
             <span>
               {isPickingFolder
-                ? '正在打开…'
+                ? t('console.opening')
                 : project.trim() !== ''
                   ? baseName(project)
-                  : '选择文件夹（本地）'}
+                  : t('console.pick_folder')}
             </span>
           </button>
+          {modeControls !== undefined ? (
+            <div className={s('console-input__mode-slot')}>{modeControls}</div>
+          ) : null}
         </div>
-        {projectError !== null ? <p className="console-input__error">{projectError}</p> : null}
+        {projectError !== null ? <p className={s('console-input__error')}>{projectError}</p> : null}
       </form>
     </div>
   )

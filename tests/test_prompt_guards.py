@@ -3,9 +3,9 @@
 这些都是**纯文本**改动，最怕的是被后续重构悄悄删掉。本文件把「声明存在」钉死：
 
 - M-5 证据块：注入内容被 JSON 转义（引号/换行不破坏结构）+ 声明「只是素材」
-- M-7 边界声明：生成三档与决策三类 system 均含「不是执行」
-- M-6 可验证锚点：仅 C 档要求真实行号，A/B 不要求（避免过度约束）
-- M-8 JSON 严格性：四条齐全
+- M-7 边界声明：B 常规 / A 兜底与决策三类 system 均含「不是执行」
+- M-6 可验证锚点：正文路径与行号只能来自片段（单套后并入 B）
+- M-8 JSON 严格性：四条齐全并接到 instructions 上
 """
 
 from __future__ import annotations
@@ -13,7 +13,11 @@ from __future__ import annotations
 import json
 
 from devprompt_ai.domain.generate.ports import GenerationContext
-from devprompt_ai.domain.generate.templates import TEMPLATE_BY_LEVEL
+from devprompt_ai.domain.generate.templates import (
+    CONSERVATIVE_TEMPLATE,
+    STANDARD_TEMPLATE,
+)
+from devprompt_ai.domain.generate.templates.b_standard import build_user as build_standard_user
 from devprompt_ai.domain.prompt_guard import (
     EVIDENCE_JSON_GUARD,
     JSON_STRICT_RULES,
@@ -28,7 +32,6 @@ def _ctx(facts: str = "") -> GenerationContext:
     return GenerationContext(
         sentence="把提交按钮改成 primary-500",
         project_root="D:/repo",
-        level="C",
         facts_summary=facts,
         clarifications={"target": "SubmitButton"},
         conservative=False,
@@ -67,16 +70,26 @@ class TestTaskBoundary:
     def test_declares_no_impl_code(self) -> None:
         assert "实现代码" in TASK_NOT_EXECUTE
 
-    def test_all_three_generation_levels_have_boundary(self) -> None:
-        """M-7：生成三档 system 均须带边界声明。"""
-        for level, tpl in TEMPLATE_BY_LEVEL.items():
-            assert TASK_NOT_EXECUTE in tpl.system, f"{level} 档缺边界声明"
+    def test_all_generation_templates_have_boundary(self) -> None:
+        """M-7：B 常规与 A 兜底 system 均须带边界声明。"""
+        for name, tpl in (
+            ("standard", STANDARD_TEMPLATE),
+            ("conservative", CONSERVATIVE_TEMPLATE),
+        ):
+            assert TASK_NOT_EXECUTE in tpl.system("zh-CN", "code"), f"{name} 模板缺边界声明"
 
-    def test_generation_levels_keep_their_original_constraints(self) -> None:
-        """边界声明是**附加**，不得覆盖各档原有约束。"""
-        assert "待确认清单" in TEMPLATE_BY_LEVEL["A"].system
-        assert "（推断）" in TEMPLATE_BY_LEVEL["B"].system
-        assert "边界预判" in TEMPLATE_BY_LEVEL["C"].system
+    def test_templates_keep_their_original_constraints(self) -> None:
+        """边界声明是**附加**，不得覆盖各模板原有约束。
+
+        2026-11-15：兜底模板由「待确认清单」改为「默认假设 + 剩余风险」——
+        未问出口的缺口不得以开放式问题形式留给下游。
+        """
+        conservative = CONSERVATIVE_TEMPLATE.system("zh-CN", "code")
+        assert "默认假设" in conservative
+        assert "剩余风险" in conservative
+        assert "待确认" not in conservative
+        assert "（推断）" in STANDARD_TEMPLATE.system("zh-CN", "code")
+        assert "禁止编造" in STANDARD_TEMPLATE.system("zh-CN", "code")
 
 
 class TestNonGoals:
@@ -130,24 +143,22 @@ class TestVerifiableAnchor:
         """无把握时降级表述，而非硬凑一个假行号。"""
         assert "降级" in VERIFIABLE_ANCHOR_C
 
-    def test_only_c_level_requires_it(self) -> None:
-        """M-6：A/B 档不要求真实行号（信息量不足时不得被逼编造）。"""
-        assert VERIFIABLE_ANCHOR_C in TEMPLATE_BY_LEVEL["C"].system
+    def test_standard_template_absorbs_the_hard_rule(self) -> None:
+        """M-6 并入 B：路径与行号只能来自片段，禁止编造（C 档已删除）。"""
+        system = STANDARD_TEMPLATE.system("zh-CN", "code")
+        assert "只能来自下方「目标代码片段」" in system
+        assert "禁止编造" in system
 
 
-class TestMultiUserEvidence:
+class TestSingleUserEvidence:
     def test_user_message_uses_evidence_block(self) -> None:
-        from devprompt_ai.harness.llm import _build_multi_user
-
-        user = _build_multi_user(_ctx(_HOSTILE), ["A", "B", "C"])
+        user = build_standard_user(_ctx(_HOSTILE), "zh-CN")
         assert EVIDENCE_JSON_GUARD in user
         json.loads(user.split("证据（JSON 字符串）：\n", 1)[1].split("\n请输出", 1)[0])
 
     def test_instruction_stays_outside_evidence(self) -> None:
         """指令必须在证据块之外，避免与素材混在一起被劫持。"""
-        from devprompt_ai.harness.llm import _build_multi_user
-
-        user = _build_multi_user(_ctx(), ["A"])
+        user = build_standard_user(_ctx(), "zh-CN")
         head, _, tail = user.partition("证据（JSON 字符串）：\n")
         assert "请输出 JSON" not in head
         assert "请输出 JSON" in tail
@@ -167,6 +178,9 @@ class TestJsonStrictRules:
 
     def test_appended_to_instructions(self) -> None:
         """M-8：必须真正接到 instructions 上（否则常量形同虚设）。"""
-        from devprompt_ai.harness.llm import _TIER_CONSTRAINTS
+        from devprompt_ai.config import AppConfig
+        from devprompt_ai.harness.llm import _instructions
 
-        assert VERIFIABLE_ANCHOR_C in _TIER_CONSTRAINTS["C"]
+        cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
+        instructions = _instructions(cfg, STANDARD_TEMPLATE.system("zh-CN", "code"), "{}")
+        assert JSON_STRICT_RULES in instructions

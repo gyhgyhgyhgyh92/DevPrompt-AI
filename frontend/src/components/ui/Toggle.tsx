@@ -1,4 +1,7 @@
-import './toggle.css'
+import styles from './toggle.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 export interface ToggleProps {
   /** 可访问名（aria-label）；视觉标签由调用方在旁渲染。 */
@@ -19,11 +22,11 @@ export function Toggle(props: ToggleProps) {
       role="switch"
       aria-checked={props.checked}
       aria-label={props.label}
-      className={props.checked ? 'toggle toggle--checked' : 'toggle'}
+      className={s(props.checked ? 'toggle toggle--checked' : 'toggle')}
       disabled={props.disabled}
       onClick={() => props.onChange(!props.checked)}
     >
-      <span className="toggle__thumb" />
+      <span className={s('toggle__thumb')} />
     </button>
   )
 }

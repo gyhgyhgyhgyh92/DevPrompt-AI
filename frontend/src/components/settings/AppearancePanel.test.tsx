@@ -75,10 +75,10 @@ describe('AppearancePanel 通用外观', () => {
     expect(stored).toMatchObject({ restoreSessionOnLaunch: false })
   })
 
-  it('界面语言的 English 项占位禁用', () => {
+  it('界面语言的 English 项已启用（2026-11-06 多语言）', () => {
     render(<AppearancePanel />)
 
-    const englishOption = screen.getByRole('option', { name: /English/ }) as HTMLOptionElement
-    expect(englishOption.disabled).toBe(true)
+    const englishOption = screen.getByRole('option', { name: 'English' }) as HTMLOptionElement
+    expect(englishOption.disabled).toBe(false)
   })
 })

@@ -44,7 +44,7 @@ DevPrompt AI 采用四层架构，依赖方向严格单向向下，不可逆向�
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  应用服务层  service.py + state.py          ← 唯一业务入口         │
-│  ForgeService   optimize / ask_followup / confirm / feedback      │
+│  ForgeService   optimize / ask_followup / rollback / settings      │
 │  FlowState      优化流程状态机（持久化于 L1 Session）             │
 │  职责：编排、状态推进、单一形态一致性保证                           │
 └───────────────┬─────────────────────────────────────────────────┘
@@ -52,14 +52,14 @@ DevPrompt AI 采用四层架构，依赖方向严格单向向下，不可逆向�
                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  领域核心层  domain/                          ← 形态无关          │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐            │
-│  │ retrieval│ │ decision │ │ generate │ │ ranking  │            │
-│  │ 阶段一    │ │ 阶段二    │ │ 阶段三    │ │ 阶段四    │            │
-│  │ rg+ctags │ │ Noul探针 │ │ 三套生成  │ │ 加权推荐  │            │
-│  └──────────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘            │
-└───────────────────┼─────────────┼────────────┼──────────────────┘
-                    │             │            │
-                    ▼             ▼            ▼
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐                         │
+│  │ retrieval│ │ decision │ │ generate │                         │
+│  │ 阶段一    │ │ 阶段二    │ │ 阶段三    │                         │
+│  │ rg+ctags │ │ Noul探针 │ │ 单套生成  │                         │
+│  └──────────┘ └────┬─────┘ └────┬─────┘                         │
+└───────────────────┼─────────────┼───────────────────────────────┘
+                    │             │
+                    ▼             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  基础设施层  harness/ + memory/ + decision/                        │
 │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐    │
@@ -90,7 +90,7 @@ DevPrompt AI 采用四层架构，依赖方向严格单向向下，不可逆向�
 ┌─────────────────────────┐
 │       domain/           │  纯领域逻辑，无 I/O
 │  retrieval decision     │
-│  generate   ranking     │
+│  generate               │
 └────────┬────────────────┘
          │  仅通过 Protocol 交互
          ▼
@@ -245,9 +245,6 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 |---|---|---|
 | `PREFER_ADAPT_WEIGHT` | 0.6 | 适配度权重 |
 | `PREFER_HISTORY_WEIGHT` | 0.4 | 偏好权重 |
-| `PREFER_HARD_THRESHOLD` | 0.5 | 推荐硬阈值 |
-| `PREFER_SOFT_THRESHOLD` | 0.12 | 推荐软阈值 |
-| `PREFER_MIN_CONFIDENCE` | 0.6 | 标推荐最低置信度 |
 | `PREFER_LOW_CONFIDENCE` | 0.4 | 低置信度提示线 |
 
 **流程控制**：
@@ -257,7 +254,7 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 | `FOLLOWUP_SOFT_ROUND_GUARD` | 10 | 反问软护栏：单流程追问轮数达此值时显式询问用户裁决（非静默终止） |
 | `FOLLOWUP_COST_BUDGET` | 空 | 反问软护栏 LLM 成本预算（空=禁用） |
 | `FACT_PROBE_THRESHOLD` | 0.75 | 事实探针通过线 |
-| `MAX_STATE_TOKENS` | 30000 | 决策 state 上限，超限截断 |
+| `MAX_STATE_TOKENS` | 30000 | 上下文装配预算下限；随上下文窗口放大 |
 
 **运行时**：
 
@@ -279,7 +276,7 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 | 日志输出 | 控制台彩色 | 内存捕获 | 文件（按日切分） |
 | Tracing | 开启 | 关闭 | 关闭 |
 | L1 Session | 真实 SQLite | 内存实现 | 真实 SQLite |
-| L3 偏好 | 真实 SQLite | 临时文件 | 真实 SQLite |
+| 轮次记忆（forge_turns） | 真实 SQLite | 内存实现 | 真实 SQLite |
 | 决策层 | LLM | LLM | LLM |
 | CORS | 允许 `localhost:5173` | 仅本地 | 显式白名单 |
 | 缓存 | 内存 | 禁用 | 内存 |
@@ -308,14 +305,14 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 
 | 类型 | 规则 | 示例 |
 |---|---|---|
-| Python 模块 | `snake_case` | `preference_store.py` |
-| Python 测试 | `test_<模块>.py` | `test_ranking.py` |
+| Python 模块 | `snake_case` | `session_store.py` |
+| Python 测试 | `test_<模块>.py` | `test_claims.py` |
 | Python 模板 | `snake_case` 存放于 `templates/` | `variant_b.py` |
 | 前端组件 | `PascalCase.tsx` | `PromptCard.tsx` |
 | 前端页面 | `PascalCase.tsx` | `OptimizePage.tsx` |
 | 前端 Hook | `useXxx.ts` | `useOptimizeStore.ts` |
 | 前端类型 | `PascalCase.ts` 或小写分组 | `optimize.ts` |
-| 前端 Store | `useXxxStore.ts` | `usePreferenceStore.ts` |
+| 前端 Store | `useXxxStore.ts` | `useSettingsStore.ts` |
 | 配置文件 | `lowercase` 或 `kebab-case` | `pyproject.toml`、`.env.example` |
 
 **禁止**：文件名含中文、空格、特殊字符；同一目录下混用 `kebab-case` 与 `snake_case`。
@@ -417,7 +414,6 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 | `retrieval` | `domain/retrieval/` |
 | `decision` | `domain/decision/`、`decision/` |
 | `generate` | `domain/generate/` |
-| `ranking` | `domain/ranking/` |
 | `memory` | `memory/` |
 | `service` | `service.py`、`state.py` |
 | `api` | `interfaces/api/` |
@@ -428,9 +424,9 @@ L1/L2/L3 数据向后兼容，回滚无需数据迁移
 **示例**：
 
 ```
-feat(ranking): 实现双阈值推荐标记
+feat(generate): 单套输出接入交付前锚点核验
 
-分差 ≥ 硬阈值且置信度达标时标记推荐；分差不足时输出原因文案。
+锚点明确无效时由交付门披露原因，判不清不降级，避免误伤。
 
 Closes #23
 ```
@@ -810,10 +806,8 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 | 事件名 | 触发时机 | 关键字段 |
 |---|---|---|
 | `flow.started` | 流程开始 | `flow_id`, `project_path` |
-| `flow.completed` | 流程完成 | `flow_id`, `duration_ms`, `has_recommendation` |
+| `flow.completed` | 流程完成 | `flow_id`, `duration_ms`, `variants` |
 | `retrieval.candidates` | 候选集生成 | `count`, `elapsed_ms` |
-| `recommendation.made` | 标记推荐 | `variant`, `gap`, `confidence` |
-| `recommendation.skipped` | 不标记 | `reason`, `gap` |
 | `state.truncated` | state 截断 | `original_size`, `final_size` |
 | `followup.guardrail` | 反问软护栏触发 | `rounds` / `cost` / `decision` |
 | `followup.escaped` | 用户逃生选择「直接生成」 | `rounds` |
@@ -839,7 +833,7 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 - 每个读写操作在 `asyncio.to_thread` 中独立开连接（`sqlite3.connect(db_path, timeout=5)`），用完即关
 - 首次使用执行 `PRAGMA journal_mode=WAL` + `busy_timeout=5000`，并经 `memory/schema.py` 幂等建表
 - L1 Session 走自定义 `SQLiteSessionStore`（`memory/session_store.py`，经 `SessionStore` Protocol 注入——SDK 自带 Session 实现面向对话历史，语义不匹配）
-- L3 偏好向量走 `memory/preference_store.py` 封装，不向上层暴露连接对象或游标
+- L2 项目笔记走 `memory/project_note_store.py` 封装，不向上层暴露连接对象或游标（L3 偏好向量已于 2026-10-21 整层移除，见 F-503）
 - 写操作 CAS：`UPDATE ... WHERE session_id=? AND version=?`，0 行更新即版本冲突（6001，MUST-11）
 
 **迁移策略**：
@@ -851,9 +845,11 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 | 表 | 字段 |
 |---|---|
 | `forge_sessions`（L1 会话） | `session_id` (PK), `user_id`, `state`, `version`, `payload`, `updated_at` |
-| `preference_vectors`（L3 偏好向量） | `user_id` (PK), `detail_level`, `include_diff`, `specify_tests`, `max_files_norm`, `updated_at` |
-| `adoption_history`（采纳历史表） | `id` (PK), `user_id`, `session_id`, `variant`, `edited`, `edited_text_ratio`, `features_json`, `created_at` |
+| ~~`preference_vectors`（L3 偏好向量）~~ | ~~2026-10-21 随偏好层移除~~ |
+| ~~`adoption_history`（采纳历史表）~~ | ~~同上移除~~ |
 | `app_settings`（流程参数，F-604） | `key` (PK), `value`, `updated_at` |
+| `forge_turns`（轮次记忆，2026-10-20） | `turn_id` (PK), `session_id`+`turn_index` 唯一, `state`, `input`, `facts_json`, `clarifications_json`, `output_json`, `summary_json`, `usage_json` |
+| `project_notes`（L2 结构化记忆） | `project_root`+`kind`+`key` (PK), `value`, `confidence`, `hit_count`, `last_hit_at`, `source` |
 
 ### 4.3 ORM 映射
 
@@ -866,12 +862,12 @@ frontend/src/schemas/openapi.generated.ts    # 契约类型，自动生成后入
 **实现方式**：各 `memory/*.py` 存储模块提供明确的方法，不向上层暴露连接对象或游标。
 
 ```python
-class PreferenceStore:
-    """L3 偏好向量存储。所有 SQL 封装于此，上层不接触连接。"""
+class SQLiteProjectNoteStore:
+    """L2 项目笔记存储。所有 SQL 封装于此，上层不接触连接。"""
 
-    def get(self, user_id: str) -> PreferenceVector: ...
-    def upsert(self, user_id: str, vector: PreferenceVector) -> None: ...
-    def reset(self, user_id: str) -> None: ...
+    async def upsert(self, note: ProjectNote) -> None: ...
+    async def search(self, project_root: str, target_key: str) -> list[ProjectNote]: ...
+    async def record_from_session(self, project_root: str, data: dict) -> None: ...
 ```
 
 **事务规则**：
@@ -897,7 +893,7 @@ class PreferenceStore:
 | 符号表 | `符号表:{项目绝对路径}:{mtime 摘要}` |
 | 决策结果 | `决策:{项目路径}:{原句 sha256}:{阈值配置 hash}` |
 
-**把阈值配置纳入键**是关键设计——调阈值后必须失效，否则会读到用旧阈值算出的推荐结果。
+**把阈值配置纳入键**是关键设计——调阈值后必须失效，否则会读到用旧阈值算出的排序结果。
 
 **失效策略**：
 
@@ -905,7 +901,7 @@ class PreferenceStore:
 - 配置热重载 → 清空决策结果缓存
 - 达到 TTL → 自然过期
 
-**不缓存的内容**：用户原句、LLM 生成的三套方案正文、决策层原始响应。理由：这三项体积大且与状态强相关，缓存收益低、失效复杂、正确性风险高。
+**不缓存的内容**：用户原句、LLM 生成的方案正文、决策层原始响应。理由：这三项体积大且与状态强相关，缓存收益低、失效复杂、正确性风险高。
 
 **命中率埋点**：`cache.hit` / `cache.miss` 事件，日志可查，用于判断缓存是否真的有效。**连续低命中应考虑删掉缓存**——无效缓存只增加复杂度。
 
@@ -957,7 +953,7 @@ class PreferenceStore:
 | 可能的定时需求 | 实现方式 | 不引入框架的理由 |
 |---|---|---|
 | 符号表定期刷新 | 惰性刷新即可——访问时检查 mtime，无需定时器 | 惰性更简单，无需常驻任务 |
-| 偏好向量衰减 | 惰性计算即可——读取时按时间戳衰减 | 同上 |
+| 项目笔记置信度衰减 | 惰性计算即可——读取时按 90 天半衰公式计算 | 同上 |
 | 日志清理 | 启动时清理一次 | 无需周期执行 |
 
 **原则**：**惰性优于定时**。除非确实需要「即使无人使用也要执行」，否则用「访问时检查」替代定时任务。
@@ -1038,6 +1034,7 @@ src/devprompt_ai/
 │   ├── errors.py              领域异常类型（码取自 error_codes）
 │   ├── error_codes.py         集中错误码表（架构文档 §3.3 权威清单）
 │   ├── model_spec.py          文本模型能力元数据 / API 形态 / 上下文窗口档位（纯领域表，25厂商）
+│   ├── model/tuning.py        运行时模型参数归一（effort 词表 / Anthropic、Gemini thinking budget；纯函数，2026-11-10）
 │   ├── model_migration.py     注册表条目归一化（读时补默认值，永不抛异常）
 │   ├── prompt_guard.py        跨域共用 prompt 边界与安全声明（T-1~T-5）
 │   ├── progress.py            思考过程文案（阶段进度纯函数 + ProgressSink Protocol；2026-10-19 供流式端点）
@@ -1047,28 +1044,54 @@ src/devprompt_ai/
 │   ├── retrieval/
 │   │   ├── ports.py           Protocol 定义（子进程 / 文件读取）
 │   │   ├── symbols.py         符号表构建
-│   │   ├── candidates.py      候选检索
+│   │   ├── candidates.py      候选检索 + 词汇重排（I1–I3：BM25+RRF+路径权重，只调序不减候选）
+│   │   ├── bm25.py            BM25 + RRF 融合名次（零依赖二次排序层；2026-11-08 接线）
+│   │   ├── salience.py        路径权重（实现文件优先、测试/文档降权；2026-11-08 接线）
+│   │   ├── physarum.py        访问强化（I6：边权衰减+强化纯函数；2026-11-08 接 repo_edges.weight）
 │   │   ├── locate.py          全文定位
-│   │   └── facts.py           事实取证
+│   │   └── facts.py           事实取证（七项 + 适用性判定 + is_evidence_complete）
+│   ├── agent/                  外环监督与状态感知（2026-11-05）
+│   │   ├── ports.py            ActionPlanner 协议（下一步动作）
+│   │   ├── action.py           动作枚举 + 步骤记录 + 循环预算（纯数据）
+│   │   ├── convergence.py      三判据收敛检测（纯函数，命中即止）
+│   │   ├── finish_gates.py     natural-finish 六道闸（A2：DELIVER 前拦截，只拦不加态；2026-11-08 接线）
+│   │   ├── anchor.py           本轮目标锚点（抽取/追加合并/渲染，纯函数，内部状态）
+│   │   ├── sensorium.py        六维状态感知（纯函数；pressure=max(相对,绝对)，策略映射 2026-11-08 接线）
+│   │   └── memory.py           跨轮继承契约 TurnMemory（纯数据 + 序列化）
 │   ├── decision/
 │   │   ├── port.py            DecisionPort 协议
-│   │   ├── probes.py          事实探针问题定义
 │   │   └── followup.py        自适应反问编排（具体未知驱动 + 软护栏裁决）
+│   ├── delivery/
+│   │   ├── __init__.py        包声明
+│   │   ├── gate.py            交付证据门（GREEN/YELLOW/RED 三态，纯函数；只读证据不产出证据）
+│   │   ├── attribution.py     交付归属（E11：影响半径 × file 断言差集 → 三色；2026-11-08 接 gate）
+│   │   └── structural.py      通用域结构化校验（2026-11-14 领域包：四段齐备/交付物/占位符，纯函数）
+│   ├── domains/               领域包模块（2026-11-14：纯数据零 I/O；路由判定关键词在 rules、LLM 在 decision/domains）
+│   │   ├── ports.py           DomainId / DomainPack / DomainVerdict 契约
+│   │   ├── registry.py        包注册表（code/work/life/creative；get_pack / all_packs）
+│   │   ├── rules.py           确定性关键词路由（纯函数，第一级路由）
+│   │   └── packs/             四个预置领域包（每包声明 needs_repo/动作白名单/断言 kinds/词表/i18n 键）
 │   ├── generate/
 │   │   ├── ports.py           Protocol 定义（LLM 调用）
-│   │   ├── variants.py        三套方案编排
-│   │   └── templates/         A/B/C 模板（a_conservative↔A 保守 / b_standard↔B 标准 / c_thorough↔C 激进）
+│   │   ├── anchors.py         锚点抽取与核验（C 核验并入 B；纯函数）
+│   │   ├── claims.py          断言对账（claims → 事实覆盖；未声明记 0 并标 undeclared）
+│   │   └── templates/         B 唯一输出 + A 异常兜底（b_standard 标准 / a_conservative 兜底）
 │   │       ├── a_conservative.py
 │   │       ├── b_standard.py
-│   │       └── c_thorough.py
-│   └── ranking/
-│       ├── ports.py            Protocol 定义（偏好读写）
-│       ├── ~~preference.py~~    偏好向量（2026-10-21 移除）
-│       ├── score.py           加权总分
-│       └── recommend.py       双阈值标记
+│   │       └── reply.py           纯回答模板（只出文字，不产方案）
+│   ├── hooks/                  外环监督契约（2026-11-05：5 阶段 + 三态 verdict）
+│   │   ├── types.py            HookPhase / HookContext / HookResult / Hook 协议
+│   │   ├── pipeline.py         HookPipeline（halt 短路 / correct 合并 / 超时视为 allow）
+│   │   └── builtin.py          内置 hook 实现
+│   └── obs/                    可观测性共享契约与纯逻辑（2026-11-12 三模块拆分）
+│       ├── contract/           唯一共享层：标准事件模型 / 查询分页 / 端口 Protocol / schema 版本
+│       ├── trace/tree.py       调用链组装与预览扁平化（纯函数）
+│       ├── metrics/            聚合（aggregate）与阈值规则（rules）
+│       └── replay/             录制索引（playback）、快照归一化（normalize）、比对（compare）
 ├── decision/                  决策层实现（单一 LLM 实现）
 │   ├── fallback.py            LLM 决策实现（原 JevDecider 已于 2026-10-15 移除）
-│   └── prompts.py             决策问题模板
+│   ├── domains.py             领域分类 LLM 实现（2026-11-14 领域包第二级路由；失败回退兜底包）
+│   └── prompts.py             决策问题模板（next_action_system 按领域白名单动态拼装动作菜单）
 ├── harness/
 │   ├── adapters/            【2026-09-17】协议适配层（按 provider 分流 API 形态）
 │   │   ├── __init__.py      build_adapter() + supported_adapter_kinds()
@@ -1081,8 +1104,19 @@ src/devprompt_ai/
 │   ├── llm.py               build_model(entry) 工厂：按调用构造 Model，**不用全局开关**                 多供应商客户端（openai-agents Runner/Agent 直接在此封装）
 │   ├── guardrails.py          输出校验
 │   ├── ask_tool.py            AskUserQuestion 工具定义与参数解析（2026-10-22：schema/解析/畸形降级/扩展字段 taskKind）
-│   ├── trace.py               动作观测层（2026-10-20：包装 CommandRunner/FileReader，把真实 rg/读文件上报成卡片并脱敏）
+│   ├── trace.py               动作观测层（2026-10-20：包装 CommandRunner/FileReader，把真实 rg/读文件上报成卡片并脱敏；2026-11-08 接输出治理：超阈值落盘+摘要+回读 footer）
 │   ├── process.py             检索 I/O Protocol 实现（CommandRunner/FileReader）+ 符号表编排（F-101）
+│   ├── model_candidates.py    路由候选解析（G2：settings 注册表→候选链，routing_stats 60s 缓存；2026-11-08）
+│   ├── output_store.py        工具输出落盘（C3：截断前存全量，1 小时过期；2026-11-08 接 trace 通道）
+│   ├── output_summary.py      工具输出摘要（C1–C5：语义密度阈值/头尾策略/回读 footer；2026-11-08 接 trace 通道）
+│   ├── repo_indexer.py        仓库索引器（I4：Python AST 符号图 + 反向依赖；2026-11-08 接 physarum 边权）
+│   ├── overflow.py            超窗「压一次重发一次」（A8；2026-11-08 接生成路径）
+│   ├── summarize.py           LLM 摘要（B11：走 summarize 槽，失败回退确定性 handoff；2026-11-08 接压缩链路）
+│   ├── obs/                   Trace/Replay 基础设施（2026-11-12）
+│   │   ├── trace_collector.py  ContextVar 隔离采集 + 批量落库（写失败 fail-open）
+│   │   ├── traced_ports.py     端口包装器（tool/file/llm/decision/symbols 全量录制）
+│   │   ├── recorded_ports.py   回放端口（按 call_key 取录制结果，缺失即报错）
+│   │   └── memory_collector.py 内存采集器（回放自比对，零落库）
 │   └── dialog.py              Windows 原生文件夹对话框（pwsh -STA，零新依赖；native_host.py 与桌面壳之外，Web 形态由浏览器扩展经 native messaging 调起）
 ├── memory/                    唯一允许出现 SQL 的模块
 │   ├── schema.py              表结构与迁移（WAL 初始化 + 幂等建建表；含 forge_quarantine 隔离表）
@@ -1090,8 +1124,22 @@ src/devprompt_ai/
 │   ├── session_store.py       L1 会话存储（SQLiteSessionStore，经 SessionStore Protocol 注入；CAS 乐观锁）
 │   ├── turn_store.py          多轮 turn（2026-10-20：append-only，(session_id, turn_index) 唯一索引即乐观锁）
 │   ├── project_note_store.py  L2 结构化记忆（2026-10-20：top-K 检索 + 90 天衰减 + 命中回写）
+│   ├── obs_schema.py          可观测性 DDL（trace_events / metrics_alerts / replay_runs / replay_nodes，2026-11-12）
+│   ├── trace_store.py         Trace 事件存储（批量事务写入 + 查询/聚合/保留期清理）
+│   ├── metrics_alert_store.py 告警历史（活跃去重 + 冷却 + 恢复，2026-11-12）
+│   ├── replay_store.py        回放任务与逐节点结果（2026-11-12）
 │   ├── ~~preference_store.py~~（2026-10-21 移除）    L3 偏好向量
 │   └── project_notes.py       L2 Git notes
+├── runtime/                   多端运行时（2026-11-07；执行与连接解耦）
+│   ├── bootstrap.py           装配单例（写锁→建库→checksum 校验→checkpoint sink 注入）
+│   ├── runs.py                RunManager（run 生命周期 + 看门狗 + 终止原因结构化）
+│   ├── events.py              EventBus（seq 事务内分配 + 重放/补帧）
+│   ├── streams.py             SSE 订阅
+│   ├── sessions.py            SessionPool（同会话单执行）
+│   ├── lock.py                单写者文件锁
+│   ├── interventions.py       审批代理（第一应答获胜）
+│   ├── artifacts.py           工件回读（C3：id 校验 → output_store.read_by_id；2026-11-08）
+│   └── coordinator.py         委派调度（K2：分池信号量+文件占位+去重；2026-11-08 接 _act_delegate）
 ├── common/                    纯工具，无业务语义
 │   ├── text.py
 │   ├── hashing.py
@@ -1105,7 +1153,18 @@ src/devprompt_ai/
 │       ├── app.py             FastAPI 实例 + CORS + 统一异常渲染 + 缓存/安全响应头中间件（M-11）
 │       ├── routes.py          路由薄壳（14 路径/17 操作；参数收拢 → 调 service → 渲染）
 │       ├── schemas.py         Pydantic v2 请求/响应契约（XxxRequest/XxxResponse）
+│       ├── obs_common.py      可观测性路由公共薄壳（懒加载模块 / 6004 未启用 / request_id）
+│       ├── obs_trace_routes.py    Trace 只读 API（会话 trace 列表 / 事件分页 / 调用链 / 全量事件，2026-11-12）
+│       ├── obs_metrics_routes.py  Metrics 只读 API（多维聚合 / 告警历史 / 阈值配置，2026-11-12）
+│       ├── obs_replay_routes.py   Replay API（verify / compare 任务，2026-11-12）
 │       └── health.py          环境自检（rg/ctags/git、DB 可写、LLM 配置、storage_repair）
+├── obs/                       可观测性应用编排（2026-11-12；三模块独立启停）
+│   ├── registry.py            模块装配 + 运行期开关同步（ObsModules）
+│   ├── trace_service.py       Trace 查询与回溯
+│   ├── metrics_service.py     指标聚合 / 阈值评估 / 告警历史
+│   ├── replay_service.py      verify（单 Trace 自比对）/ compare（双 Trace 版本对比）
+│   ├── replay_execution.py    确定性 dry-run 执行适配器（录制端口 + 内存存储）
+│   └── memory_stores.py       回放用内存 Session/Turn 存储
 └── observability/
     └── logging.py             结构化事件日志（标准库，T6-9；11 个固定事件见 SHOULD-08）
 ```
@@ -1125,7 +1184,6 @@ src/devprompt_ai/
 | `domain/retrieval/ports.py` | `FileReader.exists(path) -> bool` | `harness/process.py` | 文件存在性检查 |
 | `domain/decision/port.py` | `rank_components` / `probe_facts` / `score_prompts` | `decision/fallback.py` | 决策层三能力 |
 | `domain/generate/ports.py` | `generate(prompt) -> str` | `harness/llm.py` | LLM 单次调用 |
-| `domain/ranking/ports.py` | `get_preference` / `save_preference` | `memory/preference_store.py` | 偏好向量读写 |
 | `domain/model_catalog/ports.py` | `ModelCatalogFetcher.fetch(base_url, api_key, timeout)` | `harness/models_client.py` | 拉厂商 `/models` 模型清单（2026-10-17） |
 
 **注入位置**：`ForgeService.__init__` 接收全部 Protocol 实例，默认取生产实现，测试时注入 mock。
@@ -1175,55 +1233,77 @@ frontend/
 │   └── check-contract.mjs    Zod 与生成类型一致性校验
 └── src/
     ├── main.tsx               入口
-    ├── App.tsx                根组件 + 路由表
+    ├── App.tsx                根组件 + 路由表 + 壳层样式（App.module.css）
     ├── router/
     │   └── index.tsx          路由定义与守卫
     ├── pages/                 路由级组件
     │   ├── OptimizePage.tsx
+    │   ├── OptimizePage.module.css  工作台页面层样式（2026-11-07 从 global.css 迁出）
     │   ├── HistoryPage.tsx         历史页（F-702 独立可用：列表 + 置顶/重命名/删除/复制路径/打开会话）
+    │   ├── ObservabilityPage.tsx   可观测性页（2026-11-16 自设置中心迁出：页头 + 返回工作台 + 设置回读兜底）
+    │   ├── ObservabilityPage.module.css  可观测性页层样式（撑满主区的高度链，台账/图表内部滚动）
     │   └── ~~PreferencePage.tsx~~  偏好页（2026-10-21 移除）
     ├── components/
     │   ├── ui/                通用展示组件
     │   │   ├── Toggle.tsx         开关（设置中心用）
-    │   │   └── Slider.tsx         滑条（偏好/设置共用）
+    │   │   ├── Slider.tsx         滑条（偏好/设置共用）
+    │   │   ├── ConfirmDialog.tsx  通用确认弹窗（2026-11-01：遮罩 + 标题 + 正文 + 取消/危险确认，Esc/焦点管理）
+    │   │   └── BrandMark.tsx      品牌标识内联 SVG（2026-11-01：气泡 + 火花，颜色随主题 token）
     │   ├── optimize/          优化流程组件
-    │   │   ├── ConsoleInput.tsx     启动页主视觉输入卡片（对话式重构；模型选择器见 ModelPicker）
-    │   │   ├── ModelPicker.tsx       模型选择器（2026-10-18：只列已配置条目；hover 飞出按模型参数面板——上下文长度 / 思考模式 / 思考强度，强度在开关关闭时置灰；档位取自官方静态登记，各模型独立）
+│   │   ├── ConsoleInput.tsx     启动页主视觉输入卡片（对话式重构；2026-11-01 输入随内容自动增高至 6 行；模型选择器见 ModelPicker）
+│   │   ├── ModelPicker.tsx       模型选择器（2026-10-18：只列已配置条目；hover 飞出按模型参数面板——上下文长度 / 思考模式 / 思考强度，强度在开关关闭时置灰；档位取自官方静态登记，各模型独立；2026-11-08 兼会话级热切换入口，POST /sessions/{id}/model）
     │   │   ├── ChatStream.tsx       对话流（用户气泡 → 回复块：步骤时间轴（每步下方挂过程）+ 方案正文；2026-10-20 移除目标定位/取证/操作栏）
-    │   │   ├── TraceEntry.tsx       思考过程条目（2026-10-22：灰底思考块 + 动作行 + 可展开命令/输出）
-    │   │   ├── TurnList.tsx         多轮全文流（2026-10-20：进入即并发拉取每轮正文，用户气泡右 / 助手块左）
-    │   │   ├── AskPanel.tsx         反问面板（2026-10-20 v2：内联于对话流、自适应高度、超 60vh 中部滚动、头尾固定）
+    │   │   ├── TraceEntry.tsx       工具动作卡（2026-11-07 两形态：命令→终端块 `$`+exit 胶囊+可展开输出；读文件→瘦胶囊行；展示后端实测耗时）
+    │   │   ├── PhaseLedger.tsx      执行账本（2026-11-07：每阶段一行 28px，状态字形 + 等宽大写阶段名 + 动作计数，替代 ✓●○ 进度列表）
+    │   │   ├── TypewriterText.tsx   逐字呈现（2026-11-07：rAF 每帧 3 字 + 方块光标；只在增量增长时逐字，减少动效时整段）
+    │   │   ├── TurnList.tsx         多轮全文流（2026-10-20：进入即并发拉取每轮正文，用户气泡右 / 助手块左；2026-11-05 去掉 20 轮硬顶改分页增量加载，正文进 store 常驻）
+    │   │   ├── TurnActions.tsx     轮级操作条（2026-11-05：「以此轮继续」+「撤销到此轮」danger 二次确认）
+    │   │   ├── DeliveryGateCard.tsx 交付证据门卡片（2026-11-05：色阶用后端 tone、文案用后端 disclosure，前端零判定）
+    │   │   ├── AssistantBlock.tsx  助手块同构渲染器（2026-11-05：历史轮与当前轮共用，时间轴/门禁/方案/回答，缺什么省什么不伪造）
+    │   │   ├── AskPanel.tsx         反问面板（2026-10-20 v2：内联于对话流、自适应高度、超 60vh 中部滚动、头尾固定；2026-11-01 头部改折叠栏，收起只留一行摘要）
     │   │   ├── AskFlow.tsx          反问组合层（持有作答草稿，拼装 AskDialog + FollowupForm，2026-10-20）
-        │   │   ├── PromptCard.tsx
-    │   │   ├── VariantTabs.tsx
-    │   │   ├── RecommendBadge.tsx
-    │   │   ├── ScoreDetail.tsx
-    │   │   ├── ConfidenceNotice.tsx
+    │   │   ├── PromptCard.tsx       单方案卡片（title + body + changes；fallback=true 显示降级提示）
     │   │   ├── FollowupForm.tsx
     │   │   └── CopyButton.tsx
     │   ├── history/           历史页组件
-    │   │   ├── ProjectSidebar.tsx  固定侧边栏（图三：头部「项目」+一键收纳，项目分组 + 会话条目）
-    │   │   └── SessionMenu.tsx     会话 ⋮ 菜单（置顶/复制路径/重命名/删除，二次确认）
+    │   │   ├── ProjectSidebar.tsx  固定侧边栏（图三：头部「项目」+一键收纳；2026-11-01 起按 project_root 分组，组头带项目级删除）
+    │   │   └── SessionMenu.tsx     会话 ⋮ 菜单（置顶/复制路径/重命名/删除；2026-11-01 删除改为上抛，确认统一走 ConfirmDialog）
     │   ├── ~~preference/~~     偏好页组件（2026-10-21 移除）
-    │   │   └── PreferenceEditor.tsx 四维偏好编辑器（F-702 独立可用：滑杆 + 显式保存 + 放弃修改）
+    │   │   └── ~~PreferenceEditor.tsx~~ 四维偏好编辑器（2026-10-21 随偏好层移除）
     │   └── settings/          设置中心组件（F-604，模态面板）
-    │       ├── SettingsModal.tsx      弹窗外壳 + 左侧四项导航
+    │       ├── SettingsModal.tsx      弹窗外壳 + 左侧四项导航（可观测性项点击跳转独立页面 /observability）
     │       ├── ModelServicePanel.tsx  供应商卡（F-604 供应商中心化：配一次 Base URL/API Key → 刷新模型列表 → 多选 → 一键保存；测试连接与删除均在供应商级）
     │       ├── AppearancePanel.tsx    通用外观（主题/语言/字体/行为开关）
-    │       ├── MemoryPanel.tsx        长期记忆（L3 滑条/采纳历史/数据管理）
+    │       ├── ~~MemoryPanel.tsx~~     长期记忆（2026-10-21 随偏好层移除；设置中心剩外观/模型服务/安全三面板）
     │       └── SecurityPanel.tsx      流程与安全（护栏参数/锁定项/清除数据）
+    ├── features/              跨页面功能模块（2026-11-12：三模块互不 import）
+    │   └── obs/
+    │       ├── ObservabilityPanel.tsx  可观测性外壳（2026-11-12 三模块独立开关 + 标签切换，各面板自持数据；2026-11-16 随独立页面自 settings/ 迁出）
+    │       ├── SessionLogPanel.tsx   Session Log：运行时事件台账（run_events，按 run 分段 + 筛选/导出/实时跟随）
+    │       ├── TracePanel.tsx        Trace：会话/trace/事件台账 + 全量事件检查器 + JSON/CSV 导出
+    │       ├── MetricsPanel.tsx      Metrics：多维聚合 + 阈值配置 + 告警历史
+    │       ├── ReplayPanel.tsx       Replay：verify / compare + 时间轴回放
+    │       ├── SessionListView.tsx   会话左栏（Trace/Metrics/Replay 复用）
+    │       ├── ReplayTimeline.tsx    时间轴总览（缩放/选区间/播放头）
+    │       ├── ReplayControls.tsx    回放控制（播放/暂停/步进/速度）
+    │       ├── exportData.ts         浏览器端 JSON/CSV 导出（BOM + 转义）
+    │       ├── format.ts             展示格式化
+    │       ├── types.ts              纯展示类型
+    │       └── observability.module.css 三模块共享样式
     ├── stores/                Zustand store
     │   ├── useOptimizeStore.ts
     │   ├── useHistoryStore.ts     会话历史（2026-10-21 由 usePreferenceStore 改名精简）
     │   └── useSettingsStore.ts    设置状态（含 localStorage 读写封装）
     ├── hooks/                 自定义 Hook
     │   ├── useSSE.ts
+    │   ├── useRunStream.ts        多端运行流（2026-11-07：先 fetchLastSeq → POST /runs → 订阅 /stream；按 seq 去重补帧）
     │   ├── useRequest.ts
     │   └── useDebounce.ts
     ├── api/                   请求封装
     │   ├── client.ts          基础请求层
-    │   ├── endpoints.ts       接口定义
-    │   ├── nativeFolder.ts    原生文件夹选择器桥（2026-10-19：页面 postMessage → 扩展 content script → service worker → native host → 系统对话框；2026-10-22 桌面化：优先走 window.devpromptDesktop 桥（Electron preload），无桥时原样回落扩展链路，取消均为空串同构）
+│   ├── endpoints.ts       接口定义（2026-11-08 增 setSessionModel：F10 会话级模型热切换，禁重试）
+│   ├── nativeFolder.ts    原生文件夹选择器桥（2026-10-19：页面 postMessage → 扩展 content script → service worker → native host → 系统对话框；2026-10-22 桌面化：优先走 window.devpromptDesktop 桥（Electron preload），无桥时原样回落扩展链路，取消均为空串同构）
+│   ├── protocol.ts        运行时帧契约（RunEventSchema 判别联合 + applyRunEvent，2026-11-07）
     │   ├── interceptors.ts    拦截器
     │   ├── errors.ts          错误处理
     │   └── types.ts           请求响应类型
@@ -1232,15 +1312,33 @@ frontend/
     │   ├── common.ts
     │   ├── optimize.ts
     │   ├── stream.ts             思考过程流事件契约（thought / snapshot / error 判别联合，2026-10-19）
-    │   ├── preference.ts
+    │   ├── history.ts            历史会话契约（F-501；自 preference.ts 迁出，2026-11-06）
     │   ├── settings.ts           设置契约校验（F-604）
-    │   └── errorCodes.ts         错误码 → 用户文案表（N-7；须覆盖后端 ERROR_CODES 全部条目）
-    ├── styles/                全局样式与 token
+    │   ├── obs.ts                可观测性三模块契约校验（2026-11-12）
+    │   └── errorCodes.ts         错误码 → i18n 键映射（F-209；文案在 i18n/locales，须覆盖后端全部码）
+    ├── i18n/                  多语言（F-209，2026-11-06）
+    │   ├── index.ts           i18next 初始化（资源同步 import；locale 取 appearance 真源）
+    │   └── locales/           zh-CN.json / en.json（键集一致由 keys.test.ts 守卫）
+    ├── styles/                全局层（token 唯一来源 + reset + 跨组件原语，2026-11-07 起组件样式一律 module）
     │   ├── tokens.css         CSS Variables 设计 token
-    │   ├── global.css
+    │   ├── global.css         reset、基础排版、跨组件原语（.button/.field/.ask-panel/…，故意不隔离）
     │   └── phases.css         阶段指示器样式
+    ├── lab/                   风格样张页（**dev-only**，2026-11-07；生产构建 DCE 剔除）
+    │   ├── StyleLab.tsx       样张页外壳（风格/配色/主题/流式变体/回放控制，URL 参数可回填）
+    │   ├── StyleLab.test.tsx  冒烟：三列渲染、切换写 data 属性、回放推进与暂停
+    │   ├── LabSwitcher.tsx    分段控件 + 回放控制 + 章节外壳
+    │   ├── labCopy.ts         样张文案 zh/en（不进生产语言包）
+    │   ├── demoStream.ts      假流式事件序列 + 回放 hook（不触网、不做判定）
+    │   ├── types.ts           样张枚举（风格/配色/变体/构图）
+    │   ├── utils.ts           class 拼接、WCAG 对比度实测、减少动效检测
+    │   ├── styles/
+    │   │   ├── lab.css           Tailwind 入口（跳过 preflight）+ @theme token 桥接
+    │   │   ├── lab-tokens.css    3 风格 × 3 配色 × 明暗的 token 覆盖（同名变量，不改 tokens.css）
+    │   │   └── lab-motion.css    光标 / 轨道流光 / shimmer / reduced-motion 降级
+    │   └── specimens/         组件标本（启动页 / 对话线程 / 三种流式 / 工具卡 / 侧边栏 / 配色表）
     ├── utils/                 前端纯工具
     │   ├── format.ts
+    │   ├── css.ts                  CSS Modules 类名映射（makeS：编辑期可读名 → 哈希名，DEV 告警漏迁）
     │   └── diff.ts
     ├── types/                 类型定义
     │   └── index.ts
@@ -1318,6 +1416,39 @@ styles    types      utils     utils     utils
 
 **明暗双主题**：通过 `:root` 与 `[data-theme="dark"]` 下的同名变量覆盖实现，组件内不出现任何硬编码颜色。
 
+**视觉语言与颜色语义（2026-11-07 起，S2「终端工具」）**：
+
+| 类别 | token | 允许出现的位置 |
+|---|---|---|
+| 强调（石墨靛蓝） | `--color-primary-500/700/900/soft`、`--brand*` | 主按钮、链接、选中竖线、聚焦环、当前阶段、方案卡描边 |
+| 成功 | `--color-success-500/-soft` | 完成对勾、复制成功、API 正常 |
+| 进行中 | `--color-running-500/-soft` | 阶段状态点、「进行中」标签 |
+| 告警 / 失败 | `--color-warning-*` / `--color-danger-*` | 披露条竖线、失败动作描边与 Exit code、破坏性操作 |
+
+**绿色不再作为品牌色**：任何按钮底色、链接、选中态都不使用绿色（2026-11-07 所有者裁定）。
+
+**排版与形状**：字号阶梯 `22 / 16 / 14 / 13 / 12 / 11`（`--text-display` … `--text-micro`），元信息一律 `--font-family-code` + 大写 + 字距（`--track-micro` / `--track-wide`）；圆角 `8 / 8 / 10 / 8`；**卡片零投影**，层级靠 1px 描边与表面递进建立，仅浮层（菜单 / 弹窗）使用 `--shadow-lg` / `--shadow-menu`。
+
+> **2026-11-07 迁移完成**：上表的 `ComponentName.module.css` 已全量落地（10 个组件级样式文件 + `App.module.css` / `pages/OptimizePage.module.css` 壳层与页面层）。规则：
+> - 组件用 `import styles from './X.module.css'` + `const s = makeS(styles)`（`src/utils/css.ts`）包装 className，编辑期类名保持 BEM 可读，运行时映射为哈希名；
+> - **两层语义**：模块内定义的类被隔离；未定义的（`.button` / `.field` / `.ask-panel` 等跨组件原语，仍在 `styles/global.css`）原样透传——原语层是设计系统的一部分，故意不隔离；
+> - **错位检查**：`python scripts/check_css_modules.py frontend/src` 校验「TSX 用到的类名 ⊆ 该组件导入的 module ∪ 全局层」，返回非零即失败（2026-11-07 迁移时据此抓到 25 处挂错文件的类）；
+> - 壳层的跨文件钩子（`lab.css` 隐藏标题栏/侧边栏）改用 `data-shell / data-titlebar / data-drawer` 属性选择器，不依赖哈希类名；
+> - 样张页依赖 `.lab-surface[data-lab-style=…]` 的**模块外**选择器继续用 `:global` 语义（lab 自身是 Tailwind 体系，不受影响）。
+
+**样张页（`src/lab`）的样式例外（2026-11-07，批准人=项目所有者）**：
+
+| 规则 | 说明 |
+|---|---|
+| 颜色单一来源不变 | 色值只存在于 CSS；`lab-tokens.css` 用 `[data-lab-style][data-lab-palette][data-theme]` 覆盖**既有变量名**，`styles/tokens.css` 一行不改，生产界面零视觉变化 |
+| Tailwind 只做桥接 | `lab.css` 用 `@theme inline` 把 `--color-surface-base` 等映射成 `bg-surface` / `text-ink` / `border-line`；组件里只出现语义类，**不出现字面色值** |
+| 跳过 preflight | 只导入 `tailwindcss/theme.css` + `tailwindcss/utilities.css`，避免全局 reset 波及既有 100+ 组件 |
+| 主题信号唯一 | 仍以 `data-theme` 为准（嵌套节点可局部换主题，做法与 `AppearancePanel` 的主题预览一致），不引入 `class="dark"` 第二套信号 |
+| 生产零残留 | 入口经 `import.meta.env.DEV` 守卫 + `lazy()` 动态导入；验收时对 `dist/assets` 检索 `StyleLab` / `data-lab-style` / `lab-surface` 必须 0 命中 |
+| 文案不进生产语言包 | 样张文案集中在 `labCopy.ts`（zh/en 两套），不写进 `i18n/locales/*.json` |
+
+**样张页同样受门的约束**：`check_architecture.py` 的 MUST-08 阈值扫描、`jsxScan.test.ts` 的中文文案扫描、`staticChecks.test.ts` 的 useShallow 扫描**均覆盖 `src/lab`**，不设豁免；因此样张源码里不出现 `0.5` 这类会被误判为阈值的字面量（Tailwind 的 `gap-0.5` 改用 `gap-[2px]`）。
+
 ---
 
 ## 6. 状态管控
@@ -1337,14 +1468,12 @@ styles    types      utils     utils     utils
 | 状态 | 归属 | 说明 |
 |---|---|---|
 | 当前流程阶段 | 全局（`useOptimizeStore`） | 多组件需感知 |
-| 三套方案内容 | 全局 | 多组件需读取 |
-| 评分明细 | 全局 | 评分组件需读取 |
+| 单个方案内容 | 全局 | 多组件需读取 |
+| 交付门状态 | 全局 | 门禁卡片与方案卡需读取 |
 | SSE 连接状态 | 全局（`useOptimizeStore`） | 跨页面共享 |
-| 偏好向量 | 全局（`usePreferenceStore`） | 两个页面都要读 |
-| 历史采纳记录 | 全局（`usePreferenceStore`） | 与偏好同属 usePreferenceStore，跨页面共享 |
+| 历史会话列表 | 全局（`useHistoryStore`） | 两页共享（2026-10-21 起承接原 usePreferenceStore 的持久职责） |
 | 输入框内容 | **局部** | 只有输入组件关心 |
 | 折叠展开状态 | **局部** | 每张卡片独立 |
-| 评分明细是否展开 | **局部** | 每张卡片独立 |
 | 加载中的 spinner | **局部** | 组件自己知道 |
 | 表单草稿 | **局部** | 提交后即销毁 |
 
@@ -1379,15 +1508,15 @@ import { useShallow } from 'zustand/react/shallow'
 interface OptimizeState {
   flowId: string | null
   phase: Phase
-  variants: PromptVariant[]
-  ranking: RankingResult | null
+  variant: VariantPayload | null
+  deliveryGate: DeliveryGatePayload | null
   followups: FollowupItem[]
   sseStatus: 'idle' | 'connecting' | 'open' | 'error'
   isSubmitting: boolean
   setFlow: (flowId: string, phase: Phase) => void
   patchPhase: (phase: Phase) => void
-  setVariants: (variants: PromptVariant[]) => void
-  setRanking: (ranking: RankingResult) => void
+  setVariant: (variant: VariantPayload | null) => void
+  setDeliveryGate: (gate: DeliveryGatePayload | null) => void
   setFollowups: (items: FollowupItem[]) => void
   setSseStatus: (s: SseStatus) => void
   setSubmitting: (v: boolean) => void
@@ -1397,15 +1526,15 @@ interface OptimizeState {
 export const useOptimizeStore = create<OptimizeState>()((set) => ({
   flowId: null,
   phase: 'idle',
-  variants: [],
-  ranking: null,
+  variant: null,
+  deliveryGate: null,
   followups: [],
   sseStatus: 'idle',
   isSubmitting: false,
   setFlow: (flowId, phase) => set({ flowId, phase }),
   patchPhase: (phase) => set({ phase }),
-  setVariants: (variants) => set({ variants }),
-  setRanking: (ranking) => set({ ranking }),
+  setVariant: (variant) => set({ variant }),
+  setDeliveryGate: (deliveryGate) => set({ deliveryGate }),
   setFollowups: (followups) => set({ followups }),
   setSseStatus: (sseStatus) => set({ sseStatus }),
   setSubmitting: (isSubmitting) => set({ isSubmitting }),
@@ -1418,11 +1547,11 @@ export const useOptimizeStore = create<OptimizeState>()((set) => ({
 ```typescript
 // 正确：只订阅需要的字段
 const phase = useOptimizeStore((s) => s.phase)
-const variants = useOptimizeStore((s) => s.variants)
+const variant = useOptimizeStore((s) => s.variant)
 
 // 多字段：必须用 useShallow，否则每次渲染都触发
-const { variants, ranking } = useOptimizeStore(
-  useShallow((s) => ({ variants: s.variants, ranking: s.ranking })),
+const { variant, deliveryGate } = useOptimizeStore(
+  useShallow((s) => ({ variant: s.variant, deliveryGate: s.deliveryGate })),
 )
 ```
 
@@ -1435,7 +1564,7 @@ const { variants, ranking } = useOptimizeStore(
 | Store | 负责 | 生命周期 |
 |---|---|---|
 | `useOptimizeStore` | 单次优化流程的全部状态 | 流程开始时创建，`reset()` 时清空 |
-| `usePreferenceStore` | 偏好向量与历史采纳记录 | 应用级，跨页面持久 |
+| `useSettingsStore` | 外观与流程参数（localStorage 持久化 + 后端 settings 视图） | 应用级，跨页面持久 |
 
 **不拆第三个 store 的理由**：SSE 状态属于优化流程，不独立；表单草稿属于组件局部，不进 store。
 
@@ -1445,13 +1574,13 @@ const { variants, ranking } = useOptimizeStore(
 
 ```typescript
 // 允许：在 hook 中组合两个 store
-export function useAdoptVariant() {
-  const variants = useOptimizeStore((s) => s.variants)
-  const applyPreference = usePreferenceStore((s) => s.applyAdoption)
+export function useProjectLauncher() {
+  const project = useOptimizeStore((s) => s.project)
+  const setAppearance = useSettingsStore((s) => s.setAppearance)
 
-  return async (variantKey: VariantKey) => {
-    await adoptApi.submit({ variantKey, flowId: ... })
-    applyPreference(variantKey)   // 更新偏好向量
+  return (projectPath: string) => {
+    setAppearance({ ...useSettingsStore.getState().appearance })   // 仅示例：跨 store 组合写法
+    return projectPath
   }
 }
 ```
@@ -1464,27 +1593,26 @@ export function useAdoptVariant() {
 
 | 数据 | 持久化 | 位置 | 原因 |
 |---|---|---|---|
-| 偏好向量 | ✅ 持久 | 后端 SQLite（L3） | 用户长期习惯，不应丢 |
 | 历史记录 | ✅ 持久 | 后端 SQLite | 有查阅价值 |
 | 当前流程阶段 | ⚠️ 部分 | 后端 L1 Session | 服务端持久，页面刷新后从后端恢复 |
-| 三套方案内容 | ⚠️ 部分 | 后端 L1 Session | 同上 |
-| 偏好向量缓存 | ✅ 持久 | `localStorage` | 减少首屏请求 |
+| 单个方案内容 | ⚠️ 部分 | 后端 L1 Session | 同上 |
+| 外观设置 | ✅ 持久 | `localStorage` | 主题/语言/字体即开即得 |
 | 输入框草稿 | ✅ 持久 | `localStorage` | 防误刷新丢失 |
 | SSE 连接状态 | ❌ 不持久 | 内存 | 连接状态刷新后必然重连 |
 | 折叠展开状态 | ❌ 不持久 | 内存 | 纯 UI 偏好 |
-| 评分展开状态 | ❌ 不持久 | 内存 | 同上 |
 
 **关键设计**：流程状态的权威存储在**后端**。前端 store 只是镜像。这样页面刷新或服务重启后，能从后端恢复同一状态——这是流程可恢复的必要条件。
 
 **localStorage 键命名规范**：
 
 ```
-devprompt:v1:preference        偏好向量缓存
-devprompt:v1:draft             输入草稿
-devprompt:v1:last-project      最近使用的项目路径
+devprompt:v1:appearance        外观设置（主题/语言/字体；Zod 校验读取）
 ```
 
-统一前缀避免与其他应用冲突。所有 key 必须带版本前缀（如 `devprompt:v1:preference`，2026-10-13 定稿），便于将来变更结构时安全失效；TTL 暂不强制、后续按需补。
+> 其余状态（草稿、最近项目等）权威存储在后端 L1 Session；客户端只镜像。
+> 键前缀 `devprompt:v1:` 结构变更时可整体失效（useSettingsStore.STORAGE_PREFIX）。
+
+统一前缀避免与其他应用冲突。所有 key 必须带版本前缀（如 `devprompt:v1:appearance`，2026-10-13 定稿），便于将来变更结构时安全失效；TTL 暂不强制、后续按需补。
 
 **敏感数据不入 localStorage**：项目路径可存（原句不存，涉及用户代码内容）。
 
@@ -1549,12 +1677,8 @@ export const storage = {
 ```typescript
 // 正确
 interface PromptCardProps {
-  variant: PromptVariant
-  isRecommended: boolean
-  confidence: number | null
-  onAdopt: (variantKey: VariantKey) => void
-  onCopy: (content: string) => void
-  disabled?: boolean
+  variant: VariantPayload
+  actions?: ReactNode
 }
 
 // 错误：any 会让类型系统失效
@@ -1571,7 +1695,7 @@ interface PromptCardProps {
 | 全部必填或有默认值 | 可选 prop 必须有默认值语义 |
 | 禁止可变对象 | 传对象时类型为 `Readonly<T>` |
 | 回调用 void 返回 | `(x: T) => void`，不返回 Promise |
-| 布尔 prop 用 is/has/should 前缀 | `isRecommended`、`hasError` |
+| 布尔 prop 用 is/has/should 前缀 | `isThinking`、`hasError` |
 | 避免 boolean prop 过多 | 超过 3 个布尔 prop 说明组件该拆分 |
 | 不传 `undefined` 依赖 | 用可选链处理，不用 `prop !== undefined` 判断 |
 
@@ -1580,7 +1704,7 @@ interface PromptCardProps {
 ```typescript
 // 正确：只读
 interface Props {
-  variants: readonly PromptVariant[]
+  turns: readonly TurnSummaryPayload[]
 }
 ```
 
@@ -1618,7 +1742,7 @@ interface Props {
 </Card>
 
 // 错误：用配置枚举硬编码
-<Card type="variant" variant="a" showHeader showScore />
+<Card type="prompt" level="a" showHeader showFooter />
 ```
 
 **复用门槛**：
@@ -1635,17 +1759,17 @@ interface Props {
 
 ```typescript
 // 抽 Hook：逻辑复用，UI 各异
-// 置信度分级由后端算好，前端只渲染 —— 前端不得出现任何阈值常量
-// （AGENTS.md MUST-08）
-function useConfidenceBadge(level: ConfidenceLevel | null) {
-  return { level, showWarning: level !== 'high' && level !== null }
+// 交付门色阶由后端算好，前端只渲染 —— 前端不得出现任何阈值常量
+// （AGENTS.md MUST-08 / MUST-33）
+function useDeliveryGate(gate: DeliveryGate | null) {
+  return { tone: gate?.tone ?? 'ok', disclosure: gate?.disclosure ?? '' }
 }
 
-// 后端返回的契约（ConfidenceLevel = 'high' | 'low' | 'unknown'）
-// 阈值 0.6 / 0.4 全部在 domain/ranking/ 内判定，前端无感知
+// 后端返回的契约（DeliveryGate = { status, reasons, disclosure, tone }）
+// 判定全部在 domain/delivery/gate.py 内完成，前端无感知
 
 // 抽组件：UI 复用，逻辑封装
-function ConfidenceNotice({ level, detail }: Props) { ... }
+function DeliveryGateCard({ gate }: Props) { ... }
 ```
 
 ### 7.6 样式作用域
@@ -1691,17 +1815,14 @@ function ConfidenceNotice({ level, detail }: Props) { ... }
 /**
  * 单个优化方案展示卡片。
  *
- * 显示方案标题、内容预览、评分摘要与推荐标记，支持展开查看完整内容
- * 与评分明细。
+ * 渲染方案标题、正文与变更点列表；`fallback=true` 时显示降级提示。
+ * 前端零加工，正文原样渲染后端字符串。
  *
  * @example
  * ```tsx
  * <PromptCard
  *   variant={variant}
- *   isRecommended={true}
- *   confidence={0.82}
- *   onAdopt={handleAdopt}
- *   onCopy={handleCopy}
+ *   actions={<button onClick={handleAdopt}>采纳</button>}
  * />
  * ```
  */
@@ -1821,7 +1942,7 @@ return parsed.data
 | 错误码 | 前端行为 |
 |---|---|
 | 2005 候选集为空 | 显示引导，指引用户补充组件名 |
-| 3002 置信度不足 | 显示 `ConfidenceNotice`，不标记推荐 |
+| 3002 置信度不足 | 显示提示文案（不阻断流程） |
 | 3004 决策层速率限制 | 提示稍后重试，禁用提交按钮几秒 |
 | 4002 LLM 不可达 | 提示检查 LLM 配置 |
 | 6001 非法状态转移 | 刷新状态，提示重新开始 |
@@ -1948,16 +2069,16 @@ useEffect(() => {
 const inflight = new Map<string, Promise<unknown>>()
 ```
 
-适用场景：多个组件同时请求同一份数据（如偏好向量被两个页面读取）。
+适用场景：多个组件同时请求同一份数据（如历史列表被工作台与历史页读取）。
 
 **幂等控制**：
 
 | 操作 | 幂等 | 处理 |
 |---|---|---|
-| `GET /preference` | ✅ | 去重 |
+| `GET /history` | ✅ | 去重 |
 | `POST /optimize` | ❌ | 禁用重复提交 |
-| `PUT /preference` | ✅ | 允许重试 |
-| `POST /feedback` | ❌ | 禁用重复提交 |
+| `PUT /settings` | ✅ | 允许重试 |
+| `POST /runs` | ❌ | 禁用重复提交 |
 
 **`POST /optimize` 的防重**：提交后立即 `setSubmitting(true)`，请求结束前按钮禁用。**不靠时间戳去重**——时钟不可靠。
 
@@ -2023,8 +2144,8 @@ pnpm check:contract
 
 **破坏一致性的典型做法（禁止）**：
 
-- ❌ HTTP 层（`interfaces/api/`）写一份评分逻辑，`service.py` 里再写一份
-- ❌ 前端自己算总分
+- ❌ HTTP 层（`interfaces/api/`）写一份交付门判定逻辑，`service.py` 里再写一份
+- ❌ 前端自己判定交付门状态
 - ❌ HTTP 层自定义阈值
 - ❌ HTTP 层走缓存、service 不走
 

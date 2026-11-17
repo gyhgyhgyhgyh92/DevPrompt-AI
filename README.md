@@ -11,10 +11,11 @@
 | | |
 |---|---|
 | **取证优先** | 不编造。候选集硬上限 25 条、仅含符号名与路径不含代码正文；七项事实逐项验证真伪并附证据 |
-| **按需追问** | 由「具体未知项」驱动批量反问，**无轮次上限**；用户可随时选「直接生成」走保守路径 |
+| **按需追问** | 由「具体未知项」驱动批量反问；**信息充足时不提问**（七项取证全过即丢弃模型给出的问题直接生成），已答项按语义归一化去重、同一话题不再追问；随时可「直接生成」走保守路径 |
 | **不越级输出** | 信息只够 A 档就只出 A 档。C 档才给行号，且要求行号必须真实存在，否则降级表述 |
 | **诚实推荐** | 置信度优先于分差：置信度不足时**不标推荐**并说明原因，绝不假装确定 |
-| **权重可解释** | 总分 = 0.6 × 适配度 + 0.4 × 偏好匹配度；偏好四维可手动调节并被采纳行为持续更新 |
+| **评分可解释** | 总分即适配度（0~1，模型按五维打分后归一化），不用不可解释的加权魔数；置信度门禁（0.6 / 0.4）与分差双阈值（0.12 / 0.5）都写死在领域层并有表驱动测试 |
+| **过程可见** | 检索与取证的真实命令、命中行数与输出摘要逐条展示（路径与 stderr 均脱敏）；检索失败也会留下一张带 `Exit code` 的失败卡片，不会静默；结束后整组收成一行摘要，可展开回看 |
 | **本地优先** | 单进程本地服务，SQLite 单文件存储，密钥只落 0600 文件不进库不进日志 |
 | **可验证锚点** | C 档方案给出的路径与行号来自真实取证，可直接 `rg -n` 复核 |
 
@@ -78,8 +79,8 @@ uv run devprompt-ai
 前后端分离热更新，**需两个终端**：
 
 ```powershell
-# 终端 1：后端（--reload 自动重载）
-uv run devprompt-ai --reload
+# 终端 1：后端（普通启动；见下方关于 --reload 的说明）
+uv run devprompt-ai
 ```
 
 ```powershell
@@ -89,6 +90,12 @@ pnpm dev
 ```
 
 打开 <http://localhost:5173>。前端 dev server 会把 `/api` 代理到后端 8000 端口。
+
+> ⛔ **Windows 下 `--reload` 已被拒绝**：uvicorn 的热重载会把 asyncio 事件循环切成
+> Selector，子进程随之不可用——`rg` / `ctags` / `git` 版本探测抛 `NotImplementedError`
+> （启动体检三项变黄）、符号表扫描失效、原生文件夹选择器弹不出来。
+> 因此 Windows 上带 `--reload` 启动会直接报错退出（退出码 2）；后端改完手动重启即可，
+> 前端热更新交给 Vite。
 
 > ⚠️ 端口必须一致：`main.py` 的 `DEFAULT_PORT` 与 `frontend/vite.config.ts` 的 proxy
 > 目标同为 8000，改一侧需同步另一侧（有测试 `test_default_port_matches_vite_dev_proxy` 兜底）。
@@ -130,11 +137,11 @@ pwsh -File desktop/scripts/smoke-sidecar.ps1
 
 ## 首次使用
 
-1. **配置模型**——启动后在「⚙ 设置 → 模型服务」填入：
-   - 服务地址（如 `https://api.deepseek.com/v1`）
-   - API Key（只写入本地设置文件，0600 权限，不入库不进日志）
-   - 模型标识
-   - 点「测试连接」确认可用
+1. **配置模型**——启动后进「⚙ 设置 → 模型服务」，按供应商配置一次：
+   - 选供应商、填 Base URL（如 `https://api.deepseek.com/v1`）与 API Key
+     （只写入本地设置文件，0600 权限，不入库不进日志，回显恒脱敏）
+   - 点「刷新模型列表」拉取该端点的可用模型，勾选需要的模型并保存
+   - 启动页的模型下拉里选择当前生效项，可对该模型微调上下文窗口与思考强度
 
    也可以直接写进 `.env` 的 `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`。
 
@@ -146,8 +153,8 @@ pwsh -File desktop/scripts/smoke-sidecar.ps1
 4. **回答反问**（如触发）——工具会列出它**具体不确定的项**，逐条回答即可。
    信息足够时直接出结果；想跳过就点「直接生成」（走 A 档保守路径）。
 
-5. **采纳与反馈**——复制或采纳某套方案后，偏好向量会随采纳行为自动调整，
-   下次推荐更贴合你的习惯。可在「偏好记忆」页手动微调。
+5. **取用结果**——每套方案都有「复制」按钮，C 档还附带可直接 `rg -n` 复核的路径与行号；
+   服务端会把本轮结论写入会话历史，供侧边栏回看与多轮追加。
 
 ---
 
@@ -156,7 +163,8 @@ pwsh -File desktop/scripts/smoke-sidecar.ps1
 | 命令 | 说明 |
 |---|---|
 | `uv run devprompt-ai` | 启动服务（单端口托管前端） |
-| `uv run devprompt-ai --reload` | 开发模式，源码变更自动重载 |
+| `.\.venv\Scripts\devprompt-ai.exe` | 同一入口的直接调用形式（uv 托管解释器异常时的兜底） |
+| `uv run devprompt-ai --reload` | 源码变更自动重载（**Windows 下被拒绝、退出码 2，见「开发模式」**） |
 | `uv run pytest` | 后端测试 |
 | `uv run ruff check .` / `uv run ruff format .` | 后端 lint / 格式化 |
 | `uv run mypy` | 后端类型检查 |
@@ -186,7 +194,7 @@ pwsh -File desktop/scripts/smoke-sidecar.ps1
 
 | 内容 | 位置 |
 |---|---|
-| 会话（L1）、偏好向量（L3）、采纳历史 | `~/.devprompt-ai/devprompt.db`（SQLite，WAL） |
+| 会话（L1）、轮次（turn）与结论 | `~/.devprompt-ai/devprompt.db`（SQLite，WAL） |
 | 模型配置与 API Key | `~/.devprompt-ai/settings.json`（0600） |
 | 前端外观等本地设置 | 浏览器 localStorage（`devprompt:v1:` 前缀） |
 
@@ -206,7 +214,7 @@ src/devprompt_ai/
 │   ├── retrieval/     符号表 / 候选检索 / 全文定位 / 事实验证
 │   ├── decision/      决策端口 / 事实探针 / 自适应反问
 │   ├── generate/      三套方案编排与 A/B/C 模板
-│   ├── ranking/       权重计算 / 双阈值推荐 / 偏好向量
+│   ├── ranking/       适配度归一 / 置信度门禁 / 双阈值推荐
 │   ├── error_codes.py 集中错误码表
 │   └── prompt_guard.py prompt 边界与注入防护
 ├── harness/           LLM 客户端 / 子进程 / 目录浏览
@@ -214,10 +222,12 @@ src/devprompt_ai/
 └── interfaces/api/    HTTP 薄壳（零业务逻辑）
 
 frontend/src/
-├── pages/             OptimizePage / HistoryPage / PreferencePage
-├── components/        三大组件组（optimize / settings / history / preference）
-├── stores/            Zustand（optimize / settings / preference）
-└── schemas/           Zod 校验 + 契约生成类型 + 错误码文案表
+├── pages/             OptimizePage（主工作台）/ HistoryPage（历史会话）
+├── components/        optimize（对话流 / 反问面板 / 输入卡片）/ settings / history / ui（通用件）
+├── stores/            Zustand（optimize / settings / history）
+├── hooks/             useSSE（进度流）、其它通用 hooks
+├── schemas/           Zod 校验 + 契约生成类型 + 错误码文案表
+└── api/               endpoints / client（统一请求与 SSE 帧解析）
 
 desktop/               Electron 桌面壳（仅 Windows，2026-10-22）
 ├── src/main.ts        spawn sidecar / 解析就绪协议 / 建窗 / 单实例 / 退出杀树
@@ -228,6 +238,16 @@ desktop/               Electron 桌面壳（仅 Windows，2026-10-22）
 ```
 
 架构规范、接口定义与错误码清单见 `DevPrompt-AI-项目架构文档.md`；开发约定见 `AGENTS.md`。
+
+---
+
+## 已知限制
+
+| 限制 | 说明 |
+|---|---|
+| 无远端仓库，MUST-22 无技术强制力 | 仓库当前仅本地单仓库（`git remote -v` 为空），「main 禁止直推 + PR 双人评审」无法由平台强制执行，所有门禁均为本地等效验证；建立远端仓库并开启分支保护后此条自动失效 |
+| 浏览器扩展仅 Chromium 系 | 原生文件夹选择器依赖 Chromium 系扩展 + native messaging；Firefox 未适配，未装扩展时没有回退入口 |
+| 后端改代码需手动重启 | Windows 下 `--reload` 被拒绝（见「开发模式」），其余平台可用 |
 
 ---
 
@@ -255,6 +275,24 @@ $env:DPROMPT_RG_PATH = "C:\path\to\rg.exe"
 
 **Q：端口被占用**
 `uv run devprompt-ai --port 9000`；若同时改前端 dev proxy，记得同步 `vite.config.ts`。
+
+**Q：接口返回 `405 Method Not Allowed`（例如答复反问时）**
+说明**正在跑的后端进程是旧版本**，新路由没注册，请求落到单端口托管前端的静态兜底上（StaticFiles 只接受 GET/HEAD）。核验方式：
+
+```powershell
+(Invoke-RestMethod http://127.0.0.1:8000/openapi.json).paths.PSObject.Properties.Name
+# 最新版本应有 15 条，含 /api/v1/followup/{flow_id}/stream
+```
+
+确认后重启后端即可；前端 Vite dev（5173）不用动。
+
+**Q：`uv run` 报 `无法遍历该路径，因为它包含不受信任的装入点 (os error 448)`**
+uv 托管的 Python 安装目录被系统判定为不可遍历（常见于安全软件或目录被移动）。两种绕法：
+
+```powershell
+uv run --no-managed-python devprompt-ai        # 改用系统 Python
+.\.venv\Scripts\devprompt-ai.exe               # 完全绕过 uv
+```
 
 ---
 

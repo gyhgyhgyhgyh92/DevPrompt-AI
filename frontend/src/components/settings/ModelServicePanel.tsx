@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getModelCatalog, putSettings, refreshModelCatalog } from '../../api/endpoints'
 import type { ModelCatalogItem } from '../../schemas/settings'
 import type { SettingsResponse, SettingsUpdate } from '../../api/types'
@@ -8,7 +9,10 @@ import { ApiModeSelect } from './ApiModeSelect'
 import { ModelCapabilityBadge } from './ModelCapabilityBadge'
 import { findProvider, ProviderSelect } from './ProviderSelect'
 import { errorMessage } from './errorMessage'
-import './settings.css'
+import styles from './settings.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 /**
  * 供应商中心化配置面板（2026-10-18 重构，F-604 模型服务标签页）。
@@ -59,10 +63,16 @@ const FALLBACK_CAPABILITIES: ModelCapabilities = {
 
 let draftSeq = 0
 
-/** 预生成供应商引用键：条目必须在同一次请求里引用它，故 id 由前端先给。 */
+/**
+ * 预生成供应商引用键：条目必须在同一次请求里引用它，故 id 由前端先给。
+ *
+ * **必须跨会话唯一**：早期实现用页内序号 `p-new-N`，刷新页面后序号归零，新增供应商
+ * 会与已落盘的 id 撞名；撞名后写侧按 id 去重只留一条供应商，但其实下面挂着两个
+ * 供应商的模型（表现为「MiniMax 名下出现 Kimi 模型」）。故改用时间戳 + 序号。
+ */
 function newProviderId(): string {
   draftSeq += 1
-  return `p-new-${draftSeq}`
+  return `p-${Date.now().toString(36)}${draftSeq}`
 }
 
 function providerDraftsFrom(settings: SettingsResponse): ProviderDraft[] {
@@ -127,6 +137,7 @@ function buildPayload(drafts: ProviderDraft[], rows: ModelRow[]): NonNullable<Se
 
 /** 模型服务面板：按供应商配置凭据 → 刷新模型列表 → 多选 → 一键保存。 */
 export function ModelServicePanel() {
+  const { t } = useTranslation()
   const settings = useSettingsStore((state) => state.settings)
   const setSettings = useSettingsStore((state) => state.setSettings)
   const [drafts, setDrafts] = useState<ProviderDraft[]>([])
@@ -168,7 +179,7 @@ export function ModelServicePanel() {
             'error' in o
               ? {
                   models: [],
-                  warning: errorMessage(o.error, '模型列表读取失败'),
+                  warning: errorMessage(o.error, t('settings.model.load_list_failed')),
                   fetched_at: null,
                 }
               : {
@@ -186,7 +197,7 @@ export function ModelServicePanel() {
   }, [savedIds])
 
   if (!settings) {
-    return <p className="settings-note">设置加载中…</p>
+    return <p className={s('settings-note')}>{t('settings.loading')}</p>
   }
 
   const providerDirectory = settings.providers ?? []
@@ -251,17 +262,17 @@ export function ModelServicePanel() {
   /** 保存整表：`provider_configs` 为权威列表（未出现的被删除），`models` 只含勾选项。 */
   const saveAll = async (): Promise<boolean> => {
     if (drafts.some((d) => d.provider.trim() === '' || d.baseUrl.trim() === '')) {
-      setStatus({ ok: false, text: '每个供应商都要选厂商并填写 Base URL' })
+      setStatus({ ok: false, text: t('settings.model.need_provider') })
       return false
     }
     setIsBusy(true)
     try {
       const next = await putSettings(buildPayload(drafts, rows))
       setSettings(next)
-      setStatus({ ok: true, text: '已保存' })
+      setStatus({ ok: true, text: t('settings.model.saved') })
       return true
     } catch (error) {
-      setStatus({ ok: false, text: errorMessage(error, '保存失败') })
+      setStatus({ ok: false, text: errorMessage(error, t('settings.model.save_failed')) })
       return false
     } finally {
       setIsBusy(false)
@@ -293,7 +304,7 @@ export function ModelServicePanel() {
         text: result.warning ?? `已获取 ${result.models.length} 个模型`,
       })
     } catch (error) {
-      setStatus({ ok: false, text: errorMessage(error, '刷新失败') })
+      setStatus({ ok: false, text: errorMessage(error, t('settings.model.refresh_failed')) })
     } finally {
       setRefreshingKeys((prev) => ({ ...prev, [key]: false }))
     }
@@ -316,12 +327,12 @@ export function ModelServicePanel() {
         ...prev,
         [key]: result.warning
           ? { ok: false, detail: result.warning }
-          : { ok: true, detail: '连接成功' },
+          : { ok: true, detail: t('settings.model.connect_ok') },
       }))
     } catch (error) {
       setTestResults((prev) => ({
         ...prev,
-        [key]: { ok: false, detail: errorMessage(error, '连接失败') },
+        [key]: { ok: false, detail: errorMessage(error, t('settings.model.connect_failed')) },
       }))
     } finally {
       setRefreshingKeys((prev) => ({ ...prev, [key]: false }))
@@ -329,15 +340,12 @@ export function ModelServicePanel() {
   }
 
   return (
-    <section className="settings-panel" aria-label="模型服务">
-      <h3 className="settings-panel__title">模型服务</h3>
-      <p className="settings-panel__desc">
-        按供应商配置一次 Base URL 与 API Key，刷新获取可用模型列表，勾选需要的模型后保存；
-        当前生效项在启动页切换。
-      </p>
-      <div className="settings-model-list" aria-label="供应商列表">
+    <section className={s('settings-panel')} aria-label={t('settings.tab.model-service')}>
+      <h3 className={s('settings-panel__title')}>{t('settings.tab.model-service')}</h3>
+      <p className={s('settings-panel__desc')}>{t('settings.model.lead')}</p>
+      <div className={s('settings-model-list')} aria-label={t('settings.model.provider_list')}>
         {drafts.length === 0 ? (
-          <p className="settings-note">尚未配置任何供应商，点击「新增供应商」开始。</p>
+          <p className={s('settings-note')}>{t('settings.model.empty_hint')}</p>
         ) : null}
         {drafts.map((draft) => {
           const pickedProvider = findProvider(providerDirectory, draft.provider)
@@ -346,130 +354,160 @@ export function ModelServicePanel() {
             rows.filter((r) => r.providerId === draft.id).map((r) => [r.modelId, r]),
           )
           return (
-            <div key={draft.key} className="settings-model-row">
-              <div className="settings-model-row__head">
-                <span className="settings-model-row__title">
-                  {pickedProvider?.label ?? draft.provider ?? '新供应商'}
+            <div key={draft.key} className={s('settings-model-row')}>
+              <div className={s('settings-model-row__head')}>
+                <span className={s('settings-model-row__title')}>
+                  {pickedProvider?.label ?? draft.provider ?? t('settings.model.new_provider')}
                 </span>
-                <span className="settings-model-badge">{draft.selected.length} 个模型</span>
-                <span className="settings-model-row__spacer" />
+                <span className={s('settings-model-badge')}>{draft.selected.length} 个模型</span>
+                <span className={s('settings-model-row__spacer')} />
                 <button
                   type="button"
-                  className="settings-btn settings-btn--small settings-btn--danger"
+                  className={s('settings-btn settings-btn--small settings-btn--danger')}
                   onClick={() => removeProvider(draft.key)}
                 >
-                  删除供应商
+                  {t('settings.model.delete_provider')}
                 </button>
               </div>
-              <div className="settings-grid">
-                <div className="settings-field">
-                  <label className="settings-label" htmlFor={`${draft.key}-provider`}>
-                    供应商
+              <div className={s('settings-grid')}>
+                <div className={s('settings-field')}>
+                  <label className={s('settings-label')} htmlFor={`${draft.key}-provider`}>
+                    {t('settings.provider.aria')}
                   </label>
                   <ProviderSelect
                     providers={providerDirectory}
                     value={draft.provider}
                     onChange={(value) => {
+                      if (value === draft.provider) return
                       const picked = findProvider(providerDirectory, value)
+                      // 换供应商 = 换端点：原有勾选与目录都属于旧供应商，必须一并清掉，
+                      // 否则会把别家的 model_id 写进新供应商名下（曾出现「MiniMax 有 Kimi 模型」）。
                       patchDraft(draft.key, {
                         provider: value,
-                        ...(picked && picked.base_url !== '' ? { baseUrl: picked.base_url } : {}),
+                        baseUrl: picked?.base_url ?? '',
+                        selected: [],
+                        perModel: {},
                       })
+                      setCatalogs((prev) => {
+                        if (prev[draft.key] === undefined) return prev
+                        const next = { ...prev }
+                        delete next[draft.key]
+                        return next
+                      })
+                      setStatus({ ok: true, text: t('settings.model.provider_switched') })
                     }}
                   />
                 </div>
-                <div className="settings-field">
-                  <label className="settings-label" htmlFor={`${draft.key}-base-url`}>
+                <div className={s('settings-field')}>
+                  <label className={s('settings-label')} htmlFor={`${draft.key}-base-url`}>
                     Base URL
                   </label>
                   <input
                     id={`${draft.key}-base-url`}
-                    className="settings-input"
+                    className={s('settings-input')}
                     value={draft.baseUrl}
                     onChange={(event) =>
                       patchDraft(draft.key, { baseUrl: event.currentTarget.value })
                     }
                   />
                   {pickedProvider?.base_url === '' ? (
-                    <span className="settings-hint">官方端点未登记，请自行查询该厂商文档填写</span>
+                    <span className={s('settings-hint')}>
+                      {t('settings.model.endpoint_unknown')}
+                    </span>
                   ) : null}
                 </div>
-                <div className="settings-field">
-                  <label className="settings-label" htmlFor={`${draft.key}-api-key`}>
+                <div className={s('settings-field')}>
+                  <label className={s('settings-label')} htmlFor={`${draft.key}-api-key`}>
                     API Key
                   </label>
                   <input
                     id={`${draft.key}-api-key`}
-                    className="settings-input"
+                    className={s('settings-input')}
                     type="password"
                     autoComplete="off"
-                    placeholder={draft.masked !== '' ? draft.masked : '未配置'}
+                    placeholder={
+                      draft.masked !== '' ? draft.masked : t('settings.model.not_configured')
+                    }
                     value={draft.apiKey}
                     onChange={(event) =>
                       patchDraft(draft.key, { apiKey: event.currentTarget.value })
                     }
                   />
-                  <span className="settings-hint">
-                    当前密钥：{draft.masked !== '' ? draft.masked : '未配置'}
+                  <span className={s('settings-hint')}>
+                    {t('settings.model.current_key')}：
+                    {draft.masked !== '' ? draft.masked : t('settings.model.not_configured')}
                     （回显恒脱敏；留空则保持不变）
                   </span>
                 </div>
               </div>
-              <div className="settings-actions">
+              <div className={s('settings-actions')}>
                 <button
                   type="button"
-                  className="settings-btn"
+                  className={s('settings-btn')}
                   disabled={isBusy || isRefreshing(draft.key)}
                   onClick={() => void refreshCatalog(draft.key)}
-                  title={catalog.fetched_at ? '上次刷新：' + catalog.fetched_at : '尚未刷新过'}
+                  title={
+                    catalog.fetched_at
+                      ? `${t('settings.model.last_refresh')}：${catalog.fetched_at}`
+                      : t('settings.model.never_refreshed')
+                  }
                 >
-                  {isRefreshing(draft.key) ? '刷新中…' : '刷新模型列表'}
+                  {isRefreshing(draft.key)
+                    ? t('settings.model.refreshing')
+                    : t('settings.model.refresh')}
                 </button>
                 <button
                   type="button"
-                  className="settings-btn"
+                  className={s('settings-btn')}
                   disabled={isBusy || isRefreshing(draft.key)}
                   onClick={() => void testConnection(draft.key)}
                 >
-                  {isRefreshing(draft.key) ? '测试中…' : '测试连接'}
+                  {isRefreshing(draft.key) ? t('settings.model.testing') : t('settings.model.test')}
                 </button>
               </div>
               {testResults[draft.key] ? (
                 <p
-                  className={
+                  className={s(
                     testResults[draft.key]?.ok
                       ? 'settings-status settings-status--ok'
-                      : 'settings-status settings-status--error'
-                  }
+                      : 'settings-status settings-status--error',
+                  )}
                 >
                   {testResults[draft.key]?.detail}
                 </p>
               ) : null}
               {catalog.warning ? (
-                <span className="settings-error" role="alert">
+                <span className={s('settings-error')} role="alert">
                   {catalog.warning}
                 </span>
               ) : null}
-              <div className="settings-field">
-                <div className="settings-label">可用模型（勾选即启用，未勾选的将删除）</div>
+              <div className={s('settings-field')}>
+                <div className={s('settings-label')}>{t('settings.model.available')}</div>
                 {catalog.models.length === 0 ? (
-                  <span className="settings-hint">先点「刷新模型列表」获取该端点的可用模型</span>
+                  <span className={s('settings-hint')}>{t('settings.model.refresh_first')}</span>
                 ) : (
-                  <ul className="provider-model-list">
+                  <ul className={s('provider-model-list')}>
                     {catalog.models.map((item) => {
                       const checked = draft.selected.includes(item.model_id)
                       const row = rowByModel.get(item.model_id)
                       return (
-                        <li key={item.model_id} className="provider-model-list__item">
-                          <label className="provider-model-list__label">
+                        <li key={item.model_id} className={s('provider-model-list__item')}>
+                          <label className={s('provider-model-list__label')}>
                             <input
                               type="checkbox"
                               checked={checked}
                               onChange={() => toggleModel(draft.key, item.model_id)}
                             />
-                            <span className="provider-model-list__name">{item.model_id}</span>
+                            <span className={s('provider-model-list__name')}>{item.model_id}</span>
                             {row?.isActive ? (
-                              <span className="settings-model-badge">当前</span>
+                              <span className={s('settings-model-badge')}>
+                                {t('settings.model.current')}
+                              </span>
+                            ) : null}
+                            {item.is_stale ? (
+                              <span className={s('settings-model-badge')}>
+                                {t('settings.model.not_in_list')}
+                              </span>
                             ) : null}
                             {row !== undefined ? (
                               <ModelCapabilityBadge capabilities={row.capabilities} />
@@ -496,26 +534,26 @@ export function ModelServicePanel() {
           )
         })}
       </div>
-      <div className="settings-actions">
-        <button type="button" className="settings-btn" disabled={isBusy} onClick={addProvider}>
-          新增供应商
+      <div className={s('settings-actions')}>
+        <button type="button" className={s('settings-btn')} disabled={isBusy} onClick={addProvider}>
+          {t('settings.model.add_provider')}
         </button>
         <button
           type="button"
-          className="settings-btn settings-btn--primary"
+          className={s('settings-btn settings-btn--primary')}
           disabled={isBusy}
           onClick={() => void saveAll()}
         >
-          保存
+          {t('settings.model.save')}
         </button>
       </div>
       {status.text !== '' ? (
         <p
-          className={
+          className={s(
             status.ok
               ? 'settings-status settings-status--ok'
-              : 'settings-status settings-status--error'
-          }
+              : 'settings-status settings-status--error',
+          )}
         >
           {status.text}
         </p>

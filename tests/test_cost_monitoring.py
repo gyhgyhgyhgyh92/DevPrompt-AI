@@ -26,8 +26,6 @@ from devprompt_ai.domain.decision.port import (
 )
 from devprompt_ai.domain.generate.ports import (
     GenerationContext,
-    Level,
-    MultiVariantDraft,
     VariantDraft,
 )
 from devprompt_ai.domain.models import (
@@ -68,11 +66,16 @@ class FakeStore:
         self.items[session.session_id] = session
         return True
 
-    async def list_recent(self, user_id: str, limit: int = 50) -> list[SessionSummary]:
+    async def list_recent(
+        self, user_id: str, *, limit: int = 50, offset: int = 0
+    ) -> list[SessionSummary]:
         return []
 
     async def delete(self, session_id: str) -> bool:
         return self.items.pop(session_id, None) is not None
+
+    async def delete_by_project(self, user_id: str, project_root: str) -> int:
+        return 0  # 本用例不覆盖项目级删除（详见 test_session_store.py）
 
 
 class FakeDecider:
@@ -128,17 +131,15 @@ class FakeGenerator:
     def __init__(self, llm_tokens_per_call: int) -> None:
         self.llm_tokens_per_call = llm_tokens_per_call
 
-    async def generate_single(self, ctx: GenerationContext) -> VariantDraft:
+    async def generate_single(  # type: ignore[no-untyped-def]
+        self, ctx: GenerationContext, locale: str = "zh-CN", *, fallback: bool = False
+    ) -> VariantDraft:
         add_llm_tokens(self.llm_tokens_per_call)
-        return VariantDraft(title="t", body="b", changes=["x"], level=ctx.level)
+        return VariantDraft(title="t", body="b", changes=["x"], fallback=fallback)
 
-    async def generate_variants(
-        self, ctx: GenerationContext, levels: list[Level]
-    ) -> MultiVariantDraft:
+    async def answer(self, ctx: GenerationContext, locale: str = "zh-CN") -> str:
         add_llm_tokens(self.llm_tokens_per_call)
-        return MultiVariantDraft(
-            variants=[VariantDraft(title="t", body="b", changes=["x"], level=lv) for lv in levels]
-        )
+        return "回答"
 
 
 class FakeRunner:
@@ -218,9 +219,9 @@ async def test_cost_detail_llm_only() -> None:
     snap = await svc.optimize("local", ".", "把提交按钮改成 primary-500", request_id="r1")
     assert snap.status == "done"
     assert snap.cost is not None
-    # 决策层（rank_components + probe_facts + score_prompts，3 次 ×100）+ 生成器 1000
-    assert snap.cost.llm_tokens == 1300
-    assert snap.cost.total_tokens == 1300
+    # 决策层（rank_components + probe_facts，2 次 ×100）+ 生成器 1000（单套后不再打分）
+    assert snap.cost.llm_tokens == 1200
+    assert snap.cost.total_tokens == 1200
     assert snap.cost.llm_source == "actual"
 
 
@@ -241,9 +242,9 @@ async def test_cost_accumulates_across_requests() -> None:
     )
     assert done.status == "done"
     assert done.cost is not None
-    # 追加 probe_facts + score_prompts 各 100 + 生成器 1000
-    assert done.cost.llm_tokens == 1400
-    assert done.cost.total_tokens == 1400
+    # 追加 probe_facts 100 + 生成器 1000（单套后不再打分）
+    assert done.cost.llm_tokens == 1300
+    assert done.cost.total_tokens == 1300
 
 
 # ---------- 契约渲染（routes 薄壳只做镜像，MUST-10） ----------

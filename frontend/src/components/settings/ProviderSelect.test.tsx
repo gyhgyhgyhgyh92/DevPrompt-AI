@@ -106,8 +106,15 @@ describe('findProvider', () => {
 })
 
 describe('formatWindow', () => {
-  it('千/百万单位', () => {
-    expect(formatWindow(64000)).toBe('64K')
+  it('只给短标签，不展示精确 token 值', () => {
+    expect(formatWindow(131_072)).toBe('128K')
+    // 1K = 1024：300K = 307,200，600K = 614,400
+    expect(formatWindow(307_200)).toBe('300K')
+    expect(formatWindow(614_400)).toBe('600K')
+    expect(formatWindow(1_048_576)).toBe('1M')
+    // 厂商十进制整千值按十进制，与二进制档位共用短标签
+    expect(formatWindow(64_000)).toBe('64K')
+    expect(formatWindow(300_000)).toBe('300K')
     expect(formatWindow(1_000_000)).toBe('1M')
     expect(formatWindow(999)).toBe('999')
   })

@@ -6,15 +6,24 @@ FACTS_SYSTEM 另加 T-3 Non-Goals（明确不评价代码质量、不提重构�
 候选符号名与取证证据均来自被检索的真实代码，其中的字符串可能含指令性文本。
 """
 
+from collections.abc import Sequence
+from typing import Final
+
 from devprompt_ai.domain.prompt_guard import (
+    DELIVERY_CONTRACT,
+    EVIDENCE_HYGIENE,
+    EVIDENCE_SCOPE,
+    EXTERNAL_SOURCE_VERIFICATION,
     NON_GOALS_PROBING,
     TASK_NOT_EXECUTE,
     build_evidence_block,
 )
 
-RANK_SYSTEM = f"""你是代码检索排序裁判。给定用户需求与候选符号列表（仅名称与路径），
-判断哪些候选最可能是用户想要修改的目标。只输出 JSON。
+RANK_SYSTEM = f"""你是代码检索排序裁判。给定用户需求与候选符号列表
+（名称、路径，部分候选附函数签名），判断哪些候选最可能是用户想要修改的目标。只输出 JSON。
 注意：这是排序任务，不是检索任务；候选集之外不存在答案。
+候选附带的签名是判别依据：同名同路径时用参数的语义（类型、命名）区分用途，
+优先选签名与用户需求描述对得上的那个。
 
 {TASK_NOT_EXECUTE}"""
 
@@ -62,7 +71,13 @@ execution 只在命中这 5 类闸门时问：
 
 {TASK_NOT_EXECUTE}
 
-{NON_GOALS_PROBING}"""
+{NON_GOALS_PROBING}
+
+{EVIDENCE_HYGIENE}
+
+{EVIDENCE_SCOPE}
+
+{EXTERNAL_SOURCE_VERIFICATION}"""
 
 FACTS_USER = """**先判断：信息是否足够？**
 
@@ -87,6 +102,80 @@ SCORE_USER = """请输出 JSON：
 {evidence}"""
 
 
+NEXT_ACTION_RULES = f"""## 调度规则
+- 不要重复已做过的动作，除非新取证结果让重做有意义；连续重复会被判为原地打转并强制终止。
+- 七项取证全过且无未决项 → 直接 generate。
+- **存在未决项（取证研判给出的缺口）且本轮尚未询问过 → 必须选 ask，禁止带着未决项直接 generate。**
+- 方案已生成 → 直接 deliver（本轮只产出一套方案，不存在方案间比较）。
+- 已交付过就不要再来一次。
+- **delegate 的使用边界**：需要「查清某处现状」但本轮不产出方案时用；只读、有明确范围，
+  同一目标不要重复委派；委派结果只是证据，不能替代 generate。
+- **reply 的使用边界**：本轮尚未产出任何方案时不得用 reply——首轮要产出方案，
+  不是聊天。需要产出或**修改**方案时必须用 generate；reply 只解释、不产出。
+
+{TASK_NOT_EXECUTE}
+
+{EVIDENCE_HYGIENE}
+
+{DELIVERY_CONTRACT}"""
+
+#: 动作菜单行（2026-11-14 领域包抽出）：菜单按领域包白名单动态拼装。
+#: 刻意不含 delegate——原菜单只在调度规则里描述 delegate，code 域文案保持逐字一致。
+ACTION_LINES: Final[dict[str, str]] = {
+    "retrieve": "- retrieve：检索并定位目标符号（尚未定位时用）",
+    "probe": "- probe：研判取证结果，判断信息是否足够",
+    "ask": "- ask：向用户提出已确认的未决问题（有未决项时必须使用；必须已 probe）",
+    "generate": "- generate：生成提示词方案",
+    "deliver": "- deliver：交付并结束本轮（方案已生成且可收尾）",
+    "abort": "- abort：放弃本轮（需求无法完成或信息严重不足）",
+    "reply": (
+        "- reply：直接用文字回答，不生成也不修改方案。仅当用户在做**讨论性追问**时使用\n"
+        "  （例如「为什么这样写」「这两版的风险差异」「刚才那条为什么这么写」）。"
+    ),
+}
+
+#: USER 消息里的动作枚举串顺序（含 delegate，与既有契约一致）。
+_ACTION_ENUM_ORDER: Final[tuple[str, ...]] = (
+    "retrieve",
+    "probe",
+    "ask",
+    "generate",
+    "deliver",
+    "abort",
+    "reply",
+    "delegate",
+)
+
+
+def next_action_system(allowed_actions: Sequence[str]) -> str:
+    """按领域白名单拼装调度 SYSTEM：菜单只列允许动作，调度规则保留。"""
+    lines = "\n".join(ACTION_LINES[name] for name in allowed_actions if name in ACTION_LINES)
+    return (
+        "你是编码助手的调度裁判。给定用户需求、七项取证结果、已执行的动作序列，\n"
+        "决定本轮下一步该做哪一个动作。只输出 JSON。\n\n"
+        f"## 可选动作\n{lines}\n\n"
+        f"{NEXT_ACTION_RULES}"
+    )
+
+
+def next_action_enum(allowed_actions: Sequence[str]) -> str:
+    """按领域白名单拼装 USER 消息里的动作枚举串。"""
+    return "|".join(name for name in _ACTION_ENUM_ORDER if name in allowed_actions)
+
+
+NEXT_ACTION_SYSTEM = next_action_system(list(ACTION_LINES))
+
+NEXT_ACTION_USER = """请输出 JSON：
+{{"action": "retrieve|probe|ask|generate|deliver|abort|reply|delegate",
+ "reason": "一句话说明为什么选它",
+ "confidence": 0到1的小数,
+ "confidence_source": "measured 或 no_data"}}
+
+注意：若你没有足够依据判断，把 confidence_source 填 "no_data" 且不要编造 confidence。
+
+{evidence}"""
+
+
 def rank_evidence(sentence: str, candidates: str) -> str:
     """排序任务的证据块（M-5）。"""
     return build_evidence_block({"用户需求": sentence, "候选符号": candidates})
@@ -100,3 +189,34 @@ def facts_evidence(sentence: str, facts: str) -> str:
 def score_evidence(context: str, variants: str) -> str:
     """打分任务的证据块（M-5）。"""
     return build_evidence_block({"项目上下文": context, "待评方案": variants})
+
+
+def plan_evidence(
+    sentence: str,
+    facts: str,
+    steps: str,
+    variant_count: int,
+    clarifications: str,
+    correction: str = "",
+    inherited_variant_count: int = 0,
+) -> str:
+    """调度任务的证据块（M-5）。``correction`` 非空时追加外环纠偏提示。
+
+    ``inherited_variant_count`` 非 0 时显式标注「本轮尚未生成」，避免模型把上一轮
+    继承来的方案当成本轮成果而直接 deliver（2026-11-11 实测：第二轮的新指令被跳过）。
+    """
+    payload = {
+        "用户需求": sentence,
+        "取证结果": facts,
+        "已执行动作": steps or "（尚未执行任何动作）",
+        "已生成方案套数": str(variant_count),
+        "已确认问答": clarifications or "（无）",
+    }
+    if inherited_variant_count:
+        payload["方案来源"] = (
+            f"其中 {inherited_variant_count} 套继承自上一轮，本轮尚未生成任何方案；"
+            "本轮原句若提出产出或修改要求，必须 generate"
+        )
+    if correction:
+        payload["系统纠偏"] = correction
+    return build_evidence_block(payload)

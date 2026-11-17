@@ -1,56 +1,20 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
-import type { RankingViewPayload, UnknownItemPayload, VariantPayload } from '../../api/types'
+import type { DeliveryGatePayload, UnknownItemPayload, VariantPayload } from '../../api/types'
+import type { DomainVerdictPayload } from '../../schemas/optimize'
 import type { ThinkingItem } from '../../schemas/stream'
 import { AskFlow } from './AskFlow'
-import { ConfidenceNotice } from './ConfidenceNotice'
-import { TraceEntry } from './TraceEntry'
-import { VariantTabs } from './VariantTabs'
-import './ChatStream.css'
+import { AssistantBlock } from './AssistantBlock'
+import { PhaseLedger } from './PhaseLedger'
+import { PHASES, buildPhaseRows } from './turnThinking'
+import styles from './ChatStream.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 /** 思考静默多久后提示「正在规划下一步」。 */
 const IDLE_HINT_MS = 1500
-
-const PHASES = [
-  'INIT',
-  'RETRIEVING',
-  'PROBING',
-  'ASKING',
-  'CONFIRMING',
-  'GENERATING',
-  'RANKING',
-  'DONE',
-  'ABORTED',
-] as const
-
-/** 状态的中文名与「这一步在做什么」（2026-10-20：前端全中文，过程可读）。 */
-const PHASE_META: Record<(typeof PHASES)[number], { label: string; hint: string }> = {
-  INIT: { label: '初始化', hint: '建立会话与轮次，核对参数' },
-  RETRIEVING: { label: '检索代码', hint: '扫描符号表，候选压到 25 条' },
-  PROBING: { label: '研判信息', hint: '七项取证，判断信息是否足够' },
-  ASKING: { label: '等待确认', hint: '存在信息缺口，等你回答' },
-  CONFIRMING: { label: '整理答复', hint: '重新研判，缺口是否补齐' },
-  GENERATING: { label: '生成方案', hint: '一次调用产出 1~3 套方案' },
-  RANKING: { label: '评估推荐', hint: '按适配度与偏好打分、标推荐' },
-  DONE: { label: '已完成', hint: '结果已产出' },
-  ABORTED: { label: '已中止', hint: '异常或连接断开，会话已安全关闭' },
-}
-
-interface PhaseLogProps {
-  items: readonly ThinkingItem[]
-}
-
-/** 某一阶段下方的过程：文字段落 + 真实工具卡片（2026-10-20）。 */
-function PhaseLog({ items }: PhaseLogProps) {
-  if (items.length === 0) return null
-  return (
-    <div className="chat-reply__phase-log">
-      {items.map((item) => (
-        <TraceEntry key={item.id} item={item} />
-      ))}
-    </div>
-  )
-}
 
 interface ChatStreamProps {
   /** 当前态镜像（后端 9 态字符串）；仅展示不判定（MUST-07）。 */
@@ -64,10 +28,16 @@ interface ChatStreamProps {
   /** 思考流进行中：正文区暂不渲染反问/结果。 */
   isThinking: boolean
   message: string
+  /** 纯回答轮正文（2026-11-05）：本轮只回答、不产出方案，与 variant 互斥。 */
+  replyText: string
   questions: readonly UnknownItemPayload[]
   cleared: readonly string[]
-  variants: readonly VariantPayload[]
-  ranking: RankingViewPayload | null
+  /** 本轮唯一方案（契约 variant；null 表示未产出）。 */
+  variant: VariantPayload | null
+  /** 交付证据门结果（2026-11-05 形态层）：null 表示本轮未过门。 */
+  deliveryGate: DeliveryGatePayload | null
+  /** 领域路由结论（2026-11-14 领域包）：缺省视为旧会话。 */
+  domainVerdict?: DomainVerdictPayload | null
   elapsedSeconds: number | null
   errorMessage: string | null
   isBusy: boolean
@@ -77,11 +47,11 @@ interface ChatStreamProps {
 }
 
 /**
- * 正式界面对话流（2026-10-20 v2）：
- * 用户气泡 → 回复块（品牌行 + 步骤时间轴（每步下方挂过程）+ 分隔线 + 正文）。
+ * 正式界面对话流（2026-11-07 终端工具版）：
+ * 用户气泡 → 助手块（品牌行 + 执行账本 + 分隔线 + 正文）。
  *
- * 按用户要求移除了目标定位、取证事实、采纳/跳过操作栏与底部图标行——只留可直接发给
- * Agent 的提示词正文。纯展示组件：不做评分/阈值/推荐判定（MUST-08）。
+ * 过程区默认展开（含结束后），由用户手动折叠成一行摘要；正文区只留可直接
+ * 发给 Agent 的提示词。纯展示组件：不做评分/阈值/推荐判定（MUST-08）。
  */
 export function ChatStream({
   state,
@@ -90,10 +60,12 @@ export function ChatStream({
   thinking,
   isThinking,
   message,
+  replyText,
   questions,
   cleared,
-  variants,
-  ranking,
+  variant,
+  deliveryGate,
+  domainVerdict,
   elapsedSeconds,
   errorMessage,
   isBusy,
@@ -101,6 +73,7 @@ export function ChatStream({
   onEscape,
   onGuardrail,
 }: ChatStreamProps) {
+  const { t } = useTranslation()
   const isResult = status === 'done' || status === 'aborted'
   // 思考静默 1.5s 后提示「正在规划下一步」：新事件到达即消失（纯前端状态）
   const [isIdle, setIdle] = useState(false)
@@ -113,89 +86,121 @@ export function ChatStream({
     const timer = window.setTimeout(() => setIdle(true), IDLE_HINT_MS)
     return () => window.clearTimeout(timer)
   }, [isThinking, thinking.length])
-  const currentIndex = PHASES.findIndex((phase) => phase === state)
+
+  // 阶段按**实际走过的路径**渲染（2026-11-04）：没问过就不出现「等待确认 / 整理答复」，
+  // 中止行只在真中止时出现。
+  const hadAsk = questions.length > 0 || cleared.length > 0
+
+  // 过程区：运行中展开，正常结束自动收成一行摘要（2026-11-15 用户裁定）；
+  // 用户手动动过之后本轮不再自动改（手动优先）。
+  const hasProcess = thinking.length > 0
+  const [isProcessOpen, setProcessOpen] = useState(true)
+  const userToggledRef = useRef(false)
+  useEffect(() => {
+    if (userToggledRef.current) return
+    if (isThinking) {
+      setProcessOpen(true) // 运行中保持展开
+      return
+    }
+    // 只在一轮正常结束时折叠；ask（等答复）、aborted、出错都保持展开
+    if (isResult && status === 'done' && errorMessage === null) {
+      setProcessOpen(false)
+    }
+  }, [isThinking, isResult, status, errorMessage])
+
+  const actionCount = thinking.filter((item) => item.kind === 'action').length
+  const stepCount = PHASES.filter((phase) =>
+    thinking.some((item) => (item.phase === '' ? state : item.phase) === phase),
+  ).length
+  // 打字机只作用于「正在写的那一条」：最后一条文字且仍在流式中
+  const lastTextId = [...thinking].reverse().find((item) => item.kind === 'text')?.id ?? null
+  const animatingId = isThinking && lastTextId !== null ? lastTextId : null
+
+  const rows = buildPhaseRows({ thinking, state, translate: t, isLive: true, hadAsk })
+
+  // 恢复的旧会话没有 elapsed（不伪造耗时），此时摘要省略秒数段
+  const summary =
+    elapsedSeconds !== null
+      ? t('chat.process_summary', {
+          phase: t(`chat.phase.${state}.label`),
+          actions: actionCount,
+          seconds: `${elapsedSeconds}s`,
+        })
+      : t('chat.process_summary_short', {
+          phase: t(`chat.phase.${state}.label`),
+          actions: actionCount,
+        })
 
   return (
-    <div className="chat-stream">
+    <div className={s('chat-stream')}>
       {sentence.trim() !== '' ? (
-        <div className="chat-stream__row chat-stream__row--user">
-          <div className="chat-user-bubble">{sentence}</div>
+        <div className={s('chat-stream__row chat-stream__row--user')}>
+          <div className={s('chat-user-bubble')}>{sentence}</div>
         </div>
       ) : null}
 
-      <article className="chat-reply" aria-label="AI 回复">
-        <header className="chat-reply__head">
-          <span className="chat-reply__brand">DevPrompt AI</span>
-          {elapsedSeconds !== null ? (
-            <span className="chat-reply__elapsed">耗时 {elapsedSeconds}s</span>
-          ) : null}
-        </header>
-
-        <ol className="chat-reply__phases" aria-label="执行过程">
-          {PHASES.map((phase, index) => {
-            const isDone = index < currentIndex
-            const isCurrent = phase === state
-            const metaItem = PHASE_META[phase]
-            // 无阶段标签的旧数据归到当前阶段，避免过程凭空消失
-            const logs = thinking.filter(
-              (item) => (item.phase === '' ? state : item.phase) === phase,
-            )
-            return (
-              <li
-                key={phase}
-                className={
-                  isCurrent
-                    ? 'chat-reply__phase chat-reply__phase--current'
-                    : isDone
-                      ? 'chat-reply__phase chat-reply__phase--done'
-                      : 'chat-reply__phase'
-                }
-                aria-current={isCurrent ? 'step' : undefined}
-              >
-                <div className="chat-reply__phase-head">
-                  <span className="chat-reply__phase-mark" aria-hidden="true">
-                    {isDone ? '✓' : isCurrent ? '●' : '○'}
+      <AssistantBlock
+        ariaLabel={t('chat.aria_reply')}
+        header={
+          elapsedSeconds !== null ? (
+            <span className={s('chat-reply__elapsed')}>
+              {t('chat.elapsed', { seconds: elapsedSeconds })}
+            </span>
+          ) : null
+        }
+        processControls={
+          hasProcess ? (
+            <div className={s('chat-reply__process-bar')}>
+              <span className={s('chat-reply__process-title')}>
+                {t('chat.phases')}
+                {!isProcessOpen && actionCount > 0 ? (
+                  <span className={s('chat-reply__process-count')}>
+                    {t('chat.step_count', { steps: stepCount })}
                   </span>
-                  <span className="chat-reply__phase-label">{metaItem.label}</span>
-                  <span className="chat-reply__phase-hint">{metaItem.hint}</span>
-                  {isCurrent ? (
-                    <span className="chat-reply__phase-tag">
-                      {phase === 'DONE' ? '已完成' : phase === 'ABORTED' ? '已中止' : '进行中'}
-                    </span>
-                  ) : null}
-                </div>
-                <PhaseLog items={logs} />
-              </li>
-            )
-          })}
-        </ol>
-
-        {isThinking && isIdle ? <p className="chat-reply__planning">正在规划下一步</p> : null}
-
-        <hr className="chat-reply__divider" />
-
-        <div className="chat-reply__body">
-          {errorMessage !== null ? <p className="chat-reply__error">{errorMessage}</p> : null}
-
-          {isThinking ? null : isResult ? (
-            <>
-              {message !== '' ? <p className="chat-reply__message">{message}</p> : null}
-              <ConfidenceNotice ranking={ranking} />
-              <VariantTabs variants={variants} ranking={ranking} />
-            </>
-          ) : (
-            <AskFlow
-              questions={questions}
-              cleared={cleared}
-              status={status}
-              isBusy={isBusy}
-              onSubmitAnswers={onSubmitAnswers}
-              onEscape={onEscape}
-              onGuardrail={onGuardrail}
-            />
-          )}
-        </div>
-      </article>
+                ) : null}
+              </span>
+              <button
+                type="button"
+                className={s('chat-reply__process-toggle')}
+                aria-expanded={isProcessOpen}
+                onClick={() => {
+                  userToggledRef.current = true
+                  setProcessOpen((open) => !open)
+                }}
+              >
+                <span>{isProcessOpen ? t('chat.process_fold') : summary}</span>
+                <span className={s('chat-reply__process-caret')} aria-hidden="true">
+                  {isProcessOpen ? '▾' : '▸'}
+                </span>
+              </button>
+            </div>
+          ) : null
+        }
+        timeline={isProcessOpen ? <PhaseLedger rows={rows} animatingId={animatingId} /> : null}
+        planning={
+          isThinking && isIdle ? (
+            <p className={s('chat-reply__planning')}>{t('chat.planning')}</p>
+          ) : null
+        }
+        gate={isThinking ? null : deliveryGate}
+        domainVerdict={domainVerdict}
+        variant={isThinking ? null : variant}
+        replyText={isThinking ? '' : replyText}
+        message={!isThinking && isResult ? message : ''}
+        error={errorMessage ?? undefined}
+      >
+        {isThinking ? null : isResult ? null : (
+          <AskFlow
+            questions={questions}
+            cleared={cleared}
+            status={status}
+            isBusy={isBusy}
+            onSubmitAnswers={onSubmitAnswers}
+            onEscape={onEscape}
+            onGuardrail={onGuardrail}
+          />
+        )}
+      </AssistantBlock>
     </div>
   )
 }

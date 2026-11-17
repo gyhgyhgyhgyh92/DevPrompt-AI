@@ -9,15 +9,16 @@
  * 原生对话框，不经扩展；两条链路同构（取消均为空串）。
  */
 import { errorMessage } from '../components/settings/errorMessage'
+import { i18n } from '../i18n'
 
 const SOURCE = 'devprompt-ai'
 /** 原生对话框是用户驱动的模态交互，超时放宽（与历史实现一致）。 */
 const PICK_TIMEOUT_MS = 310_000
 
-/** 未装扩展 / 不支持时的统一文案：说清成因与补救。 */
-export const NOT_INSTALLED_HINT =
-  '未能调起系统文件夹选择器：需要安装 DevPrompt AI 原生文件夹选择器扩展' +
-  '（仅 Chrome/Edge 系；先运行 pwsh -File scripts/install_native_picker.ps1，再在扩展页加载已解压的扩展）'
+/** 未装扩展 / 不支持时的统一文案：说清成因与补救（取当前界面语言）。 */
+export function notInstalledHint(): string {
+  return i18n.t('native_picker.not_installed')
+}
 
 export interface NativePickResult {
   /** 用户选中的绝对路径；取消时为空串。 */
@@ -47,9 +48,28 @@ interface BridgeResponse {
 
 let seq = 0
 
+/** 扩展注入标记（content script 写在共享 DOM 上，见 browser-extension/content.js）。 */
+const READY_ATTR = 'data-devprompt-native'
+
+/**
+ * 扩展桥是否已就绪（扩展 content script 已注入本页）。
+ *
+ * 用于**点击前**的同步探测：扩展未加载/未启用/页面未刷新时，postMessage
+ * 无人应答，请求会悬挂到超时——此时应立即给出可执行提示，而非长时间空转。
+ */
+export function isNativeBridgeReady(): boolean {
+  if (typeof document === 'undefined') return false
+  return document.documentElement?.getAttribute(READY_ATTR) === '1'
+}
+
+/** 扩展缺席时的提示（取当前界面语言）。 */
+export function nativeBridgeMissingHint(): string {
+  return i18n.t('native_picker.extension_missing')
+}
+
 /** 把异常转成用户可读文案（与设置面板同一口径）。 */
 export function nativePickErrorText(error: unknown): string {
-  return errorMessage(error, '系统文件夹选择器不可用')
+  return errorMessage(error, i18n.t('native_picker.unavailable'))
 }
 
 /**
@@ -62,7 +82,7 @@ export function pickFolderViaNative(
   timeoutMs: number = PICK_TIMEOUT_MS,
 ): Promise<NativePickResult> {
   if (typeof window === 'undefined') {
-    return Promise.reject(new Error('非浏览器环境，无法调起系统文件夹选择器'))
+    return Promise.reject(new Error(i18n.t('native_picker.no_browser')))
   }
   // 桌面壳（Electron）：preload 桥直达主进程原生对话框，不依赖浏览器扩展
   if (window.devpromptDesktop) {
@@ -85,12 +105,12 @@ export function pickFolderViaNative(
       if (data === null || data === undefined) return
       if (data.source !== SOURCE || data.kind !== 'response' || data.id !== id) return
       if (data.ok !== true) {
-        finish(() => reject(new Error(data.error ?? NOT_INSTALLED_HINT)))
+        finish(() => reject(new Error(data.error ?? notInstalledHint())))
         return
       }
       finish(() => resolve({ path: data.path ?? '' }))
     }
-    const timer = setTimeout(() => finish(() => reject(new Error(NOT_INSTALLED_HINT))), timeoutMs)
+    const timer = setTimeout(() => finish(() => reject(new Error(notInstalledHint()))), timeoutMs)
     window.addEventListener('message', onMessage)
     window.postMessage(
       { source: SOURCE, kind: 'request', id, type: 'pick_folder' },

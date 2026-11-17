@@ -1,0 +1,91 @@
+/*
+ * 模式选择下拉（2026-11-14 多模态）。
+ * 视觉沿用既有 token：控件面 --color-surface-base，浮层 --color-surface-overlay，
+ * 描边 --color-border-control / --color-border-subtle，浮层投影 --shadow-menu。
+ */
+
+.domain-select {
+  position: relative;
+  display: inline-flex;
+}
+
+.domain-select__trigger {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  min-inline-size: 12rem;
+  padding: var(--space-2) var(--space-3);
+  font: var(--font-code-regular);
+  color: var(--color-text-primary);
+  text-align: left;
+  background: var(--color-surface-base);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.domain-select__trigger:hover:not(:disabled) {
+  border-color: var(--color-primary-500);
+}
+
+.domain-select__trigger:disabled {
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.domain-select__caret {
+  color: var(--color-text-muted);
+  font-size: 0.75em;
+}
+
+/* 菜单默认向下展开（与 ModelPicker 一致：卡片居中时向上弹会盖住输入区） */
+.domain-select__menu {
+  position: absolute;
+  inset-block-start: calc(100% + var(--space-1));
+  inset-inline-start: 0;
+  z-index: 40;
+  min-inline-size: 12rem;
+  max-block-size: 18rem;
+  padding: var(--space-1);
+  overflow-y: auto;
+  list-style: none;
+  background: var(--color-surface-overlay);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-menu);
+}
+
+.domain-select__item {
+  cursor: pointer;
+}
+
+.domain-select__item:hover,
+.domain-select__item[data-active='true'] {
+  background: var(--hover);
+}
+
+.domain-select__item[aria-selected='true'] {
+  background: var(--selected);
+}
+
+/* 锚点铺满整行：悬停行内任意位置都能触发该选项的气泡 */
+.domain-select__anchor {
+  display: block;
+  inline-size: 100%;
+}
+
+.domain-select__option {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-1) var(--space-2);
+  font: var(--font-body-regular);
+  color: var(--color-text-primary);
+  border-radius: var(--radius-sm);
+}
+
+.domain-select__check {
+  color: var(--color-text-primary);
+}

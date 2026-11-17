@@ -31,7 +31,8 @@ from agents.tool import Tool
 from openai import AsyncOpenAI
 from openai.types.responses import ResponseOutputMessage, ResponseTextDeltaEvent
 
-from devprompt_ai.harness.adapters.base import BaseNativeModel
+from devprompt_ai.domain.model.tuning import anthropic_thinking
+from devprompt_ai.harness.adapters.base import BaseNativeModel, parse_image_data_url
 
 #: Anthropic API 版本头（官方要求；缺省会 400）。
 _ANTHROPIC_VERSION = "2023-06-01"
@@ -93,16 +94,52 @@ class AnthropicNativeModel(BaseNativeModel):
             return system, [{"role": "user", "content": user_input}]
         messages: list[dict[str, Any]] = []
         for item in user_input:
-            raw = getattr(item, "raw_item", item)
-            role = str(getattr(raw, "role", "user"))
-            content = getattr(raw, "content", "")
+            raw = item if isinstance(item, dict) else getattr(item, "raw_item", item)
+            role = str(
+                raw.get("role", "user")
+                if isinstance(raw, dict)
+                else getattr(raw, "role", "user")
+            )
+            content = (
+                raw.get("content", "") if isinstance(raw, dict) else getattr(raw, "content", "")
+            )
             if isinstance(content, list):
-                text = "".join(
-                    str(getattr(block, "text", "")) for block in content if hasattr(block, "text")
+                # 图像 item（2026-11-14 多模态）：input_image → Anthropic base64 源块；
+                # 无图像时保持原 join 文本行为（零回归）。
+                has_image = any(
+                    isinstance(block, dict) and block.get("type") == "input_image"
+                    for block in content
                 )
+                if not has_image:
+                    text = "".join(
+                        str(getattr(block, "text", ""))
+                        for block in content
+                        if hasattr(block, "text")
+                    )
+                    messages.append({"role": role, "content": text})
+                    continue
+                blocks: list[dict[str, Any]] = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "input_image":
+                        parsed = parse_image_data_url(str(block.get("image_url", "")))
+                        if parsed:
+                            media_type, data = parsed
+                            blocks.append(
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": media_type,
+                                        "data": data,
+                                    },
+                                }
+                            )
+                    elif hasattr(block, "text"):
+                        blocks.append({"type": "text", "text": str(getattr(block, "text", ""))})
+                messages.append({"role": role, "content": blocks or [{"type": "text", "text": ""}]})
             else:
                 text = str(content)
-            messages.append({"role": role, "content": text})
+                messages.append({"role": role, "content": text})
         return system, messages or [{"role": "user", "content": ""}]
 
     @staticmethod
@@ -131,9 +168,10 @@ class AnthropicNativeModel(BaseNativeModel):
         model_settings: Any,
     ) -> dict[str, Any]:
         """组装 Anthropic Messages 请求体。"""
+        max_tokens = self._max_tokens(model_settings)
         request: dict[str, Any] = {
             "model": self._model,
-            "max_tokens": self._max_tokens(model_settings),
+            "max_tokens": max_tokens,
             "messages": messages,
         }
         if system:
@@ -141,14 +179,22 @@ class AnthropicNativeModel(BaseNativeModel):
         if tools:
             request["tools"] = tools
             request["tool_choice"] = {"type": "auto"}
+        # 2026-11-10：思考强度映射为 Anthropic 扩展思考预算。
+        extra_body = getattr(model_settings, "extra_body", None) or {}
+        effort = str(extra_body.get("reasoning_effort", "") or "")
+        thinking = anthropic_thinking(effort, max_tokens)
+        if thinking is not None:
+            request["thinking"] = thinking
         # Anthropic 原生不支持 temperature/top_p 时由 model_spec 的 drop_params 剔除，
-        # 此处只透传 model_settings 中确有的值。
-        temperature = getattr(model_settings, "temperature", None)
-        if isinstance(temperature, int | float):
-            request["temperature"] = float(temperature)
-        top_p = getattr(model_settings, "top_p", None)
-        if isinstance(top_p, int | float):
-            request["top_p"] = float(top_p)
+        # 此处只透传 model_settings 中确有的值；启用 thinking 时二者必须省略。
+        thinking_enabled = isinstance(thinking, dict) and thinking.get("type") == "enabled"
+        if not thinking_enabled:
+            temperature = getattr(model_settings, "temperature", None)
+            if isinstance(temperature, int | float):
+                request["temperature"] = float(temperature)
+            top_p = getattr(model_settings, "top_p", None)
+            if isinstance(top_p, int | float):
+                request["top_p"] = float(top_p)
         return request
 
     @staticmethod

@@ -10,7 +10,9 @@ import { OptimizePage } from './OptimizePage'
 // 2026-10-19：项目路径改由「浏览器扩展 + native messaging host」的系统对话框取得，
 // jsdom 里没有扩展，故 mock 掉桥；页内文件夹浏览器已下线。
 vi.mock('../api/nativeFolder', () => ({
-  NOT_INSTALLED_HINT: '未安装扩展',
+  isNativeBridgeReady: () => true,
+  nativeBridgeMissingHint: () => '未检测到扩展，请刷新页面',
+  notInstalledHint: () => '未安装扩展',
   nativePickErrorText: (e: unknown) => String(e),
   pickFolderViaNative: vi.fn(async () => ({ path: 'D:/ws/repo' })),
 }))
@@ -52,7 +54,9 @@ function sseResponse(payload: unknown) {
 function stubFetch(handler: FetchHandler) {
   const mock = vi.fn(async (input: string, init?: RequestInit) => {
     const payload = handler(input, init)
-    return input.includes('/optimize/stream') ? sseResponse(payload) : jsonResponse(payload)
+    // 2026-11-03：答复也走流式（/followup/{id}/stream），同样按 SSE 帧返回
+    const isStream = input.includes('/optimize/stream') || input.includes('/followup/')
+    return isStream ? sseResponse(payload) : jsonResponse(payload)
   })
   vi.stubGlobal('fetch', mock)
   return mock
@@ -83,36 +87,29 @@ class MockEventSource {
   }
 }
 
-const rankingMarked = {
-  variant: 'B',
-  gap: 0.25,
-  confidence: 0.9,
-  marked: true,
-  reason: '分差明显',
-  fit: 0.8,
-  pref: 0.7,
-  total: 0.75,
-}
-
 function snapshotFixture(overrides: Partial<FlowSnapshotResponse> = {}): FlowSnapshotResponse {
   return {
     session_id: 'sess-1',
     state: 'ASKING',
     status: 'ask',
     message: '',
+    evidence_stale: false,
+    reply_text: '',
     questions: [],
     cleared: [],
-    variants: [],
-    ranking: null,
+    variant: null,
     ...overrides,
   }
 }
 
-const threeVariants = [
-  { title: '保守方案', body: 'body-A', level: 'A', changes: ['改一'] },
-  { title: '标准方案', body: 'body-B', level: 'B', changes: ['改二'] },
-  { title: '激进方案', body: 'body-C', level: 'C', changes: ['改三'] },
-]
+/** 单套方案（2026-11-11 契约：variant 单对象，无档位/推荐/评分）。 */
+const plan = {
+  title: '标准方案',
+  body: 'body-B',
+  changes: ['改一'],
+  claims: [],
+  fallback: false,
+}
 
 function renderPage() {
   return render(
@@ -135,14 +132,9 @@ afterEach(() => {
 })
 
 describe('mock e2e 六路径', () => {
-  it('① 正常三套 + 推荐标记：三卡同屏、徽章与品牌边框命中后端指定档位', async () => {
+  it('① 正常单套输出：单卡渲染标题/正文/改动，无推荐徽章与评分', async () => {
     const user = userEvent.setup()
-    const done = snapshotFixture({
-      status: 'done',
-      state: 'DONE',
-      variants: threeVariants,
-      ranking: rankingMarked,
-    })
+    const done = snapshotFixture({ status: 'done', state: 'DONE', variant: plan })
     stubApi([
       {
         match: '/project/browse',
@@ -158,22 +150,19 @@ describe('mock e2e 六路径', () => {
     await user.type(screen.getByRole('textbox', { name: '优化原句' }), '加个导出按钮')
     await user.click(screen.getByRole('button', { name: '发送' }))
 
-    expect(await screen.findByRole('article', { name: '方案 A' })).toBeTruthy()
-    expect(screen.getByRole('article', { name: '方案 B' })).toBeTruthy()
-    expect(screen.getByRole('article', { name: '方案 C' })).toBeTruthy()
-    expect(screen.getByText(/【推荐】B/)).toBeTruthy()
-    expect(screen.getByRole('article', { name: '方案 B' }).className).toContain(
-      'prompt-card--recommended',
-    )
+    expect(await screen.findByRole('article', { name: '标准方案' })).toBeTruthy()
     expect(screen.getByText('body-B')).toBeTruthy()
+    expect(screen.getByText('改一')).toBeTruthy()
+    expect(screen.queryByText(/【推荐】/)).toBeNull()
+    expect(screen.queryByText('评分明细')).toBeNull()
 
-    // 对话流形态：用户气泡（右对齐浅灰）+ AI 回复块 + 分隔线 + 由 AI 生成
+    // 对话流形态：用户气泡（右对齐浅灰）+ AI 回复块 + 分隔线
     const bubble = screen.getByText('加个导出按钮')
     expect(bubble.className).toContain('chat-user-bubble')
     expect(screen.getByRole('article', { name: 'AI 回复' })).toBeTruthy()
-    expect(document.querySelector('.chat-reply__divider')).not.toBeNull()
+    expect(document.querySelector('[class*="chat-reply__divider"]')).not.toBeNull()
     // 底部图标行（复制/重试/赞踩/AI 生成）已按用户要求移除
-    expect(document.querySelector('.chat-reply__actions')).toBeNull()
+    expect(document.querySelector('[class*="chat-reply__actions"]')).toBeNull()
   })
 
   it('② 反问 → 批量答复 → DONE：澄清卡数量与 answers 提交', async () => {
@@ -201,12 +190,7 @@ describe('mock e2e 六路径', () => {
       ],
       cleared: ['lang'],
     })
-    const done = snapshotFixture({
-      status: 'done',
-      state: 'DONE',
-      variants: threeVariants,
-      ranking: rankingMarked,
-    })
+    const done = snapshotFixture({ status: 'done', state: 'DONE', variant: plan })
     const mock = stubApi([
       {
         match: '/project/browse',
@@ -235,12 +219,11 @@ describe('mock e2e 六路径', () => {
       expect(String(call?.[1]?.body)).toContain('"answers"')
       expect(String(call?.[1]?.body)).toContain('build()')
     })
-    expect(await screen.findByRole('article', { name: '方案 B' })).toBeTruthy()
-    expect(screen.getByText(/【推荐】B/)).toBeTruthy()
+    expect(await screen.findByRole('article', { name: '标准方案' })).toBeTruthy()
     expect(screen.getByRole('article', { name: 'AI 回复' })).toBeTruthy()
   })
 
-  it('③ ASKING → 逃生 → 单套 A 无 ranking：不显推荐徽章与评分（MUST-28）', async () => {
+  it('③ ASKING → 逃生 → 单套兜底输出：显示降级提示', async () => {
     const user = userEvent.setup()
     const asked = snapshotFixture({
       questions: [
@@ -258,8 +241,7 @@ describe('mock e2e 六路径', () => {
     const escaped = snapshotFixture({
       status: 'done',
       state: 'DONE',
-      variants: [{ title: '保守方案', body: 'body-A', level: 'A', changes: [] }],
-      ranking: null,
+      variant: { title: '保守方案', body: 'body-A', changes: [], claims: [], fallback: true },
     })
     const mock = stubApi([
       {
@@ -283,11 +265,10 @@ describe('mock e2e 六路径', () => {
       const call = mock.mock.calls.find(([input]) => input.includes('/api/v1/followup/sess-1'))
       expect(String(call?.[1]?.body)).toContain('"escape":true')
     })
-    expect(await screen.findByRole('article', { name: '方案 A' })).toBeTruthy()
-    expect(screen.queryByRole('article', { name: '方案 B' })).toBeNull()
+    expect(await screen.findByRole('article', { name: '保守方案' })).toBeTruthy()
+    expect(screen.getByText(/已降级为保守输出/)).toBeTruthy()
     expect(screen.queryByText(/【推荐】/)).toBeNull()
     expect(screen.queryByText('评分明细')).toBeNull()
-    expect(screen.getByText('后端未产生推荐视图，请人工选择')).toBeTruthy()
   })
 
   it('④ 护栏裁决「继续追问」：guardrail_action=continue', async () => {
@@ -331,7 +312,7 @@ describe('mock e2e 六路径', () => {
       cleared: ['target'],
     })
     useOptimizeStore.getState().applySnapshot(seed)
-    const done = snapshotFixture({ status: 'done', state: 'DONE', variants: threeVariants })
+    const done = snapshotFixture({ status: 'done', state: 'DONE', variant: plan })
     const mock = stubApi([
       { match: '/followup', payload: envelope(done) },
       { match: '/result', payload: envelope(seed) },
@@ -344,16 +325,11 @@ describe('mock e2e 六路径', () => {
       const call = mock.mock.calls.find(([input]) => input.includes('/api/v1/followup/sess-1'))
       expect(String(call?.[1]?.body)).toContain('"guardrail_action":"generate"')
     })
-    expect(await screen.findByRole('article', { name: '方案 A' })).toBeTruthy()
+    expect(await screen.findByRole('article', { name: '标准方案' })).toBeTruthy()
   })
 
-  it('⑥ 刷新恢复：GET /result 复原三套与 ranking 一致', async () => {
-    const restored = snapshotFixture({
-      status: 'done',
-      state: 'DONE',
-      variants: threeVariants,
-      ranking: rankingMarked,
-    })
+  it('⑥ 刷新恢复：GET /result 复原单套方案', async () => {
+    const restored = snapshotFixture({ status: 'done', state: 'DONE', variant: plan })
     useOptimizeStore.getState().applySnapshot(snapshotFixture())
     stubApi([
       { match: '/result/sess-1', payload: envelope(restored) },
@@ -362,14 +338,10 @@ describe('mock e2e 六路径', () => {
 
     renderPage()
 
-    expect(await screen.findByRole('article', { name: '方案 A' })).toBeTruthy()
-    expect(screen.getByRole('article', { name: '方案 B' })).toBeTruthy()
-    expect(screen.getByRole('article', { name: '方案 C' })).toBeTruthy()
-    expect(screen.getByText(/【推荐】B/)).toBeTruthy()
-    const recommended = screen.getByRole('article', { name: '方案 B' })
-    expect(recommended.className).toContain('prompt-card--recommended')
+    expect(await screen.findByRole('article', { name: '标准方案' })).toBeTruthy()
+    expect(screen.getByText('body-B')).toBeTruthy()
     // 刷新恢复：AI 回复块存在（旧会话无原句 → 无用户气泡，仅显状态）
     expect(screen.getByRole('article', { name: 'AI 回复' })).toBeTruthy()
-    expect(document.querySelector('.chat-user-bubble')).toBeNull()
+    expect(document.querySelector('[class*="chat-user-bubble"]')).toBeNull()
   })
 })

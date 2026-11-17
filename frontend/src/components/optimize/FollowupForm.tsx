@@ -1,5 +1,9 @@
+import { useTranslation } from 'react-i18next'
 import type { UnknownItemPayload } from '../../api/types'
-import './optimize.css'
+import styles from './ChatStream.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 /** 多选答案的分隔符：与官方 AskUserQuestion 回填格式一致（`"a, b"` 单字符串）。 */
 const MULTI_SEP = ', '
@@ -59,6 +63,7 @@ export function FollowupForm({
   onAnswersChange,
   onGuardrail,
 }: FollowupFormProps) {
+  const { t } = useTranslation()
   function setAnswer(key: string, value: string): void {
     onAnswersChange({ ...answers, [key]: value })
   }
@@ -66,75 +71,77 @@ export function FollowupForm({
   return (
     <div>
       {status === 'guardrail' ? (
-        <div className="guardrail-banner">
+        <div className={s('guardrail-banner')}>
           <p>软护栏触发：已澄清 {cleared.length} 项，请裁决继续追问或直接生成</p>
           <button
             type="button"
-            className="button button--ghost"
+            className={s('button button--ghost')}
             disabled={isBusy}
             onClick={() => onGuardrail('continue')}
           >
-            继续追问
+            {t('clarify.continue_asking')}
           </button>
           <button
             type="button"
-            className="button button--primary"
+            className={s('button button--primary')}
             disabled={isBusy}
             onClick={() => onGuardrail('generate')}
           >
-            直接生成（保守版）
+            {t('clarify.generate_conservative')}
           </button>
         </div>
       ) : null}
 
       {cleared.length > 0 ? (
-        <p className="thread__chips">
-          <span>已澄清：</span>
+        <p className={s('thread__chips')}>
+          <span>{t('clarify.answered_prefix')}</span>
           {cleared.map((key) => (
-            <span className="thread__chip" key={key}>
+            <span className={s('thread__chip')} key={key}>
               {key}
             </span>
           ))}
         </p>
       ) : null}
 
-      <ul className="clarify-list">
+      <ul className={s('clarify-list')}>
         {questions.map((item) => (
-          <li className="clarify-card" key={item.key}>
-            <div className="clarify-card__head">
+          <li className={s('clarify-card')} key={item.key}>
+            <div className={s('clarify-card__head')}>
               {item.header !== '' ? (
-                <span className="clarify-card__header">{item.header}</span>
+                <span className={s('clarify-card__header')}>{item.header}</span>
               ) : null}
-              <span className="clarify-card__key">{item.key}</span>
-              <span className="clarify-card__kind">{item.multi_select ? '多选' : '单选'}</span>
+              <span className={s('clarify-card__key')}>{item.key}</span>
+              <span className={s('clarify-card__kind')}>
+                {item.multi_select ? t('clarify.multi') : t('clarify.single')}
+              </span>
             </div>
-            <p className="clarify-card__ask">{item.ask}</p>
-            <p className="clarify-card__reason">{item.reason}</p>
+            <p className={s('clarify-card__ask')}>{item.ask}</p>
+            <p className={s('clarify-card__reason')}>{item.reason}</p>
 
             {(item.options ?? []).length > 0 ? (
-              <div className="clarify-card__options" role="group" aria-label={item.ask}>
+              <div className={s('clarify-card__options')} role="group" aria-label={item.ask}>
                 {(item.options ?? []).map((option) => {
                   const chosen = isChosen(item, option.label, answers[item.key])
                   return (
                     <button
                       type="button"
                       key={option.label}
-                      className={
-                        chosen ? 'clarify-option clarify-option--chosen' : 'clarify-option'
-                      }
+                      className={s(
+                        chosen ? 'clarify-option clarify-option--chosen' : 'clarify-option',
+                      )}
                       aria-pressed={chosen}
                       disabled={isBusy}
                       onClick={() =>
                         setAnswer(item.key, toggleChoice(item, option.label, answers[item.key]))
                       }
                     >
-                      <span className="clarify-option__mark" aria-hidden="true">
+                      <span className={s('clarify-option__mark')} aria-hidden="true">
                         {item.multi_select ? (chosen ? '☑' : '☐') : chosen ? '◉' : '○'}
                       </span>
-                      <span className="clarify-option__text">
-                        <span className="clarify-option__label">{option.label}</span>
+                      <span className={s('clarify-option__text')}>
+                        <span className={s('clarify-option__label')}>{option.label}</span>
                         {option.description !== '' ? (
-                          <span className="clarify-option__desc">{option.description}</span>
+                          <span className={s('clarify-option__desc')}>{option.description}</span>
                         ) : null}
                       </span>
                     </button>
@@ -144,24 +151,24 @@ export function FollowupForm({
             ) : null}
 
             {item.best_guess !== '' ? (
-              <p className="clarify-card__guess">
-                <span>当前最佳推断：{item.best_guess}</span>
+              <p className={s('clarify-card__guess')}>
+                <span>{t('clarify.best_guess', { guess: item.best_guess })}</span>
                 <button
                   type="button"
-                  className="button button--ghost"
+                  className={s('button button--ghost')}
                   disabled={isBusy}
                   onClick={() => setAnswer(item.key, item.best_guess)}
                 >
-                  采用推断
+                  {t('clarify.adopt_guess')}
                 </button>
               </p>
             ) : null}
 
-            <label className="field">
-              <span>{'输入自定义回答'}</span>
+            <label className={s('field')}>
+              <span>{t('clarify.custom_input')}</span>
               <input
-                className="field__input"
-                placeholder="输入自定义回答..."
+                className={s('field__input')}
+                placeholder={t('clarify.custom_placeholder')}
                 value={answers[item.key] ?? ''}
                 onChange={(event) => setAnswer(item.key, event.target.value)}
               />

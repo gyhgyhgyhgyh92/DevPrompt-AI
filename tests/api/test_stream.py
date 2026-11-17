@@ -50,6 +50,10 @@ class FakeStreamService:
         request_id: str,
         progress: Any = None,
         session_id: str | None = None,
+        locale: str = "zh-CN",
+        domain_override: str | None = None,
+        style: str | None = None,
+        images: list[str] | None = None,
     ) -> FlowSnapshot:
         self.calls.append(
             {"user_id": user_id, "project": project_root, "sentence": sentence, "rid": request_id}
@@ -111,6 +115,31 @@ async def test_thoughts_then_snapshot(
     assert frames[-1]["data"]["status"] == "done"
 
 
+async def test_stream_writes_session_log(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    """D-05：/optimize/stream 也写 run_events，且不影响 SSE 帧。"""
+    from types import SimpleNamespace
+
+    from devprompt_ai.interfaces.api import runtime_routes
+    from devprompt_ai.memory.event_store import SQLiteEventStore
+    from devprompt_ai.runtime.events import EventBus
+
+    fake = _patch(monkeypatch, FakeStreamService(texts=["先检索代码"]))
+    bus = EventBus(SQLiteEventStore(str(tmp_path / "events.db")))
+
+    async def _fake_bundle() -> Any:
+        return SimpleNamespace(bus=bus)
+
+    monkeypatch.setattr(runtime_routes, "_bundle", _fake_bundle)
+    fake.config = object()  # type: ignore[attr-defined]
+
+    resp = await client.post("/api/v1/optimize/stream", json={"sentence": "改按钮", "project": "."})
+    assert [frame["type"] for frame in _frames(resp.text)] == ["thought", "snapshot"]
+    events = await bus.replay("s-stream", 0)
+    assert [event.type for event in events] == ["run.started", "thought", "snapshot", "stop"]
+
+
 async def test_ask_status_still_delivers_snapshot(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -147,6 +176,27 @@ async def test_action_frame_carries_card_payload(
     assert card["scope"] == "命中 2 行"
     assert "output" in card
     assert card["detail"].startswith("rg -n Foo")
+
+
+async def test_action_frame_carries_duration_when_measured(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """真实耗时走同一帧（2026-11-07）：有值就下发，未计时下发 None（前端据此不渲染耗时）。"""
+    _patch(
+        monkeypatch,
+        FakeStreamService(
+            actions=[
+                ActionInfo(title="检索符号", detail="rg -n Foo", scope="命中 1 行", duration_ms=42),
+                ActionInfo(title="读取文件", detail="src/a.ts", scope="L1-1"),
+            ]
+        ),
+    )
+
+    resp = await client.post("/api/v1/optimize/stream", json={"sentence": "改一下", "project": "."})
+
+    cards = [frame for frame in _frames(resp.text) if frame["type"] == "action"]
+    assert cards[0]["duration_ms"] == 42
+    assert cards[1]["duration_ms"] is None
 
 
 async def test_error_frame_carries_code_and_closes_stream(

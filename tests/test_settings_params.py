@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
+from devprompt_ai.domain.errors import ConfigurationError
 from devprompt_ai.service import ForgeService
 
 _PROVIDER: dict[str, Any] = {
@@ -56,6 +59,12 @@ class TestEntryValidation:
         entry = _merge([{**_BASE, "vendor_flag": True}], [])[0]
         assert ForgeService._validate_registry_entries([entry]) == []
 
+    def test_duplicate_model_under_same_provider_rejected(self) -> None:
+        """同一供应商下同一模型重复出现 = 供应商 id 撞名的副产物，必须整单拒绝。"""
+        entry = _merge([dict(_BASE)], [])[0]
+        problems = ForgeService._validate_registry_entries([entry, dict(entry)])
+        assert any("重复" in p for p in problems)
+
 
 class TestEntryMerging:
     def test_entry_resolves_endpoint_from_provider(self) -> None:
@@ -91,6 +100,29 @@ class TestEntryMerging:
 
 class TestProviderConfigMerging:
     """供应商段（2026-10-18 供应商中心化重构）。"""
+
+    def test_duplicate_ids_are_rejected(self) -> None:
+        """两个供应商撞同一个 id 时写侧会合并成一条、模型却全保留。
+
+        真实事故（2026-11-10）：前端按页内序号生成 `p-new-1`，刷新页面后与已落盘的
+        id 撞名，导致「MiniMax 供应商名下挂着 5 个 Kimi 模型」。撞名必须整单拒绝。
+        """
+        with pytest.raises(ConfigurationError, match="供应商 id 重复"):
+            ForgeService._merge_provider_configs(
+                [
+                    {
+                        "id": "p-dup",
+                        "provider": "moonshot",
+                        "base_url": "https://api.moonshot.cn/v1",
+                    },
+                    {
+                        "id": "p-dup",
+                        "provider": "minimax",
+                        "base_url": "https://api.minimaxi.com/v1",
+                    },
+                ],
+                [],
+            )
 
     def test_id_generated_when_absent(self) -> None:
         merged = ForgeService._merge_provider_configs(
@@ -288,7 +320,7 @@ class TestContextWindowTierInvariants:
             "gemini": 1000000,
             "deepseek": 1_048_576,  # 官方 /models 返回 context_window=1048576
             "zhipu": 200000,  # 官方文档 GLM-4.6
-            "moonshot": 256000,  # 官方 2025-09 公告
+            "moonshot": 262_144,  # 官方 K2 系列 256K；K3 的 1M 在模型级登记
             "volcengine": 262144,  # 火山官方文档
             "qianfan": 131072,  # 千帆文档
             "spark": 262144,  # 讯飞 MaaS 官网

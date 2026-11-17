@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import { i18n } from '../i18n'
 import { ApiResponseMetaSchema } from '../schemas/common'
 import {
   SUCCESS_CODE,
@@ -76,6 +77,8 @@ export async function request<S extends z.ZodType>(
         method,
         headers: {
           accept: 'application/json',
+          // 界面语言（2026-11-06）：后端按此头输出进度流/披露/方案模板的语言
+          'accept-language': i18n.language,
           // 带 JSON body 必须声明 content-type，否则后端不解包请求体
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
@@ -89,7 +92,7 @@ export async function request<S extends z.ZodType>(
     if (controller.signal.aborted) {
       throw hasTimedOut ? timeoutError('') : abortedError('')
     }
-    throw networkError('网络请求失败', error)
+    throw networkError(i18n.t('api.network_failed'), error)
   } finally {
     clearTimeout(timer)
     signal?.removeEventListener('abort', abortFromCaller)
@@ -101,12 +104,16 @@ export async function request<S extends z.ZodType>(
   try {
     raw = await response.json()
   } catch (error) {
-    throw contractError(`响应不是合法 JSON（HTTP ${response.status}）`, headerRequestId, error)
+    throw contractError(
+      i18n.t('api.json_invalid', { status: response.status }),
+      headerRequestId,
+      error,
+    )
   }
 
   const envelopeResult = ApiResponseMetaSchema.safeParse(raw)
   if (!envelopeResult.success) {
-    throw contractError('响应外壳不符合契约', headerRequestId, envelopeResult.error)
+    throw contractError(i18n.t('api.contract_envelope'), headerRequestId, envelopeResult.error)
   }
   const envelope = envelopeResult.data
   const requestId = headerRequestId !== '' ? headerRequestId : envelope.request_id
@@ -117,7 +124,7 @@ export async function request<S extends z.ZodType>(
 
   const dataResult = schema.safeParse(envelope.data)
   if (!dataResult.success) {
-    throw contractError('响应 data 不符合契约', requestId, dataResult.error)
+    throw contractError(i18n.t('api.contract_data'), requestId, dataResult.error)
   }
   return dataResult.data
 }
@@ -155,19 +162,23 @@ export async function openPostStream(
   try {
     response = await fetch(path, {
       method: 'POST',
-      headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
+      headers: {
+        accept: 'text/event-stream',
+        'content-type': 'application/json',
+        'accept-language': i18n.language,
+      },
       body: JSON.stringify(body),
       signal,
     })
   } catch (error) {
     if (signal?.aborted) throw abortedError('')
-    throw networkError('网络请求失败', error)
+    throw networkError(i18n.t('api.network_failed'), error)
   }
   if (!response.ok) {
-    throw httpError(response.status, '流式端点不可用，请确认后端已重启到最新版本')
+    throw httpError(response.status, i18n.t('api.stream_unavailable'))
   }
   const reader = response.body?.getReader()
-  if (!reader) throw networkError('响应不支持流式读取')
+  if (!reader) throw networkError(i18n.t('api.stream_unsupported'))
 
   handlers.onOpen?.()
   const decoder = new TextDecoder()
@@ -188,7 +199,7 @@ export async function openPostStream(
     }
   } catch (error) {
     if (signal?.aborted) throw abortedError('')
-    throw networkError('流式连接中断', error)
+    throw networkError(i18n.t('api.stream_broken'), error)
   } finally {
     reader.releaseLock()
   }

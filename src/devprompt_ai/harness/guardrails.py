@@ -5,9 +5,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from devprompt_ai.domain.decision.port import RankComponentsOutput
 from devprompt_ai.domain.errors import GenerationError
+from devprompt_ai.domain.generate.claims import ClaimReport, match_claims
 from devprompt_ai.domain.generate.ports import VariantDraft
+from devprompt_ai.domain.models import FactResult
 
 
 def validate_ranking(out: RankComponentsOutput, candidate_count: int) -> None:
@@ -23,4 +27,24 @@ def validate_ranking(out: RankComponentsOutput, candidate_count: int) -> None:
 def validate_variant(draft: VariantDraft) -> None:
     """单套输出校验：标题/正文非空（MUST-17 禁空壳输出）。"""
     if not draft.title.strip() or not draft.body.strip():
-        raise GenerationError("生成方案标题或正文为空", code=4003, context={"level": draft.level})
+        raise GenerationError(
+            "生成方案标题或正文为空",
+            code=4003,
+            context={
+                "title_len": len(draft.title),
+                "body_len": len(draft.body),
+                "fallback": draft.fallback,
+            },
+        )
+
+
+def validate_claims(
+    draft: VariantDraft, facts: Sequence[FactResult], evidence_text: str = ""
+) -> ClaimReport:
+    """方案断言对账（2026-11-04）。
+
+    只返回报告、不抛异常：证据缺口是**披露项**而不是流程失败——降档由调用方决定，
+    重新生成反而会让模型为了凑覆盖率而删掉有价值的引用。
+    ``evidence_text`` 承载目标代码片段 + 设计令牌证据（2026-11-11）。
+    """
+    return match_claims(draft.claims, facts, evidence_text)

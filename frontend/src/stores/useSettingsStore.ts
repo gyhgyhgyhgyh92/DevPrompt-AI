@@ -54,6 +54,24 @@ export function applyAppearanceTheme(theme: AppearanceSettings['theme']): void {
   document.documentElement.dataset.theme = resolveTheme(theme)
 }
 
+/**
+ * 跟随系统主题的实时订阅（2026-11-06）：此前只在「应用主题」那一刻解析一次，
+ * 用户切了系统深色模式后界面不动。返回取消函数；非 system 模式或环境无 matchMedia 时为空操作。
+ */
+export function watchSystemTheme(): () => void {
+  if (useSettingsStore.getState().appearance.theme !== 'system') return () => undefined
+  if (typeof window.matchMedia !== 'function') return () => undefined
+  const media = window.matchMedia('(prefers-color-scheme: dark)')
+  const handleChange = (): void => applyAppearanceTheme('system')
+  // 旧版 Safari 只有 addListener：按能力分支，避免直接调用缺失方法
+  if (typeof media.addEventListener === 'function') {
+    media.addEventListener('change', handleChange)
+    return () => media.removeEventListener('change', handleChange)
+  }
+  media.addListener(handleChange)
+  return () => media.removeListener(handleChange)
+}
+
 /** 清除全部本地留存（SecurityPanel）：只删 devprompt:v1: 前缀键，不触碰其他来源数据。 */
 function removeLocalData(): void {
   for (const key of Object.keys(localStorage)) {

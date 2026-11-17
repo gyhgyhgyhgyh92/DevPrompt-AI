@@ -20,13 +20,23 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
+import time
 from collections.abc import Callable
 from typing import Final
+from uuid import uuid4
 
+from devprompt_ai.common.process import (
+    ExecutableNotFoundError,
+    ProcessError,
+    ProcessTimeoutError,
+)
 from devprompt_ai.domain.progress import ActionInfo, ProgressEvent, ProgressSink, display_path
-from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader
+from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader, StreamingCommandRunner
+from devprompt_ai.harness.output_store import persist, raw_path
+from devprompt_ai.harness.output_summary import summarize_output, threshold_for, with_footer
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +45,11 @@ _MAX_DETAIL: Final = 160
 #: 动作输出上限（渲染成可展开代码块；超限截断并标记）
 _OUTPUT_MAX_LINES: Final = 20
 _OUTPUT_MAX_CHARS: Final = 2000
+
+#: 增量推送节流（2026-11-15 流式呈现）：最短间隔 50ms，或攒够 5 行即发。
+#: 帧太密会把 SSE 刷爆，太疏则失去「正在逐条命中」的观感。
+_STREAM_MIN_INTERVAL_S: Final = 0.05
+_STREAM_MAX_LINES: Final = 5
 
 #: 盘符绝对路径（D:/x/y、D:\x\y）：卡片里整体收窄为末两段。
 _ABS_PATH_RE: Final = re.compile(r"[A-Za-z]:[\\/][^\s\"']*")
@@ -92,6 +107,43 @@ def _title(args: list[str]) -> str:
     return "检索代码"
 
 
+def _tool_of(args: list[str]) -> str:
+    """按可执行名映射语义密度档位（output_summary 阈值系数用）。"""
+    name = (args[0] if args else "").replace("\\", "/").rsplit("/", 1)[-1].lower()
+    return {"rg": "grep", "ctags": "repo_map"}.get(name, name or "bash")
+
+
+def _clip_card(text: str) -> str:
+    """行数已由摘要控制，这里只兜底字符上限（MUST-19 ≤2000 字符）。"""
+    if len(text) <= _OUTPUT_MAX_CHARS:
+        return text
+    return text[:_OUTPUT_MAX_CHARS] + "\n…（已截断）"
+
+
+async def _governed_output(
+    text: str, *, tool: str, success: bool, root: str, governance: bool = True
+) -> str:
+    """C1–C5：超阈值的输出先落盘全量，卡片只给摘要 + 回读指针。
+
+    摘要行数按 MUST-19 的 20 行上限反推（footer 占 1 行），截断对用户可见且
+    明确提示「不要重跑命令」；落盘内容先脱敏——回读 API 会原样发给前端。
+    `tool_output_governance` 关闭时走改造前的截断口径（灰度闸口）。
+    """
+    if not governance or len(text) <= threshold_for(tool):
+        return _output(text.splitlines(), root)
+    call_id = f"{tool}:{hashlib.sha256(text.encode('utf-8', 'ignore')).hexdigest()}"
+    saved = await persist(call_id, redact(text, root))
+    summary = summarize_output(
+        "\n".join(redact(line, root) for line in text.splitlines()),
+        success=success,
+        success_lines=_OUTPUT_MAX_LINES - 2,
+        failure_budget=_OUTPUT_MAX_LINES - 11,
+    )
+    # persist 失败返回空串：footer 退化为「不要重跑」提示，不给死指针
+    ref = f"/api/v1/artifacts/{raw_path(call_id).stem}" if saved else ""
+    return _clip_card(with_footer(summary, ref))
+
+
 class TracingRunner:
     """转发真实命令，并对每次调用上报一张动作卡片。"""
 
@@ -101,11 +153,13 @@ class TracingRunner:
         sink: ProgressSink,
         root: str,
         phase: Callable[[], str] | None = None,
+        governance: bool = True,
     ) -> None:
         self._inner = inner
         self._sink = sink
         self._root = root
         self._phase = phase or (lambda: "")
+        self._governance = governance
 
     async def run(
         self,
@@ -115,11 +169,38 @@ class TracingRunner:
         allowed_exit_codes: frozenset[int] = frozenset({0}),
         cwd: str | None = None,
     ) -> str:
-        out = await self._inner.run(
-            args, timeout=timeout, allowed_exit_codes=allowed_exit_codes, cwd=cwd
-        )
         # 只改展示副本，args 本身绝不能动（否则改变真实 rg 行为）
         shown = [arg for arg in args if not arg.startswith(_ROUTE_KEY_PREFIX)]
+        started = time.monotonic()
+        # 流式优先（2026-11-15）：inner 支持逐行产出时，命中行在命令执行途中就抵达卡片；
+        # 不支持（测试替身 / 旧包装）则走下面的原路径，行为完全不变。
+        inner = self._inner
+        if isinstance(inner, StreamingCommandRunner):
+            return await self._run_streamed(
+                inner, args, shown, timeout, allowed_exit_codes, cwd, started
+            )
+        try:
+            out = await self._inner.run(
+                args, timeout=timeout, allowed_exit_codes=allowed_exit_codes, cwd=cwd
+            )
+        except (ExecutableNotFoundError, ProcessTimeoutError):
+            # 工具没装 / 命令超时不是「这条命令没匹配到」：降级会让用户只拿到保守方案
+            # 却永远查不到真因，故原样抛出（2026-11-04 用户裁定降级范围的边界）。
+            raise
+        except ProcessError as exc:
+            # 非允许退出码（rg 未命中即 exit 1）→ 降级：先上报失败卡片，再返回空串，
+            # 调用方按「无匹配」处理，整轮流程不再因一次检索失败而中断（MUST-19：stderr 先脱敏）。
+            await self._emit(
+                ActionInfo(
+                    title=_title(args),
+                    detail=_clip(redact(" ".join(shown), self._root)),
+                    scope=f"Exit code {exc.code}",
+                    output=_output((exc.stderr or str(exc)).splitlines(), self._root),
+                    status="failed",
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                )
+            )
+            return ""
         lines = out.splitlines()
         hits = sum(1 for line in lines if line.strip())
         await self._emit(
@@ -127,7 +208,128 @@ class TracingRunner:
                 title=_title(args),
                 detail=_clip(redact(" ".join(shown), self._root)),
                 scope=f"命中 {hits} 行" if hits else "无匹配",
-                output=_output(lines, self._root),
+                output=await _governed_output(
+                    out,
+                    tool=_tool_of(args),
+                    success=True,
+                    root=self._root,
+                    governance=self._governance,
+                ),
+                duration_ms=int((time.monotonic() - started) * 1000),
+            )
+        )
+        return out
+
+    async def _run_streamed(
+        self,
+        inner: StreamingCommandRunner,
+        args: list[str],
+        shown: list[str],
+        timeout: float,
+        allowed_exit_codes: frozenset[int],
+        cwd: str | None,
+        started: float,
+    ) -> str:
+        """流式执行（2026-11-15）：逐行脱敏 → 节流 → 增量帧；结束时补一张完成帧。
+
+        帧语义（前端据此归并到同一张卡）：
+        - ``delta`` 非空 = 执行途中的续写片段，**追加**到该 id 卡片的输出；
+        - ``delta`` 为空 = 完整卡，用其 ``output`` **替换**输出并更新范围标签与耗时。
+        """
+        action_id = uuid4().hex[:12]
+        title = _title(args)
+        detail = _clip(redact(" ".join(shown), self._root))
+        buffer: list[str] = []
+        total_chars = 0
+        last_push = 0.0
+        pushed = False
+
+        async def _push(chunk: str) -> None:
+            nonlocal pushed
+            await self._emit(ActionInfo(title=title, detail=detail, id=action_id, delta=chunk))
+            pushed = True
+
+        async def on_line(line: str) -> None:
+            nonlocal total_chars, last_push
+            if total_chars >= _OUTPUT_MAX_CHARS:
+                return  # 增量总量受既有输出治理口径约束
+            redacted = redact(line, self._root)  # 增量同样脱敏（MUST-19）
+            total_chars += len(redacted) + 1
+            buffer.append(redacted)
+            now = time.monotonic()
+            if now - last_push < _STREAM_MIN_INTERVAL_S and len(buffer) < _STREAM_MAX_LINES:
+                return
+            last_push = now
+            chunk = "\n".join(buffer)
+            buffer.clear()
+            await _push(chunk)
+
+        try:
+            out = await inner.run_stream(
+                args,
+                on_line=on_line,
+                timeout=timeout,
+                allowed_exit_codes=allowed_exit_codes,
+                cwd=cwd,
+            )
+        except NotImplementedError:
+            # 能力探测只认方法存在：内层实现可能仍不支持（测试替身）→ 回退原路径，行为等价
+            out = await self._inner.run(
+                args, timeout=timeout, allowed_exit_codes=allowed_exit_codes, cwd=cwd
+            )
+        except (ExecutableNotFoundError, ProcessTimeoutError):
+            # 已推送增量时补一张终止卡：否则前端只剩半截输出、没有结论
+            if pushed:
+                await self._emit(
+                    ActionInfo(
+                        title=title,
+                        detail=detail,
+                        scope="已中断",
+                        output="",
+                        status="failed",
+                        duration_ms=int((time.monotonic() - started) * 1000),
+                        id=action_id,
+                    )
+                )
+            raise
+        except ProcessError as exc:
+            # 非允许退出码（rg 未命中即 exit 1）→ 降级：失败卡即时浮出（失败优先，不折叠）
+            if buffer:
+                chunk = "\n".join(buffer)
+                buffer.clear()
+                await _push(chunk)
+            await self._emit(
+                ActionInfo(
+                    title=title,
+                    detail=detail,
+                    scope=f"Exit code {exc.code}",
+                    output=_output((exc.stderr or str(exc)).splitlines(), self._root),
+                    status="failed",
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    id=action_id,
+                )
+            )
+            return ""
+        if buffer:
+            chunk = "\n".join(buffer)
+            buffer.clear()
+            await _push(chunk)
+        lines = out.splitlines()
+        hits = sum(1 for line in lines if line.strip())
+        await self._emit(
+            ActionInfo(
+                title=title,
+                detail=detail,
+                scope=f"命中 {hits} 行" if hits else "无匹配",
+                output=await _governed_output(
+                    out,
+                    tool=_tool_of(args),
+                    success=True,
+                    root=self._root,
+                    governance=self._governance,
+                ),
+                duration_ms=int((time.monotonic() - started) * 1000),
+                id=action_id,
             )
         )
         return out
@@ -148,13 +350,16 @@ class TracingReader:
         sink: ProgressSink,
         root: str,
         phase: Callable[[], str] | None = None,
+        governance: bool = True,
     ) -> None:
         self._inner = inner
         self._sink = sink
         self._root = root
         self._phase = phase or (lambda: "")
+        self._governance = governance
 
     async def read(self, path: str) -> str:
+        started = time.monotonic()
         text = await self._inner.read(path)
         lines = text.splitlines()
         try:
@@ -165,7 +370,14 @@ class TracingReader:
                         title="读取文件",
                         detail=_clip(redact(path, self._root)),
                         scope=f"L1-{len(lines)}" if lines else "",
-                        output=_output(lines, self._root),
+                        output=await _governed_output(
+                            text,
+                            tool="read_file",
+                            success=True,
+                            root=self._root,
+                            governance=self._governance,
+                        ),
+                        duration_ms=int((time.monotonic() - started) * 1000),
                     ),
                 )
             )

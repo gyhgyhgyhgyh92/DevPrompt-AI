@@ -1,3 +1,7 @@
+---
+alwaysApply: false
+description: 
+---
 # DevPrompt AI · 项目规则（Trae）
 
 ## 强制规则：先读宪法，再执行任何任务

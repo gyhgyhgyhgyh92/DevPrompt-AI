@@ -1,8 +1,8 @@
 # DevPrompt AI · 技术栈文档
 
-> 版本 v1.1 · 2026-10-10（BREAKING：废除 CLI 形态，全面转向 Web-only 架构，批准人=项目所有者）
+> 版本 v1.2 · 2026-11-07（**限定范围引入 Tailwind v4 与 motion**：仅用于 dev-only 的 `src/lab` 风格样张页，生产界面仍为 CSS + CSS Variables；批准人=项目所有者）
 > 配套文档：`DevPrompt-AI-功能清单.md`（v1.1）
-> 版本核实日期：2026-10-04，所有版本号均为当日可查的稳定版
+> 版本核实日期：2026-11-07（新增依赖经 `registry.npmmirror.com` 核实），其余条目仍为 2026-10-04 快照
 
 ---
 
@@ -13,14 +13,15 @@
 | 前端框架 | React 19.3 + TypeScript 5.9 |
 | 构建工具 | Vite 7 |
 | 包管理器 | pnpm 10 |
-| CSS 方案 | CSS Modules + CSS Variables |
+| CSS 方案 | CSS + CSS Variables（生产界面）；Tailwind v4 **仅限 dev-only 样张页**（§1.4） |
 | 状态管理 | Zustand 5 |
 | UI 组件库 | **不引入**（详见 §2.3） |
+| 动效 | 生产界面：纯 CSS；样张页：`motion` 14（§1.6） |
 | 后端语言 | Python 3.13 |
 | Web 框架 | FastAPI 0.136 |
 | 数据库 | SQLite（Python 标准库 `sqlite3`，WAL 模式） |
 
-**与常见前端项目的三处差异**（下文逐条论证）：不用 Tailwind、不用 UI 组件库、不用 React Query。
+**与常见前端项目的三处差异**（下文逐条论证）：生产界面不用 Tailwind、不用 UI 组件库、不用 React Query。
 
 ---
 
@@ -43,7 +44,7 @@
 | `use()` | 在条件分支中读取 Context 与 Promise，避免 `useEffect` 取数 |
 | `useOptimistic` | 采纳反馈的即时 UI 更新 |
 | `startTransition` | 反问步骤切换时的平滑过渡 |
-| Fragment refs | 三套方案卡片展开/收起时管理焦点 |
+| Fragment refs | 方案卡片展开/收起时管理焦点 |
 | Server Components | **不启用**（纯客户端 SPA，无 SSR 需求） |
 
 **不用 Server Components 的理由**：本项目是本地工具，需要访问本地文件系统（ripgrep 执行在 Python 侧），不存在 SEO 需求，也不需要流式首屏。引入 RSC 会让「本地文件系统访问」这个核心能力与渲染模型打架。
@@ -84,22 +85,49 @@
 
 ## 1.4 CSS 方案
 
-| 项 | 选型 |
-|---|---|
-| 方案 | **CSS Modules + CSS Variables** |
-| 预处理器 | 不使用 |
-| CSS-in-JS | 不使用 |
-| Tailwind CSS | **不使用** |
+| 项 | 生产界面 | `src/lab`（dev-only 样张页） |
+|---|---|---|
+| 方案 | **CSS Modules + CSS Variables**（2026-11-07 全量迁移） | Tailwind CSS v4（utility 仅做 token 桥接） |
+| 预处理器 | 不使用 | 不使用 |
+| CSS-in-JS | 不使用 | 不使用 |
+| 样式入口 | 各组件 `Xxx.module.css` + `styles/tokens.css`（token 唯一来源） + `styles/global.css`（reset / 壳层 / 跨组件原语） | `src/lab/styles/lab.css` |
 
-**设计 token 定义**：全部放在 `styles/tokens.css`，用 CSS Variables 表达。
+**设计 token 定义**：全部放在 `styles/tokens.css`，用 CSS Variables 表达；样张页不改这个文件，只在 `src/lab/styles/lab-tokens.css` 里**用同名变量覆盖**。
 
 **这个选择与项目本身有呼应关系**：DevPrompt AI 的核心能力之一是识别被优化项目的设计 token（如 `--color-primary-500`）。用同一套 CSS Variables 机制实现自身 UI，既是自证也是约束——我们推荐的 token 命名规范，自己也在用。
 
-**为什么不用 Tailwind**：Tailwind v4 已是 React 生态主流，但它对**本项目无收益**。本项目 UI 元素种类极少（约 15 个），不需要原子类来加速开发；反而工具类会让「三套方案并排对比」这种精细布局的意图被淹没在 class 字符串里。
+**为什么生产界面不用 Tailwind**（结论不变）：本项目 UI 元素种类极少（约 17 个），不需要原子类来加速开发；工具类会让「单套方案卡片」这类精细布局的意图被淹没在 class 字符串里。
+
+**为什么样张页用 Tailwind v4**（2026-11-07 新增，MUST-04 逐级说明）：
+- 第 1~3 级不成立：同一份内容要并排试**三套**视觉体系（描边策略、圆角、密度、字重全不同），用原生 CSS 需要三套并行样式表并在推翻时同步维护三处，改动成本远高于一次工具类重排；语言内置（CSS 变量）已用于「同一套骨架换 token」，但无法覆盖「骨架本身也不同」。
+- 第 4 级不成立：项目内现成的只有手写 CSS，没有可组合的样式原语。
+- 第 5 级的最小代价方案：`tailwindcss` + `@tailwindcss/vite`，**只导入 `theme` 与 `utilities` 两层、跳过 preflight**（避免全局重置既有 100+ 组件），并只被 `StyleLab.tsx` 引用，生产构建经 DCE 完全剔除（已在 `dist/assets` 检索 `StyleLab`/`data-lab-style`/`lab-surface` 均为 0 命中）。
+- 边界：色值仍只存在于 CSS（token 覆盖），组件里只出现 `bg-surface` / `text-ink` 这类语义类，不出现字面色值。
+
+**全站改版如何落地（2026-11-07 实测结论）**：S2「终端工具」全站换肤只改 `styles/tokens.css` 的变量值（品牌色改靛蓝族、中性面改冷灰递进、正文 13px、新增 `--text-micro/--text-meta` 与 `--color-running-*`），**115 处既有 `--color-primary-*` / `--brand*` 引用自动跟随**，未新增任何前端依赖、未改写既有组件 CSS 结构。这条路径验证了「token 唯一来源」的价值：换视觉不等于换技术栈。
 
 **为什么不用 CSS-in-JS**：运行时开销与 SSR 兼容性问题（本项目不需要 SSR，但引入额外复杂度无收益）。
 
-## 1.5 状态管理
+## 1.5 动效方案（2026-11-07 新增）
+
+| 场景 | 方案 |
+|---|---|
+| 生产界面（悬停、展开、呼吸、光标） | 纯 CSS（`transition` / `@keyframes`），必须尊重 `prefers-reduced-motion` |
+| 样张页的条目入场、阶段切换、摘要高度展开 | `motion` 14.10.0（React 版） |
+
+**为什么样张页用 motion**：摘要展开需要「高度 auto + 布局动画」，CSS 需要预设具体高度，做不到内容自适应；条目入场在多条目并行时，纯 CSS 需要给每条编号 delay，改一处数据要同步改样式。项目内无等价封装（第 3 级不成立），故为**样张页专属依赖**。
+
+**版本核实（MUST-24b，2026-11-07 经 registry.npmmirror.com 查询最新稳定版）**：
+
+| 依赖 | 已装版本 | 查询时最新版 | 用途 |
+|---|---|---|---|
+| `tailwindcss` | 4.3.4 | 4.3.5 | 样张页 utility |
+| `@tailwindcss/vite` | 4.3.4 | 4.3.5 | Vite 插件（构建期生成 CSS） |
+| `motion` | 14.10.0 | 14.10.1 | 样张页布局/入场动画 |
+
+> 采用「小版本固定」而非 `^`：这三个包只在样张页使用，升级收益低，固定版本可避免 lockfile 漂移带来构建差异；后续如需升级，先跑 `pnpm build` + `pnpm test` 再改版本号。
+
+## 1.6 状态管理
 
 | 项 | 选型 | 版本要求 |
 |---|---|---|
@@ -111,8 +139,9 @@
 
 | Store | 职责 |
 |---|---|
-| `useOptimizeStore` | 当前流程阶段、三套方案、评分明细、置信度、SSE 连接状态 |
-| `usePreferenceStore` | 偏好向量、历史采纳记录 |
+| `useOptimizeStore` | 当前流程阶段、单个方案、交付门、SSE 连接状态 |
+| `useHistoryStore` | 会话历史（分页/置顶/重命名/删除） |
+| `useSettingsStore` | 设置状态（外观进 localStorage，`devprompt:v1:` 前缀） |
 
 **为什么不用 Redux Toolkit**：本项目无跨页面复杂状态，slice/reducer/action 的三层结构是纯开销。Zustand 的 `create` 写法在 TypeScript 下类型推导更直接，且不需要 Provider 嵌套。
 
@@ -126,13 +155,13 @@
 
 **为什么不用 TanStack Router**：官方文档推荐它做类型安全的文件路由，但本项目只有 3 个页面，React Router 的 `createBrowserRouter` 已足够。TanStack Router 的类型优势在页面数增长后才显现。
 
-## 1.6 路由
+## 1.7 路由
 
 | 项 | 选型 | 版本要求 |
 |---|---|---|
 | 路由 | React Router | `^7`（库模式） |
 
-三个路由：`/`（优化主页）、`/history`（历史记录）、`/preference`（偏好管理）。
+两个路由：`/`（优化主页）、`/history`（历史记录）；设置中心为弹窗（`SettingsModal`），不占路由。偏好页已随偏好层于 2026-10-21 移除。
 
 **用库模式而非数据模式**：数据模式（`loader`）适合 SSR/SSG 场景，本项目不需要。
 
@@ -155,7 +184,7 @@
 | Base UI | `^1.0` | 同上，2025-12 稳定版 |
 | MUI / Ant Design | v7 / v5+ | ❌ Material/Ant 设计语言与本项目风格冲突，且体积庞大 |
 | Headless UI | — | ❌ 仅 10+ 组件，覆盖不了需求 |
-| daisyUI | v5 | ❌ 纯 CSS 插件，与「不用 Tailwind」的决策冲突 |
+| daisyUI | v5 | ❌ 纯 CSS 插件，只服务 Tailwind 场景；本仓 Tailwind 仅限样张页，生产界面用不上 |
 | HeroUI | v2 | ❌ npm 依赖模式，体积大，含 framer-motion |
 | Mantine | v8 | ❌ 完整库（120+ 组件），远超需求 |
 
@@ -163,23 +192,19 @@
 
 | 组件 | 职责 | 复杂度 |
 |---|---|---|
-| `PromptCard` | 单套方案展示，可展开评分明细 | 中 |
-| `RecommendBadge` | 【推荐】标记 + 置信度 | 低 |
+| `PromptCard` | 单方案卡片，展示 body 与 changes；`fallback=true` 时显示降级提示 | 中 |
 | `FollowupForm` | 反问卡片，批量填写未确认项 | 中 |
-| `ScoreDetail` | 评分明细（三信号 + 总分计算过程） | 低 |
-| `ConfidenceNotice` | 置信度不足提示区 | 低 |
 | `OptimizeInput` | 原句输入 + 项目路径选择 | 低 |
 | `PhaseIndicator` | 流程阶段指示器 | 低 |
-| `VariantTabs` | 三套方案切换（移动端） | 低 |
 | `CopyButton` | 一键复制 | 低 |
-| `PreferenceEditor` | 偏好向量编辑 | 中 |
 | `SessionSidebar` | 会话侧栏（工作台左栏，T6-10 补） | 低 |
-| `ContextPanel` | 上下文面板（工作台右栏，T6-10 补） | 低 |
 | `SettingsModal` | 设置中心弹窗外壳（T6-10 补） | 中 |
 | `ModelServicePanel` | 设置 · 模型服务（T6-10 补） | 中 |
 | `AppearancePanel` | 设置 · 通用外观（T6-10 补） | 低 |
-| `MemoryPanel` | 设置 · 长期记忆（T6-10 补） | 中 |
 | `SecurityPanel` | 设置 · 流程与安全（T6-10 补） | 中 |
+
+> 偏好页组件（`PreferenceEditor`/`MemoryPanel`/`ContextPanel` 等）已随偏好层于 2026-10-21 移除；
+> 现存组件清单以架构文档 §5.1 为唯一权威。
 
 **总量约 17 个组件**（T6-10 核对补齐 6D 与设置中心七件；全清单以架构文档 §5.1 为唯一权威），全部无第三方基元依赖。这是判断「不需要组件库」的核心依据——多数 UI 组件库的复杂度是为了解决表格、日期选择器、复杂表单校验等本项目不存在的问题。
 
@@ -189,7 +214,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 
 **没有选择它的三个理由**：
 
-1. **需引入 Tailwind v4**。Shadcn/ui 与 Tailwind v4 深度绑定（OKLCH 颜色、CSS-first 配置）。采用它就等于放弃 §1.4 的 CSS Modules 决策。
+1. **会把 Tailwind 带进生产界面**。Shadcn/ui 与 Tailwind v4 深度绑定（OKLCH 颜色、CSS-first 配置）。样张页引入的 Tailwind 是**限定范围**（§1.4：跳过 preflight、dev-only chunk、生产构建剔除）；用 Shadcn/ui 则必须让 Tailwind 接管生产界面的全部样式，等于放弃 §1.4 的 CSS Variables 决策。
 2. **本项目组件规模有限（约 17 个，T6-10 校正）**。Shadcn/ui 的优势在 20+ 组件的大型表单/仪表盘场景才充分体现。本项目的组件逻辑简单，自己写反而更快。
 3. **update 不自动到达**。复制粘贴模型意味着需手动跟踪上游变更。本项目组件少，维护成本可控，但这个成本换来的收益不足以覆盖 Tailwind 的代价。
 
@@ -280,7 +305,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 
 | 项 | 选型 | 说明 |
 |---|---|---|
-| 存储 | **SQLite**（单文件，WAL 模式） | 三个记忆层中的 L1（Session）与 L3（偏好向量），落 `DATA_DIR`（默认 `~/.devprompt-ai/devprompt.db`） |
+| 存储 | **SQLite**（单文件，WAL 模式） | 会话/轮次记忆（L1）与项目笔记（L2 结构化轨），另承载事件日志、路由统计、token 账本；落 `DATA_DIR`（默认 `~/.devprompt-ai/devprompt.db`） |
 | 驱动 | Python 标准库 `sqlite3` | **零第三方依赖**（MUST-04 第 2 级）；同步 API 经 `run_in_threadpool` 包异步（MUST-13 允许） |
 | ORM | **不引入** | 两张表用原生 SQL 更直接（见下） |
 | 迁移 | **暂不需要** | 表结构简单，`memory/schema.py` 启动时幂等建表 |
@@ -293,7 +318,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 - 数据即文件：备份/迁移 = 复制文件；MUST-23 已将 `*.db` 排除出 Git
 - 代价：多用户/远程部署需届时更换后端——`SessionStore` Protocol 已隔离，属配置级切换
 
-**为什么不用 JSON 纯文件**：L3 偏好历史表（30 轮滑动平均、聚合查询）需要 SQL 能力，全量读写 JSON 会随历史增长而笨重；SQLite 兼得「零运维」与「查询能力」。
+**为什么不用 JSON 纯文件**：轮次历史与项目笔记（按 key 检索、半衰衰减、聚合统计）需要 SQL 能力，全量读写 JSON 会随历史增长而笨重；SQLite 兼得「零运维」与「查询能力」。
 
 **为什么不用 MySQL / PostgreSQL**：单用户本地场景下提前支付独立数据库服务的运维成本，价值主张（本地工具）优先；多用户态确认后经 `SessionStore` Protocol 切换，影响面可控。
 
@@ -344,16 +369,20 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | POST | `/optimize` | 启动优化流程，返回流程快照（有副作用，客户端禁重试） |
 | GET | `/progress/{flow_id}` | SSE 进度流（1s 轮询推送快照，终态/反问/护栏后关闭） |
 | POST | `/followup/{flow_id}` | 反问交互三模式（互斥）：answers / escape / guardrail_action |
-| GET | `/result/{flow_id}` | 获取流程快照（含三套方案与评分） |
-| POST | `/feedback` | 提交采纳反馈，写入 L3 偏好信号 |
-| GET | `/preference` | 查询偏好向量 |
-| PUT | `/preference` | 更新偏好向量（部分更新 + clip01 截断；T6-11 转正） |
+| GET | `/result/{flow_id}` | 获取流程快照（含单个方案） |
+| POST | `/feedback` | ~~提交采纳反馈，写入 L3 偏好信号~~（随偏好层 2026-10-21 移除） |
+| GET | `/preference` | ~~查询偏好向量~~（同上移除） |
+| PUT | `/preference` | ~~更新偏好向量~~（同上移除） |
 | GET | `/history` | 历史会话摘要（脱敏：id/时间/state/项目名；T6-11 转正） |
 | GET | `/project/scan` | 项目符号表扫描（符号总数 / 文件数 / 类型分布） |
 | GET | `/project/browse` | 文件资源管理器数据源（页内）：path 空=驱动器列表；条目为目录（名称/修改日期），名称升序；可选 `q`=当前目录子树递归搜索（2026-10-13），条目附 `rel_parent` 相对父路径 |
 | GET | `/settings` | 读取设置（模型服务脱敏 + 流程参数 + 锁定项；T6-11） |
 | PUT | `/settings` | 更新设置（模型段 → settings.json 0600；流程段 → app_settings 表）；2026-10-13 增 `models`/`active_model_id` 多模型注册表段（整表替换 + 切换生效项） |
-| DELETE | `/preference/adoptions` | 清空服务端采纳历史，返回清空条数（D-6F-4 关闭） |
+| DELETE | `/preference/adoptions` | ~~清空服务端采纳历史~~（随偏好层移除） |
+
+> 本表为阶段四基线快照；现契约 **23 路径 / 26 操作** 以入库 `openapi.json` 为唯一权威
+> （多端运行时 `/runs`、`/sessions/{id}/stream`、`/artifacts/{id}`、`/sessions/{id}/model` 等
+> 增量端点见功能清单 F-601）。
 
 ## 4.8 配置管理
 
@@ -435,6 +464,12 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | zustand | `^5.0` |
 | react-router | `^7` |
 | zod | `^4` |
+| i18next | `^26.7.2`（2026-11-06 F-209 多语言；版本经 npm registry 核实） |
+| react-i18next | `^17.1.13`（peer: i18next ≥26.2 / react ≥16.8） |
+
+> **MUST-04 第 5 级论证（F-209）**：React 无内置 i18n；标准库 `Intl` 只做日期/数字/复数格式化，
+> 不做查表、插值与语言切换；项目内无封装（自建等于重写 i18next 核心子集）；已登记依赖均不含 i18n。
+> 故按业主指定引入两个包，`pnpm-lock.yaml` 锁定。
 | eslint | `^9` |
 | prettier | `^3` |
 | vitest | 最新稳定 |
@@ -445,6 +480,9 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | typescript-eslint（dev） | `^8.71.0` |
 | @eslint/js（dev） | `^9.39.5` |
 | openapi-typescript（dev） | `^7.13.0` |
+| tailwindcss（dev，样张页专用） | `4.3.4` 固定（2026-11-07 核实；仅 `src/lab`） |
+| @tailwindcss/vite（dev，样张页专用） | `4.3.4` 固定 |
+| motion（样张页专用） | `14.10.0` 固定 |
 
 **T6-3 前端工程基座新增 dev 依赖登记（2026-10-12，MUST-24b）**
 
@@ -472,7 +510,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | typescript-eslint + @eslint/js | ESLint 9 flat config 下解析 TS 语法与类型规则的官方实现，ESLint 核心不解析 TypeScript（§6.1 已列 eslint，二者为其配套） |
 | openapi-typescript | F-705 契约管线指定工具（Pydantic → OpenAPI → TS 类型自动生成），属已登记技术决策，无标准库等价能力 |
 
-已排除项连带确认：未引入 Tailwind / UI 组件库 / CSS-in-JS / Redux Toolkit / React Query（F-701），主题切换用 CSS Variables + `data-theme`，滑条/开关为自研组件。
+已排除项连带确认：生产界面未引入 Tailwind / UI 组件库 / CSS-in-JS / Redux Toolkit / React Query（F-701），主题切换用 CSS Variables + `data-theme`，滑条/开关为自研组件。Tailwind v4 与 motion 仅存在于 dev-only 的 `src/lab`（§1.4/§1.5），生产构建已验证不含其代码与样式。
 
 ## 6.2 后端
 
@@ -489,6 +527,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 
 **2026-10-16 批次增量：零新依赖。** AI 对标优化（Batch 0~7）全部使用标准库与既有依赖实现：
 
+
 | 能力 | 实现方式 | 为何不引依赖 |
 |---|---|---|
 | 跨平台子进程编排 | `scripts/runner.py`，标准库 `subprocess` + `shutil.which` | 逻辑不足 200 行；`concurrently` 之类为 Node 生态，与 uv + pnpm 双包管理无关 |
@@ -503,6 +542,52 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | 配置归一化 | 纯函数 + `json` | 逻辑不足百行，迁移库的规则反而更难对齐 |
 
 **2026-09-17 模型管理迁移增量：零新依赖。** 参数定义、安全校验、归一化全部用标准库与既有依赖实现。
+
+**2026-11-05 内核重构增量：零新依赖。**
+
+| 能力 | 实现方式 | 为何不引依赖 |
+|---|---|---|
+| 本轮目标锚点 | `domain/agent/anchor.py`，标准库 `re` + `dataclass` | 纯字符串抽取，无需 NLP 库 |
+| 六维状态感知 | `domain/agent/sensorium.py`，标准库 `math` / `collections.Counter` | 输入全是会话内已有字段，无需遥测 SDK |
+| 交付证据门 | `domain/delivery/gate.py`，纯判定函数 | 三态规则数十行，引规则引擎属过度设计 |
+| 外环监督三态 | `domain/hooks/`，沿用既有 `asyncio.wait_for` 隔离模式 | 无需新的 hook 框架 |
+| 缓存命中观测 | 读 `usage.prompt_tokens_details.cached_tokens` | SDK 已返回，无需自行计算或估算 |
+
+**候选签名的外部依赖**：universal-ctags 6.1.0 支持 `--fields=+{signature}`（实测可用），
+给出函数参数列表作为排序的判别性上下文。**老版 ctags 不认该字段会直接失败** → harness 侧捕获后
+去掉该字段重试一次（降级为「候选不带签名」，即改造前行为），不引入任何新依赖。
+
+**2026-11-08 天枢接线收口增量：零新依赖。** 阶段 3–10 全部用标准库与既有依赖实现：
+
+| 能力 | 实现方式 | 为何不引依赖 |
+|---|---|---|
+| 多模型路由 / 主备 / 热切换 | `harness/model_candidates.py`（settings 候选链 + 60s 缓存）+ `domain/model/routing.py`（胜率-延迟罚 bandit）+ `FallbackClient` | 模型数个位数、反馈稀疏，线性打分可解释；MAB 库属过度设计 |
+| 检索二次重排 | `domain/retrieval/bm25.py`（BM25+RRF，中文 bigram）+ `salience.py` 路径权重 | n≤25 的 O(n·m) 纯内存计算（MUST-09 只调序） |
+| physarum 访问强化 | `domain/retrieval/physarum.py` 电导方程纯函数 + `repo_edges.weight` 列 | 两行数学，不需要图数据库 |
+| 长会话可靠性 | `run_events.checksum`（标准库 sha256）+ 每 5 步 checkpoint 复用事件表 | SQLite 自身能力 |
+| 工具输出治理 | `output_summary.py` 语义密度阈值 + `output_store.py` 临时目录落盘 | 截断是字符串切片；落盘是 `Path.write_text` |
+| natural-finish 六道闸 / 超窗重发 | `finish_gates.py` / `overflow.py` 纯函数 | 规则链数十行 |
+
+**流程开关现状**（`config.py`，2026-11-08）：
+
+| 开关 | 默认 | 说明 |
+|---|---|---|
+| `multi_model_routing` | `True` | 按 purpose 分档 + bandit 选模型 + 主备；候选 ≤1 时退化为现状（行为对等） |
+| `summary_llm_enabled` | `False` | 压缩触发时调 LLM 摘要（走 summarize 槽），失败回退确定性 handoff |
+| `context_ledger_enabled` | `False` | 认知账本进上下文（避免无谓 prompt 变化） |
+| `repo_graph_enabled` | `False` | Python 符号图与影响半径（首索引成本高，开启前实测） |
+| `claim_strict` | `True` | C 档未声明引用降档（**BREAKING**，2026-11-05 起） |
+| `context_layers_enabled` | `True` | B1–B4 增量附录（`<context-update>`）；关闭不发 delta（2026-11-08 补灰度闸） |
+| `tool_output_governance` | `True` | trace 通道超阈值落盘+摘要+回读 footer；关闭退回 20 行旧截断（2026-11-08 补灰度闸） |
+| `team_orchestration` | `True` | 委派按波调度（K6 多波流水线）；关闭单工单直连调度闸（2026-11-08 补灰度闸） |
+
+**缓存观测的范围限制**：仅 OpenAI 兼容端点返回 `prompt_tokens_details.cached_tokens`；
+Anthropic / Gemini 原生适配器不返回该字段，此时记 `None`——**不虚报 0**（0 与「无缓存」含义不同）。
+
+**本次不做前缀缓存分层**：本项目的 `chat_structured` 是**独立单轮调用**，只有 system + user 两条消息——
+system 本身已稳定、天然命中，user 每次都变、无法缓存。参照实现（天枢 99.3% 命中）依赖「多轮工具循环
+每轮重发完整对话历史」，本项目无此形态，做 frozen/delta 分层只增复杂度、无收益。
+
 
 ## 6.3 外部工具（系统级依赖）
 
@@ -535,7 +620,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | openai-agents 锁 `>=0.23.1,<1.0` | 尚未发布 1.0；0.x 阶段 minor 可能含破坏性变更，必须用 lockfile 锁具体版本（MUST-24b） |
 | SQLite 用 WAL + busy_timeout | 多请求跨进程并发写（MUST-11）需要行级等待与 CAS 兜底 |
 | React 19.3 而非更低版本 | 需 `use()` 与 `useOptimistic` |
-| 不引入 Tailwind | 已决定用 CSS Modules，Shadcn/ui 依赖 Tailwind |
+| 生产界面不引入 Tailwind | 已决定生产用 CSS + CSS Variables；Shadcn/ui 依赖 Tailwind 接管全局样式。样张页（`src/lab`）为限定例外，见 §1.4 |
 
 ---
 
@@ -544,7 +629,7 @@ Shadcn/ui 在 2026 年是 React 生态最主流的选择（周下载量 500 万+
 | 技术 | 排除理由 |
 |---|---|
 | Webpack | Vite 7 在冷启动、HMR、生产构建上均无劣势，配置复杂度更低 |
-| Tailwind CSS | UI 元素仅约 15 个，工具类无收益；且是放弃 Shadcn/ui 的连带原因 |
+| Tailwind CSS（生产界面） | UI 元素仅约 17 个，工具类无收益；且是放弃 Shadcn/ui 的连带原因。样张页例外见 §1.4 |
 | Redux Toolkit | 无复杂跨组件状态，三层结构是纯开销 |
 | React Query | 请求时序可预测，SSE 需自管连接，缓存策略收益为零 |
 | TanStack Router | 仅 3 个页面，React Router 足够 |

@@ -22,6 +22,22 @@ from agents.models.interface import Model
 from agents.tool import Tool
 
 
+def parse_image_data_url(data_url: str) -> tuple[str, str] | None:
+    """解析 ``data:image/png;base64,....`` → (media_type, 纯 base64)；非法返回 None。
+
+    供两个原生 adapter 把 agents 的 ``input_image`` item 转成各自协议的图像块
+    （2026-11-14 多模态）。
+    """
+    prefix, sep, payload = data_url.partition(",")
+    if not sep or not prefix.startswith("data:"):
+        return None
+    meta = prefix[5:]
+    if ";base64" not in meta.lower():
+        return None
+    media_type = meta.split(";", 1)[0]
+    return (media_type or "application/octet-stream"), payload
+
+
 class BaseNativeModel(Model, ABC):
     """原生协议 Model 子类的公共基类。
 

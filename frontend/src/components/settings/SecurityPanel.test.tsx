@@ -9,8 +9,6 @@ vi.mock('../../api/endpoints', () => ({
   getSettings: vi.fn(),
   putSettings: vi.fn(),
   getHealth: vi.fn(),
-  getPreference: vi.fn(),
-  putPreference: vi.fn(),
   getHistory: vi.fn(),
 }))
 
@@ -29,6 +27,12 @@ const settingsFixture: SettingsResponse = {
     followup_cost_budget: 2,
     followup_soft_round_guard: 12,
     telemetry: true,
+  },
+  observability: {
+    trace_enabled: true,
+    trace_retention_days: 30,
+    metrics_enabled: true,
+    replay_enabled: true,
   },
   locked: { candidate_limit: 30 },
 }

@@ -62,8 +62,11 @@ def test_main_defaults_to_localhost_and_app_target(_fake_uvicorn: list[dict[str,
     assert _fake_uvicorn[0]["reload"] is False
 
 
-def test_main_forwards_custom_host_port_reload(_fake_uvicorn: list[dict[str, Any]]) -> None:
-    """显式参数透传到 uvicorn.run。"""
+def test_main_forwards_custom_host_port_reload(
+    monkeypatch: pytest.MonkeyPatch, _fake_uvicorn: list[dict[str, Any]]
+) -> None:
+    """显式参数透传到 uvicorn.run（非 Windows；Windows 下 --reload 被拒绝）。"""
+    monkeypatch.setattr("sys.platform", "linux")
     assert main(["--host", "0.0.0.0", "--port", "9000", "--reload"]) == 0
     assert _fake_uvicorn[0]["host"] == "0.0.0.0"
     assert _fake_uvicorn[0]["port"] == 9000
@@ -147,28 +150,46 @@ def test_main_does_not_import_infrastructure_at_module_level() -> None:
     assert module_level == []
 
 
-class TestReloadWarning:
-    """--reload 在 Windows 上与子进程能力冲突（2026-10-19 实测）。"""
+class TestReloadGuard:
+    """--reload 在 Windows 上与子进程能力冲突（2026-10-19 实测）→ 2026-11-06 改为拒绝。"""
 
-    def test_warning_names_the_broken_capabilities(self) -> None:
+    def test_rejection_names_the_broken_capabilities(self) -> None:
         """必须点名真正坏掉的东西：rg/ctags/git 探测与原生文件夹选择器都靠子进程。"""
-        from devprompt_ai.main import RELOAD_WARNING
+        from devprompt_ai.main import RELOAD_REJECTED
 
-        assert "Selector" in RELOAD_WARNING
-        assert "NotImplementedError" in RELOAD_WARNING
-        assert "原生文件夹选择器" in RELOAD_WARNING
-        assert "--reload" in RELOAD_WARNING
+        assert "Selector" in RELOAD_REJECTED
+        assert "NotImplementedError" in RELOAD_REJECTED
+        assert "原生文件夹选择器" in RELOAD_REJECTED
+        assert "--reload" in RELOAD_REJECTED
 
-    def test_reload_flag_prints_warning(
+    def test_windows_reload_is_rejected(
         self,
         capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """带 --reload 启动时必须显式提示，不能静默进 Selector 循环。"""
+        """Windows + --reload 必须拒绝启动并返回非零码，不得静默进 Selector 循环。"""
         main_module = pytest.importorskip("devprompt_ai.main")
-        # uvicorn 是 main() 内部 import 的，故打在真实模块上
+        monkeypatch.setattr("sys.platform", "win32")
+        called: list[object] = []
+        monkeypatch.setattr("uvicorn.run", lambda *a, **k: called.append(a))
+
+        code = main_module.main(["--reload", "--port", "8123"])
+
+        assert code == 2
+        assert "拒绝启动" in capsys.readouterr().out
+        assert called == []
+
+    def test_non_windows_reload_still_runs(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """非 Windows 的 --reload 行为不变（仍走 uvicorn）。"""
+        main_module = pytest.importorskip("devprompt_ai.main")
+        monkeypatch.setattr("sys.platform", "linux")
         monkeypatch.setattr("uvicorn.run", lambda *a, **k: None)
 
-        main_module.main(["--reload", "--port", "8123"])
+        code = main_module.main(["--reload", "--port", "8123"])
 
-        assert "Selector" in capsys.readouterr().out
+        assert code == 0
+        assert "拒绝启动" not in capsys.readouterr().out

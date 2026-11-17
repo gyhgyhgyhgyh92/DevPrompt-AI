@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from devprompt_ai.domain.decision.port import AskQuestion, FactProbeOutput
 from devprompt_ai.domain.models import FactResult
@@ -25,6 +25,66 @@ _HEADER_LIMIT = 12
 _LABEL_MAX_CJK = 6
 _LABEL_MAX_WORDS = 5
 _OPTION_RANGE = (2, 4)
+
+
+def _normalize_question(text: str) -> str:
+    """问题归一（2026-11-03）：抹平空白/标点/全半角差异，只留字母数字与汉字。
+
+    模型改一个标点或换个空格就算「新问题」是重复追问的主因，故比对走归一化；
+    答案键仍是问题原文（契约不变）。
+    """
+    return "".join(ch for ch in text.casefold() if ch.isalnum())
+
+
+def _bigram_overlap(left: str, right: str) -> float:
+    """字符二元组 Jaccard（中文无空格，按字切分比按词切分更稳）。"""
+    if len(left) < 2 or len(right) < 2:
+        return 1.0 if left == right else 0.0
+    left_grams = {left[index : index + 2] for index in range(len(left) - 1)}
+    right_grams = {right[index : index + 2] for index in range(len(right) - 1)}
+    union = left_grams | right_grams
+    return len(left_grams & right_grams) / len(union) if union else 0.0
+
+
+#: 「同一 header 下算同一件事」的措辞相似度下限（2026-11-07）。
+#: 低于它说明是同标签下的**新**问题（模型常用同一 header 追问下一层细节），必须继续问。
+_SAME_TOPIC_SIMILARITY = 0.45
+
+
+def answered_headers(
+    clarifications: Mapping[str, str], unknowns: Sequence[Mapping[str, Any]]
+) -> dict[str, frozenset[str]]:
+    """已答题目的 header → 已答问题归一文本（2026-11-07 由 set 升级为映射）。
+
+    只记 header 会误杀「同 header 下的新问题」：上一轮问「允许改测试吗」，这一轮改问
+    「重连上限取几次」时，两者 header 都是「范围」，旧实现会整体跳过。现在带上已答问题
+    原文，由 :func:`build_unknowns` 判断「同一件事改措辞」还是「新问题」。
+    """
+    answered = {_normalize_question(key) for key in clarifications}
+    headers: dict[str, set[str]] = {}
+    for item in unknowns:
+        ask = str(item.get("ask", ""))
+        header = str(item.get("header", "")).strip()
+        normalized = _normalize_question(ask)
+        if header != "" and normalized in answered:
+            headers.setdefault(header, set()).add(normalized)
+    return {header: frozenset(asks) for header, asks in headers.items()}
+
+
+def _same_topic_answered(
+    header: str, normalized_question: str, answered: Mapping[str, frozenset[str]]
+) -> bool:
+    """同一 header 下，这问是否就是已答过的那件事（同文本或措辞高度重合）。"""
+    if header == "":
+        return False
+    asks = answered.get(header)
+    if not asks:
+        return False
+    return any(
+        ask == normalized_question
+        or _bigram_overlap(ask, normalized_question) >= _SAME_TOPIC_SIMILARITY
+        for ask in asks
+    )
 
 
 def _is_long_label(label: str) -> bool:
@@ -109,18 +169,23 @@ def build_unknowns(
     facts: Sequence[FactResult],
     *,
     clarifications: dict[str, str] | None = None,
+    answered_header_asks: Mapping[str, Collection[str]] | None = None,
 ) -> list[UnknownItem]:
     """把工具调用解析出的问题转成未知项（2026-10-22 起答案键 = ``question`` 原文）。
 
-    对齐 CodeBuddy SDK：``answers[question] = label``，因此去重也按问题文本比对。
+    对齐 CodeBuddy SDK：``answers[question] = label``，因此答案键也按问题原文。
 
     - ``questions`` 为空 → 本轮不提问（模型没调工具，或参数畸形已在上层记录）
-    - 已答过的 question 文本直接跳过；重复文本只保留第一次出现
+    - 已答过的 question（**归一化后**比对）直接跳过；重复文本只保留第一次出现
+    - ``answered_header_asks``：header → 已答问题归一文本。同 header 且措辞相似
+      （二元组重合 ≥ :data:`_SAME_TOPIC_SIMILARITY`）才跳过——模型常拿同一 header 追问
+      **下一层细节**，只按 header 去重会把新问题一起吞掉（2026-11-07 清理 shortcut）
     - 截断到 :data:`MAX_QUESTIONS` 个；``facts`` 仅保留参数位（工具调用路径不再按事实键匹配）
-
-    shortcut: 问题文本比对——模型改写措辞即视为新问题，会重复问一次，靠软护栏兜底。
     """
-    clar = clarifications or {}
+    clar = {_normalize_question(key) for key in (clarifications or {})}
+    answered: dict[str, frozenset[str]] = {
+        header.strip(): frozenset(asks) for header, asks in (answered_header_asks or {}).items()
+    }
     if not probe.questions:
         return []
 
@@ -129,16 +194,33 @@ def build_unknowns(
     seen: set[str] = set()
     for question in probe.questions:
         key = question.question.strip()
-        if key == "" or key in clar or key in seen:
+        header = question.header.strip()
+        normalized = _normalize_question(key)
+        if (
+            key == ""
+            or normalized == ""
+            or normalized in clar
+            or normalized in seen
+            or _same_topic_answered(header, normalized, answered)
+        ):
             continue
-        seen.add(key)
+        seen.add(normalized)
+        best_guess = question.best_guess.strip()
+        if not best_guess:
+            # MUST-26：每问必须给当前最佳推断。模型没给时回退到取证证据，但必须过滤
+            # 「未找到」——那是 `_ev()` 的字面占位，把它当推断展示等于告诉用户
+            # 「最佳推断是：没找到」，比留空更误导（2026-11-05 真实冒烟发现）。
+            ordered = [f.evidence for f in facts if not f.passed] + [
+                f.evidence for f in facts if f.passed
+            ]
+            best_guess = next((e for e in ordered if e and e.strip() != "未找到"), "")
         asked.append(
             UnknownItem(
                 key=key,
                 reason=default_reason,
-                best_guess="",
+                best_guess=best_guess,
                 ask=key,
-                header=question.header.strip(),
+                header=header,
                 options=tuple(
                     UnknownOption(label=item.label.strip(), description=item.description.strip())
                     for item in question.options

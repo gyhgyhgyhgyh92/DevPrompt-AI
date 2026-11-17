@@ -17,9 +17,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
+
+from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale
 
 #: 参数类型。`string-array` 用于 stop 这类需要 JSON 序列化的多值参数。
 ParameterType = Literal["number", "integer", "boolean", "string", "string-array"]
@@ -102,26 +104,50 @@ def context_window_alert(estimated_tokens: int, limit: int | None) -> bool:
     return estimated_tokens * 10 > limit * 9
 
 
-#: 档位阶梯下限（128K）。低于此值不提供刻度，只给厂商标称窗口。
-_TIER_FLOOR: Final[int] = 131_072
+#: 统一上下文档位的基线（2026-11-10）：按 1K = 1024 计算。
+#: 300K = 307,200；600K = 614,400；1M = 1,048,576。
+#: 与厂商规格解耦——厂商 `context_window_tiers` 仅作为元数据保留，不再参与 UI 档位生成。
+CONTEXT_TIER_PRESETS: Final[tuple[int, ...]] = (307_200, 614_400, 1_048_576)
+#: 不足 4 档时补入的最低档：128 × 1024。
+CONTEXT_TIER_LOW: Final[int] = 131_072
+#: 单模型最多展示的档位数。
+MAX_CONTEXT_TIERS: Final[int] = 4
 
 
-def window_tiers(window: int | None, vendor_tiers: Iterable[int] = ()) -> tuple[int, ...]:
-    """可选窗口档位 = 厂商档位 ∪ 128K 起的 2 的幂阶梯，限 ≤ ``window``、升序去重。
+def window_tiers(window: int | None) -> tuple[int, ...]:
+    """统一四档策略：300K/600K/1M + 标称值，必要时用 128K 补位。
 
-    阶梯是**超限告警的预算刻度**而非厂商规格——厂商多半不提供档位（DeepSeek 两个模型
-    官方只写 CONTEXT LENGTH 1M，无档位概念），只给标称值用户就调不动告警阈值。故取并集
-    而非覆盖厂商档位，且恒含标称值本身（供「跟随厂商」回落）。``window`` 未登记时返回空
-    元组：没有窗口就无从谈档位。
+    - 只保留 ≤ 标称窗口的档位，绝不出现「选 1M 实际 200K」；
+    - 标称值始终入列（供“跟随模型上限”回落）；
+    - 不足 4 档且 128K ≤ 标称时补 128K；
+    - 超过 4 档时保留最高的 4 个（即丢掉最低档）。
+
+    例：1M → 128K/300K/600K/1M；272K → 128K/272K；2M → 300K/600K/1M/2M。
+    标称窗口未知（None/≤0）→ 空元组。
     """
     if window is None or window <= 0:
         return ()
-    tiers = {window, *(t for t in vendor_tiers if 0 < t <= window)}
-    step = _TIER_FLOOR
-    while step <= window:
-        tiers.add(step)
-        step *= 2
-    return tuple(sorted(tiers))
+    tiers = {tier for tier in CONTEXT_TIER_PRESETS if tier <= window}
+    tiers.add(window)
+    if len(tiers) < MAX_CONTEXT_TIERS and window >= CONTEXT_TIER_LOW:
+        tiers.add(CONTEXT_TIER_LOW)
+    ordered = sorted(tiers)
+    if len(ordered) > MAX_CONTEXT_TIERS:
+        ordered = ordered[-MAX_CONTEXT_TIERS:]
+    return tuple(ordered)
+
+
+def nearest_context_tier(value: int, nominal: int | None) -> int:
+    """把旧档位归一到新档位集：绝对差最小者，平局取较小值。
+
+    标称窗口未知（没有合法档位集）时原样返回；非正值原样返回。
+    """
+    if value <= 0:
+        return value
+    tiers = window_tiers(nominal)
+    if not tiers:
+        return value
+    return min(tiers, key=lambda tier: (abs(tier - value), tier))
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,8 +180,8 @@ class ProviderSpec:
     #: 厂商标称输入窗口；``None`` = 未登记（查证不到，**勿填占位默认值**——
     #: 假值会让 UI 拿一个不存在的上限做告警判定，比不显示更糟）
     max_context_length: int | None = None
-    #: 用户可单选的档位集合（绝对 token，升序）。空元组 = 只能用标称默认值。
-    #: 只能取厂商真实支持的规格，且不得大于 ``max_context_length``。
+    #: 厂商登记的档位元数据（绝对 token，升序）。**不再参与 UI 档位生成**：
+    #: 自 2026-11-10 起统一使用 300K/600K/1M + 标称值 + 128K 补位策略。
     context_window_tiers: tuple[int, ...] = ()
     # ---- 多供应商扩展 ----
     api_mode: ApiMode = "chat_completions"
@@ -163,6 +189,20 @@ class ProviderSpec:
     base_url: str = ""
     needs_key: bool = True
     quirks: str = ""
+    #: 英文展示名（2026-11-06 双语）；空串表示沿用 ``label``（品牌名可不译）。
+    label_en: str = ""
+    #: 英文怪癖说明；空串表示沿用中文 ``quirks``。
+    quirks_en: str = ""
+
+    def display_label(self, locale: Locale = DEFAULT_LOCALE) -> str:
+        if locale != "en":
+            return self.label
+        return self.label_en or _LABEL_EN.get(self.label, self.label)
+
+    def display_quirks(self, locale: Locale = DEFAULT_LOCALE) -> str:
+        if locale != "en":
+            return self.quirks
+        return self.quirks_en or _QUIRKS_EN.get(self.key, self.quirks)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -177,6 +217,66 @@ class ProviderSpec:
             "max_context_length": self.max_context_length,
             "context_window_tiers": list(self.context_window_tiers),
         }
+
+
+#: 中文展示名 → 英文展示名（2026-11-06 双语）。品牌名可保留原文，但英文用户
+#: 需要在下拉里认出来源——只在中文 label 上做映射，避免 25 个 spec 各改一处。
+#: ``quirks`` 仍为中文说明（纯补充备注，见功能清单 F-209 限制）。
+_LABEL_EN: Final[dict[str, str]] = {
+    "阿里通义（百炼）": "Aliyun Tongyi (Bailian)",
+    "智谱 GLM": "Zhipu GLM",
+    "月之暗面 Kimi": "Moonshot Kimi",
+    "火山方舟（豆包）": "Volcengine Ark (Doubao)",
+    "百度千帆（文心）": "Baidu Qianfan (ERNIE)",
+    "腾讯混元": "Tencent Hunyuan",
+    "讯飞星火": "iFlytek Spark",
+    "阶跃星辰": "StepFun",
+    "百川智能": "Baichuan",
+    "零一万物": "01.AI (Yi)",
+    "商汤（商量）": "SenseTime (SenseNova)",
+    "小米 MiMo": "Xiaomi MiMo",
+    "硅基流动": "SiliconFlow",
+    "魔搭 ModelScope": "ModelScope",
+    "自定义": "Custom",
+    "OpenAI 兼容（通用）": "OpenAI-compatible (generic)",
+}
+
+
+#: provider key → 英文怪癖说明（2026-11-06 双语）。按 key 查而非中文原文，
+#: 避免把长段落当中文键；未登记映射的回落中文原文。
+_QUIRKS_EN: Final[dict[str, str]] = {
+    "anthropic": (
+        "Native Messages uses the x-api-key header; max_tokens is required; "
+        "temperature/top_p are ignored"
+    ),
+    "gemini": (
+        "The OpenAI-compatible layer has concurrency and quota limits; "
+        "long contexts are billed in tiers"
+    ),
+    "deepseek": (
+        "Reasoner models need thinking enabled; V3 models do not support reasoning_effort. "
+        "To use native Messages, create a separate provider entry with base_url "
+        "https://api.deepseek.com/anthropic (do not append /v1/messages manually) and install "
+        "the anthropic dependency; the API ignores budget_tokens/top_k/service_tier"
+    ),
+    "dashscope": (
+        "Use the compatible-mode path; Coding Plan subscriptions have a dedicated base_url"
+    ),
+    "zhipu": "The trailing slash in base_url is required",
+    "volcengine": (
+        "Model ids must include the inference endpoint id (ep-xxx), not the bare model name"
+    ),
+    "qianfan": (
+        "v2 is not compatible with the legacy endpoint; some models require IAM signing "
+        "instead of Bearer"
+    ),
+    "spark": "base_url differs by model version (/v2, /x2)",
+    "minimax": (
+        "Mainland China (minimaxi.com) and overseas (minimax.io) keys and endpoints cannot be mixed"
+    ),
+    "siliconflow": "One key serves many models; model ids look like vendor/model",
+    "modelscope": "Free quota is rate-limited; model ids look like vendor/model",
+}
 
 
 def is_value_empty(value: Any) -> bool:
@@ -220,7 +320,8 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
             200000,
         ),
         drop_params=frozenset({"temperature", "top_p"}),
-        force_params={"reasoning_effort": "high"},
+        # reasoning_effort 不再强制 high：Anthropic 用 thinking budget 表达强度，
+        # 强制值会覆盖用户在模型面板里的选择（2026-11-10）。
         supports_reasoning=True,
         api_mode="anthropic_messages",
         supported_api_modes=frozenset({"anthropic_messages", "chat_completions"}),
@@ -311,10 +412,12 @@ PROVIDER_SPECS: Final[dict[str, ProviderSpec]] = {
     ),
     "moonshot": ProviderSpec(
         key="moonshot",
-        max_context_length=256000,
+        # 厂商级只作为未登记模型的保守回落：K2 系列官方为 256K（262,144）。
+        # K3 / K3.1 Pro 的 1M 窗口在 MODEL_SPECS 里按模型登记。
+        max_context_length=262_144,
         context_window_tiers=(
-            128000,
-            256000,
+            131_072,
+            262_144,
         ),
         label="月之暗面 Kimi",
         aliases=frozenset({"moonshot", "kimi"}),
@@ -535,7 +638,7 @@ class ModelMeta:
     label: str = ""
     #: 该模型的输入窗口上限；``None`` = 未登记，回落 provider 级
     max_context_length: int | None = None
-    #: 该模型可单选的档位集合（升序），空 = 只能用标称值
+    #: 该模型登记的档位元数据（升序）。**不参与 UI 档位生成**（统一四档策略）。
     context_window_tiers: tuple[int, ...] = ()
     #: 该模型官方给出的思考强度档位（按模型粒度，**各模型不可共用一份清单**）；
     #: 空 = 厂商未提供，UI 不展示该段而不是编造选项。
@@ -545,13 +648,13 @@ class ModelMeta:
     #: ``None`` = 沿用 provider 级能力位
     supports_reasoning: bool | None = None
 
-    def to_dict(self, window: int | None, vendor_tiers: tuple[int, ...]) -> dict[str, Any]:
-        """``window``/``vendor_tiers`` 传厂商级值：模型级未登记时档位仍要算得出来。"""
+    def to_dict(self, window: int | None) -> dict[str, Any]:
+        """模型级投影。``window`` 传模型或厂商标称值；档位由统一策略生成。"""
         return {
             "model_id": self.model_id,
             "label": self.label or self.model_id,
             "max_context_length": self.max_context_length,
-            "context_window_tiers": list(window_tiers(window, vendor_tiers)),
+            "context_window_tiers": list(window_tiers(window)),
             "reasoning_efforts": list(self.reasoning_efforts),
             "default_effort": self.default_effort,
         }
@@ -565,7 +668,7 @@ class ModelMeta:
 #: DeepSeek 数值来源：
 #: - 窗口：DeepSeek API Docs《Models & Pricing》（api-docs.deepseek.com/quick_start/pricing）
 #:   ——两模型 CONTEXT LENGTH 均为 1M、MAX OUTPUT 384K，官方**未提供** context length
-#:   档位，故 tiers 为单值（UI 上的多档由 `window_tiers` 的告警预算阶梯生成）。
+#:   档位；UI 多档由统一四档策略生成（300K/600K/1M + 标称值，必要时 128K 补位）。
 #: - 思考强度：DeepSeek API Docs《Thinking Mode》（api-docs.deepseek.com/guides/thinking_mode）
 #:   ——`reasoning_effort` 取值 `none/low/high/max`（`none` 表示关闭思考模式），
 #:   且文档注明「思考模式默认打开，effort 默认为 high」。
@@ -578,7 +681,9 @@ MODEL_SPECS: Final[dict[str, tuple[ModelMeta, ...]]] = {
             label="DeepSeek-V4.1-Flash",
             max_context_length=1_048_576,
             context_window_tiers=(1_048_576,),
-            reasoning_efforts=("low", "high", "max"),
+            # none 是官方文档定义的「关闭思考」；UI 会把它从强度按钮中过滤，
+            # 只在开关关闭时由后端解析使用（2026-11-10）。
+            reasoning_efforts=("none", "low", "high", "max"),
             default_effort="high",
             supports_reasoning=True,
         ),
@@ -587,8 +692,71 @@ MODEL_SPECS: Final[dict[str, tuple[ModelMeta, ...]]] = {
             label="DeepSeek-V4-Pro",
             max_context_length=1_048_576,
             context_window_tiers=(1_048_576,),
-            reasoning_efforts=("low", "high", "max"),
+            reasoning_efforts=("none", "low", "high", "max"),
             default_effort="high",
+            supports_reasoning=True,
+        ),
+    ),
+    #: Kimi 官方 API 参数参考（platform.kimi.com/docs/api/models-overview，2026-11-10 核实）：
+    #: K3 系列上下文 1M、reasoning_effort 为 low/high/max（默认 max）；
+    #: K2.7 Code / K2.6 为 256K（262,144），使用 thinking 而非 reasoning_effort。
+    "moonshot": (
+        ModelMeta(
+            model_id="kimi-k3",
+            label="Kimi K3",
+            max_context_length=1_048_576,
+            reasoning_efforts=("low", "high", "max"),
+            default_effort="max",
+            supports_reasoning=True,
+        ),
+        ModelMeta(
+            model_id="kimi-k3.1-pro",
+            label="Kimi K3.1 Pro",
+            max_context_length=1_048_576,
+            reasoning_efforts=("low", "high", "max"),
+            default_effort="max",
+            supports_reasoning=True,
+        ),
+        ModelMeta(
+            model_id="kimi-k3.1-pro-highspeed",
+            label="Kimi K3.1 Pro Highspeed",
+            max_context_length=1_048_576,
+            reasoning_efforts=("low", "high", "max"),
+            default_effort="max",
+            supports_reasoning=True,
+        ),
+        ModelMeta(
+            model_id="k3",
+            label="Kimi Code K3",
+            max_context_length=1_048_576,
+            reasoning_efforts=("low", "high", "max"),
+            default_effort="max",
+            supports_reasoning=True,
+        ),
+        ModelMeta(
+            model_id="k3-256k",
+            label="Kimi Code K3 256K",
+            max_context_length=262_144,
+            reasoning_efforts=("low", "high", "max"),
+            default_effort="max",
+            supports_reasoning=True,
+        ),
+        ModelMeta(
+            model_id="kimi-k2.7-code",
+            label="Kimi K2.7 Code",
+            max_context_length=262_144,
+            supports_reasoning=True,
+        ),
+        ModelMeta(
+            model_id="kimi-k2.7-code-highspeed",
+            label="Kimi K2.7 Code Highspeed",
+            max_context_length=262_144,
+            supports_reasoning=True,
+        ),
+        ModelMeta(
+            model_id="kimi-k2.6",
+            label="Kimi K2.6",
+            max_context_length=262_144,
             supports_reasoning=True,
         ),
     ),
@@ -601,17 +769,38 @@ _MODEL_INDEX: Final[dict[tuple[str, str], ModelMeta]] = {
     for meta in metas
 }
 
+#: 小写 model_id → 元数据（跨厂商）。仅用于「厂商级查不到」时的回落，
+#: 覆盖中转/代理把第三方模型挂在自家厂商名下的场景（如 MiniMax 供应商下出现 kimi-k2.6）。
+#: 前提是全表 model_id 无重名；`tests/domain/test_model_spec.py` 有唯一性断言守着。
+_MODEL_BY_ID: Final[dict[str, ModelMeta]] = {
+    model_id: meta for (_provider_key, model_id), meta in _MODEL_INDEX.items()
+}
+
+
+def model_meta_by_id(model_id: str = "") -> ModelMeta | None:
+    """按模型 id 跨厂商查元数据；id 为空或未登记返回 ``None``。
+
+    模型事实属于模型本身，不属于用户填的厂商标签——中转站常把第三方模型挂在
+    自家厂商下，按厂商查会落空并误用厂商级窗口。
+    """
+    candidate = (model_id or "").strip().lower()
+    if not candidate:
+        return None
+    return _MODEL_BY_ID.get(candidate)
+
 
 def model_meta_of(provider: str, model_id: str = "") -> ModelMeta | None:
     """查模型级元数据；未登记（厂商未录、模型未录、或 id 为空）返回 ``None``。
 
     查不到不是错误——调用方据此回落 provider 级，保持与下沉前一致的行为。
+    该厂商下没登记、但别家登记过同一 id 时，按 id 取用（中转场景，见
+    :func:`model_meta_by_id`）。
     """
     provider_key = resolve_provider_key(provider)
     candidate = (model_id or "").strip().lower()
     if not candidate:
         return None
-    return _MODEL_INDEX.get((provider_key, candidate))
+    return _MODEL_INDEX.get((provider_key, candidate)) or _MODEL_BY_ID.get(candidate)
 
 
 # ---------------------------------------------------------------------------
@@ -689,15 +878,15 @@ def is_mode_supported(provider: str, api_mode: str) -> bool:
     return api_mode in spec.supported_api_modes
 
 
-def providers_projection() -> list[dict[str, Any]]:
+def providers_projection(locale: Locale = DEFAULT_LOCALE) -> list[dict[str, Any]]:
     """provider 目录投影（供 `GET /settings` 的 `providers` 段）。
 
     前端据此渲染 provider 下拉、动态表单与**上下文窗口档位下拉**：
     - `base_url` 为空 = **官方端点未登记**（查证不到时如实留空，由 UI 提示自填）；
     - `max_context_length` 为 `None` = **窗口未登记**（同上，勿填占位默认值）；
     - `supported_api_modes` 限制 api_mode 下拉的可选值；
-    - `context_window_tiers` 是 max_context_length 的可选档位（厂商档位 ∪ 128K 起的
-      2 的幂阶梯，见 :func:`window_tiers`）；
+    - `context_window_tiers` 是统一四档策略的结果（300K/600K/1M + 标称值，
+      必要时 128K 补位，见 :func:`window_tiers`）；
     - `models` 是该厂商**已核实**的模型级目录（空 = 未登记，前端回落厂商级值）。
 
     字段与契约 `ProviderDirectoryEntry` 一一对应（**刻意不复用 `spec.to_dict()`**：
@@ -706,24 +895,19 @@ def providers_projection() -> list[dict[str, Any]]:
     return [
         {
             "id": key,
-            "label": spec.label,
+            "label": spec.display_label(locale),
             "base_url": spec.base_url,
             "needs_key": spec.needs_key,
             "default_api_mode": spec.api_mode,
             "supported_api_modes": sorted(spec.supported_api_modes),
             "max_context_length": spec.max_context_length,
-            "context_window_tiers": list(
-                window_tiers(spec.max_context_length, spec.context_window_tiers)
-            ),
+            "context_window_tiers": list(window_tiers(spec.max_context_length)),
             "models": [
-                meta.to_dict(
-                    meta.max_context_length or spec.max_context_length,
-                    meta.context_window_tiers or spec.context_window_tiers,
-                )
+                meta.to_dict(meta.max_context_length or spec.max_context_length)
                 for meta in MODEL_SPECS.get(key, ())
             ],
             "supports_reasoning": spec.supports_reasoning,
-            "quirks": spec.quirks,
+            "quirks": spec.display_quirks(locale),
         }
         for key, spec in PROVIDER_SPECS.items()
     ]

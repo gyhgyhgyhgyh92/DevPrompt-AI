@@ -1,16 +1,21 @@
 import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { AppearanceSettings } from '../../schemas/settings'
 import { applyAppearanceTheme, useSettingsStore } from '../../stores/useSettingsStore'
 import { Toggle } from '../ui/Toggle'
-import './settings.css'
+import styles from './settings.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 type Theme = AppearanceSettings['theme']
 
-const THEME_OPTIONS: ReadonlyArray<{ value: Theme; label: string }> = [
-  { value: 'light', label: '浅色' },
-  { value: 'dark', label: '深色' },
-  { value: 'system', label: '跟随系统' },
-]
+const THEME_VALUES: readonly Theme[] = ['light', 'dark', 'system']
+const THEME_TEXT_KEY: Record<Theme, string> = {
+  light: 'settings.appearance.theme_light',
+  dark: 'settings.appearance.theme_dark',
+  system: 'settings.appearance.theme_system',
+}
 
 const CODE_FONTS: readonly string[] = ['JetBrains Mono', 'Cascadia Code', 'Consolas', 'Courier New']
 
@@ -18,26 +23,27 @@ const CODE_FONTS: readonly string[] = ['JetBrains Mono', 'Cascadia Code', 'Conso
 function ThemePreview(props: { theme: Theme }) {
   if (props.theme === 'system') {
     return (
-      <span className="theme-preview" aria-hidden="true">
-        <span className="theme-preview" data-theme="light">
-          <span className="theme-preview__bar" />
+      <span className={s('theme-preview')} aria-hidden="true">
+        <span className={s('theme-preview')} data-theme="light">
+          <span className={s('theme-preview__bar')} />
         </span>
-        <span className="theme-preview" data-theme="dark">
-          <span className="theme-preview__chip" />
+        <span className={s('theme-preview')} data-theme="dark">
+          <span className={s('theme-preview__chip')} />
         </span>
       </span>
     )
   }
   return (
-    <span className="theme-preview" data-theme={props.theme} aria-hidden="true">
-      <span className="theme-preview__bar" />
-      <span className="theme-preview__chip" />
+    <span className={s('theme-preview')} data-theme={props.theme} aria-hidden="true">
+      <span className={s('theme-preview__bar')} />
+      <span className={s('theme-preview__chip')} />
     </span>
   )
 }
 
 /** 通用外观面板（F-604 外观标签页）：主题/语言/字体/开关，全部持久化在 localStorage。 */
 export function AppearancePanel() {
+  const { t } = useTranslation()
   const appearance = useSettingsStore((state) => state.appearance)
   const setAppearance = useSettingsStore((state) => state.setAppearance)
 
@@ -56,55 +62,57 @@ export function AppearancePanel() {
     : [...CODE_FONTS, appearance.codeFont]
 
   return (
-    <section className="settings-panel" aria-label="通用外观">
-      <h3 className="settings-panel__title">通用外观</h3>
-      <div className="settings-field">
-        <span className="settings-label">主题</span>
-        <div className="settings-segment" role="group" aria-label="主题">
-          {THEME_OPTIONS.map((option) => (
+    <section className={s('settings-panel')} aria-label={t('settings.appearance.title')}>
+      <h3 className={s('settings-panel__title')}>{t('settings.appearance.title')}</h3>
+      <div className={s('settings-field')}>
+        <span className={s('settings-label')}>{t('settings.appearance.theme')}</span>
+        <div
+          className={s('settings-segment')}
+          role="group"
+          aria-label={t('settings.appearance.theme')}
+        >
+          {THEME_VALUES.map((theme) => (
             <button
-              key={option.value}
+              key={theme}
               type="button"
-              aria-pressed={appearance.theme === option.value}
-              className={
-                appearance.theme === option.value
+              aria-pressed={appearance.theme === theme}
+              className={s(
+                appearance.theme === theme
                   ? 'settings-segment__item settings-segment__item--active'
-                  : 'settings-segment__item'
-              }
-              onClick={() => update({ theme: option.value })}
+                  : 'settings-segment__item',
+              )}
+              onClick={() => update({ theme })}
             >
-              <ThemePreview theme={option.value} />
-              {option.label}
+              <ThemePreview theme={theme} />
+              {t(THEME_TEXT_KEY[theme])}
             </button>
           ))}
         </div>
       </div>
-      <div className="settings-field">
-        <label className="settings-label" htmlFor="settings-locale">
-          界面语言
+      <div className={s('settings-field')}>
+        <label className={s('settings-label')} htmlFor="settings-locale">
+          {t('settings.appearance.locale')}
         </label>
         <select
           id="settings-locale"
-          className="settings-select"
+          className={s('settings-select')}
           value={appearance.locale}
           onChange={(event) =>
             update({ locale: event.currentTarget.value as AppearanceSettings['locale'] })
           }
         >
           <option value="zh-CN">简体中文</option>
-          <option value="en" disabled>
-            English（计划中）
-          </option>
+          <option value="en">English</option>
         </select>
-        <span className="settings-hint">English 语言包尚未提供，选项暂不可用</span>
+        <span className={s('settings-hint')}>{t('settings.appearance.locale_hint')}</span>
       </div>
-      <div className="settings-field">
-        <label className="settings-label" htmlFor="settings-code-font">
-          代码字体
+      <div className={s('settings-field')}>
+        <label className={s('settings-label')} htmlFor="settings-code-font">
+          {t('settings.appearance.code_font')}
         </label>
         <select
           id="settings-code-font"
-          className="settings-select"
+          className={s('settings-select')}
           value={appearance.codeFont}
           onChange={(event) => update({ codeFont: event.currentTarget.value })}
         >
@@ -115,18 +123,18 @@ export function AppearancePanel() {
           ))}
         </select>
       </div>
-      <div className="settings-row">
-        <span className="settings-label">启动时恢复上次会话</span>
+      <div className={s('settings-row')}>
+        <span className={s('settings-label')}>{t('settings.appearance.restore_session')}</span>
         <Toggle
-          label="启动时恢复上次会话"
+          label={t('settings.appearance.restore_session')}
           checked={appearance.restoreSessionOnLaunch}
           onChange={(checked) => update({ restoreSessionOnLaunch: checked })}
         />
       </div>
-      <div className="settings-row">
-        <span className="settings-label">桌面通知</span>
+      <div className={s('settings-row')}>
+        <span className={s('settings-label')}>{t('settings.appearance.desktop_notification')}</span>
         <Toggle
-          label="桌面通知"
+          label={t('settings.appearance.desktop_notification')}
           checked={appearance.desktopNotification}
           onChange={(checked) => update({ desktopNotification: checked })}
         />

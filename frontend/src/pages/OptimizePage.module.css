@@ -1,0 +1,128 @@
+/* 工作台页面层（2026-11-07 从 global.css 迁出）：仅 OptimizePage 使用。 */
+/* 三栏工作台 */
+
+/* 页面级舞台：高度撑满主区、自身不滚动，滚动交给 .workspace__thread */
+/* 优化页容器（初始态居中主视觉 / 有会话时结果区）：撑满主区且自身不滚动 */
+.optimize-page {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+.optimize-page__center {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  /* safe center：内容超高时退回顶部对齐，避免溢出部分无法滚动到达 */
+  justify-content: safe center;
+  gap: var(--space-3);
+  min-block-size: 0;
+  padding: var(--space-6);
+  overflow-y: auto;
+}
+
+/* 对话流滚动区（2026-11-01）：多轮内容在此滚动，输入区固定在它下方 */
+.optimize-page__thread {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+/* 多轮输入区：结果/反问视图下常驻底部（2026-11-01：由 sticky 改为固定 flex 块） */
+.optimize-page__composer {
+  flex-shrink: 0;
+  padding-block: var(--space-3);
+  background: var(--color-surface-base);
+  border-block-start: 1px solid var(--divider);
+}
+
+/* F10 模型切换：输入区上沿一行，占位极小 */
+.optimize-page__model-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  padding-block-end: var(--space-2);
+  font-size: var(--font-size-sm, 0.8125rem);
+  color: var(--color-text-secondary, inherit);
+}
+
+.optimize-page__model-switch select {
+  min-inline-size: 12rem;
+}
+
+/* 视觉生成联动行（2026-11-14 多模态）：风格下拉 + 参考图上传 + 缩略图条 */
+.optimize-page__visual-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  padding-block-end: var(--space-2);
+}
+
+.optimize-page__image-add {
+  font-size: var(--font-size-sm, 0.8125rem);
+  color: var(--color-text-secondary, inherit);
+  background: transparent;
+  border: 1px dashed var(--color-border, currentColor);
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.optimize-page__image-add:hover:not(:disabled) {
+  color: var(--color-text-primary, inherit);
+  border-color: var(--color-accent, currentColor);
+}
+
+.optimize-page__image-error {
+  font-size: var(--font-size-sm, 0.8125rem);
+  color: var(--color-danger, #b91c1c);
+}
+
+.optimize-page__images {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.optimize-page__image-chip {
+  position: relative;
+  display: inline-flex;
+}
+
+.optimize-page__image-chip img {
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+  object-fit: cover;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--color-border, currentColor);
+}
+
+.optimize-page__image-chip button {
+  position: absolute;
+  inset-block-start: calc(-1 * var(--space-1));
+  inset-inline-end: calc(-1 * var(--space-1));
+  inline-size: 1rem;
+  block-size: 1rem;
+  font-size: 0.625rem;
+  line-height: 1;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  background: var(--color-danger, #b91c1c);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 流程线程（主区） */
+
+/* 窄屏（<768）：侧边栏折叠为抽屉（汉堡唤出 + 遮罩/Esc 关闭）；三栏塌陷为单列 */

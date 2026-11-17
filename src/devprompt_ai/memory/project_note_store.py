@@ -10,7 +10,7 @@
 - 取前 N（默认 5），命中回写 `hit_count` + `last_hit_at`（判断记忆是否有用的唯一客观信号）
 - `superseded_by` 标记被覆盖的旧记忆，不物理删除
 
-git notes 降级为 `export_git_notes()` 的手动快照，不再处于读写路径（不污染用户仓库）。
+git notes 路线已整体放弃：无法检索、注入退化为全文塞 prompt（见上），不再保留导出函数。
 """
 
 from __future__ import annotations
@@ -111,6 +111,7 @@ class SQLiteProjectNoteStore:
             )
         )
 
+        # 仅用于 2026-11-11 之前的历史轮次回放：新轮次为单套输出，不再写入 ranking。
         ranking = data.get("ranking")
         decision = ""
         if isinstance(ranking, dict) and ranking.get("variant"):
@@ -194,11 +195,3 @@ class SQLiteProjectNoteStore:
                 return hits
 
         return await asyncio.to_thread(_run)
-
-
-def export_git_notes(project_root: str, notes: list[ProjectNote]) -> str:
-    """把结构化记忆渲染成 git note 文本（手动快照用，不在读写路径上）。"""
-    lines = [f"# DevPrompt AI 项目记忆（{len(notes)} 条）"]
-    for note in notes:
-        lines.append(f"- [{note.kind}] {note.value}（confidence={note.confidence:.2f}）")
-    return "\n".join(lines)

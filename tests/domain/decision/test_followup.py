@@ -10,6 +10,7 @@ from devprompt_ai.domain.decision.followup import (
     EXECUTION_REASON,
     MAX_QUESTIONS,
     GuardrailState,
+    answered_headers,
     build_unknowns,
     lint_questions,
 )
@@ -103,6 +104,46 @@ class TestBuildUnknowns:
     def test_blank_question_is_dropped(self) -> None:
         assert build_unknowns(_probe([_ask("   ")]), []) == []
 
+    def test_answered_question_matched_after_normalization(self) -> None:
+        """改写标点/空格不算新问题（2026-11-03）。"""
+        probe = _probe([_ask("红色的落地方式选哪种？"), _ask("要补测试吗?")])
+
+        items = build_unknowns(probe, [], clarifications={"红色的落地方式 选哪种?": "新增主题变量"})
+
+        assert [i.key for i in items] == ["要补测试吗?"]
+
+    def test_answered_header_skips_same_topic(self) -> None:
+        """同 header + 同一件事（措辞接近）仍跳过：模型改写标点时靠这一层兜住。"""
+        probe = _probe(
+            [
+                _ask("按钮悬停色要不要一起改?", header="状态覆盖"),
+                _ask("导出放哪?", header="范围"),
+            ]
+        )
+
+        items = build_unknowns(
+            probe, [], answered_header_asks={"状态覆盖": ["按钮悬停色需要一起改吗"]}
+        )
+
+        assert [i.key for i in items] == ["导出放哪?"]
+
+    def test_same_header_new_question_is_kept(self) -> None:
+        """同 header 下的**新**问题不能整类吞掉（2026-11-07 修 shortcut）。"""
+        probe = _probe([_ask("重连次数上限取几次?", header="范围")])
+
+        items = build_unknowns(probe, [], answered_header_asks={"范围": ["允许修改测试文件吗"]})
+
+        assert [i.key for i in items] == ["重连次数上限取几次?"]
+
+    def test_answered_headers_maps_header_to_answered_asks(self) -> None:
+        """header → 已答问题归一文本，供上面两条规则区分「改措辞」与「新问题」。"""
+        headers = answered_headers(
+            {"允许改测试吗": "可以"},
+            [{"ask": "允许改测试吗?", "header": "范围"}, {"ask": "还没答的", "header": "风险"}],
+        )
+
+        assert headers == {"范围": frozenset({"允许改测试吗"})}
+
 
 class TestLintQuestions:
     """形态合规检查：只报告不修改（用户 2026-10-20 裁定），且不含原文（MUST-19）。"""
@@ -167,6 +208,14 @@ class TestGuardrail:
         assert GuardrailState(rounds=0, cost_tokens=5000).should_trigger(cfg) is False
         rich = AppConfig(_env_file=None, followup_cost_budget=1000.0)  # type: ignore[call-arg]
         assert GuardrailState(rounds=0, cost_tokens=1000).should_trigger(rich) is True
+
+    def test_cost_budget_enabled_by_default(self) -> None:
+        """2026-11-05：成本护栏随默认配置启用（此前默认 0 = 禁用）。"""
+        cfg = AppConfig(_env_file=None)  # type: ignore[call-arg]
+        assert cfg.followup_cost_budget > 0
+        budget = int(cfg.followup_cost_budget)
+        assert GuardrailState(rounds=0, cost_tokens=budget).should_trigger(cfg) is True
+        assert GuardrailState(rounds=0, cost_tokens=budget - 1).should_trigger(cfg) is False
 
     def test_reset(self) -> None:
         state = GuardrailState(rounds=10)

@@ -15,6 +15,19 @@
  */
 const SOURCE = 'devprompt-ai'
 
+// 就绪标记（共享 DOM）：content script 运行在隔离世界，不能写页面的 window，
+// 但可写 DOM 属性——页面据此在点击前**同步**判断扩展是否已注入本页，
+// 避免「扩展没装/没刷新页面」时 postMessage 悬挂到超时才报错。
+function markReady() {
+  document.documentElement.setAttribute('data-devprompt-native', '1')
+}
+
+if (document.documentElement) {
+  markReady()
+} else {
+  document.addEventListener('DOMContentLoaded', markReady, { once: true })
+}
+
 // 页面 -> 扩展：转给 background service worker（由它 sendNativeMessage）
 window.addEventListener('message', (event) => {
   if (event.source !== window) return

@@ -1,0 +1,143 @@
+/*
+ * 样张页的关键帧动效（全部纯 CSS，避免每帧 JS）。
+ * 时长与曲线统一取 --lab-dur-* / --lab-ease，风格之间只改变量不改正则。
+ * prefers-reduced-motion 下统一降级为「无位移、无循环动画」，见文件末尾。
+ */
+
+/* 打字机光标：方柱闪烁 */
+@keyframes lab-caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.lab-caret {
+  display: inline-block;
+  inline-size: 6px;
+  block-size: 1em;
+  margin-inline-start: 2px;
+  vertical-align: -0.15em;
+  background: var(--color-primary-500);
+  animation: lab-caret-blink 1s steps(1, end) infinite;
+}
+
+/* 阶段轨道：一段亮色沿轨道走一遍（1.6s 线性），表达「正在做」而不是百分比 */
+@keyframes lab-rail-flow {
+  0% {
+    background-position: 0% 0%;
+    opacity: 0.35;
+  }
+
+  40% {
+    opacity: 1;
+  }
+
+  100% {
+    background-position: 0% 100%;
+    opacity: 0.35;
+  }
+}
+
+.lab-rail-flow {
+  background-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    var(--color-primary-500) 35%,
+    var(--color-primary-500) 65%,
+    transparent 100%
+  );
+  background-size: 100% 220%;
+  animation: lab-rail-flow 1.6s linear infinite;
+}
+
+/* 摘要行 / 骨架：一道光自左向右扫过 */
+@keyframes lab-shimmer {
+  0% {
+    background-position: -120% 0;
+  }
+
+  100% {
+    background-position: 220% 0;
+  }
+}
+
+.lab-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--color-primary-soft) 45%,
+    var(--color-primary-soft) 55%,
+    transparent 100%
+  );
+  background-size: 55% 100%;
+  background-repeat: no-repeat;
+  animation: lab-shimmer 1.8s var(--lab-ease) infinite;
+}
+
+/* 运行中的状态点：呼吸 + 外环扩散 */
+@keyframes lab-dot-pulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--color-primary-soft);
+  }
+
+  70% {
+    box-shadow: 0 0 0 5px transparent;
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.lab-dot--running {
+  animation: lab-dot-pulse 1.6s var(--lab-ease) infinite;
+}
+
+/* 运行中图标：慢速旋转，只用于 12px 环 */
+@keyframes lab-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.lab-spin {
+  animation: lab-spin 1.1s linear infinite;
+}
+
+/* 条目入场：8px 上移淡入（由 motion 也可承担，这里给不支持 layout 的场景兜底） */
+@keyframes lab-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.lab-rise {
+  animation: lab-rise var(--lab-dur-slow) var(--lab-ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lab-caret,
+  .lab-rail-flow,
+  .lab-shimmer,
+  .lab-dot--running,
+  .lab-spin,
+  .lab-rise {
+    animation: none;
+  }
+
+  .lab-caret {
+    opacity: 1;
+  }
+}

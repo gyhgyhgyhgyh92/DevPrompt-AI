@@ -10,7 +10,7 @@ function entry(over: Partial<Entry> & { id: string; model_id: string }): Entry {
   return { provider_id: 'p-deepseek', provider: 'deepseek', is_active: false, ...over }
 }
 
-/** DeepSeek 官方登记（api-docs.deepseek.com/guides/thinking_mode）：low/high/max，默认 high */
+/** DeepSeek 官方登记（api-docs.deepseek.com/guides/thinking_mode）：none/low/high/max，默认 high */
 const DEEPSEEK: Provider = {
   id: 'deepseek',
   label: 'DeepSeek',
@@ -19,14 +19,14 @@ const DEEPSEEK: Provider = {
   default_api_mode: 'chat_completions',
   supported_api_modes: ['chat_completions'],
   max_context_length: 1_048_576,
-  context_window_tiers: [131_072, 262_144, 524_288, 1_048_576],
+  context_window_tiers: [131_072, 307_200, 614_400, 1_048_576],
   models: [
     {
       model_id: 'deepseek-flash',
       label: 'DeepSeek-V4.1-Flash',
       max_context_length: 1_048_576,
-      context_window_tiers: [131_072, 262_144, 524_288, 1_048_576],
-      reasoning_efforts: ['low', 'high', 'max'],
+      context_window_tiers: [131_072, 307_200, 614_400, 1_048_576],
+      reasoning_efforts: ['none', 'low', 'high', 'max'],
       default_effort: 'high',
     },
   ],
@@ -34,7 +34,7 @@ const DEEPSEEK: Provider = {
   quirks: '',
 }
 
-/** Kimi 走另一厂商：档位与强度都与 DeepSeek 不同（各模型独立、不可共用） */
+/** Kimi 走另一厂商：K2.7 为 256K（262,144），档位与强度都与 DeepSeek 不同（各模型独立、不可共用） */
 const MOONSHOT: Provider = {
   id: 'moonshot',
   label: 'Moonshot',
@@ -42,14 +42,14 @@ const MOONSHOT: Provider = {
   needs_key: true,
   default_api_mode: 'chat_completions',
   supported_api_modes: ['chat_completions'],
-  max_context_length: 256_000,
-  context_window_tiers: [128_000, 256_000],
+  max_context_length: 262_144,
+  context_window_tiers: [131_072, 262_144],
   models: [
     {
-      model_id: 'Kimi-k3',
-      label: 'Kimi-k3',
-      max_context_length: 256_000,
-      context_window_tiers: [128_000, 256_000],
+      model_id: 'kimi-k2.7-code',
+      label: 'Kimi K2.7 Code',
+      max_context_length: 262_144,
+      context_window_tiers: [131_072, 262_144],
       reasoning_efforts: ['Low', 'High', 'X-High'],
       default_effort: 'High',
     },
@@ -59,7 +59,7 @@ const MOONSHOT: Provider = {
 }
 
 const FLASH = entry({ id: 'm-1', model_id: 'deepseek-flash', is_active: true })
-const KIMI = entry({ id: 'm-2', model_id: 'Kimi-k3', provider: 'moonshot' })
+const KIMI = entry({ id: 'm-2', model_id: 'kimi-k2.7-code', provider: 'moonshot' })
 
 function renderPicker(over: Partial<Parameters<typeof ModelPicker>[0]> = {}) {
   const props = {
@@ -109,9 +109,11 @@ describe('ModelPicker 只列已配置模型', () => {
   it('展开后只列已配置条目，不列厂商目录里未配置的模型', async () => {
     renderPicker({ entries: [FLASH, KIMI] })
     fireEvent.click(screen.getByRole('button', { name: '选择模型' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: /Kimi-k3/ })).toBeTruthy())
+    await waitFor(() => expect(screen.getByRole('button', { name: /kimi-k2.7-code/ })).toBeTruthy())
 
-    expect(screen.getAllByRole('button', { name: /^(deepseek-flash|Kimi-k3)/ })).toHaveLength(2)
+    expect(
+      screen.getAllByRole('button', { name: /^(deepseek-flash|kimi-k2.7-code)/ }),
+    ).toHaveLength(2)
     expect(screen.queryByText('未配置')).toBeNull()
   })
 
@@ -119,8 +121,8 @@ describe('ModelPicker 只列已配置模型', () => {
     const onSelect = vi.fn()
     renderPicker({ entries: [FLASH, KIMI], onSelect })
     fireEvent.click(screen.getByRole('button', { name: '选择模型' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: /Kimi-k3/ })).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: /Kimi-k3/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /kimi-k2.7-code/ })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: /kimi-k2.7-code/ }))
     expect(onSelect).toHaveBeenCalledWith('m-2')
   })
 
@@ -153,22 +155,24 @@ describe('ModelPicker hover 参数面板', () => {
   it('面板是模型项的 DOM 子节点（指针能移进面板而不消失）', async () => {
     renderPicker()
     await openAndHover('deepseek-flash')
-    const panel = document.querySelector('.model-picker__panel') as HTMLElement
+    const panel = document.querySelector('[class*="model-picker__panel"]') as HTMLElement
     const item = screen.getByRole('button', { name: /deepseek-flash/ }).parentElement as HTMLElement
     expect(item.contains(panel)).toBe(true)
   })
 
-  it('档位与强度按模型独立：DeepSeek 四档 low/high/max，Kimi 两档 Low/High/X-High', async () => {
+  it('档位与强度按模型独立：DeepSeek 多档 low/high/max，Kimi 两档 Low/High/X-High', async () => {
     renderPicker({ entries: [FLASH, KIMI] })
     await openAndHover('deepseek-flash')
     expect(
-      screen.getAllByRole('button', { name: /^(131K|262K|524K|1M)/ }).map((b) => b.textContent),
-    ).toEqual(['131K', '262K', '524K', '1M✓'])
+      screen.getAllByRole('button', { name: /^(128K|300K|600K|1M)/ }).map((b) => b.textContent),
+    ).toEqual(['128K', '300K', '600K', '1M✓'])
     expect(screen.getByRole('button', { name: 'low' })).toBeTruthy()
+    // none 是关闭语义，不作为强度按钮展示
+    expect(screen.queryByRole('button', { name: 'none' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'X-High' })).toBeNull()
 
     leave('deepseek-flash')
-    hover('Kimi-k3')
+    hover('kimi-k2.7-code')
     expect(
       screen.getAllByRole('button', { name: /^(128K|256K)/ }).map((b) => b.textContent),
     ).toEqual(['128K', '256K✓'])
@@ -182,8 +186,8 @@ describe('ModelPicker hover 参数面板', () => {
     renderPicker({ onSelect, onTune })
     await openAndHover('deepseek-flash')
 
-    fireEvent.click(screen.getByRole('button', { name: '262K' }))
-    expect(onTune).toHaveBeenCalledWith('m-1', { max_context_length: 262_144 })
+    fireEvent.click(screen.getByRole('button', { name: '300K' }))
+    expect(onTune).toHaveBeenCalledWith('m-1', { max_context_length: 307_200 })
     expect(onSelect).not.toHaveBeenCalled()
   })
 

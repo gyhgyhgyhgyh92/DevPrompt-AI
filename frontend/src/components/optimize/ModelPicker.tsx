@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { SettingsResponse } from '../../api/types'
 import { findProvider, formatWindow } from '../settings/ProviderSelect'
 import { Toggle } from '../ui/Toggle'
-import './ConsoleInput.css'
+import styles from './ConsoleInput.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 /** provider 目录的入参类型直接取 `findProvider` 的签名，避免手抄一份可选性（MUST-17）。 */
 type ProviderDirectory = Parameters<typeof findProvider>[0]
@@ -67,7 +71,7 @@ function resolveMeta(
 /** 选中项右侧的对勾（与参考图一致）。 */
 function Check() {
   return (
-    <span className="model-picker__check" aria-hidden="true">
+    <span className={s('model-picker__check')} aria-hidden="true">
       ✓
     </span>
   )
@@ -97,28 +101,31 @@ function TuningPanel({
   onToggleMode: (on: boolean) => void
   onPickEffort: (effort: string) => void
 }) {
+  const { t } = useTranslation()
   const windows: readonly number[] =
     meta.tiers.length > 0
       ? meta.tiers
       : meta.maxContextLength === null
         ? []
         : [meta.maxContextLength]
-  const hasEfforts = meta.efforts.length > 0
-  const modeOn = currentEffort !== ''
+  // `none` 是「关闭思考」的显式值，不作为强度按钮展示；开关关闭时由后端解析。
+  const efforts = meta.efforts.filter((effort) => effort !== 'none')
+  const hasEfforts = efforts.length > 0
+  const modeOn = currentEffort !== '' && currentEffort !== 'none'
   if (windows.length === 0 && !hasEfforts) return null
 
   return (
     // 面板在模型项内部：点选项不应冒泡到「选中该模型」
-    <div className="model-picker__panel" onClick={(event) => event.stopPropagation()}>
+    <div className={s('model-picker__panel')} onClick={(event) => event.stopPropagation()}>
       {windows.length > 0 ? (
         <>
-          <div className="model-picker__panel-title">上下文长度</div>
-          <ul className="model-picker__options">
+          <div className={s('model-picker__panel-title')}>{t('model.context_length')}</div>
+          <ul className={s('model-picker__options')}>
             {windows.map((tokens) => (
               <li key={tokens}>
                 <button
                   type="button"
-                  className="model-picker__option"
+                  className={s('model-picker__option')}
                   aria-pressed={currentWindow === tokens}
                   // 只有一档时禁用：没有可选余地，禁用同时说明原因
                   disabled={windows.length <= 1}
@@ -131,26 +138,27 @@ function TuningPanel({
             ))}
           </ul>
           {windows.length <= 1 ? (
-            <div className="model-picker__panel-title">该模型仅支持标称窗口，无可选档位</div>
+            <div className={s('model-picker__panel-title')}>{t('model.nominal_only')}</div>
           ) : null}
+          <div className={s('model-picker__panel-title')}>{t('model.context_budget_hint')}</div>
         </>
       ) : null}
       {hasEfforts ? (
         <>
-          <div className="model-picker__panel-title model-picker__panel-title--split">
-            <span>思考模式</span>
-            <Toggle label="思考模式" checked={modeOn} onChange={onToggleMode} />
+          <div className={s('model-picker__panel-title model-picker__panel-title--split')}>
+            <span>{t('model.thinking_mode')}</span>
+            <Toggle label={t('model.thinking_mode')} checked={modeOn} onChange={onToggleMode} />
           </div>
-          <div className="model-picker__panel-title">思考强度</div>
-          <ul className="model-picker__options">
-            {meta.efforts.map((effort) => (
+          <div className={s('model-picker__panel-title')}>{t('model.thinking_effort')}</div>
+          <ul className={s('model-picker__options')}>
+            {efforts.map((effort) => (
               <li key={effort}>
                 <button
                   type="button"
-                  className="model-picker__option"
+                  className={s('model-picker__option')}
                   aria-pressed={currentEffort === effort}
                   disabled={!modeOn}
-                  title={modeOn ? undefined : '先开启思考模式才能选择强度'}
+                  title={modeOn ? undefined : t('model.effort_requires_mode')}
                   onClick={() => onPickEffort(effort)}
                 >
                   <span>{effort}</span>
@@ -180,6 +188,7 @@ export function ModelPicker({
   onSelect,
   onTune,
 }: ModelPickerProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -203,32 +212,33 @@ export function ModelPicker({
   }, [open])
 
   return (
-    <div className="model-picker" ref={rootRef}>
+    <div className={s('model-picker')} ref={rootRef}>
       <button
         type="button"
-        className="console-input__model-select"
-        aria-label="选择模型"
+        className={s('console-input__model-select')}
+        aria-label={t('model.aria_select')}
         aria-haspopup="true"
         aria-expanded={open}
         disabled={disabled || entries.length === 0}
         onClick={() => setOpen((prev) => !prev)}
       >
-        {active?.model_id ?? '未配置模型'}
+        {active?.model_id ?? t('model.not_configured')}
       </button>
       {open ? (
-        <div className="model-picker__menu">
+        <div className={s('model-picker__menu')}>
           {entries.map((entry) => {
             const meta = resolveMeta(entry, providers)
+            const efforts = meta.efforts.filter((effort) => effort !== 'none')
             return (
               <div
                 key={entry.id}
-                className="model-picker__item"
+                className={s('model-picker__item')}
                 onMouseEnter={() => setHoveredId(entry.id)}
                 onMouseLeave={() => setHoveredId((prev) => (prev === entry.id ? null : prev))}
               >
                 <button
                   type="button"
-                  className="model-picker__pick"
+                  className={s('model-picker__pick')}
                   aria-pressed={entry.id === active?.id}
                   onClick={() => {
                     setOpen(false)
@@ -247,11 +257,11 @@ export function ModelPicker({
                     onPickWindow={(tokens) => onTune(entry.id, { max_context_length: tokens })}
                     onToggleMode={(on) =>
                       // 开而未选强度：优先取官方标注的默认档（如 DeepSeek 文档写明默认为 high），
-                      // 无登记默认值才取厂商列表第一档；都没有则不下发，交由厂商自己决定
+                      // 无登记默认值才取列表第一档；都没有则不下发，交由厂商自己决定。
+                      // 关闭写空串：后端在模型登记了 none 时解析为显式关闭。
                       onTune(entry.id, {
                         reasoning_effort: on
-                          ? ((entry.reasoning_effort || meta.defaultEffort || meta.efforts[0]) ??
-                            '')
+                          ? ((entry.reasoning_effort || meta.defaultEffort || efforts[0]) ?? '')
                           : '',
                       })
                     }

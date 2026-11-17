@@ -1,38 +1,49 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router'
 import { getSettings } from '../../api/endpoints'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { AppearancePanel } from './AppearancePanel'
 import { errorMessage } from './errorMessage'
 import { ModelServicePanel } from './ModelServicePanel'
 import { SecurityPanel } from './SecurityPanel'
-import './settings.css'
+import styles from './settings.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 export interface SettingsModalProps {
   open: boolean
   onClose: () => void
 }
 
-type TabKey = 'model-service' | 'appearance' | 'security'
+/** 弹窗内可切换的面板；左侧导航第四项是可观测性入口（跳转独立页面），不属此列。 */
+type PanelKey = 'model-service' | 'appearance' | 'security'
+type NavKey = PanelKey | 'observability'
 
-interface TabItem {
-  key: TabKey
-  icon: string
-  label: string
+/** 可观测性独立页面路由（内容唯一一份，弹窗内不再展开，MUST-10）。 */
+const OBSERVABILITY_ROUTE = '/observability'
+
+const NAV_KEYS: NavKey[] = ['model-service', 'appearance', 'observability', 'security']
+const TAB_ICONS: Record<NavKey, string> = {
+  'model-service': '⚙',
+  appearance: '◐',
+  observability: '◎',
+  security: '⚑',
 }
-
-const TABS: readonly TabItem[] = [
-  { key: 'model-service', icon: '⚙', label: '模型服务' },
-  { key: 'appearance', icon: '◐', label: '通用外观' },
-  { key: 'security', icon: '⚑', label: '流程与安全' },
-]
 
 /**
  * 设置中心模态（F-604）：左侧四项导航 + 右侧内容区；
  * Esc/✕ 关闭，打开时焦点入面板、关闭归还触发按钮（无障碍惯例，非状态逻辑）。
+ *
+ * 2026-11-16：可观测性项位置不变，但点击改为关闭弹窗并跳转独立页面 /observability，
+ * 弹窗内不再渲染可观测性内容（避免同一功能出现两份实现）。
  */
 export function SettingsModal(props: SettingsModalProps) {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
   const setSettings = useSettingsStore((state) => state.setSettings)
-  const [activeTab, setActiveTab] = useState<TabKey>('model-service')
+  const [activeTab, setActiveTab] = useState<PanelKey>('model-service')
   const [loadError, setLoadError] = useState('')
   const panelRef = useRef<HTMLDivElement | null>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
@@ -68,7 +79,7 @@ export function SettingsModal(props: SettingsModalProps) {
         if (!cancelled) setSettings(next)
       })
       .catch((error: unknown) => {
-        if (!cancelled) setLoadError(errorMessage(error, '设置加载失败'))
+        if (!cancelled) setLoadError(errorMessage(error, t('settings.load_failed')))
       })
     return () => {
       cancelled = true
@@ -77,48 +88,59 @@ export function SettingsModal(props: SettingsModalProps) {
 
   if (!props.open) return null
 
+  /** 导航项行为：可观测性项跳转独立页面，其余三项切换面板。 */
+  function handleNav(key: NavKey): void {
+    if (key === 'observability') {
+      props.onClose()
+      navigate(OBSERVABILITY_ROUTE)
+      return
+    }
+    setActiveTab(key)
+  }
+
   return (
-    <div className="settings-overlay">
+    <div className={s('settings-overlay')}>
       <div
-        className="settings-modal"
+        className={s('settings-modal')}
+        data-tab={activeTab}
         role="dialog"
         aria-modal="true"
-        aria-label="设置"
+        aria-label={t('settings.modal.title')}
         ref={panelRef}
         tabIndex={-1}
       >
-        <header className="settings-modal__header">
-          <h2 className="settings-modal__title">设置</h2>
+        <header className={s('settings-modal__header')}>
+          <h2 className={s('settings-modal__title')}>{t('settings.modal.title')}</h2>
           <button
             type="button"
-            className="settings-close"
-            aria-label="关闭"
+            className={s('settings-close')}
+            aria-label={t('common.close')}
             onClick={props.onClose}
           >
             ✕
           </button>
         </header>
-        <div className="settings-modal__body">
-          <nav className="settings-nav" aria-label="设置分组">
-            {TABS.map((tab) => (
+        <div className={s('settings-modal__body')}>
+          <nav className={s('settings-nav')} aria-label={t('settings.nav.label')}>
+            {NAV_KEYS.map((key) => (
               <button
-                key={tab.key}
+                key={key}
                 type="button"
-                aria-current={activeTab === tab.key ? 'page' : undefined}
-                className={
-                  activeTab === tab.key
+                aria-current={key !== 'observability' && activeTab === key ? 'page' : undefined}
+                className={s(
+                  key !== 'observability' && activeTab === key
                     ? 'settings-nav__item settings-nav__item--active'
-                    : 'settings-nav__item'
-                }
-                onClick={() => setActiveTab(tab.key)}
+                    : 'settings-nav__item',
+                )}
+                onClick={() => handleNav(key)}
               >
-                {tab.icon} {tab.label}
+                {TAB_ICONS[key]} {t(`settings.tab.${key}`)}
               </button>
             ))}
           </nav>
-          <div className="settings-content">
+          <div className={s('settings-content')}>
             {loadError !== '' ? (
-              <p className="settings-status settings-status--error">{loadError}</p>
+              <p className={s('settings-status settings-status--error')}>{loadError}</p>
             ) : null}
             {activeTab === 'model-service' ? <ModelServicePanel /> : null}
             {activeTab === 'appearance' ? <AppearancePanel /> : null}

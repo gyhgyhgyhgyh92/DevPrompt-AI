@@ -10,8 +10,6 @@ vi.mock('../../api/endpoints', () => ({
   getSettings: vi.fn(),
   putSettings: vi.fn(),
   getHealth: vi.fn(),
-  getPreference: vi.fn(),
-  putPreference: vi.fn(),
   getHistory: vi.fn(),
   refreshModelCatalog: vi.fn(),
   getModelCatalog: vi.fn(),
@@ -70,7 +68,7 @@ const settingsFixture: SettingsResponse = {
       default_api_mode: 'chat_completions',
       supported_api_modes: ['chat_completions'],
       max_context_length: 1_048_576,
-      context_window_tiers: [131_072, 262_144, 524_288, 1_048_576],
+      context_window_tiers: [131_072, 307_200, 614_400, 1_048_576],
       models: [],
       supports_reasoning: true,
       quirks: '',
@@ -86,6 +84,12 @@ const settingsFixture: SettingsResponse = {
     temperature: null,
   },
   process: { followup_cost_budget: 2, followup_soft_round_guard: 12, telemetry: true },
+  observability: {
+    trace_enabled: true,
+    trace_retention_days: 30,
+    metrics_enabled: true,
+    replay_enabled: true,
+  },
   locked: { candidate_limit: 30 },
 }
 
@@ -111,7 +115,9 @@ describe('ModelServicePanel 供应商中心化配置（F-604）', () => {
   it('渲染供应商卡：厂商名 / Base URL / 密钥脱敏回显', async () => {
     render(<ModelServicePanel />)
 
-    expect(document.querySelector('.settings-model-row__title')?.textContent).toBe('DeepSeek')
+    expect(document.querySelector('[class*="settings-model-row__title"]')?.textContent).toBe(
+      'DeepSeek',
+    )
     expect(screen.getByLabelText('Base URL')).toHaveProperty('value', 'https://api.deepseek.com')
     const key = screen.getByLabelText('API Key') as HTMLInputElement
     expect(key.type).toBe('password')
@@ -272,5 +278,45 @@ describe('ModelServicePanel 供应商中心化配置（F-604）', () => {
     useSettingsStore.setState({ settings: { ...settingsFixture, provider_configs: [] } })
     render(<ModelServicePanel />)
     expect(screen.getByText(/尚未配置任何供应商/)).toBeTruthy()
+  })
+
+  it('切换供应商即清空原有勾选与目录（防止把别家模型写进新供应商）', async () => {
+    const moonshot = {
+      ...settingsFixture.providers![0]!,
+      id: 'moonshot',
+      label: 'Moonshot',
+      base_url: 'https://api.moonshot.cn/v1',
+    }
+    useSettingsStore.setState({
+      settings: { ...settingsFixture, providers: [...(settingsFixture.providers ?? []), moonshot] },
+    })
+    render(<ModelServicePanel />)
+    expect(await screen.findByRole('checkbox', { name: /deepseek-flash/ })).toBeTruthy()
+    expect(screen.getByText('1 个模型')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('供应商'), { target: { value: 'moonshot' } })
+
+    expect(screen.getByText('0 个模型')).toBeTruthy()
+    expect(screen.getByText(/原有模型勾选与目录已清空/)).toBeTruthy()
+    expect((screen.getByLabelText('Base URL') as HTMLInputElement).value).toBe(
+      'https://api.moonshot.cn/v1',
+    )
+    expect(screen.queryByRole('checkbox', { name: /deepseek-flash/ })).toBeNull()
+  })
+
+  it('已配置但不在目录里的模型标出「不在当前列表」，不冒充该供应商的模型', async () => {
+    vi.mocked(getModelCatalog).mockResolvedValue(
+      catalogOf([
+        {
+          model_id: 'deepseek-flash',
+          label: 'deepseek-flash（不在当前列表）',
+          source: 'static',
+          is_stale: true,
+        },
+      ]),
+    )
+    render(<ModelServicePanel />)
+
+    expect(await screen.findByText('不在当前列表')).toBeTruthy()
   })
 })

@@ -7,6 +7,7 @@ from devprompt_ai.decision import fallback as fb
 from devprompt_ai.decision.fallback import LLMFallbackDecider
 from devprompt_ai.domain.decision.port import (
     FactProbeOutput,
+    NextActionOutput,
     RankComponentsOutput,
 )
 from devprompt_ai.domain.errors import ConfigurationError, GenerationError
@@ -36,6 +37,7 @@ async def test_rank_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
         user: str,
         *,
         timeout: float = 10.0,
+        **_kwargs: object,
     ) -> RankComponentsOutput:
         return RankComponentsOutput(order=[1, 0], confidence=0.8)
 
@@ -52,6 +54,7 @@ async def test_rank_count_mismatch_raises(monkeypatch: pytest.MonkeyPatch) -> No
         user: str,
         *,
         timeout: float = 10.0,
+        **_kwargs: object,
     ) -> RankComponentsOutput:
         return RankComponentsOutput(order=[0], confidence=0.8)  # 少排一个
 
@@ -76,6 +79,7 @@ async def test_probe_facts_passthrough_shape(monkeypatch: pytest.MonkeyPatch) ->
         user: str,
         *,
         timeout: float = 10.0,
+        **_kwargs: object,
     ) -> FactProbeOutput:
         return sentinel
 
@@ -102,6 +106,7 @@ async def test_rank_truncates_state_over_limit_and_logs(
         user: str,
         *,
         timeout: float = 10.0,
+        **_kwargs: object,
     ) -> RankComponentsOutput:
         captured["user"] = user
         return RankComponentsOutput(order=[1, 0], confidence=0.8)
@@ -112,6 +117,7 @@ async def test_rank_truncates_state_over_limit_and_logs(
         llm_base_url="https://fake/v1",
         llm_model="fake-model",
         max_state_tokens=10,
+        max_context_length=100,
     )
     big = "候选名称" * 50
     cands = [
@@ -140,6 +146,7 @@ async def test_rank_state_passthrough_within_limit(monkeypatch: pytest.MonkeyPat
         user: str,
         *,
         timeout: float = 10.0,
+        **_kwargs: object,
     ) -> RankComponentsOutput:
         captured["user"] = user
         return RankComponentsOutput(order=[1, 0], confidence=0.8)
@@ -150,3 +157,28 @@ async def test_rank_state_passthrough_within_limit(monkeypatch: pytest.MonkeyPat
 
     listing = "\n".join(f"{i}. {c.name}  ({c.path})" for i, c in enumerate(cands))
     assert captured["user"] == RANK_USER.format(evidence=rank_evidence("改按钮", listing))
+
+
+def test_next_action_accepts_delegation_orders() -> None:
+    """K6 多波来源：决策输出可携带只读工单草案；写工 profile 在解析层被拒（K4 边界）。"""
+    out = NextActionOutput(
+        action="delegate",
+        confidence_source="no_data",
+        delegation_orders=[
+            {"profile": "verifier", "objective": "审查改动", "scope_files": ["src/a.py"]},
+            {"objective": "默认探查档"},  # profile 缺省 → code_scout
+        ],
+    )
+
+    assert out.delegation_orders[0].profile == "verifier"
+    assert out.delegation_orders[1].profile == "code_scout"
+
+    import pytest as _pytest
+    from pydantic import ValidationError as _ValidationError
+
+    with _pytest.raises(_ValidationError):
+        NextActionOutput(
+            action="delegate",
+            confidence_source="no_data",
+            delegation_orders=[{"profile": "patcher", "objective": "写工不下发"}],
+        )

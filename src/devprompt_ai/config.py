@@ -18,6 +18,7 @@ from pydantic_settings import (
 )
 
 from devprompt_ai.common.envhint import ENV_PURPOSE
+from devprompt_ai.domain.context.budget import state_budget_for_window
 from devprompt_ai.domain.model_spec import (
     CONTEXT_ALERT_RATIO,
     NATIVE_PARAMETERS,
@@ -25,6 +26,7 @@ from devprompt_ai.domain.model_spec import (
     context_window_alert,
     is_value_empty,
     max_context_length_of,
+    resolve_api_mode,
 )
 
 # settings.json model_service 段键 → AppConfig 字段名（F-604 契约键与配置键分离）
@@ -38,7 +40,8 @@ MODEL_KEY_MAP: dict[str, str] = {
     "max_tokens": "llm_max_tokens",
     "llm_params": "llm_params",  # 生效模型的参数覆盖（2026-09-17 迁移）
     "api_mode": "api_mode",  # 生效模型的 API 形态（2026-09-17 多供应商扩展）
-    # 条目级上下文窗口覆盖；0 = 沿用 provider 默认。仅用于告警，不做截断（MUST-25）
+    # 条目级上下文窗口覆盖；0 = 沿用全局 context_window_tokens。
+    # 2026-11-10 起用于请求预算与压缩阈值（仍不硬截断本轮取证，MUST-25）
     "max_context_length": "max_context_length",
 }
 
@@ -61,6 +64,15 @@ class _LocalSettingsSource(PydanticBaseSettingsSource):
             if src_key in local.get("model_service", {}):
                 values[dst_key] = local["model_service"][src_key]
         for key in ("followup_soft_round_guard", "followup_cost_budget", "telemetry"):
+            if key in local.get("process", {}):
+                values[key] = local["process"][key]
+        # 可观测性三模块开关（2026-11-12）：与流程段同表持久化，重启后按上次保存值装配
+        for key in (
+            "obs_trace_enabled",
+            "obs_trace_retention_days",
+            "obs_metrics_enabled",
+            "obs_replay_enabled",
+        ):
             if key in local.get("process", {}):
                 values[key] = local["process"][key]
         return values
@@ -95,13 +107,65 @@ class AppConfig(BaseSettings):
     prefer_low_confidence: float = 0.4
 
     followup_soft_round_guard: int = 10
-    followup_cost_budget: float = 0.0  # 单流程 LLM token 总数上限；0 = 禁用（MUST-26 软护栏）
+    #: 单流程 LLM token 总数上限；0 = 禁用（MUST-26 成本软护栏）。
+    #: 结构推导（2026-11-06）：轮次护栏 10 × 单轮 token 上界 5000 = 50000。
+    #: 单轮上界取首批真实样本 p95（3.6k）向上取整——护栏是「成本异常时的兜底闸」，
+    #: 不替代轮次护栏；正常 8~10 轮的累计消耗仍在阈值内，只有单轮异常膨胀才会先撞线。
+    followup_cost_budget: float = 50_000.0
+    #: 断言对账严格模式（2026-11-05）：C 档要求模型至少声明一条引用，
+    #: 一条都没声明时降为 B。默认关闭——先观察真实会话的声明率，再决定是否收紧。
+    # 2026-11-07 BREAKING：未声明 claims 默认参与门禁（旧默认 False 让「一条都不声明」免检）。
+    claim_strict: bool = True
     telemetry: bool = True  # F-604 遥测开关（T6-11）：关闭后固定事件不落盘
 
     # SQLite 单文件（L1/L3；用户主目录 ~ 由 expanduser 解析，展开归 4B init_schema）
     db_path: str = "~/.devprompt-ai/devprompt.db"
+    # F5 单写者锁（2026-11-07）：多进程写同一库会把运行中会话写成假中断。
+    # 心跳失联超过 stale 秒视为崩溃遗留，可被新进程接管。
+    single_writer_lock: bool = True
+    writer_lock_stale_seconds: float = 120.0
+    # 流内超时分层（A10）：探针/排序用短超时快速失败，生成用长超时。
+    llm_probe_timeout: float = 30.0
+    llm_rank_timeout: float = 30.0
+    llm_generate_timeout: float = 120.0
+    # 看门狗（A9）：单次 run 的硬上限；超时以 watchdog-stall 收尾。
+    run_timeout_seconds: float = 900.0
+    # 上下文窗口（用于压缩档位与相位收敛的轮次门槛）；默认按 1M 模型保守取值。
+    context_window_tokens: int = 1_000_000
+    # 仓库符号图（⑤）：首次检索会扫全仓 Python 文件，默认关闭；在自己的项目上实测后再开。
+    repo_graph_enabled: bool = False
+    # 认知账本（B15）：每轮注入只读状态快照；默认关闭，实测后再开。
+    context_ledger_enabled: bool = False
+    # 多模型路由（G2–G6）：按 purpose 从 settings 注册表选模型，bandit 在线学习，
+    # 失败按注册顺序主备切换。候选 ≤1 时自动退化为现状路径（行为对等）。
+    #: 多候选链（2026-11-15 用户裁定）：默认关闭随机/胜率择优——模型只由用户在设置中的
+    #: 显式选择决定（激活条目 → 首个可用），其余条目仅作固定顺序 failover。
+    multi_model_routing: bool = False
+    # B11 LLM 摘要：压缩触发时把被丢弃的历史段交给 cheap 槽摘要；失败回退确定性 handoff。
+    # 默认关闭——每次压缩多一次 LLM 调用，实测摘要质量优于 80 字规则摘要后再开。
+    summary_llm_enabled: bool = False
+    # B1–B4 增量附录（<context-update>）：关闭则不发增量（恢复改造前行为）。
+    context_layers_enabled: bool = True
+    # C1–C5 工具输出治理：关闭则动作卡片退回 20 行/2000 字符旧截断口径。
+    tool_output_governance: bool = True
+    # K6 team 编排：关闭则委派走单工单直连调度闸（不按波分派）。
+    team_orchestration: bool = True
+    # ---- 可观测性三模块（2026-11-12，独立启用/配置）----
+    obs_trace_enabled: bool = True
+    obs_trace_retention_days: int = 30
+    obs_trace_full_payload: bool = True
+    obs_metrics_enabled: bool = True
+    obs_metrics_p95_warn_ms: int = 5000
+    obs_metrics_error_rate_warn: float = 0.2
+    obs_metrics_token_warn: int = 50000
+    obs_metrics_tool_failure_warn: float = 0.2
+    obs_metrics_alert_cooldown_s: int = 300
+    obs_metrics_critical_multiplier: float = 2.0
+    obs_replay_enabled: bool = True
+    obs_replay_max_nodes: int = 20000
+    obs_replay_timeout_seconds: float = 120.0
     fact_probe_threshold: float = 0.75
-    max_state_tokens: int = 30000
+    max_state_tokens: int = 30000  # 上下文装配预算下限（随档位放大，上限 160K）
 
     app_env: Literal["dev", "test", "prod"] = "dev"
     log_level: str = "INFO"
@@ -177,20 +241,59 @@ class AppConfig(BaseSettings):
     def extra_body_params(self) -> dict[str, Any]:
         """需经 `extra_body` 下发的参数（`ModelSettings` 无对应字段的那些）。
 
-        当前唯一成员是 `reasoning_effort`——它属于 Chat Completions 的扩展字段
-        （OpenAI/DeepSeek 等均支持），但 openai-agents 的 `ModelSettings` 未建模它。
-        经 `extra_body` 下发可让它真正生效，而不是被静默丢弃。
+        **`reasoning_effort` 按 API 形态分流**（2026-11-10）：
+
+        - `chat_completions`：顶层 `reasoning_effort`（OpenAI/DeepSeek 等）；
+        - `responses`：`reasoning: {"effort": ...}`（Responses 官方字段形状）；
+        - `anthropic_messages` / `gemini_generate_content`：仍以内部键
+          `reasoning_effort` 传给原生适配器，由适配器转换为 `thinking` /
+          `thinking_config` 后**消费掉**，不会原样发给供应商。
 
         **空值不发**：未设置时不进 extra_body，避免覆盖供应商默认。
         """
         merged: dict[str, Any] = dict(self.llm_params or {})
         provider = self.llm_provider or ""
         cleaned = apply_provider_constraints(provider, merged)
-        return {
+        extras = {
             key: value
             for key, value in cleaned.items()
             if key not in NATIVE_PARAMETERS and not is_value_empty(value)
         }
+        effort = str(extras.pop("reasoning_effort", "") or "").strip().lower()
+        if not effort:
+            return extras
+        api_mode = resolve_api_mode(provider, self.api_mode or "")
+        if api_mode == "responses":
+            extras["reasoning"] = {"effort": effort}
+        else:
+            extras["reasoning_effort"] = effort
+        return extras
+
+    def reasoning_effort_value(self) -> str:
+        """当前生效条目的思考强度原始值（空串 = 未显式选择）。
+
+        **不做空值→`none` 的解析**：那需要模型能力位，由 harness 的候选装配与
+        service 的激活条目镜像负责（2026-11-10）。
+        """
+        return str((self.llm_params or {}).get("reasoning_effort", "") or "")
+
+    def runtime_window(self) -> int:
+        """运行时上下文窗口：条目档位优先，未登记回落全局窗口。
+
+        2026-11-10 起真正参与请求预算与压缩阈值；它**不发给供应商**（各协议都没有
+        标准的「本次请求窗口」字段），也不硬截断本轮取证（MUST-25）。
+        """
+        if isinstance(self.max_context_length, int) and self.max_context_length > 0:
+            return self.max_context_length
+        return int(self.context_window_tokens)
+
+    def runtime_state_budget(self) -> int:
+        """上下文装配总预算：随档位缩放，`max_state_tokens` 为下限。
+
+        300K→30K、600K→60K、1M→100K、2M→160K；窗口越大保留历史越多，
+        token 消耗随之上升（2026-11-10）。
+        """
+        return state_budget_for_window(self.runtime_window(), floor=self.max_state_tokens)
 
     def context_window_warning(self, estimated_tokens: int) -> str | None:
         """上下文窗口告警；**不做任何截断**。
@@ -203,8 +306,10 @@ class AppConfig(BaseSettings):
         :param estimated_tokens: 本次请求的估算 token 数
         :return: 超过比例阈值时给出可操作的中文提示；未超限或窗口未知返回 ``None``
         """
-        limit = self.max_context_length or max_context_length_of(
-            self.llm_provider or "", self.llm_model or ""
+        limit = (
+            self.max_context_length
+            or max_context_length_of(self.llm_provider or "", self.llm_model or "")
+            or self.context_window_tokens
         )
         if limit is None or not context_window_alert(estimated_tokens, limit):
             return None

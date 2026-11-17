@@ -37,32 +37,28 @@ function item(overrides: Partial<HistoryItemPayload> & { session_id: string }): 
   }
 }
 
-const vectorFixture = {
-  detail_level: 0.25,
-  include_diff: 0.75,
-  specify_tests: 0.1,
-  max_files_norm: 0.9,
-}
-
 function snapshot(): FlowSnapshotResponse {
   return {
     session_id: 's1',
     state: 'DONE',
     status: 'done',
     message: '',
+    evidence_stale: false,
+    reply_text: '',
     questions: [],
     cleared: [],
-    variants: [],
-    ranking: null,
+    variant: null,
   }
 }
 
-/** 默认路由：GET /history 返回列表，GET /result 返回快照，GET /preference 返回向量。 */
+/** 默认路由：GET /history 返回列表，GET /result 返回快照。 */
 function defaultHandler(items: readonly HistoryItemPayload[]): Handler {
   return (input, method) => {
     if (input.includes('/api/v1/result/')) return snapshot()
-    if (input.includes('/api/v1/preference')) return vectorFixture
-    if (input.includes('/api/v1/history')) return method === 'GET' ? items : null
+    if (input.includes('/api/v1/history')) {
+      // 列表端点 2026-11-05 起返回分页包装对象（裸数组 → {items, has_more, limit, offset}）
+      return method === 'GET' ? { items: [...items], has_more: false, limit: 50, offset: 0 } : null
+    }
     return null
   }
 }
@@ -70,13 +66,13 @@ function defaultHandler(items: readonly HistoryItemPayload[]): Handler {
 function renderSidebar(onCollapse: () => void = vi.fn()) {
   return render(
     <MemoryRouter>
-      <ProjectSidebar onCollapse={onCollapse} />
+      <ProjectSidebar onCollapse={onCollapse} onSelect={vi.fn()} />
     </MemoryRouter>,
   )
 }
 
 function itemTitles(): string[] {
-  return Array.from(document.querySelectorAll('.project-sidebar__item-title')).map(
+  return Array.from(document.querySelectorAll('[class*="project-sidebar__item-title"]')).map(
     (el) => el.textContent ?? '',
   )
 }
@@ -104,7 +100,7 @@ describe('ProjectSidebar 分组与结构（Task 4）', () => {
     expect(await screen.findByText('会话A')).toBeTruthy()
     expect(screen.getByText('proj-a')).toBeTruthy()
     expect(screen.getByText('proj-b')).toBeTruthy()
-    expect(document.querySelectorAll('.project-sidebar__group')).toHaveLength(2)
+    expect(document.querySelectorAll('section[class*="project-sidebar__group"]')).toHaveLength(2)
   })
 
   it('title 为空回退「项目名 · 状态」', async () => {
@@ -158,6 +154,23 @@ describe('ProjectSidebar 分组与结构（Task 4）', () => {
     expect(useOptimizeStore.getState().sessionId).toBeNull()
   })
 
+  it('选中会话与新建会话都回调 onSelect（窄屏据此自动收起抽屉）', async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+    stubFetch(defaultHandler([item({ session_id: 's1', title: '会话A' })]))
+    render(
+      <MemoryRouter>
+        <ProjectSidebar onCollapse={vi.fn()} onSelect={onSelect} />
+      </MemoryRouter>,
+    )
+
+    await user.click(await screen.findByText('会话A'))
+    expect(onSelect).toHaveBeenCalledTimes(1)
+
+    await user.click(screen.getByRole('button', { name: /新建会话/ }))
+    expect(onSelect).toHaveBeenCalledTimes(2)
+  })
+
   it('排序恒为置顶优先 → 时间倒序（无排序图标，2026-10-13 移除）', async () => {
     stubFetch(
       defaultHandler([
@@ -190,7 +203,7 @@ describe('ProjectSidebar 分组与结构（Task 4）', () => {
 
     await screen.findByText('会话A')
     expect(screen.getByText('项目')).toBeTruthy()
-    expect(document.querySelectorAll('.project-sidebar__collapse')).toHaveLength(1)
+    expect(document.querySelectorAll('[class*="project-sidebar__collapse"]')).toHaveLength(1)
 
     await userEvent.setup().click(screen.getByRole('button', { name: '收起侧边栏' }))
     expect(onCollapse).toHaveBeenCalledTimes(1)
@@ -207,7 +220,7 @@ describe('ProjectSidebar 选中与 ⋮ 菜单（Task 5）', () => {
     await user.click(screen.getByText('会话A'))
 
     expect(row?.className).toContain('project-sidebar__item-row--selected')
-    expect(row?.querySelector('.project-sidebar__item-icon')).not.toBeNull()
+    expect(row?.querySelector('[class*="project-sidebar__item-icon"]')).not.toBeNull()
     await waitFor(() => {
       expect(mock.mock.calls.find(([input]) => input.includes('/api/v1/result/s1'))).toBeTruthy()
     })
@@ -279,7 +292,7 @@ describe('ProjectSidebar 选中与 ⋮ 菜单（Task 5）', () => {
     })
   })
 
-  it('删除二次确认后经 DELETE 移除', async () => {
+  it('菜单删除先弹确认，确认后才 DELETE（2026-11-01 统一确认形态）', async () => {
     const user = userEvent.setup()
     const mock = stubFetch(defaultHandler([item({ session_id: 's1', title: '会话A' })]))
     renderSidebar()
@@ -288,7 +301,11 @@ describe('ProjectSidebar 选中与 ⋮ 菜单（Task 5）', () => {
     await user.click(screen.getByText('会话A'))
     await user.click(screen.getByRole('button', { name: '更多操作' }))
     await user.click(screen.getByRole('menuitem', { name: /删除任务/ }))
-    await user.click(screen.getByRole('menuitem', { name: /确认删除？/ }))
+
+    expect(screen.getByRole('dialog', { name: '删除会话' })).toBeTruthy()
+    expect(mock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)
+
+    await user.click(screen.getByRole('button', { name: '删除会话' }))
 
     await waitFor(() => {
       const call = mock.mock.calls.find(
@@ -346,5 +363,80 @@ describe('ProjectSidebar 选中与 ⋮ 菜单（Task 5）', () => {
     await user.click(screen.getByRole('menuitem', { name: /复制项目路径/ }))
 
     expect(writeText).toHaveBeenCalledWith('proj-a')
+  })
+})
+
+describe('ProjectSidebar 项目级删除（2026-11-01）', () => {
+  /** 列表按 project_root 分组；DELETE /history 返回删除条数（契约 ProjectDeleteResponse）。 */
+  function projectHandler(items: readonly HistoryItemPayload[], deleted: number): Handler {
+    return (input, method) => {
+      if (input.includes('/api/v1/history')) {
+        if (method === 'DELETE') return { deleted }
+        return { items: [...items], has_more: false, limit: 50, offset: 0 }
+      }
+      return defaultHandler(items)(input, method)
+    }
+  }
+
+  it('同名不同路径的项目分成两组，各自带删除入口', async () => {
+    stubFetch(
+      projectHandler(
+        [
+          item({ session_id: 's1', project: 'app', project_root: 'D:/a/app', title: '会话A' }),
+          item({ session_id: 's2', project: 'app', project_root: 'D:/b/app', title: '会话B' }),
+        ],
+        0,
+      ),
+    )
+    renderSidebar()
+
+    await screen.findByText('会话A')
+
+    expect(document.querySelectorAll('section[class*="project-sidebar__group"]')).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: '删除项目 app' })).toHaveLength(2)
+  })
+
+  it('点删除弹确认框并写明不删本地文件；取消不发请求', async () => {
+    const user = userEvent.setup()
+    const mock = stubFetch(
+      projectHandler([item({ session_id: 's1', project: 'app', project_root: 'D:/a/app' })], 1),
+    )
+    renderSidebar()
+
+    await user.click(await screen.findByRole('button', { name: '删除项目 app' }))
+
+    expect(screen.getByRole('dialog', { name: '删除项目' }).textContent).toContain(
+      '不会删除本地项目文件',
+    )
+
+    await user.click(screen.getByRole('button', { name: '取消' }))
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(mock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)
+  })
+
+  it('确认后按 project_root 批量删除并刷新列表', async () => {
+    const user = userEvent.setup()
+    const mock = stubFetch(
+      projectHandler([item({ session_id: 's1', project: 'app', project_root: 'D:/a/app' })], 2),
+    )
+    renderSidebar()
+
+    await user.click(await screen.findByRole('button', { name: '删除项目 app' }))
+    await user.click(screen.getByRole('button', { name: '删除项目' }))
+
+    expect(await screen.findByText('已删除 2 条会话')).toBeTruthy()
+
+    const deleteCall = mock.mock.calls.find(([, init]) => init?.method === 'DELETE')
+    expect(String(deleteCall?.[0])).toContain(`project_root=${encodeURIComponent('D:/a/app')}`)
+  })
+
+  it('老数据无 project_root 时不提供删除入口（无法精确定位分组）', async () => {
+    stubFetch(projectHandler([item({ session_id: 's1', project: 'proj-a', project_root: '' })], 0))
+    renderSidebar()
+
+    await screen.findByText('会话A')
+
+    expect(screen.queryByRole('button', { name: /删除项目/ })).toBeNull()
   })
 })

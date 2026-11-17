@@ -57,6 +57,50 @@ VERIFIABLE_ANCHOR_C: Final[str] = (
 )
 
 
+#: T-6 证据卫生（2026-11-07）：截断证据不得反向下结论 + 未取证事实不得断言。
+#:
+#: 为什么需要：检索输出会被截断（工具阈值、microcompaction、bash 摘要）。模型看到
+#: 半截输出时常得出「不存在 / 未定义 / 没有」这类负向结论，这是编造的主要来源之一。
+EVIDENCE_HYGIENE: Final[str] = (
+    "证据卫生（硬性）：\n"
+    "1. 取证输出若带截断标记（「已截断」「…」、original_chars、microcompacted 等），"
+    "不得据此断定「不存在 / 没有 / 未定义」，只能表述为「本次输出未覆盖」。\n"
+    "2. 未出现在本次取证结果中的代码事实不得断言；拿不准就判该项不通过并降档，"
+    "不要把猜测写成事实。"
+)
+
+
+#: T-7 证据范围（J3）：只对取证范围内的事实下断言。
+EVIDENCE_SCOPE: Final[str] = (
+    "证据范围（硬性）：只对本次取证结果中出现过的事实下断言；"
+    "范围之外的内容不得评价、不得补全、不得当成已知。"
+)
+
+#: T-8 外部来源核实（J4）：引用文档/网页必须先验。
+EXTERNAL_SOURCE_VERIFICATION: Final[str] = (
+    "外部来源（硬性）：引用官方文档、网页或第三方结论前必须先核实；"
+    "未核实的只能标注「未验证」，不得当作事实使用。"
+)
+
+#: T-9 交付契约（J5）：什么算「交付完成」。
+DELIVERY_CONTRACT: Final[str] = (
+    "交付契约：一套方案必须同时给出可执行步骤、涉及文件与验收方式；"
+    "缺任一项视为未完成，不得声称已交付。"
+)
+
+#: B18 模型族校准：不同厂商的记忆/探索行为差异，用一句话纠偏。
+MODEL_FAMILY_NOTES: Final[dict[str, str]] = {
+    "deepseek": "超过 3 轮前的结论不可靠：先重新取证再断言。",
+    "glm": "探针优先：先确认事实再动手，不要无限查证同一目标。",
+    "mimo": "全景探索要收敛：读完关键文件就给出结论。",
+}
+
+
+def family_note(provider: str) -> str:
+    """按 provider 取校准提示；未知厂商返回空串（不猜）。"""
+    return MODEL_FAMILY_NOTES.get((provider or "").strip().lower(), "")
+
+
 def build_evidence_block(payload: dict[str, Any]) -> str:
     """把证据字段序列化为 JSON 块并前置安全声明（T-1 + M-5）。
 

@@ -4,7 +4,7 @@
  * 校验内容：
  * 1. 仓库根 openapi.json 可解析，且含 paths 与 components.schemas
  * 2. 生成产物 openapi.generated.ts 覆盖全部契约 schema 名与端点路径
- * 3. 手写 Zod 模块（common/optimize/preference/settings）存在且导出运行时校验 schema
+ * 3. 手写 Zod 模块（common/optimize/history/settings/stream）存在且导出运行时校验 schema
  *
  * 退出码：0 = 通过；1 = 契约漂移或缺件。
  */
@@ -16,7 +16,7 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '..', '..')
 const openapiPath = path.join(repoRoot, 'openapi.json')
 const generatedPath = path.join(here, '..', 'src', 'schemas', 'openapi.generated.ts')
-const zodModules = ['common.ts', 'optimize.ts', 'preference.ts', 'settings.ts']
+const zodModules = ['common.ts', 'optimize.ts', 'history.ts', 'settings.ts', 'stream.ts']
 
 const errors = []
 

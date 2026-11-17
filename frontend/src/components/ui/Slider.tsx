@@ -1,5 +1,8 @@
 import type { ChangeEvent } from 'react'
-import './slider.css'
+import styles from './slider.module.css'
+import { makeS } from '../../utils/css'
+
+const s = makeS(styles)
 
 export interface SliderProps {
   /** 可访问名（aria-label）；视觉标签同名渲染。 */
@@ -22,10 +25,10 @@ export function Slider(props: SliderProps) {
   }
 
   return (
-    <label className="slider">
-      <span className="slider__label">{props.label}</span>
+    <label className={s('slider')}>
+      <span className={s('slider__label')}>{props.label}</span>
       <input
-        className="slider__input"
+        className={s('slider__input')}
         type="range"
         aria-label={props.label}
         min={props.min}
@@ -35,7 +38,7 @@ export function Slider(props: SliderProps) {
         disabled={props.disabled}
         onChange={handleChange}
       />
-      <output className="slider__value">{props.value.toFixed(2)}</output>
+      <output className={s('slider__value')}>{props.value.toFixed(2)}</output>
     </label>
   )
 }

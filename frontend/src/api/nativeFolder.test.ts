@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { NOT_INSTALLED_HINT, pickFolderViaNative } from './nativeFolder'
+import {
+  isNativeBridgeReady,
+  nativeBridgeMissingHint,
+  notInstalledHint,
+  pickFolderViaNative,
+} from './nativeFolder'
 
 /**
  * 模拟扩展回信。
@@ -48,14 +53,14 @@ describe('pickFolderViaNative（扩展桥）', () => {
 
   it('扩展回 ok=false 且无 error：回落到「未装扩展」指引', async () => {
     simulateExtension({ ok: false })
-    await expect(pickFolderViaNative()).rejects.toThrow(NOT_INSTALLED_HINT)
+    await expect(pickFolderViaNative()).rejects.toThrow(notInstalledHint())
   })
 
   it('无扩展应答：超时后给出可执行指引（不静默）', async () => {
     vi.useFakeTimers()
     try {
       const pending = pickFolderViaNative(50)
-      const assertion = expect(pending).rejects.toThrow(NOT_INSTALLED_HINT)
+      const assertion = expect(pending).rejects.toThrow(notInstalledHint())
       await vi.advanceTimersByTimeAsync(60)
       await assertion
     } finally {
@@ -85,12 +90,31 @@ describe('pickFolderViaNative（扩展桥）', () => {
     vi.useFakeTimers()
     try {
       const pending = pickFolderViaNative(50)
-      const assertion = expect(pending).rejects.toThrow(NOT_INSTALLED_HINT)
+      const assertion = expect(pending).rejects.toThrow(notInstalledHint())
       await vi.advanceTimersByTimeAsync(60)
       await assertion
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('isNativeBridgeReady（扩展就绪探测）', () => {
+  afterEach(() => {
+    document.documentElement.removeAttribute('data-devprompt-native')
+  })
+
+  it('扩展已注入（共享 DOM 有标记）：就绪', () => {
+    document.documentElement.setAttribute('data-devprompt-native', '1')
+    expect(isNativeBridgeReady()).toBe(true)
+  })
+
+  it('扩展未注入（标记缺失）：未就绪', () => {
+    expect(isNativeBridgeReady()).toBe(false)
+  })
+
+  it('缺失提示含刷新页面指引（content script 仅在页面加载时注入）', () => {
+    expect(nativeBridgeMissingHint()).toContain('刷新')
   })
 })
 

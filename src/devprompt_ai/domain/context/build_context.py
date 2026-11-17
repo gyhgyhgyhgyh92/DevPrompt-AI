@@ -22,9 +22,28 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
+from devprompt_ai.domain.context.budget import fit_blocks
+from devprompt_ai.domain.context.compact_policy import CacheKind
+from devprompt_ai.domain.context.compactor import plan_compaction
+
 #: 单条摘要的字符上限（三字段合计），避免个别轮次吃掉整层预算。
 _SUMMARY_CHAR_LIMIT: Final = 120
 _DIGEST_CHAR_LIMIT: Final = 80
+#: 纯回答轮的摘要上限（2026-11-05）：比普通轮长，否则「接着刚才说的」接不上。
+#: 普通轮仍用 120——回答轮的正文本身就是这轮的全部产出。
+_REPLY_SUMMARY_LIMIT: Final = 260
+#: 动作序列在摘要里的条数上限（2026-11-05）：够回看「做过哪几步」，又不撑大摘要。
+_SUMMARY_STEPS_LIMIT: Final = 24
+#: 六维快照可落库的键（白名单）：只允许这 7 个数值维度，防止任意键混入 summary_json。
+_SENSORIUM_KEYS: Final = (
+    "momentum",
+    "pressure",
+    "coverage",
+    "complexity",
+    "familiarity",
+    "stability",
+    "score",
+)
 
 
 def estimate_tokens(text: str) -> int:
@@ -51,16 +70,22 @@ class TurnSummary:
     open_items: tuple[str, ...] = ()
     decision: str = ""
     rejected: tuple[str, ...] = ()
+    #: 纯回答轮的正文摘要（2026-11-05）：本轮没有方案，结论会退化成「待补充信息」
+    reply: str = ""
 
     def render(self, *, include_open: bool = True, include_decision: bool = True) -> str:
         parts = [f"第{self.turn_index + 1}轮｜目标 {self.target or '未定位'}｜{self.conclusion}"]
+        if self.reply:
+            parts.append(f"回答 {self.reply}")
         if include_decision and self.decision:
             parts.append(f"选定 {self.decision}")
         if include_decision and self.rejected:
             parts.append(f"已否决 {'、'.join(self.rejected)}")
         if include_open and self.open_items:
             parts.append(f"待确认 {'；'.join(self.open_items)}")
-        return _clip("；".join(parts), _SUMMARY_CHAR_LIMIT)
+        # 回答轮给更长的上限：正文本身就是这一轮的全部产出，截到 120 会答不上追问
+        limit = _REPLY_SUMMARY_LIMIT if self.reply else _SUMMARY_CHAR_LIMIT
+        return _clip("；".join(parts), limit)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,9 +96,13 @@ class TurnInput:
     facts: tuple[str, ...] = ()
     clarifications: dict[str, str] = field(default_factory=dict)
     target: str = ""
+    #: 本轮目标锚点渲染块（2026-11-05）。放首行：历史被压成 80 字摘要后，
+    #: 目标是唯一不能跟着漂的东西。缺省空串保证旧调用方零改动。
+    anchor: str = ""
 
     def render(self) -> str:
-        lines = [f"本轮需求：{self.sentence}"]
+        lines = [self.anchor] if self.anchor else []
+        lines.append(f"本轮需求：{self.sentence}")
         if self.target:
             lines.append(f"本轮目标：{self.target}")
         if self.facts:
@@ -175,23 +204,55 @@ def _render_memory(notes: Sequence[str], limit: int, truncated: list[str]) -> st
     return "\n".join(kept)
 
 
+def compose_history(history: str, *, ledger: str = "", anchor: str = "") -> str:
+    """固定顺序拼接：历史 → 认知账本 → 权威锚点；空块跳过。"""
+    parts = [part for part in (history, ledger.strip(), anchor.strip()) if part]
+    return "\n\n".join(parts)
+
+
 def build_context(
     turns: Sequence[TurnSummary],
     current: TurnInput,
     *,
     notes: Sequence[str] = (),
     budget: ContextBudget = DEFAULT_BUDGET,
+    context_window: int = 0,
+    estimated_tokens: int = 0,
+    cache_kind: CacheKind = CacheKind.AUTOMATIC,
+    tail_anchor: str = "",
+    ledger_block: str = "",
+    delta_block: str = "",
 ) -> ContextPayload:
     """按层装配历史上下文（`turns` 为升序，最后一条是最近一轮）。
+
+    传入 `context_window` 与 `estimated_tokens` 时启用压缩：按计划缩放
+    recent/digest/older/memory 四层预算；**current 层永不压**。
 
     返回的 `history_block` 可直接拼进生成 prompt；`memory_block` 单独一块，
     便于调用方在超预算时优先保留记忆或反之。
     """
-    _current_limit, recent_limit, digest_limit, older_limit, memory_limit = budget.layer_limits()
+    limits = budget.layer_limits()
     truncated: list[str] = []
+    if context_window > 0 and estimated_tokens > 0:
+        plan = plan_compaction(
+            estimated_tokens=estimated_tokens,
+            window=context_window,
+            cache_kind=cache_kind,
+        )
+        if plan.should_compact:
+            ratio = plan.budget_ratio
+            limits = (
+                limits[0],
+                int(limits[1] * ratio),
+                int(limits[2] * ratio),
+                int(limits[3] * ratio),
+                int(limits[4] * ratio),
+            )
+            truncated.append(f"compacted:{plan.action.value}")
+    current_limit, recent_limit, digest_limit, older_limit, memory_limit = limits
 
     # current 层永不裁：超出只记录，不截断
-    if estimate_tokens(current.render()) > budget.layer_limits()[0]:
+    if estimate_tokens(current.render()) > current_limit:
         truncated.append("current")
 
     recent_turns = list(turns[-2:])
@@ -204,8 +265,16 @@ def build_context(
         _render_digest(digest_turns, digest_limit, truncated),
         _render_older(very_old_turns, current.target, older_limit, truncated),
     ]
-    history_block = "\n".join(block for block in blocks if block)
-    memory_block = _render_memory(notes, memory_limit, truncated)
+    body = "\n".join(block for block in blocks if block)
+    # B1–B4：增量附录（<context-update>）紧跟历史，仍在账本与权威块之前
+    if delta_block.strip():
+        body = f"{body}\n\n{delta_block.strip()}" if body else delta_block.strip()
+    # B15：认知账本在历史之后；B13/B14：权威块永远最后（不碰冻结前缀，缓存安全）
+    history_block = compose_history(body, ledger=ledger_block, anchor=tail_anchor)
+    # B17：记忆块按块级配额硬裁，防止单块吃光整窗
+    memory_block = fit_blocks(
+        {"project_memory": _render_memory(notes, memory_limit, truncated)}
+    ).get("project_memory", "")
     return ContextPayload(
         history_block=history_block,
         memory_block=memory_block,
@@ -218,11 +287,15 @@ def summary_from_turn(data: dict[str, Any]) -> dict[str, Any]:
 
     只留三字段 + 决策/否决：`target / conclusion / open / decision / rejected`。
     不含原句与绝对路径（MUST-19）——`target` 只取符号名。
+
+    另附三块**观测数据**（2026-11-05）：`level / claims / sensorium`，全为数值，
+    供离线统计声明率与六维分布用；上下文装配只按字段取用既有键，不进 prompt。
     """
     target_data = data.get("target")
     target = str(target_data.get("name", "")) if isinstance(target_data, dict) else ""
 
     variants = [item for item in data.get("variants", []) if isinstance(item, dict)]
+    # 仅用于 2026-11-11 之前的历史轮次回放：新轮次为单套输出，不再写入 ranking。
     ranking = data.get("ranking")
     decision = ""
     if isinstance(ranking, dict) and ranking.get("variant"):
@@ -246,6 +319,30 @@ def summary_from_turn(data: dict[str, Any]) -> dict[str, Any]:
     unknowns = [item for item in data.get("unknowns", []) if isinstance(item, dict)]
     open_items = [str(item.get("ask", "")) for item in unknowns if item.get("ask")][:3]
 
+    reply = str(data.get("reply_text", "")).strip()
+    # 动作序列（2026-11-05 形态层）：历史轮可回看「这一步在做什么」。
+    # 随摘要一起落进 summary_json——**不新增表列**（零 DDL 迁移、零旧库兼容风险）。
+    steps = [item for item in data.get("agent_steps", []) if isinstance(item, dict)]
+
+    # 六维快照（2026-11-05）：纯数值，白名单取键，不含原句与绝对路径（MUST-19）。
+    sensorium_raw = data.get("sensorium")
+    sensorium: dict[str, float] = {}
+    if isinstance(sensorium_raw, dict):
+        for key in _SENSORIUM_KEYS:
+            value = sensorium_raw.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                sensorium[key] = float(value)
+
+    # 断言对账（2026-11-05）：只取计数与布尔标记，uncovered 文本不进库。
+    claim_raw = data.get("claim_report")
+    claims: dict[str, Any] = {}
+    if isinstance(claim_raw, dict):
+        claims = {
+            "total": int(claim_raw.get("total", 0)),
+            "covered": int(claim_raw.get("covered", 0)),
+            "undeclared": bool(claim_raw.get("undeclared", False)),
+        }
+
     return {
         "target": target,
         "conclusion": _clip(conclusion, _SUMMARY_CHAR_LIMIT),
@@ -253,4 +350,13 @@ def summary_from_turn(data: dict[str, Any]) -> dict[str, Any]:
         "open": open_items,
         "decision": decision,
         "rejected": rejected[:2],
+        # 纯回答轮（2026-11-05）：本轮没有方案，conclusion 会退化成「待补充信息」，
+        # 用回答正文补足——否则下一轮回看历史只知道「答过」，不知道「答了什么」。
+        "reply": _clip(reply, _REPLY_SUMMARY_LIMIT),
+        "steps": steps[:_SUMMARY_STEPS_LIMIT],
+        # 观测数据（2026-11-05）：六维快照与断言对账随摘要落库，供离线统计阈值用；
+        # 上下文装配只按字段取用既有键，故不影响 prompt 与 API 响应。
+        "level": str(data.get("level", "")),
+        "claims": claims,
+        "sensorium": sensorium,
     }
