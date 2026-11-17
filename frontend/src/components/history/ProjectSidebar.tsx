@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { Circle, Folder, MoreVertical, PanelLeftClose, Pin, Plus, Trash2 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
+import { useToast } from '../../hooks/useToast'
+import { Toast } from '../ui/Toast'
 import {
   HISTORY_PAGE_SIZE,
   deleteHistory,
@@ -30,9 +32,6 @@ function sortItems(items: readonly HistoryItemPayload[]): HistoryItemPayload[] {
   })
   return copy
 }
-
-/** toast 显示时长（自研轻量提示，2s 消失）。 */
-const TOAST_DURATION_MS = 2000
 
 /** 条目标题回退：无 custom_title 且无原句（旧数据）时拼「项目名 · 状态」（spec 假设 3）。 */
 function itemTitle(item: HistoryItemPayload): string {
@@ -90,12 +89,12 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
-  const [toast, setToast] = useState<string | null>(null)
   // 删除确认（2026-11-01）：单条会话与整个项目共用同一个确认弹窗与请求中标志
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [isDeleting, setDeleting] = useState(false)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 轻量提示：状态与计时收敛在共享 hook（2026-11-17），与历史页共用同一份实现
+  const toast = useToast()
 
   useEffect(() => {
     getHistory({ limit: HISTORY_PAGE_SIZE })
@@ -104,19 +103,6 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
         // 列表加载失败保持空态，不重试（MUST-15）
       })
   }, [])
-
-  useEffect(
-    () => () => {
-      if (toastTimer.current !== null) clearTimeout(toastTimer.current)
-    },
-    [],
-  )
-
-  function showToast(text: string): void {
-    setToast(text)
-    if (toastTimer.current !== null) clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToast(null), TOAST_DURATION_MS)
-  }
 
   async function refreshHistory(): Promise<void> {
     const page = await getHistory({ limit: HISTORY_PAGE_SIZE }).catch(() => null)
@@ -149,7 +135,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
     navigate('/')
     getResult(sessionId)
       .then((snapshot) => useOptimizeStore.getState().applySnapshot(snapshot))
-      .catch(() => showToast(t('history.load_result_failed')))
+      .catch(() => toast.show(t('history.load_result_failed')))
   }
 
   function handleNewSession(): void {
@@ -166,7 +152,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
       await patchHistory(item.session_id, { pinned: !item.pinned })
       await refreshHistory()
     } catch {
-      showToast(t('history.pin_failed'))
+      toast.show(t('history.pin_failed'))
     }
   }
 
@@ -184,7 +170,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
       await patchHistory(item.session_id, { title })
       await refreshHistory()
     } catch {
-      showToast(t('history.rename_failed'))
+      toast.show(t('history.rename_failed'))
     }
   }
 
@@ -223,13 +209,13 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
     try {
       if (target.kind === 'session') {
         await deleteSession(target.item)
-        showToast(t('history.deleted'))
+        toast.show(t('history.deleted'))
       } else {
         const deleted = await deleteProject(target.group)
-        showToast(`已删除 ${deleted} 条会话`)
+        toast.show(`已删除 ${deleted} 条会话`)
       }
     } catch {
-      showToast(
+      toast.show(
         target.kind === 'session' ? t('history.delete_failed') : t('history.delete_project_failed'),
       )
     } finally {
@@ -244,8 +230,8 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
     const text = item.project_root !== '' ? item.project_root : item.project
     void navigator.clipboard
       .writeText(text)
-      .then(() => showToast(t('history.copied')))
-      .catch(() => showToast(t('history.copy_failed')))
+      .then(() => toast.show(t('history.copied')))
+      .catch(() => toast.show(t('history.copy_failed')))
   }
 
   const sorted = sortItems(history)
@@ -397,11 +383,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
         <Link to="/history">{t('history.link_history')}</Link>
       </nav>
 
-      {toast !== null ? (
-        <div className={s('project-sidebar__toast')} role="status">
-          {toast}
-        </div>
-      ) : null}
+      <Toast message={toast.message} />
 
       {/* Portal 到 body：窄屏抽屉的 transform 会成为 fixed 的包含块，弹窗会被裁在抽屉里 */}
       {pendingDelete !== null

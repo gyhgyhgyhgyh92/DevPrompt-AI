@@ -277,15 +277,3 @@
 .project-sidebar__footer a:hover {
   color: var(--color-text-primary);
 }
-
-.project-sidebar__toast {
-  position: absolute;
-  inset-block-end: var(--space-4);
-  inset-inline-start: 50%;
-  padding: var(--space-1) var(--space-3);
-  font-size: var(--text-body-xs);
-  color: var(--color-text-inverse);
-  background: var(--color-text-primary);
-  border-radius: var(--radius-sm);
-  transform: translateX(-50%);
-}

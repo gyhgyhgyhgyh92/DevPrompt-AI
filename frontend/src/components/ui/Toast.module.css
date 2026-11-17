@@ -1,0 +1,18 @@
+/* 统一轻量提示（2026-11-17）。
+ * 视觉沿用原 `.project-sidebar__toast`：反白胶囊 + 8px 圆角 + 12px 字号。
+ * 位置改为视口底部居中（portal 到 body），替代原先侧栏内/内容区内两种不一致的位置。 */
+
+.toast {
+  position: fixed;
+  inset-block-end: var(--space-4);
+  inset-inline-start: 50%;
+  z-index: 130;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-body-xs);
+  color: var(--color-text-inverse);
+  background: var(--color-text-primary);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  transform: translateX(-50%);
+  pointer-events: none;
+}

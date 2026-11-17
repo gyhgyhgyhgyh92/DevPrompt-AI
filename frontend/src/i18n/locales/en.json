@@ -1,21 +1,51 @@
 {
   "domain": {
     "badge_fallback": "fallback",
-    "code": { "name": "Code" },
-    "work": { "name": "Work" },
-    "life": { "name": "Life" },
-    "creative": { "name": "Creative" },
-    "learning": { "name": "Learning" },
-    "data": { "name": "Data" },
-    "marketing": { "name": "Marketing" },
-    "translation": { "name": "Translation" },
-    "legal": { "name": "Legal" },
-    "medical": { "name": "Medical" },
-    "finance": { "name": "Finance" },
-    "game": { "name": "Game" },
-    "av": { "name": "A/V" },
-    "visual": { "name": "Visual" },
-    "operations": { "name": "Operations" }
+    "code": {
+      "name": "Code"
+    },
+    "work": {
+      "name": "Work"
+    },
+    "life": {
+      "name": "Life"
+    },
+    "creative": {
+      "name": "Creative"
+    },
+    "learning": {
+      "name": "Learning"
+    },
+    "data": {
+      "name": "Data"
+    },
+    "marketing": {
+      "name": "Marketing"
+    },
+    "translation": {
+      "name": "Translation"
+    },
+    "legal": {
+      "name": "Legal"
+    },
+    "medical": {
+      "name": "Medical"
+    },
+    "finance": {
+      "name": "Finance"
+    },
+    "game": {
+      "name": "Game"
+    },
+    "av": {
+      "name": "A/V"
+    },
+    "visual": {
+      "name": "Visual"
+    },
+    "operations": {
+      "name": "Operations"
+    }
   },
   "app": {
     "status_checking": "Checking API",
@@ -624,6 +654,7 @@
       "label": "Run log",
       "title": "Run log",
       "no_session": "No session yet - submit an optimization to stream events here.",
+      "no_session_title": "No session",
       "no_events": "No events",
       "hint": "Following the session event stream live"
     }

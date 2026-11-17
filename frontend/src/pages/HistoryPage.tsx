@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MoreVertical, Pin } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
@@ -15,12 +15,12 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { useOptimizeStore } from '../stores/useOptimizeStore'
 import { useHistoryStore } from '../stores/useHistoryStore'
 import { formatDateTime } from '../utils/format'
-import sidebarStyles from '../components/history/ProjectSidebar.module.css'
+import { useToast } from '../hooks/useToast'
+import { Toast } from '../components/ui/Toast'
 import styles from './HistoryPage.module.css'
 import { makeS } from '../utils/css'
 
-// 历史页复用侧边栏的 toast 样式，故合并两张类名表
-const s = makeS({ ...sidebarStyles, ...styles })
+const s = makeS(styles)
 
 /** 排序：置顶优先，其次更新时间倒序（与 ProjectSidebar 同口径；仅展示序，非业务判定）。 */
 function sortItems(items: readonly HistoryItemPayload[]): HistoryItemPayload[] {
@@ -39,9 +39,6 @@ function itemTitle(item: HistoryItemPayload): string {
 function projectName(project: string): string {
   return project.split(/[\\/]/).filter(Boolean).pop() ?? project
 }
-
-/** toast 显示时长（自研轻量提示）。 */
-const TOAST_DURATION_MS = 2000
 
 /**
  * 历史记录页（F-702 独立可用）：列表 + 置顶 / 重命名 / 删除 / 复制路径 / 打开会话。
@@ -68,8 +65,8 @@ export function HistoryPage() {
   // 删除确认（2026-11-01）：菜单只选目标，执行统一走 ConfirmDialog
   const [pendingDelete, setPendingDelete] = useState<HistoryItemPayload | null>(null)
   const [isDeleting, setDeleting] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 轻量提示：状态与计时收敛在共享 hook（2026-11-17），与侧栏共用同一份实现
+  const toast = useToast()
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -88,19 +85,6 @@ export function HistoryPage() {
   useEffect(() => {
     void load()
   }, [load])
-
-  useEffect(
-    () => () => {
-      if (toastTimer.current !== null) clearTimeout(toastTimer.current)
-    },
-    [],
-  )
-
-  function showToast(text: string): void {
-    setToast(text)
-    if (toastTimer.current !== null) clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToast(null), TOAST_DURATION_MS)
-  }
 
   async function refreshHistory(): Promise<void> {
     const page = await getHistory({ limit: HISTORY_PAGE_SIZE }).catch(() => null)
@@ -133,7 +117,7 @@ export function HistoryPage() {
     navigate('/')
     getResult(sessionId)
       .then((snapshot) => useOptimizeStore.getState().applySnapshot(snapshot))
-      .catch(() => showToast(t('history.load_result_failed')))
+      .catch(() => toast.show(t('history.load_result_failed')))
   }
 
   async function handlePin(item: HistoryItemPayload): Promise<void> {
@@ -141,9 +125,9 @@ export function HistoryPage() {
     try {
       await patchHistory(item.session_id, { pinned: !item.pinned })
       await refreshHistory()
-      showToast(item.pinned ? t('history.unpinned') : t('history.pinned'))
+      toast.show(item.pinned ? t('history.unpinned') : t('history.pinned'))
     } catch {
-      showToast(t('history.pin_failed'))
+      toast.show(t('history.pin_failed'))
     }
   }
 
@@ -160,9 +144,9 @@ export function HistoryPage() {
     try {
       await patchHistory(item.session_id, { title })
       await refreshHistory()
-      showToast(t('history.renamed'))
+      toast.show(t('history.renamed'))
     } catch {
-      showToast(t('history.rename_failed'))
+      toast.show(t('history.rename_failed'))
     }
   }
 
@@ -176,9 +160,9 @@ export function HistoryPage() {
         navigate('/')
       }
       await refreshHistory()
-      showToast(t('history.deleted'))
+      toast.show(t('history.deleted'))
     } catch {
-      showToast(t('history.delete_failed'))
+      toast.show(t('history.delete_failed'))
     } finally {
       setDeleting(false)
       setPendingDelete(null)
@@ -191,8 +175,8 @@ export function HistoryPage() {
     const text = item.project_root !== '' ? item.project_root : item.project
     void navigator.clipboard
       .writeText(text)
-      .then(() => showToast(t('history.copied')))
-      .catch(() => showToast(t('history.copy_failed')))
+      .then(() => toast.show(t('history.copied')))
+      .catch(() => toast.show(t('history.copy_failed')))
   }
 
   const sorted = sortItems(history)
@@ -337,11 +321,7 @@ export function HistoryPage() {
         />
       ) : null}
 
-      {toast !== null ? (
-        <div className={s('project-sidebar__toast')} role="status">
-          {toast}
-        </div>
-      ) : null}
+      <Toast message={toast.message} />
     </section>
   )
 }

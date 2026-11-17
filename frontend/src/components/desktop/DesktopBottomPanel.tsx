@@ -10,10 +10,12 @@
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Radio } from 'lucide-react'
+import { ChevronDown, ChevronRight, Radio, ScrollText } from 'lucide-react'
 import { useOptimizeStore } from '../../stores/useOptimizeStore'
 import { isFailedEvent, summaryOf } from '../../features/obs/eventPresentation'
 import { useSessionEventStream } from '../../features/obs/useSessionEventStream'
+import { EmptyState } from '../ui/EmptyState'
+import { Skeleton } from '../ui/Skeleton'
 import { makeS } from '../../utils/css'
 import styles from './DesktopBottomPanel.module.css'
 
@@ -76,9 +78,24 @@ function DesktopBottomPanelLog({ sessionId }: { sessionId: string | null }): Rea
     <div className={s('app-panel__log')} ref={bodyRef}>
       {error !== '' ? <p className={s('app-panel__error')}>{error}</p> : null}
       {sessionId === null ? (
-        <p className={s('app-panel__empty')}>{t('desktop.panel.no_session')}</p>
-      ) : tail.length === 0 && !loading ? (
-        <p className={s('app-panel__empty')}>{t('desktop.panel.no_events')}</p>
+        <EmptyState
+          variant="icon"
+          icon={<ScrollText size={22} strokeWidth={1.5} />}
+          title={t('desktop.panel.no_session_title')}
+          description={t('desktop.panel.no_session')}
+        />
+      ) : loading && tail.length === 0 ? (
+        <div className={s('app-panel__skeletons')}>
+          {Array.from({ length: 6 }, (_unused, index) => (
+            <Skeleton key={index} height="14px" />
+          ))}
+        </div>
+      ) : tail.length === 0 ? (
+        <EmptyState
+          variant="icon"
+          icon={<ScrollText size={22} strokeWidth={1.5} />}
+          title={t('desktop.panel.no_events')}
+        />
       ) : (
         <ul className={s('app-panel__list')}>
           {tail.map((event) => (

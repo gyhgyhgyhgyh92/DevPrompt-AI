@@ -149,3 +149,10 @@
     transition: none;
   }
 }
+
+.app-panel__skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-inline: var(--space-3);
+}
