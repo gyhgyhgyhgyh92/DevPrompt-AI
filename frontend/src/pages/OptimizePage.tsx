@@ -557,7 +557,7 @@ export function OptimizePage() {
         </label>
         {domainOverride === 'visual' ? (
           <div className={s('optimize-page__visual-row')}>
-            <label className={s('optimize-page__model-switch optimize-page__style-switch')}>
+            <label className={s('optimize-page__model-switch')}>
               <span>{t('optimize.style_switch')}</span>
               <select
                 value={visualStyle}

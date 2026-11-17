@@ -1220,6 +1220,8 @@ frontend/
     │   ├── OptimizePage.tsx
     │   ├── OptimizePage.module.css  工作台页面层样式（2026-11-07 从 global.css 迁出）
     │   ├── HistoryPage.tsx         历史页（F-702 独立可用：列表 + 置顶/重命名/删除/复制路径/打开会话）
+    │   ├── ObservabilityPage.tsx   可观测性页（2026-11-16 自设置中心迁出：页头 + 返回工作台 + 设置回读兜底）
+    │   ├── ObservabilityPage.module.css  可观测性页层样式（撑满主区的高度链，台账/图表内部滚动）
     │   └── ~~PreferencePage.tsx~~  偏好页（2026-10-21 移除）
     ├── components/
     │   ├── ui/                通用展示组件
@@ -1250,14 +1252,14 @@ frontend/
     │   ├── ~~preference/~~     偏好页组件（2026-10-21 移除）
     │   │   └── ~~PreferenceEditor.tsx~~ 四维偏好编辑器（2026-10-21 随偏好层移除）
     │   └── settings/          设置中心组件（F-604，模态面板）
-    │       ├── SettingsModal.tsx      弹窗外壳 + 左侧四项导航
+    │       ├── SettingsModal.tsx      弹窗外壳 + 左侧四项导航（可观测性项点击跳转独立页面 /observability）
     │       ├── ModelServicePanel.tsx  供应商卡（F-604 供应商中心化：配一次 Base URL/API Key → 刷新模型列表 → 多选 → 一键保存；测试连接与删除均在供应商级）
     │       ├── AppearancePanel.tsx    通用外观（主题/语言/字体/行为开关）
     │       ├── ~~MemoryPanel.tsx~~     长期记忆（2026-10-21 随偏好层移除；设置中心剩外观/模型服务/安全三面板）
-    │       ├── ObservabilityPanel.tsx 可观测性外壳（2026-11-12：三模块独立开关 + 标签切换，各面板自持数据）
     │       └── SecurityPanel.tsx      流程与安全（护栏参数/锁定项/清除数据）
     ├── features/              跨页面功能模块（2026-11-12：三模块互不 import）
     │   └── obs/
+    │       ├── ObservabilityPanel.tsx  可观测性外壳（2026-11-12 三模块独立开关 + 标签切换，各面板自持数据；2026-11-16 随独立页面自 settings/ 迁出）
     │       ├── SessionLogPanel.tsx   Session Log：运行时事件台账（run_events，按 run 分段 + 筛选/导出/实时跟随）
     │       ├── TracePanel.tsx        Trace：会话/trace/事件台账 + 全量事件检查器 + JSON/CSV 导出
     │       ├── MetricsPanel.tsx      Metrics：多维聚合 + 阈值配置 + 告警历史

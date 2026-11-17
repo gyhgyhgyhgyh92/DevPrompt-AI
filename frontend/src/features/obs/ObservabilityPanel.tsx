@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { putSettings } from '../../api/endpoints'
 import { useSettingsStore } from '../../stores/useSettingsStore'
-import { MetricsPanel } from '../../features/obs/MetricsPanel'
-import { ReplayPanel } from '../../features/obs/ReplayPanel'
-import { SessionLogPanel } from '../../features/obs/SessionLogPanel'
-import { TracePanel } from '../../features/obs/TracePanel'
 import { makeS } from '../../utils/css'
-import { Tooltip } from '../ui/Tooltip'
-import { errorMessage } from './errorMessage'
-import styles from '../../features/obs/observability.module.css'
+import { Tooltip } from '../../components/ui/Tooltip'
+import { errorMessage } from '../../components/settings/errorMessage'
+import { MetricsPanel } from './MetricsPanel'
+import { ReplayPanel } from './ReplayPanel'
+import { SessionLogPanel } from './SessionLogPanel'
+import { TracePanel } from './TracePanel'
+import styles from './observability.module.css'
 
 const s = makeS(styles)
 
@@ -87,7 +87,7 @@ const DEFAULT_DRAFT: Draft = {
 }
 
 /**
- * 设置中心 · 可观测性外壳（2026-11-12）：
+ * 可观测性外壳（2026-11-12；2026-11-16 随独立页面 /observability 自设置中心迁出）：
  * 三个可观测性模块各自持有数据与视图状态，互不 import；外壳只做模块开关与标签切换。
  * 开关经 PUT /settings 持久化，后端即时作用到各模块（独立启停，互不影响）。
  *

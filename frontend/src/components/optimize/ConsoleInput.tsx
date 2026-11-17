@@ -18,9 +18,6 @@ const s = makeS(styles)
 /** 启动页主视觉固定文案（逐字，spec Task 3）：作为输入区占位展示，用户输入时隐藏。 */
 const PROMPT_HINT_KEY = 'console.prompt_hint'
 
-/** 启动页能力标签（i18n 键，顺序即展示顺序）。 */
-const HERO_CHIPS = ['console.chip_retrieval', 'console.chip_probing', 'console.chip_plans'] as const
-
 /** 输入自适应高度区间（1~6 行），超出由 textarea 内部滚动（上限见 ConsoleInput.css）。 */
 const MIN_TEXT_ROWS = 1
 const MAX_TEXT_ROWS = 6
@@ -208,13 +205,6 @@ export function ConsoleInput({
           </span>
           <h1 className={s('console-input__claim')}>{t('console.hero_claim')}</h1>
           <p className={s('console-input__sub')}>{t('console.hero_sub')}</p>
-          <div className={s('console-input__chips')}>
-            {HERO_CHIPS.map((key) => (
-              <span className={s('console-input__chip')} key={key}>
-                {t(key)}
-              </span>
-            ))}
-          </div>
         </header>
       ) : null}
       <form

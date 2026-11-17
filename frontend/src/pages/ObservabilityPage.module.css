@@ -1,0 +1,29 @@
+/*
+ * 可观测性独立页（/observability）：页头 + 面板容器；
+ * 颜色/间距/字号全部引用 tokens.css 变量（MUST-17 禁硬编码）。
+ */
+
+/* 复刻原弹窗内 .settings-content 的高度链：面板撑满可用高度，台账/图表在自身区域滚动 */
+.obs-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  block-size: 100%;
+  min-block-size: 0;
+  padding: var(--space-4);
+  overflow: hidden;
+}
+
+.obs-page__head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.obs-page__head h1 {
+  margin: 0;
+  font-size: var(--text-title-lg);
+  font-weight: 600;
+}

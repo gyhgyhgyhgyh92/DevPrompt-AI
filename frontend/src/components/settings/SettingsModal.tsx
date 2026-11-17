@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router'
 import { getSettings } from '../../api/endpoints'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { AppearancePanel } from './AppearancePanel'
 import { errorMessage } from './errorMessage'
 import { ModelServicePanel } from './ModelServicePanel'
-import { ObservabilityPanel } from './ObservabilityPanel'
 import { SecurityPanel } from './SecurityPanel'
 import styles from './settings.module.css'
 import { makeS } from '../../utils/css'
@@ -17,10 +17,15 @@ export interface SettingsModalProps {
   onClose: () => void
 }
 
-type TabKey = 'model-service' | 'appearance' | 'observability' | 'security'
+/** 弹窗内可切换的面板；左侧导航第四项是可观测性入口（跳转独立页面），不属此列。 */
+type PanelKey = 'model-service' | 'appearance' | 'security'
+type NavKey = PanelKey | 'observability'
 
-const TAB_KEYS = ['model-service', 'appearance', 'observability', 'security'] as const
-const TAB_ICONS: Record<(typeof TAB_KEYS)[number], string> = {
+/** 可观测性独立页面路由（内容唯一一份，弹窗内不再展开，MUST-10）。 */
+const OBSERVABILITY_ROUTE = '/observability'
+
+const NAV_KEYS: NavKey[] = ['model-service', 'appearance', 'observability', 'security']
+const TAB_ICONS: Record<NavKey, string> = {
   'model-service': '⚙',
   appearance: '◐',
   observability: '◎',
@@ -30,11 +35,15 @@ const TAB_ICONS: Record<(typeof TAB_KEYS)[number], string> = {
 /**
  * 设置中心模态（F-604）：左侧四项导航 + 右侧内容区；
  * Esc/✕ 关闭，打开时焦点入面板、关闭归还触发按钮（无障碍惯例，非状态逻辑）。
+ *
+ * 2026-11-16：可观测性项位置不变，但点击改为关闭弹窗并跳转独立页面 /observability，
+ * 弹窗内不再渲染可观测性内容（避免同一功能出现两份实现）。
  */
 export function SettingsModal(props: SettingsModalProps) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const setSettings = useSettingsStore((state) => state.setSettings)
-  const [activeTab, setActiveTab] = useState<TabKey>('model-service')
+  const [activeTab, setActiveTab] = useState<PanelKey>('model-service')
   const [loadError, setLoadError] = useState('')
   const panelRef = useRef<HTMLDivElement | null>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
@@ -79,6 +88,16 @@ export function SettingsModal(props: SettingsModalProps) {
 
   if (!props.open) return null
 
+  /** 导航项行为：可观测性项跳转独立页面，其余三项切换面板。 */
+  function handleNav(key: NavKey): void {
+    if (key === 'observability') {
+      props.onClose()
+      navigate(OBSERVABILITY_ROUTE)
+      return
+    }
+    setActiveTab(key)
+  }
+
   return (
     <div className={s('settings-overlay')}>
       <div
@@ -103,17 +122,17 @@ export function SettingsModal(props: SettingsModalProps) {
         </header>
         <div className={s('settings-modal__body')}>
           <nav className={s('settings-nav')} aria-label={t('settings.nav.label')}>
-            {TAB_KEYS.map((key) => (
+            {NAV_KEYS.map((key) => (
               <button
                 key={key}
                 type="button"
-                aria-current={activeTab === key ? 'page' : undefined}
+                aria-current={key !== 'observability' && activeTab === key ? 'page' : undefined}
                 className={s(
-                  activeTab === key
+                  key !== 'observability' && activeTab === key
                     ? 'settings-nav__item settings-nav__item--active'
                     : 'settings-nav__item',
                 )}
-                onClick={() => setActiveTab(key)}
+                onClick={() => handleNav(key)}
               >
                 {TAB_ICONS[key]} {t(`settings.tab.${key}`)}
               </button>
@@ -125,7 +144,6 @@ export function SettingsModal(props: SettingsModalProps) {
             ) : null}
             {activeTab === 'model-service' ? <ModelServicePanel /> : null}
             {activeTab === 'appearance' ? <AppearancePanel /> : null}
-            {activeTab === 'observability' ? <ObservabilityPanel /> : null}
             {activeTab === 'security' ? <SecurityPanel /> : null}
           </div>
         </div>

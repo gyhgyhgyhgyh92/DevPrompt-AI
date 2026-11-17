@@ -130,11 +130,8 @@
     "scan_failed": "Project path does not exist or cannot be scanned",
     "aria_sentence": "Requirement sentence",
     "brand_name": "DevPrompt AI",
-    "hero_claim": "Turn a vague sentence into a prompt an agent can actually run",
-    "hero_sub": "Read real code, ask only the unknowns, then deliver one executable plan",
-    "chip_retrieval": "Code retrieval",
-    "chip_probing": "Clarifying questions",
-    "chip_plans": "Single plan",
+    "hero_claim": "Turn a vague requirement into a high-quality prompt an agent can execute precisely",
+    "hero_sub": "Explore the real project, ask about the key unknowns",
     "aria_send": "Send",
     "aria_pick_folder": "Choose folder (local)",
     "opening": "Opening…",
@@ -333,6 +330,7 @@
   },
   "observability": {
     "title": "Observability",
+    "back_workbench": "← Workspace",
     "subtitle": "Session Log runtime ledger plus Trace / Metrics / Replay as three independent modules (read-only)",
     "tips": {
       "sections": {

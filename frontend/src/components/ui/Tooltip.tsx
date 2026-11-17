@@ -1,7 +1,7 @@
 /**
  * 通用悬停气泡（2026-11-14）。
  *
- * 复用自 `components/settings/ObservabilityPanel.tsx` 的局部 `ModuleTab` 实现：
+ * 复用自 `features/obs/ObservabilityPanel.tsx` 的局部 `ModuleTab` 实现：
  * portal + fixed 定位（不被 overflow 裁切）、视口夹紧（窄屏不左右溢出）、
  * `role="tooltip"` + `aria-describedby`、hover/focus 显隐、resize/scroll 自动隐藏。
  * 样式 token 与原 `.obs-tip` 同源（见 tooltip.module.css 注释）。
