@@ -26,9 +26,9 @@ export function useFocusTrap(panelRef: RefObject<HTMLElement | null>, isActive: 
       if (event.key !== 'Tab') return
       const panel = panelRef.current
       if (!panel) return
-      const focusables = Array.from(
-        panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-      ).filter((el) => el.offsetParent !== null || el === document.activeElement)
+      const focusables = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+        (el) => el.offsetParent !== null || el === document.activeElement,
+      )
       if (focusables.length === 0) return
       const first = focusables[0]
       const last = focusables[focusables.length - 1]

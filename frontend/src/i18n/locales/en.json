@@ -600,5 +600,32 @@
         "usage": "Describe the goal, available resources, budget and timeline."
       }
     }
+  },
+  "desktop": {
+    "rail": {
+      "label": "Desktop navigation",
+      "chat": "Chat",
+      "history": "History",
+      "observability": "Observability",
+      "settings": "Settings"
+    },
+    "status": {
+      "label": "Status bar",
+      "session": "Session",
+      "no_session": "No session",
+      "sse": {
+        "idle": "Idle",
+        "connecting": "Connecting",
+        "open": "Connected",
+        "error": "Stream error"
+      }
+    },
+    "panel": {
+      "label": "Run log",
+      "title": "Run log",
+      "no_session": "No session yet - submit an optimization to stream events here.",
+      "no_events": "No events",
+      "hint": "Following the session event stream live"
+    }
   }
 }

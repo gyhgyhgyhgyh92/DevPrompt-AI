@@ -12,6 +12,12 @@
   border-inline-end: 1px solid var(--divider);
 }
 
+/* 桌面工作台：二级侧栏放宽到 296px（Trae .task-list-base 任务列表宽度）。
+   仅桌面形态生效；Web 形态仍为 248px。 */
+[data-shell='desktop'] .project-sidebar {
+  inline-size: var(--desktop-side-width);
+}
+
 /* 顶部行：一键收纳按钮 + 「项目」（2026-10-13：按钮统一置左，与标题栏 ☰ 同侧；原 ⌄/排序/筛选已移除） */
 .project-sidebar__head {
   display: flex;

@@ -4,6 +4,9 @@ import { BrowserRouter } from 'react-router'
 import { Menu, Settings } from 'lucide-react'
 import { getHealth, getSettings } from './api/endpoints'
 import { isDesktopRuntime } from './api/nativeFolder'
+import { DesktopActivityRail } from './components/desktop/DesktopActivityRail'
+import { DesktopBottomPanel } from './components/desktop/DesktopBottomPanel'
+import { DesktopStatusBar } from './components/desktop/DesktopStatusBar'
 import { ProjectSidebar } from './components/history/ProjectSidebar'
 import { SettingsModal } from './components/settings/SettingsModal'
 import { BrandMark } from './components/ui/BrandMark'
@@ -168,6 +171,7 @@ export function App() {
           </button>
         </header>
         <div className={s('app-body')} data-body>
+          {isDesktop ? <DesktopActivityRail onOpenSettings={() => setSettingsOpen(true)} /> : null}
           <div
             className={s(isDrawerOpen ? 'app-drawer app-drawer--open' : 'app-drawer')}
             data-drawer
@@ -187,6 +191,12 @@ export function App() {
             <AppRoutes />
           </main>
         </div>
+        {isDesktop ? (
+          <>
+            <DesktopBottomPanel />
+            <DesktopStatusBar apiStatus={apiStatus} />
+          </>
+        ) : null}
       </div>
       <SettingsModal open={isSettingsOpen} onClose={() => setSettingsOpen(false)} />
     </BrowserRouter>

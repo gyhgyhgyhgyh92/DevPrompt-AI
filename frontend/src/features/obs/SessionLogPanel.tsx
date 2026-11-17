@@ -1,23 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { getHistory, getSessionEvents, openSessionStream } from '../../api/endpoints'
-import type { RunEvent } from '../../api/protocol'
+import { getHistory } from '../../api/endpoints'
 import type { HistoryItemPayload } from '../../api/types'
 import { makeS } from '../../utils/css'
 import { downloadCsv, downloadJson, exportFilename } from './exportData'
+import { isFailedEvent, runLabel, summaryOf } from './eventPresentation'
 import { SessionListView } from './SessionListView'
+import { useSessionEventStream, type SessionEvent } from './useSessionEventStream'
 import styles from './observability.module.css'
 
 const s = makeS(styles)
-
-/** 每页事件数（与后端 /events 的默认上限一致）。 */
-const PAGE_LIMIT = 200
-/** 实时跟随时内存里最多保留的事件数，防止长时间挂机无限增长。 */
-const LIVE_BUFFER_LIMIT = 2000
-/** 首次加载用「极大 seq」取最新一页（后端按 before 倒序分页）。 */
-const LATEST_CURSOR = 1 << 30
-
-type SessionEvent = RunEvent
 
 /** 事件类型 → 台账色条样式（纯展示映射，不做业务判定）。 */
 const TONE: Readonly<Record<string, string>> = {
@@ -39,47 +31,6 @@ function toneOf(event: SessionEvent): string {
   return TONE[event.type] ?? ''
 }
 
-function isFailed(event: SessionEvent): boolean {
-  const status = event.data.status
-  return event.type === 'error' || status === 'failed' || status === 'aborted'
-}
-
-/** 一条事件的可读摘要：只读 data 里的展示字段，缺省回退 JSON 片段。 */
-function summaryOf(event: SessionEvent): string {
-  const data = event.data
-  const pick = (...keys: string[]): string =>
-    keys
-      .map((key) => data[key])
-      .filter((value) => typeof value === 'string' || typeof value === 'number')
-      .join(' · ')
-  switch (event.type) {
-    case 'thought':
-      return String(data.text ?? '')
-    case 'action':
-      return pick('title', 'detail') || pick('detail')
-    case 'snapshot':
-      return pick('status', 'state')
-    case 'stop':
-      return pick('status', 'state', 'stop_reason')
-    case 'error':
-      return pick('message')
-    case 'approval.requested':
-    case 'approval.resolved':
-      return pick('title', 'kind', 'decision')
-    case 'clarification.requested':
-    case 'clarification.resolved':
-      return pick('title', 'kind', 'answer')
-    case 'agent.checkpoint':
-      return pick('summary', 'stage', 'label')
-    default:
-      return JSON.stringify(data).slice(0, 200)
-  }
-}
-
-function runLabel(runId: string): string {
-  return runId === '' ? '—' : runId.slice(0, 8)
-}
-
 /**
  * Session Log（2026-11-13 恢复）：基于运行时 `run_events` 的原始事件台账。
  *
@@ -91,20 +42,16 @@ export function SessionLogPanel() {
   const { t } = useTranslation()
   const [sessions, setSessions] = useState<HistoryItemPayload[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
-  const [events, setEvents] = useState<SessionEvent[]>([])
-  const [loading, setLoading] = useState(false)
-  const [hasMore, setHasMore] = useState(false)
   const [query, setQuery] = useState('')
   const [kind, setKind] = useState('')
-  const [live, setLive] = useState(false)
   const [selected, setSelected] = useState<SessionEvent | null>(null)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
-  const [error, setError] = useState('')
-  const eventsRef = useRef<SessionEvent[]>([])
+  /** 会话列表加载失败（与事件流错误分开，避免两类错误互相覆盖）。 */
+  const [listError, setListError] = useState('')
 
-  useEffect(() => {
-    eventsRef.current = events
-  }, [events])
+  // 事件流（去重 / 缓冲 / 翻页 / SSE 订阅）收敛在共享 hook，桌面底部面板复用同一份
+  const { events, loading, hasMore, error, isLive, setIsLive, reload, loadOlder } =
+    useSessionEventStream(sessionId)
 
   useEffect(() => {
     let alive = true
@@ -114,64 +61,17 @@ export function SessionLogPanel() {
         setSessions(page.items)
         setSessionId((prev) => prev ?? page.items[0]?.session_id ?? null)
       })
-      .catch((err: unknown) => alive && setError(String(err)))
+      .catch((err: unknown) => alive && setListError(String(err)))
     return () => {
       alive = false
     }
   }, [])
 
-  const loadLatest = useCallback(async (id: string): Promise<void> => {
-    setLoading(true)
-    setError('')
-    try {
-      const page = await getSessionEvents(id, LATEST_CURSOR, PAGE_LIMIT)
-      setEvents(page)
-      setHasMore(page.length >= PAGE_LIMIT)
-    } catch (err) {
-      setError(String(err))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
+  // 切换会话时重置选中项与分组折叠（事件流由 hook 自行处理会话切换）
   useEffect(() => {
-    if (sessionId === null) return
     setSelected(null)
     setCollapsed(new Set())
-    setLive(false)
-    void loadLatest(sessionId)
-  }, [sessionId, loadLatest])
-
-  // 实时跟随：从当前最大 seq 续订，按 seq 去重后追加（连接失败不弹错，保持历史可读）
-  useEffect(() => {
-    if (!live || sessionId === null) return undefined
-    const last = eventsRef.current.at(-1)?.seq ?? 0
-    return openSessionStream(sessionId, last, {
-      onEvent: (event) => {
-        if (event.seq === 0) return
-        setEvents((prev) => {
-          if (prev.some((item) => item.seq === event.seq)) return prev
-          return [...prev, event].slice(-LIVE_BUFFER_LIMIT)
-        })
-      },
-    })
-  }, [live, sessionId])
-
-  const loadOlder = async (): Promise<void> => {
-    if (sessionId === null) return
-    const before = events[0]?.seq ?? 0
-    if (before <= 0) return
-    setLoading(true)
-    try {
-      const page = await getSessionEvents(sessionId, before, PAGE_LIMIT)
-      setEvents((prev) => [...page, ...prev])
-      setHasMore(page.length >= PAGE_LIMIT)
-    } catch (err) {
-      setError(String(err))
-    } finally {
-      setLoading(false)
-    }
-  }
+  }, [sessionId])
 
   const kinds = useMemo(
     () => [...new Set(events.map((item) => item.type))].filter((item) => item !== ''),
@@ -251,17 +151,17 @@ export function SessionLogPanel() {
                 type="button"
                 className={s('obs-button')}
                 disabled={loading || sessionId === null}
-                onClick={() => sessionId !== null && void loadLatest(sessionId)}
+                onClick={reload}
               >
                 {t('observability.toolbar.refresh')}
               </button>
               <button
                 type="button"
                 className={s(
-                  live ? 'obs-button obs-button--active' : 'obs-button obs-button--ghost',
+                  isLive ? 'obs-button obs-button--active' : 'obs-button obs-button--ghost',
                 )}
-                aria-pressed={live}
-                onClick={() => setLive((prev) => !prev)}
+                aria-pressed={isLive}
+                onClick={() => setIsLive(!isLive)}
               >
                 {t('observability.toolbar.live_follow')}
               </button>
@@ -294,7 +194,9 @@ export function SessionLogPanel() {
               ))}
             </div>
           </div>
-          {error !== '' ? <p className={s('obs-status obs-status--error')}>{error}</p> : null}
+          {listError !== '' || error !== '' ? (
+            <p className={s('obs-status obs-status--error')}>{listError || error}</p>
+          ) : null}
           <p className={s('obs-note')}>
             events: {events.length} · {t('observability.module.session_log')}
           </p>
@@ -303,7 +205,7 @@ export function SessionLogPanel() {
               type="button"
               className={s('obs-load-more')}
               disabled={loading}
-              onClick={() => void loadOlder()}
+              onClick={loadOlder}
             >
               {loading ? t('observability.loading') : t('observability.log.load_older')}
             </button>
@@ -337,7 +239,7 @@ export function SessionLogPanel() {
                               type="button"
                               className={s(
                                 'obs-row',
-                                isFailed(item) && 'obs-row--failed',
+                                isFailedEvent(item) && 'obs-row--failed',
                                 selected?.seq === item.seq && 'obs-row--selected',
                               )}
                               onClick={() => setSelected(item)}

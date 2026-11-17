@@ -68,6 +68,14 @@
     box-shadow var(--dur-fast) var(--ease-out);
 }
 
+/* 桌面工作台：输入胶囊放宽至 820px、圆角收到 8（Trae 聊天输入胶囊规格）。
+   仅桌面形态生效；Web 形态维持 720px / 10px。 */
+[data-shell='desktop'] .console-input__card {
+  inline-size: min(var(--desktop-composer-width), calc(100% - 48px));
+  max-inline-size: var(--desktop-composer-width);
+  border-radius: var(--radius-md);
+}
+
 /* 聚焦时整卡描边转靛蓝 + 极淡光环（比只亮 textarea 更明确「正在输入」） */
 .console-input__card:focus-within {
   border-color: var(--color-primary-500);

@@ -192,6 +192,13 @@
   overflow: hidden;
 }
 
+/* 桌面工作台：主区用「卡片面」白底，与左侧菜单面（灰底）形成一层之差——
+   对标 Trae SOLO 的 .panel-content（白底）vs .task-list-base（菜单灰底）。
+   仅桌面形态生效，Web 形态维持原状。 */
+[data-shell='desktop'] .app-main {
+  background: var(--color-surface-raised);
+}
+
 /* 窄屏（<768）：侧边栏折叠为抽屉（汉堡唤出 + 遮罩/Esc 关闭）；三栏塌陷为单列 */
 @media (max-width: 767.98px) {
   /* 窄屏标题栏（2026-11-02 实测）：项目名已在抽屉里，chip 让位给品牌与操作，避免文字竖排 */
