@@ -148,15 +148,23 @@ async function createWindow(port: number): Promise<void> {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
-    minWidth: 1024,
-    minHeight: 700,
+    // 最小尺寸容纳桌面工作台全量 chrome：48px 活动栏 + 296px 二级侧栏 + 主区
+    minWidth: 1100,
+    minHeight: 720,
     title: 'DevPrompt AI',
     autoHideMenuBar: true,
+    // 窗口底色 = 前端画布色（--color-surface-base 浅色值），消除加载期白闪
+    backgroundColor: '#ebeff5',
+    // 先隐藏，内容渲染完成后再显示，避免看到未上色的空窗
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
+  })
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show()
   })
   mainWindow.on('closed', () => {
     mainWindow = undefined
