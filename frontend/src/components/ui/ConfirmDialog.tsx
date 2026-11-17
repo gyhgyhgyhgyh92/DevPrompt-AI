@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 import styles from './ConfirmDialog.module.css'
 import { makeS } from '../../utils/css'
 
@@ -58,6 +59,9 @@ export function ConfirmDialog({
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [isBusy, onClose])
+
+  // 焦点陷阱：Tab 在对话框内循环，不逃逸到背景
+  useFocusTrap(panelRef, true)
 
   return (
     <div

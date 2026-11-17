@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import type { FollowupRequest } from '../api/types'
 import {
@@ -605,7 +606,7 @@ export function OptimizePage() {
                       disabled={isThinking}
                       onClick={() => setImages((prev) => prev.filter((_, i) => i !== index))}
                     >
-                      ×
+                      <X size={12} strokeWidth={1.5} aria-hidden="true" />
                     </button>
                   </span>
                 ))}

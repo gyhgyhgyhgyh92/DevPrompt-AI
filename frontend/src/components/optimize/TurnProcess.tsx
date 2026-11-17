@@ -8,6 +8,7 @@
  */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { ThinkingItem } from '../../schemas/stream'
 import { PhaseLedger } from './PhaseLedger'
 import { formatDuration } from './TraceEntry'
@@ -78,7 +79,11 @@ export function TurnProcess({ thinking, steps }: TurnProcessProps) {
           {t(hasTimeline ? 'chat.turn_process' : 'chat.turn_steps', { count: actionCount })}
         </span>
         <span className={s('chat-reply__process-caret')} aria-hidden="true">
-          {isOpen ? '▾' : '▸'}
+          {isOpen ? (
+            <ChevronDown size={14} strokeWidth={1.5} />
+          ) : (
+            <ChevronRight size={14} strokeWidth={1.5} />
+          )}
         </span>
       </button>
 

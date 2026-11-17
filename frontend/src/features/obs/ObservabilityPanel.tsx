@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Info } from 'lucide-react'
 import { putSettings } from '../../api/endpoints'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { makeS } from '../../utils/css'
@@ -64,7 +65,7 @@ function ModuleTab(props: {
       >
         {props.label}
         <span className={s('obs-tab__hint')} aria-hidden="true">
-          ⓘ
+          <Info size={13} strokeWidth={1.5} />
         </span>
       </button>
     </Tooltip>

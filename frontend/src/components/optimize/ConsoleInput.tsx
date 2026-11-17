@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ArrowUp } from 'lucide-react'
 import { putSettings, scanProject } from '../../api/endpoints'
 import {
   isNativeBridgeReady,
@@ -241,7 +242,7 @@ export function ConsoleInput({
             aria-label={t('console.aria_send')}
             disabled={isDisabled}
           >
-            <span aria-hidden="true">↑</span>
+            <ArrowUp size={16} strokeWidth={1.5} aria-hidden="true" />
           </button>
         </div>
         <div className={s('console-input__divider')} />

@@ -10,6 +10,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ChevronDown } from 'lucide-react'
 import { DomainIdSchema, type DomainId } from '../../schemas/optimize'
 import { makeS } from '../../utils/css'
 import { Tooltip } from '../ui/Tooltip'
@@ -145,7 +146,7 @@ export function DomainSelect({ value, disabled = false, onChange }: DomainSelect
         >
           <span>{current?.name ?? t('optimize.domain_auto')}</span>
           <span className={s('domain-select__caret')} aria-hidden="true">
-            ▾
+            <ChevronDown size={14} strokeWidth={1.5} />
           </span>
         </button>
       </Tooltip>

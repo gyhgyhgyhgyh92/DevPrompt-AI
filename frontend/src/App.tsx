@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BrowserRouter } from 'react-router'
+import { Menu, Settings } from 'lucide-react'
 import { getHealth, getSettings } from './api/endpoints'
+import { isDesktopRuntime } from './api/nativeFolder'
 import { ProjectSidebar } from './components/history/ProjectSidebar'
 import { SettingsModal } from './components/settings/SettingsModal'
 import { BrandMark } from './components/ui/BrandMark'
@@ -26,22 +28,6 @@ const API_STATUS_KEY: Record<ApiStatus, string> = {
   down: 'app.status_down',
 }
 
-/** 设置入口图标（线性齿轮；避免 ⚙ 字符在不同系统字体下大小与基线不一致）。 */
-function GearIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <circle cx="8" cy="8" r="2.3" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path
-        d="M8 1.5v1.7M8 12.8v1.7M1.5 8h1.7M12.8 8h1.7M3.4 3.4l1.2 1.2M11.4 11.4l1.2 1.2M12.6 3.4l-1.2 1.2M4.6 11.4l-1.2 1.2"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
-}
-
 /**
  * 根组件 + 路由表 + 工作台壳层（标题栏 / 内容 / 状态栏，设计文档 §1.1）。
  * 6B 承诺：T6-4 页面落地后切 BrowserRouter，恢复 URL 直达与刷新定位。
@@ -50,6 +36,9 @@ export function App() {
   const { t } = useTranslation()
   const [apiStatus, setApiStatus] = useState<ApiStatus>('checking')
   const [isSettingsOpen, setSettingsOpen] = useState(false)
+  // 桌面形态判定（2026-11-17）：Electron preload 桥存在即为桌面壳。
+  // 唯一判据是桥的**存在性**，不依赖平台/UA 嗅探；Web 形态恒为 false。
+  const isDesktop = isDesktopRuntime()
   // 窄屏（<768）侧边栏抽屉开合；纯表现层状态，不进 store，不含任何业务判定（MUST-07/08）
   const [isDrawerOpen, setDrawerOpen] = useState(false)
   // 一键收纳（F-602，2026-10-13）：桌面端收起整个侧边栏；与抽屉共用同一状态位（窄屏=关抽屉）
@@ -145,7 +134,7 @@ export function App() {
     <BrowserRouter>
       <div
         className={s(isSidebarCollapsed ? 'app-shell app-shell--sidebar-collapsed' : 'app-shell')}
-        data-shell
+        data-shell={isDesktop ? 'desktop' : 'web'}
       >
         <header className={s('app-titlebar')} data-titlebar>
           <button
@@ -155,7 +144,7 @@ export function App() {
             aria-expanded={isDrawerOpen}
             onClick={handleMenuClick}
           >
-            ☰
+            <Menu size={16} strokeWidth={1.5} aria-hidden="true" />
           </button>
           <span className={s('app-titlebar__logo')}>
             <BrandMark size={18} />
@@ -174,7 +163,7 @@ export function App() {
             title={t('app.settings')}
             onClick={() => setSettingsOpen(true)}
           >
-            <GearIcon />
+            <Settings size={15} strokeWidth={1.5} aria-hidden="true" />
             <span>{t('app.settings')}</span>
           </button>
         </header>

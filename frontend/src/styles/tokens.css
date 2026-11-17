@@ -23,6 +23,14 @@
   --space-8: 32px;
   --space-10: 40px;
 
+  /* 半档间距（2026-11-17 桌面工作台对齐：Trae icube 设计系统有 2/6/10/14/28，
+     本项目原阶梯缺半档，页面内多处靠 calc() 硬凑；补齐后不再硬凑） */
+  --space-0-5: 2px;
+  --space-1-5: 6px;
+  --space-2-5: 10px;
+  --space-3-5: 14px;
+  --space-7: 28px;
+
   /* 字体栈（中文优先系统无衬线；等宽用于阶段名/耗时/路径等元信息） */
   --font-family-body:
     'PingFang SC', 'SF Pro Text', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -55,6 +63,9 @@
   --radius-lg: 10px;
   --radius-menu: 8px;
   --radius-full: 999px;
+  /* 小圆角（2026-11-17：图标钮 6、状态 chip 4，对齐 Trae radius-4/6） */
+  --radius-xs: 6px;
+  --radius-chip: 4px;
 
   /* 尺寸规格 */
   --sidebar-width: 248px;
@@ -63,6 +74,19 @@
   --color-brand-on: #ffffff;
   --icon-size: 16px;
   --menu-item-height: 30px;
+
+  /* 桌面工作台尺寸（2026-11-17：仅桌面形态使用，对标 Trae SOLO / VS Code 基准。
+     Web 形态沿用 --sidebar-width 等既有值，两套互不影响） */
+  --activity-rail-width: 48px; /* 左侧活动栏图标轨 */
+  --desktop-side-width: 296px; /* 桌面二级侧栏（Trae .task-list-base） */
+  --statusbar-height: 22px; /* 底部状态栏（VS Code .statusbar） */
+  --panel-height: 240px; /* 底部可折叠面板展开高度 */
+  --panel-header-height: 32px; /* 面板头高度 */
+  --chip-height: 18px; /* 状态 chip 高度（Trae .siteStatus） */
+  --icon-btn-size: 32px; /* 图标按钮容器（Trae .solo-icon-btn） */
+  --empty-icon-size: 48px; /* 空态图标底座（Trae .emptyState） */
+  --desktop-chat-width: 960px; /* 桌面态对话列宽 */
+  --desktop-composer-width: 820px; /* 桌面态输入胶囊宽 */
 
   /* 微型标签字距（等宽大写，形成日志感） */
   --track-micro: 0.08em;

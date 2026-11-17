@@ -37,6 +37,20 @@ declare global {
   }
 }
 
+/**
+ * 当前是否运行在桌面壳（Electron）内。
+ *
+ * 判据是 preload 桥的**存在性**：桌面壳必然注入 `window.devpromptDesktop`，
+ * Web 形态（浏览器 / 浏览器扩展）恒为 undefined。不做 UA / 平台嗅探——
+ * 桥在，就是桌面；桥不在，就是 Web。
+ *
+ * 用途：桌面专属的形态差异（活动栏 / 状态栏 / 底部面板）由此判定，
+ * 避免同一份前端出现两套实现（MUST-10 单一来源）。
+ */
+export function isDesktopRuntime(): boolean {
+  return typeof window !== 'undefined' && window.devpromptDesktop !== undefined
+}
+
 interface BridgeResponse {
   source?: string
   kind?: string

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { MoreVertical, Pin } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
 import {
   HISTORY_PAGE_SIZE,
@@ -250,15 +251,7 @@ export function HistoryPage() {
                               aria-label={t('history.pinned')}
                               className={s('history-page__pin')}
                             >
-                              <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true">
-                                <path
-                                  d="M8 2l1.5 3.4 3.5.4-2.6 2.3.7 3.4L8 9.8 4.9 11.5l.7-3.4L3 5.8l3.5-.4z"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="1.2"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
+                              <Pin size={11} strokeWidth={1.5} aria-hidden="true" />
                             </span>
                           ) : null}
                           {itemTitle(item)}
@@ -296,7 +289,7 @@ export function HistoryPage() {
                           )
                         }
                       >
-                        ⋮
+                        <MoreVertical size={14} strokeWidth={1.5} aria-hidden="true" />
                       </button>
                     </div>
                     {isMenuOpen ? (

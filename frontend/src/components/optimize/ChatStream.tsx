@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 
 import type { DeliveryGatePayload, UnknownItemPayload, VariantPayload } from '../../api/types'
 import type { DomainVerdictPayload } from '../../schemas/optimize'
@@ -170,7 +171,11 @@ export function ChatStream({
               >
                 <span>{isProcessOpen ? t('chat.process_fold') : summary}</span>
                 <span className={s('chat-reply__process-caret')} aria-hidden="true">
-                  {isProcessOpen ? '▾' : '▸'}
+                  {isProcessOpen ? (
+                    <ChevronDown size={14} strokeWidth={1.5} />
+                  ) : (
+                    <ChevronRight size={14} strokeWidth={1.5} />
+                  )}
                 </span>
               </button>
             </div>
