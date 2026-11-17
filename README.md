@@ -2,7 +2,7 @@
 
 > 把一句模糊的需求，变成**带行号与token 出处、可被 ripgrep 反向验证**的工程级提示词。
 
-本地运行的 Web 工具。给定一个代码仓库与一句自然语言需求，它会先**检索定位**（符号表 → 候选集 → 全文定位 → 七项事实验证），信息不足时**反问澄清**，最后产出 **A/B/C 三套**信息完备度递进的提示词方案，并给出**诚实的推荐标记**。
+本地运行的提示词工程工具，两种交付形态：**Web**（浏览器访问 8000 端口）与**桌面端**（Windows 安装包，独立窗口）。给定一个代码仓库与一句自然语言需求，它会先**检索定位**（符号表 → 候选集 → 全文定位 → 七项事实验证），信息不足时**反问澄清**，最后产出 **A/B/C 三套**信息完备度递进的提示词方案，并给出**诚实的推荐标记**。两种形态共用同一份业务逻辑与 `~/.devprompt-ai` 数据，可交替使用（宪法 MUST-10 双形态）。
 
 ---
 
@@ -14,6 +14,7 @@
 | **按需追问** | 由「具体未知项」驱动批量反问；**信息充足时不提问**（七项取证全过即丢弃模型给出的问题直接生成），已答项按语义归一化去重、同一话题不再追问；随时可「直接生成」走保守路径 |
 | **不越级输出** | 信息只够 A 档就只出 A 档。C 档才给行号，且要求行号必须真实存在，否则降级表述 |
 | **诚实推荐** | 置信度优先于分差：置信度不足时**不标推荐**并说明原因，绝不假装确定 |
+| **两种形态** | Web（浏览器）与桌面安装包（Windows）共用同一份业务逻辑与数据，可交替使用；桌面端零命令行启动，无需装 ripgrep/ctags |
 | **评分可解释** | 总分即适配度（0~1，模型按五维打分后归一化），不用不可解释的加权魔数；置信度门禁（0.6 / 0.4）与分差双阈值（0.12 / 0.5）都写死在领域层并有表驱动测试 |
 | **过程可见** | 检索与取证的真实命令、命中行数与输出摘要逐条展示（路径与 stderr 均脱敏）；检索失败也会留下一张带 `Exit code` 的失败卡片，不会静默；结束后整组收成一行摘要，可展开回看 |
 | **本地优先** | 单进程本地服务，SQLite 单文件存储，密钥只落 0600 文件不进库不进日志 |
@@ -33,6 +34,7 @@
 | [pnpm](https://pnpm.io/) | ≥ 10.15（实测 10.33） | 前端依赖管理 |
 | [ripgrep](https://github.com/BurntSushi/ripgrep) | 任意 | 代码检索（**必需**） |
 | [universal-ctags](https://github.com/universal-ctags/ctags) | 任意 | 符号表构建（**必需**） |
+| [Inno Setup](https://jrsoftware.org/) | 7.1.0 | **仅打包桌面安装包时需要**（开发态跑壳与 Web 形态都不需要） |
 
 > **不必手工配置 PATH**：项目会依次尝试 ①系统 PATH → ②环境变量
 > `DPROMPT_RG_PATH` / `DPROMPT_CTAGS_PATH` → ③WinGet 与编辑器内置工具目录扫描，
@@ -133,6 +135,20 @@ pwsh -File desktop/scripts/smoke-sidecar.ps1
 架构、开发态跑壳、已知边界（无自动更新 / 无代码签名 / 无应用图标）见
 `desktop/README.md`；桌面端需求条目 F-905-1~4 见功能清单。
 
+### 开发态跑壳
+
+```powershell
+pnpm -C desktop install          # 首次（Electron 二进制经 npmmirror 下载）
+pnpm -C frontend build           # 壳开发态直接读仓库 frontend/dist，改前端后需重新 build
+pnpm -C desktop start            # tsc 编译 + 起 Electron 窗口
+```
+
+### 构建安全
+
+安装包与 sidecar 可执行文件已用腾讯电脑管家逐个扫描，**均报「无风险」，无误报**。
+打包规格做了四层防误报处理：one-dir（非 one-file）、禁用 UPX、嵌入版本资源元数据、
+console 模式。未做代码签名，故首次运行有 SmartScreen 提示（见上文「用户使用」第 3 步）。
+
 ---
 
 ## 首次使用
@@ -146,6 +162,8 @@ pwsh -File desktop/scripts/smoke-sidecar.ps1
    也可以直接写进 `.env` 的 `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`。
 
 2. **选择项目目录**——启动卡片点「选择文件夹（本地）」，浏览并选定代码仓库根目录。
+   桌面端会直接弹 Windows 原生目录对话框；Web 形态需先装一次浏览器扩展
+   （`pwsh -File scripts/install_native_picker.ps1`，再在扩展页加载 `browser-extension/`）。
 
 3. **描述需求**——用一句话说明想改什么，例如：
    > 把提交按钮改成 primary-500 主色，并补一个导出 CSV 的次要按钮
@@ -174,6 +192,9 @@ pwsh -File desktop/scripts/smoke-sidecar.ps1
 | `cd frontend && pnpm check:contract` | 契约一致性校验 |
 | `uv run python scripts/smoke_provider.py` | 供应商能力冒烟（遍历模型注册表） |
 | `uv build` | 产出 wheel |
+| `pnpm -C desktop start` | 开发态跑桌面壳（需先 `pnpm -C frontend build`） |
+| `pwsh -File desktop/scripts/build-desktop.ps1` | 打桌面安装包（前端→壳→sidecar→staging→Inno） |
+| `pwsh -File desktop/scripts/smoke-sidecar.ps1` | 打包后 sidecar 冒烟（模拟安装态环境变量） |
 
 ---
 
@@ -275,6 +296,20 @@ $env:DPROMPT_RG_PATH = "C:\path\to\rg.exe"
 
 **Q：端口被占用**
 `uv run devprompt-ai --port 9000`；若同时改前端 dev proxy，记得同步 `vite.config.ts`。
+桌面端不受影响——它用的是内核分配的随机端口，与 Web 版 8000 互不冲突。
+
+**Q：桌面端提示「未找到 sidecar 可执行文件」**
+开发态请确认跑过 `uv sync --extra dev`（会生成 `.venv\Scripts\devprompt-ai-desktop.exe`）；
+安装包形态下该文件应位于安装目录的 `resources\sidecar\`，缺失说明安装包损坏，重装即可。
+
+**Q：覆盖安装时提示文件被占用**
+先关掉正在运行的 DevPrompt AI 窗口再重装。若之前用任务管理器强杀过主进程，
+sidecar 可能残留占着数据库，需手动结束 `devprompt-ai-desktop.exe`。
+
+**Q：桌面端窗口一片空白 / 立即报错退出**
+多半是模型服务未配置或后端自检失败。可在 Web 形态下打开
+<http://127.0.0.1:8000/api/v1/health> 看六项检查（rg/ctags/git/DB/LLM/存储自愈）
+哪项不通过；桌面端的同一份检查在窗口内以错误弹窗呈现。
 
 **Q：接口返回 `405 Method Not Allowed`（例如答复反问时）**
 说明**正在跑的后端进程是旧版本**，新路由没注册，请求落到单端口托管前端的静态兜底上（StaticFiles 只接受 GET/HEAD）。核验方式：
