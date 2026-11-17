@@ -1013,6 +1013,24 @@ frontend/src/
 - 安装版 health 的 `rg` / `ctags` 两项 ok，且 detail 显示的是**包内二进制**的版本
 - 二进制产物不入库（`.gitignore` 覆盖 `desktop/dist/`，MUST-23）
 
+### F-905-5 桌面工作台形态对齐（2026-11-17）
+
+**输入**：桌面安装包启动后的界面形态。对标对象：本机 Trae CN 的 SOLO / Builder 对话形态。
+
+**行为**：
+- **形态判定**：`api/nativeFolder.ts` 的 `isDesktopRuntime()`——判据是 preload 桥 `window.devpromptDesktop` 的**存在性**，不做 UA / 平台嗅探；外壳以 `data-shell="desktop" | "web"` 分支
+- **桌面专属 chrome**（仅桌面形态进 DOM）：左侧活动栏 48px（对话 / 历史 / 可观测性 / 设置四入口，32×32 图标钮）+ 二级侧栏 296px + 960px 宽列主区 + 可折叠「运行日志」面板 240px（实时会话事件流）+ 底部状态栏 22px（项目路径 / 会话短码 / 状态机态 / SSE / API / 当前模型，全部镜像既有来源）
+- **图标体系**：统一到 lucide 16px 线性（替掉 11 处字符字形与 10 个组件私有 SVG；品牌标识 BrandMark 保留自绘）
+- **交互反馈统一**：Toast 单一实现（portal 到视口底部居中）、EmptyState（48px 图标底座 + 600 标题 + 说明）、Skeleton（脉冲 1.4s / 扫光 1.5s）、弹窗 Tab 焦点循环
+- **配色与字体基调零改动**：Trae 的「背景色块分层」用既有 `--color-surface-*` / `--divider` / `--hover` / `--selected` token 表达；**仅新增尺寸/间距/圆角档位**，不新增任何色值变量
+- **Web 形态**：布局与观感完全不变，桌面专属区域零存在
+
+**验收**：
+- 桌面形态：活动栏四入口可切换路由；状态栏字段与后端镜像一致且前端零判定；运行日志实时输出会话事件流；控制台零错误
+- Web 形态：DOM 与改造前一致（`data-shell="web"`，活动栏 / 运行日志 / 状态栏零存在）
+- 两语种键集合完全一致（`i18n/keys.test.ts` 守卫）
+- 前端门禁全绿：typecheck / lint / format:check / test / build / check:css
+
 ## F-708 思考过程流式展示（2026-10-19）
 
 **输入**：`POST /api/v1/optimize/stream`（请求体同 `OptimizeRequest`，响应为 `text/event-stream`）。

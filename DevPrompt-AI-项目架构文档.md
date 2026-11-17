@@ -1248,7 +1248,15 @@ frontend/
     │   │   ├── Toggle.tsx         开关（设置中心用）
     │   │   ├── Slider.tsx         滑条（偏好/设置共用）
     │   │   ├── ConfirmDialog.tsx  通用确认弹窗（2026-11-01：遮罩 + 标题 + 正文 + 取消/危险确认，Esc/焦点管理）
+    │   │   ├── Tooltip.tsx        悬停气泡（portal + fixed 定位 + 视口夹紧；2026-11-17 起活动栏图标复用）
+    │   │   ├── Toast.tsx          统一轻量提示（2026-11-17：portal 到 body 视口底部居中，role=status + aria-live=polite；取代侧栏与历史页两份独立实现）
+    │   │   ├── EmptyState.tsx     统一空态（2026-11-17：icon 变体 48px 图标底座 + 600 标题 + 说明；text 变体维持纯文字）
+    │   │   ├── Skeleton.tsx       统一骨架屏（2026-11-17：脉冲 1.4s / 扫光 1.5s，对标 Trae）
     │   │   └── BrandMark.tsx      品牌标识内联 SVG（2026-11-01：气泡 + 火花，颜色随主题 token）
+    │   ├── desktop/           桌面专属形态组件（2026-11-17：Trae 式工作台，仅 Electron 形态渲染）
+    │   │   ├── DesktopActivityRail.tsx 左侧活动栏（48px 图标轨：对话 / 历史 / 可观测性 / 设置；32×32 图标钮）
+    │   │   ├── DesktopBottomPanel.tsx  可折叠「运行日志」面板（实时会话事件流，收起即断订阅）
+    │   │   └── DesktopStatusBar.tsx    底部状态栏（22px：项目路径 / 会话短码 / 状态机态 / SSE / API / 当前模型）
     │   ├── optimize/          优化流程组件
 │   │   ├── ConsoleInput.tsx     启动页主视觉输入卡片（对话式重构；2026-11-01 输入随内容自动增高至 6 行；模型选择器见 ModelPicker）
 │   │   ├── ModelPicker.tsx       模型选择器（2026-10-18：只列已配置条目；hover 飞出按模型参数面板——上下文长度 / 思考模式 / 思考强度，强度在开关关闭时置灰；档位取自官方静态登记，各模型独立；2026-11-08 兼会话级热切换入口，POST /sessions/{id}/model）
@@ -1280,6 +1288,8 @@ frontend/
     │   └── obs/
     │       ├── ObservabilityPanel.tsx  可观测性外壳（2026-11-12 三模块独立开关 + 标签切换，各面板自持数据；2026-11-16 随独立页面自 settings/ 迁出）
     │       ├── SessionLogPanel.tsx   Session Log：运行时事件台账（run_events，按 run 分段 + 筛选/导出/实时跟随）
+    │       ├── useSessionEventStream.ts 会话事件流 hook（2026-11-17：seq 去重 / 缓冲上限 2000 / SSE 续订起点 / 向前翻页；Session Log 视图与桌面运行日志面板共用同一份）
+    │       ├── eventPresentation.ts  事件展示派生（2026-11-17：摘要文案 / 失败判定 / run 短标签，两处共用）
     │       ├── TracePanel.tsx        Trace：会话/trace/事件台账 + 全量事件检查器 + JSON/CSV 导出
     │       ├── MetricsPanel.tsx      Metrics：多维聚合 + 阈值配置 + 告警历史
     │       ├── ReplayPanel.tsx       Replay：verify / compare + 时间轴回放
@@ -1298,11 +1308,13 @@ frontend/
     │   ├── useSSE.ts
     │   ├── useRunStream.ts        多端运行流（2026-11-07：先 fetchLastSeq → POST /runs → 订阅 /stream；按 seq 去重补帧）
     │   ├── useRequest.ts
+    │   ├── useToast.ts            轻量提示状态与计时（2026-11-17：侧栏与历史页共用一份，卸载清计时器）
+    │   ├── useFocusTrap.ts        模态焦点陷阱（2026-11-17：Tab 循环约束，设置弹窗与确认框共用）
     │   └── useDebounce.ts
     ├── api/                   请求封装
     │   ├── client.ts          基础请求层
 │   ├── endpoints.ts       接口定义（2026-11-08 增 setSessionModel：F10 会话级模型热切换，禁重试）
-│   ├── nativeFolder.ts    原生文件夹选择器桥（2026-10-19：页面 postMessage → 扩展 content script → service worker → native host → 系统对话框；2026-10-22 桌面化：优先走 window.devpromptDesktop 桥（Electron preload），无桥时原样回落扩展链路，取消均为空串同构）
+│   ├── nativeFolder.ts    原生文件夹选择器桥（2026-10-19：页面 postMessage → 扩展 content script → service worker → native host → 系统对话框；2026-10-22 桌面化：优先走 window.devpromptDesktop 桥（Electron preload），无桥时原样回落扩展链路，取消均为空串同构；2026-11-17 增 isDesktopRuntime()：以 preload 桥的**存在性**判定桌面形态，驱动桌面专属 chrome 的分支渲染）
 │   ├── protocol.ts        运行时帧契约（RunEventSchema 判别联合 + applyRunEvent，2026-11-07）
     │   ├── interceptors.ts    拦截器
     │   ├── errors.ts          错误处理

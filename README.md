@@ -110,6 +110,11 @@ pnpm dev
 独立窗口承载完整界面，无需终端、无需浏览器、无需装 ripgrep/ctags。
 业务逻辑与 Web 版**完全同一份**，两边共用 `~/.devprompt-ai` 数据，可交替使用。
 
+桌面形态是**桌面工作台**而非网页套壳：左侧 48px 活动栏（对话 / 历史 / 可观测性 / 设置）
++ 296px 项目会话侧栏 + 宽幅对话区 + 可折叠「运行日志」面板（实时事件流）+ 22px 状态栏。
+视觉取 Trae SOLO / Builder 的「背景色块分层 + 发丝描边」，配色与字体基调与 Web 端共用
+同一套 token，未新增色值。完整形态说明见 `desktop/README.md`。
+
 ### 用户使用
 
 1. 获取 `desktop/dist/installer/DevPromptAISetup-<version>.exe`（由开发者构建产出）

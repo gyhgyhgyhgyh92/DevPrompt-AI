@@ -14,6 +14,44 @@ Electron 主进程（desktop/src/main.ts）
   └─ 退出杀进程树（kill → 500ms 宽限 → taskkill /T /F）
 ```
 
+## 界面形态（Trae 式工作台，2026-11-17）
+
+桌面形态不再是「网页套壳」，而是一套**桌面工作台**骨架；Web 形态维持原布局不变。
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ ◉ DevPrompt AI      [项目路径 chip]        ●API 正常   ⚙    │ 48px 品牌栏
+├────┬───────────────┬───────────────────────────────────────┤
+│ ▣  │ 项目          │                                       │
+│ ☰  │ ＋ 新建会话   │        对话工作区（960px 宽列）        │ 48px 活动栏
+│ ◎  │ ▸ project-a   │                                       │ + 296px 侧栏
+│    │   会话 1      │   用户气泡 / AI 回复块                 │
+│ ⚙  │   会话 2      │   ────────────────────                │
+│    │               │   [ 输入胶囊 820px          ↑ ]        │
+├────┴───────────────┴───────────────────────────────────────┤
+│ 运行日志 ▾  seq 128 · action · rg 命中 3 行            ▸ 240px │ 底部面板（可折叠）
+├────────────────────────────────────────────────────────────┤
+│ D:/ws/repo  │ sess-3f2a  DONE  ●SSE  │ api.deepseek  ●正常 │ 22px 状态栏
+└────────────────────────────────────────────────────────────┘
+```
+
+| 区块 | 位置 | 职责 | 实现 |
+|---|---|---|---|
+| 活动栏 | 左侧 48px | 对话 / 历史 / 可观测性 / 设置 四个入口 | `frontend/src/components/desktop/DesktopActivityRail.tsx` |
+| 二级侧栏 | 296px | 项目与历史会话列表 | 复用 `ProjectSidebar`（桌面态宽度覆盖） |
+| 主区 | 弹性 | 对话工作台 | 复用 `OptimizePage`（桌面态列宽 960px / 输入胶囊 820px） |
+| 运行日志 | 底部 240px，可折叠 | 实时会话事件流 | `DesktopBottomPanel.tsx`（复用 `useSessionEventStream`） |
+| 状态栏 | 底部 22px | 项目路径 / 会话短码 / 状态机态 / SSE / API / 当前模型 | `DesktopStatusBar.tsx` |
+
+**形态判定**：`frontend/src/api/nativeFolder.ts` 的 `isDesktopRuntime()`——判据是
+preload 桥 `window.devpromptDesktop` 的**存在性**（不做 UA/平台嗅探）。桥在即桌面，
+桥不在即 Web。外壳以 `data-shell="desktop" | "web"` 分支，桌面专属 chrome 只在桌面形态
+进 DOM（故运行日志的 SSE 订阅在 Web 形态根本不会发生）。
+
+**视觉基调**：Trae 的「背景色块分层 + 发丝描边」用本项目既有 token 表达
+（`--color-surface-base/raised` 三级表面、`--divider` / `--color-border-subtle` 描边、
+`--hover` / `--selected` 交互底色），**未新增任何色值变量**，配色体系与字体基调不变。
+
 ## 前置
 
 | 工具 | 版本 | 用途 |
