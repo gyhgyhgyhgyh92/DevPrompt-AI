@@ -124,6 +124,22 @@ class TestStore:
         assert any("选定 B" in note.value for note in found)
         assert any("未选 A" in note.value for note in found)
 
+    async def test_record_from_v3_single_variant_writes_target_and_decision(
+        self, tmp_path: Path
+    ) -> None:
+        store = _store(tmp_path)
+        data: dict[str, Any] = {
+            "target": {"name": "SubmitButton", "path": "src/ui/Button.tsx", "line": 12},
+            "variant": {"title": "改配色并补状态"},
+        }
+
+        await store.record_from_session(_ROOT, data)
+        found = await store.search(_ROOT, target_key="submitbutton@ui/button.tsx", limit=10)
+
+        kinds = {note.kind for note in found}
+        assert kinds == {"target", "decision"}, "单套输出不写 rejected_option"
+        assert any("改配色并补状态" in note.value for note in found)
+
     async def test_record_without_target_writes_nothing(self, tmp_path: Path) -> None:
         store = _store(tmp_path)
         await store.record_from_session(_ROOT, {"variants": [{"level": "A", "title": "x"}]})

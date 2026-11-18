@@ -49,6 +49,28 @@ async def test_two_devices_see_same_timeline_and_reconnect_resumes(tmp_path: Pat
     assert await _collect(bus, session, 3, expect=2) == [4, 5], "重连从 since=3 补齐"
 
 
+async def test_two_sessions_fan_out_without_crosstalk(tmp_path: Path) -> None:
+    """两会话并发订阅+生产：时间线各自独立连续，事件不串流。
+
+    真实 HTTP 并发 SSE 已用独立进程验证（同进程 httpx 并发流会随机停推，属客户端限制）。
+    """
+    bus = EventBus(SQLiteEventStore(_db(tmp_path)))
+
+    async def produce(session: str) -> None:
+        for index in range(20):
+            await bus.append(session, "thought", {"index": index})
+            await asyncio.sleep(0.005)
+
+    consumers = [
+        asyncio.create_task(_collect(bus, session, 0, expect=20)) for session in ("s1", "s2")
+    ]
+    await asyncio.sleep(0)
+    await asyncio.gather(produce("s1"), produce("s2"))
+    results = await asyncio.gather(*consumers)
+
+    assert results == [list(range(1, 21)), list(range(1, 21))], "两会话时间线各自独立"
+
+
 async def test_restart_replays_from_disk(tmp_path: Path) -> None:
     db = _db(tmp_path)
     first = EventBus(SQLiteEventStore(db))

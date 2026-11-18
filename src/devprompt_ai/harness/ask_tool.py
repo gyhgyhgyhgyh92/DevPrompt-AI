@@ -45,6 +45,14 @@ ASK_TOOL_PARAMETERS: Final[dict[str, Any]] = {
                 "properties": {
                     "question": {"type": "string", "description": "完整问句，以「?」结尾"},
                     "header": {"type": "string", "maxLength": 12, "description": "12 字内短标签"},
+                    # 本项目扩展（非官方，不进 required）：模型没给时下游按空串处理。
+                    "bestGuess": {
+                        "type": "string",
+                        "description": (
+                            "当前最佳推断，必须来自本问相关取证证据；无依据时留空串，"
+                            "不得用无关事实充当推断"
+                        ),
+                    },
                     "options": {
                         "type": "array",
                         "minItems": 2,
@@ -151,6 +159,7 @@ def parse_ask_arguments(raw: str) -> list[AskQuestion] | None:
                 key="",
                 question=question,
                 header=str(item.get("header") or "").strip(),
+                best_guess=str(item.get("bestGuess") or "").strip(),
                 options=options,
                 multi_select=bool(item.get("multiSelect", False)),
             )

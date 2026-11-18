@@ -111,7 +111,22 @@ class SQLiteProjectNoteStore:
             )
         )
 
-        # 仅用于 2026-11-11 之前的历史轮次回放：新轮次为单套输出，不再写入 ranking。
+        # v3 单套输出：session.data["variant"] 是本轮唯一方案（无 ranking/variants）。
+        variant = data.get("variant")
+        if isinstance(variant, dict) and variant.get("title"):
+            await self.upsert(
+                ProjectNote(
+                    project_root=project_root,
+                    kind="decision",
+                    key=key,
+                    value=f"选定向：{variant['title']}",
+                    confidence=0.7,
+                    source="auto",
+                )
+            )
+            return  # 单套输出无被弃方案，不写 rejected_option
+
+        # 仅用于 2026-11-11 之前的历史轮次回放：旧轮次为多套输出。
         ranking = data.get("ranking")
         decision = ""
         if isinstance(ranking, dict) and ranking.get("variant"):

@@ -795,7 +795,8 @@ def test_best_guess_skips_not_found_placeholder() -> None:
     assert items[0].best_guess == ""
 
 
-def test_best_guess_prefers_available_evidence() -> None:
+def test_best_guess_never_borrows_unrelated_evidence() -> None:
+    """模型没给 best_guess 时留空：无关证据（token 定义）不能冒充"要改哪个文件"的推断。"""
     from devprompt_ai.domain.decision.followup import build_unknowns
 
     facts = [
@@ -804,7 +805,7 @@ def test_best_guess_prefers_available_evidence() -> None:
     ]
     items = build_unknowns(_design_probe(), facts)
 
-    assert items[0].best_guess == "src/tokens.css:1:--color-primary"
+    assert items[0].best_guess == ""
 
 
 # ── reply 纯回答（2026-11-05，对齐 Tianshu 的「无动作回合」）────────────
