@@ -15,6 +15,8 @@ class StopReason(str, Enum):
     NATURAL_FINISH = "natural-finish"
     NO_ANSWER = "no-answer"
     END_TURN = "end-turn"
+    #: 执行已结束但流程在等用户答复（ask/guardrail），不是业务完成。
+    AWAIT_USER = "await-user"
     GOAL_ROLLOVER = "goal-rollover"
     CONVERGENCE_ABORT = "convergence-abort"
     NO_TOOL_ABORT = "no-tool-abort"
@@ -71,7 +73,7 @@ def snapshot_stop_reason(status: str, state: str = "") -> StopReason:
     if status == "aborted" or state == "ABORTED":
         return StopReason.USER_INTERRUPT
     if status == "ask" or status == "guardrail":
-        return StopReason.END_TURN
+        return StopReason.AWAIT_USER
     if status == "done" or state == "DONE":
         return StopReason.NATURAL_FINISH
     return StopReason.NATURAL_FINISH

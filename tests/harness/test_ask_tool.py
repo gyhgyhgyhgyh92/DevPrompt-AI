@@ -72,6 +72,18 @@ class TestParse:
         parsed = parse_ask_arguments(json.dumps({"questions": [_question(1)]}))
         assert parsed is not None and parsed[0].key == ""
 
+    def test_best_guess_passthrough(self) -> None:
+        item = _question(1)
+        item["bestGuess"] = "src/ui/button.tsx:12"
+
+        parsed = parse_ask_arguments(json.dumps({"questions": [item]}))
+
+        assert parsed is not None and parsed[0].best_guess == "src/ui/button.tsx:12"
+
+    def test_missing_best_guess_is_empty(self) -> None:
+        parsed = parse_ask_arguments(json.dumps({"questions": [_question(1)]}))
+        assert parsed is not None and parsed[0].best_guess == ""
+
     def test_truncates_more_than_four_questions(self) -> None:
         raw = json.dumps({"questions": [_question(i) for i in range(6)]})
         parsed = parse_ask_arguments(raw)

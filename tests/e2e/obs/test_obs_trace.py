@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
@@ -187,7 +188,11 @@ async def test_tr06_retention_cleanup(trace_store: SQLiteTraceStore) -> None:
         make_event(1, TraceKind.ACTION_END.value),
         started_at="2020-01-01T00:00:00.000Z",
     )
-    fresh = make_event(2, TraceKind.ACTION_END.value)
+    # 新事件用当前时间：make_event 的固定时间会随日期推移被当成过期（时间炸弹）。
+    fresh = dataclasses.replace(
+        make_event(2, TraceKind.ACTION_END.value),
+        started_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+    )
     await trace_store.append_events([old, fresh])
 
     assert await trace_store.cleanup_expired(0) == 0

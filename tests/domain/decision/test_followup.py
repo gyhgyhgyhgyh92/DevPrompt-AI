@@ -10,11 +10,13 @@ from devprompt_ai.domain.decision.followup import (
     EXECUTION_REASON,
     MAX_QUESTIONS,
     GuardrailState,
+    _normalize_question,
     answered_headers,
     build_unknowns,
     lint_questions,
 )
 from devprompt_ai.domain.decision.port import AskOption, AskQuestion, FactProbeOutput
+from devprompt_ai.domain.models import FactResult
 
 
 def _ask(
@@ -134,6 +136,30 @@ class TestBuildUnknowns:
         items = build_unknowns(probe, [], answered_header_asks={"范围": ["允许修改测试文件吗"]})
 
         assert [i.key for i in items] == ["重连次数上限取几次?"]
+
+    def test_cross_header_same_question_is_dropped(self) -> None:
+        """换 header 重问同一件事必须跳过（2026-11-17：真实跑出 4→3→3→3）。"""
+        asked = _ask("校验提示以哪种形式呈现给用户?", header="提示形式")
+        reworded = _ask("校验提示以哪种形式呈现给用户？", header="展现方式")
+
+        asked_normalized = _normalize_question(asked.question)
+        items = build_unknowns(
+            _probe([reworded]), [], answered_header_asks={"提示形式": [asked_normalized]}
+        )
+
+        assert items == []
+
+    def test_no_evidence_fallback_for_best_guess(self) -> None:
+        """模型没给 best_guess 时留空，不拿无关证据冒充推断（真实跑出全是 ui_lib=antd）。"""
+        probe = _probe([_ask("要改哪个文件?", header="范围")])
+        facts = [
+            FactResult("has_state_styles", True, "ui_lib=antd"),
+            FactResult("token_defined", False, "--color-primary 未定义"),
+        ]
+
+        items = build_unknowns(probe, facts)
+
+        assert items[0].best_guess == ""
 
     def test_answered_headers_maps_header_to_answered_asks(self) -> None:
         """header → 已答问题归一文本，供上面两条规则区分「改措辞」与「新问题」。"""

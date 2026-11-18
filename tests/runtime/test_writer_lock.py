@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import time
 from pathlib import Path
@@ -34,9 +35,54 @@ def test_acquire_creates_lock_and_release_removes_it(tmp_path: Path) -> None:
 
 
 def test_fresh_foreign_lock_blocks_second_process(tmp_path: Path) -> None:
+    """活进程持锁必须互斥（用真进程，不用假 pid——假 pid 会被存活检测判死）。"""
+    import subprocess
+    import sys
+
     path = Path(f"{_db(tmp_path)}.lock")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text('{"pid": 999999}', encoding="utf-8")
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(10)"])
+    try:
+        path.write_text(json.dumps({"pid": proc.pid}), encoding="utf-8")
+        lock = SingleWriterLock(_db(tmp_path))
+        with pytest.raises(WriterLockError):
+            lock.acquire()
+    finally:
+        proc.terminate()
+        proc.wait()
+
+    # 不存在的大 pid + 新鲜 mtime：必须立即接管，不再等 120s stale
+    dead_path = Path(f"{_db(tmp_path)}.lock")
+    dead_path.write_text(json.dumps({"pid": 2_000_000_000}), encoding="utf-8")
+    takeover = SingleWriterLock(_db(tmp_path))
+    takeover.acquire()
+    assert takeover.acquired is True
+    takeover.release()
+
+
+def test_reused_pid_is_taken_over(tmp_path: Path) -> None:
+    """pid 活着但启动时间与锁记录不符 → 判为号码被复用，立即接管。"""
+    import socket
+
+    path = Path(f"{_db(tmp_path)}.lock")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"pid": os.getpid(), "startedAtMs": 1, "machineId": socket.gethostname()}),
+        encoding="utf-8",
+    )
+
+    lock = SingleWriterLock(_db(tmp_path))
+    lock.acquire()
+
+    assert lock.acquired is True
+    lock.release()
+
+
+def test_legacy_lock_without_identity_is_conservative(tmp_path: Path) -> None:
+    """旧格式锁（无 startedAtMs/machineId）不可核验身份：新鲜时保守阻塞。"""
+    path = Path(f"{_db(tmp_path)}.lock")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"pid": os.getpid()}), encoding="utf-8")
 
     lock = SingleWriterLock(_db(tmp_path))
     with pytest.raises(WriterLockError):

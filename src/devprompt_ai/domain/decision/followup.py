@@ -49,6 +49,9 @@ def _bigram_overlap(left: str, right: str) -> float:
 #: 「同一 header 下算同一件事」的措辞相似度下限（2026-11-07）。
 #: 低于它说明是同标签下的**新**问题（模型常用同一 header 追问下一层细节），必须继续问。
 _SAME_TOPIC_SIMILARITY = 0.45
+#: 跨 header 判同一件事的下限（2026-11-17）：模型换 header 重问同一问题，
+#: 阈值更高以免误吞「换标签的合法新问」。
+_SAME_TOPIC_ANY_HEADER_SIMILARITY = 0.75
 
 
 def answered_headers(
@@ -74,16 +77,22 @@ def answered_headers(
 def _same_topic_answered(
     header: str, normalized_question: str, answered: Mapping[str, frozenset[str]]
 ) -> bool:
-    """同一 header 下，这问是否就是已答过的那件事（同文本或措辞高度重合）。"""
-    if header == "":
-        return False
-    asks = answered.get(header)
-    if not asks:
-        return False
-    return any(
+    """这问是否就是已答过的那件事：同 header 用低阈值，跨 header 用高阈值。
+
+    模型换 header 重问同一问题会绕过旧的「仅同 header」判定（真实跑出 4→3→3→3），
+    故补一层跨 header 的高相似判定；合法新问的措辞不会达到 0.75。
+    """
+    own = answered.get(header, frozenset()) if header else frozenset()
+    if any(
         ask == normalized_question
         or _bigram_overlap(ask, normalized_question) >= _SAME_TOPIC_SIMILARITY
-        for ask in asks
+        for ask in own
+    ):
+        return True
+    all_asks = {ask for asks in answered.values() for ask in asks}
+    return any(
+        _bigram_overlap(ask, normalized_question) >= _SAME_TOPIC_ANY_HEADER_SIMILARITY
+        for ask in all_asks
     )
 
 
@@ -206,14 +215,8 @@ def build_unknowns(
             continue
         seen.add(normalized)
         best_guess = question.best_guess.strip()
-        if not best_guess:
-            # MUST-26：每问必须给当前最佳推断。模型没给时回退到取证证据，但必须过滤
-            # 「未找到」——那是 `_ev()` 的字面占位，把它当推断展示等于告诉用户
-            # 「最佳推断是：没找到」，比留空更误导（2026-11-05 真实冒烟发现）。
-            ordered = [f.evidence for f in facts if not f.passed] + [
-                f.evidence for f in facts if f.passed
-            ]
-            best_guess = next((e for e in ordered if e and e.strip() != "未找到"), "")
+        # 空就留空：拿其它事实的证据当推断会给出与问题无关的 best_guess
+        # （真实冒烟里每个问题都显示 ui_lib=antd），比留空更误导。
         asked.append(
             UnknownItem(
                 key=key,

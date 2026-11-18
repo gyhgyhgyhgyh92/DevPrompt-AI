@@ -28,15 +28,22 @@ def test_checkpoint_is_not_terminal() -> None:
 
 def test_snapshot_mapping() -> None:
     assert snapshot_stop_reason("done", "DONE") is StopReason.NATURAL_FINISH
-    assert snapshot_stop_reason("ask", "ASKING") is StopReason.END_TURN
+    assert snapshot_stop_reason("ask", "ASKING") is StopReason.AWAIT_USER
     assert snapshot_stop_reason("aborted", "ABORTED") is StopReason.USER_INTERRUPT
-    assert snapshot_stop_reason("guardrail", "CONFIRMING") is StopReason.END_TURN
+    assert snapshot_stop_reason("guardrail", "CONFIRMING") is StopReason.AWAIT_USER
+
+
+def test_await_user_is_not_a_voluntary_finish() -> None:
+    record = StopRecord(StopReason.AWAIT_USER)
+    assert record.is_terminal is True
+    assert record.is_voluntary is False
+    assert record.is_guard is False
 
 
 def test_all_reasons_have_unique_values() -> None:
     values = [reason.value for reason in StopReason]
 
-    assert len(values) == len(set(values)) == 12
+    assert len(values) == len(set(values)) == 13
 
 
 def _step(index: int, action: AgentAction, facts: int) -> AgentStep:
