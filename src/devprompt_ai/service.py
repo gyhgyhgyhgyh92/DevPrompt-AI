@@ -3736,13 +3736,15 @@ async def build_default(cfg: AppConfig) -> ForgeService:
     await sessions.init_schema()
     obs = obs_registry.build_obs_modules(cfg)
     await obs.startup()
+    command_runner = TracedRunner(LocalCommandRunner(), obs.collector)
     service = ForgeService(
         cfg=cfg,
         decider=TracedDecider(create_decider(cfg), obs.collector),
         sessions=sessions,
-        runner=TracedRunner(LocalCommandRunner(), obs.collector),
+        runner=command_runner,
         reader=TracedReader(LocalFileReader(), obs.collector),
-        generator=TracedGenerator(LLMGenerator(cfg), obs.collector),
+        # 同轮补充检索工具：生成阶段模型可自主调用（2026-11-18），复用同一 runner。
+        generator=TracedGenerator(LLMGenerator(cfg, runner=command_runner), obs.collector),
         symbols_provider=TracedSymbolProvider(
             SymbolTableProvider(LocalCommandRunner()), obs.collector
         ),

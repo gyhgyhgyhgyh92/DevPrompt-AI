@@ -61,6 +61,13 @@ from devprompt_ai.domain.prompt_guard import (
     JSON_STRICT_RULES,
     family_note,
 )
+from devprompt_ai.domain.retrieval.ports import CommandRunner
+from devprompt_ai.domain.retrieval.tool_search import (
+    RG_EXIT_CODES,
+    SEARCH_TIMEOUT_S,
+    build_search_args,
+    render_hits,
+)
 from devprompt_ai.harness.adapters import adapter_kind_for, build_adapter
 from devprompt_ai.harness.ask_tool import ASK_TOOL_DEFINITION, ASK_TOOL_NAME
 from devprompt_ai.harness.model_candidates import load_candidates
@@ -97,6 +104,12 @@ _STREAM_EMIT_INTERVAL_S: Final[float] = 0.25
 #: 每次推送保留的尾部字符数（前端只展示「正在写什么」）。
 _STREAM_TAIL_CHARS: Final[int] = 120
 
+#: 同轮工具说明（仅在挂了 search_code 时追加到 SYSTEM）。
+_TOOL_HINT: Final[str] = """## 可用工具
+`search_code`：在目标仓库做一次字面全文检索，返回命中行（path:line:content）。
+仅在证据不足、无法写出可核对的路径或行号时调用；证据已足够时不要调用。
+同一轮最多调用 2 次；每次调用都会消耗时间，检索后必须基于结果给出最终 JSON。"""
+
 
 def set_generation_sink(sink: ProgressSink | None) -> Token[ProgressSink | None]:
     """设置本轮生成的增量推送出口；调用方负责在 finally 中 ``reset_generation_sink``。"""
@@ -107,13 +120,16 @@ def reset_generation_sink(token: Token[ProgressSink | None]) -> None:
     _GENERATION_SINK.reset(token)
 
 
-async def _run_streamed_generate(agent: Agent, payload: str | list[Any], timeout: float) -> Any:
+async def _run_streamed_generate(
+    agent: Agent, payload: str | list[Any], timeout: float, *, max_turns: int = 1
+) -> Any:
     """生成路径流式累积：增量文本节流推思考帧，完整输出仍由调用方解析（协议不变）。
 
     首字延迟从「等完整 JSON」降到首个 delta；超时语义与原 ``wait_for`` 一致。
+    ``max_turns>1`` 时 SDK 会在模型发起工具调用时执行工具并回喂，同一轮继续生成。
     """
     sink = _GENERATION_SINK.get()
-    result = Runner.run_streamed(agent, payload, max_turns=1)
+    result = Runner.run_streamed(agent, payload, max_turns=max_turns)
 
     async def consume() -> Any:
         buffer: list[str] = []
@@ -140,6 +156,8 @@ async def _run_streamed_generate(agent: Agent, payload: str | list[Any], timeout
         return result
 
     return await asyncio.wait_for(consume(), timeout=timeout)
+
+
 _RETRYABLE_MARKERS: Final[tuple[str, ...]] = (
     "timeout",
     "429",
@@ -157,6 +175,70 @@ def _is_retryable(exc: BaseException) -> bool:
         return True
     haystack = f"{type(exc).__name__} {exc}".lower()
     return any(marker in haystack for marker in _RETRYABLE_MARKERS)
+
+
+def _emit_tool_event(event: str, **fields: object) -> None:
+    """工具侧可观测：观测自身故障不得中断生成（SDK 会把工具异常包成 UserError）。"""
+    try:
+        emit(event, **fields)
+    except Exception:  # noqa: BLE001 - 观测 fail-open
+        logger.debug("tool.event_failed", exc_info=True)
+
+
+def _search_code_tool(root: str, runner: CommandRunner) -> FunctionTool:
+    """生成阶段的补充检索工具（2026-11-18 同轮工具回路）。
+
+    模型在生成方案时若发现证据不足，可调用本工具做一次字面全文检索；SDK 负责
+    执行工具并把结果作为 ``function_call_output`` 回喂同一轮上下文，模型据此
+    补足证据后再产出方案——不必回到决策层再走一轮。
+
+    与 AskUserQuestion 的区别：那个工具**不执行**（答案要等用户下一轮），
+    本工具同轮可完成、结果可直接回喂。
+    """
+
+    async def _invoke(_ctx: Any, args_json: str) -> str:
+        # 工具内任何异常都会被 SDK 包成 UserError 中断整轮，故此处全路径 fail-open。
+        try:
+            payload = json.loads(args_json or "{}")
+        except json.JSONDecodeError:
+            return "参数非法：query 必须是字符串"
+        if not isinstance(payload, dict):
+            return "参数非法：query 必须是字符串"
+        query = str(payload.get("query") or "").strip()
+        if not query:
+            return "参数非法：query 不能为空"
+        try:
+            raw = await runner.run(
+                build_search_args(query),
+                timeout=SEARCH_TIMEOUT_S,
+                allowed_exit_codes=RG_EXIT_CODES,
+                cwd=root or None,
+            )
+        except Exception as exc:  # noqa: BLE001 - 工具失败不阻断生成
+            logger.warning("tool.search_failed", extra={"error": type(exc).__name__})
+            _emit_tool_event("tool.search_failed", error=type(exc).__name__)
+            return f"检索失败：{type(exc).__name__}"
+        hits = render_hits(raw)
+        # 只记命中规模，不记检索词原文（MUST-19：用户原句/检索词不进日志）。
+        _emit_tool_event("tool.search_invoked", chars=len(hits))
+        return hits
+
+    return FunctionTool(
+        name="search_code",
+        description=(
+            "在目标仓库做一次字面全文检索，返回命中行（path:line:content）。"
+            "仅在证据不足、无法写出可核对路径或行号时调用；证据已足够时不要调用。"
+        ),
+        params_json_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "要检索的字面文本（不是正则）"}
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+        on_invoke_tool=_invoke,
+    )
 
 
 def _user_payload(user: str, images: tuple[str, ...]) -> str | list[Any]:
@@ -178,14 +260,18 @@ async def _run_with_retry(
     timeout: float,
     *,
     retry_on_timeout: bool = True,
+    max_turns: int = 1,
 ) -> Any:
     """带退避与共享预算的单次结构化调用（失败抛原始异常，由调用方归类）。
 
     ``retry_on_timeout=False``：超时直接抛（生成路径用）——重试会与兜底模板叠加。
+    ``max_turns>1``：允许模型同轮发起工具调用（SDK 执行并回喂结果）。
     """
     for attempt in range(1, _RETRY_POLICY.max_attempts + 1):
         try:
-            return await asyncio.wait_for(Runner.run(agent, payload, max_turns=1), timeout=timeout)
+            return await asyncio.wait_for(
+                Runner.run(agent, payload, max_turns=max_turns), timeout=timeout
+            )
         except Exception as exc:
             timed_out = isinstance(exc, (TimeoutError, asyncio.TimeoutError))
             if (
@@ -461,9 +547,7 @@ def _cfg_with_effort_cap(cfg: AppConfig, purpose: str) -> AppConfig:
     current = cfg.reasoning_effort_value()
     if cap is None or not current:
         return cfg
-    if _EFFORT_RANK.get(current, len(_EFFORT_RANK)) <= _EFFORT_RANK.get(
-        cap, len(_EFFORT_RANK)
-    ):
+    if _EFFORT_RANK.get(current, len(_EFFORT_RANK)) <= _EFFORT_RANK.get(cap, len(_EFFORT_RANK)):
         return cfg
     params = dict(cfg.llm_params or {})
     params["reasoning_effort"] = cap
@@ -565,11 +649,14 @@ async def _structured_once(
     timeout: float,
     purpose: str,
     images: tuple[str, ...] = (),
+    tools: tuple[FunctionTool, ...] = (),
+    max_turns: int = 1,
 ) -> ModelT:
     """单候选的一次结构化调用（含纠偏重试），失败转细分错误码（M-9）。
 
     ``images`` 非空时走多模态消息（2026-11-14 图生图）；纠偏重试仅重发文本——
     上一轮输出已包含模型对图像的解读，重发原图只增加无谓 token。
+    ``tools`` 非空时挂载同轮工具：SDK 执行工具并把结果回喂同一轮，模型据此再产出。
     """
     _ensure_client(cfg)
     schema = json.dumps(output_type.model_json_schema(), ensure_ascii=False)
@@ -581,6 +668,7 @@ async def _structured_once(
         name="devprompt-llm",
         instructions=instructions,
         model=build_model(cfg),
+        tools=list(tools),
         model_settings=ModelSettings(
             **tuned.effective_llm_params(),
             # reasoning_effort 等 ModelSettings 未建模的参数走 extra_body 真正下发
@@ -593,7 +681,7 @@ async def _structured_once(
     use_stream = purpose == "generate" and _GENERATION_SINK.get() is not None
     try:
         if use_stream:
-            result = await _run_streamed_generate(agent, payload, timeout)
+            result = await _run_streamed_generate(agent, payload, timeout, max_turns=max_turns)
         else:
             # 生成超时不重试（2026-11-15）：重试会与兜底模板叠加成 2×超时 + 一次重跑
             result = await _run_with_retry(
@@ -601,6 +689,7 @@ async def _structured_once(
                 payload,
                 timeout,
                 retry_on_timeout=purpose != "generate",
+                max_turns=max_turns,
             )
     except Exception as exc:
         # 失败留痕（2026-11-15）：此前只能靠「trace 少一条 response」推断模型超时
@@ -720,6 +809,8 @@ async def chat_structured(
     timeout: float | None = None,
     purpose: RoutingPurpose = "generate",
     images: tuple[str, ...] = (),
+    tools: tuple[FunctionTool, ...] = (),
+    max_turns: int = 1,
 ) -> ModelT:
     """单次结构化调用（多模型路由 + 主备，G2–G6/G9）。
 
@@ -747,6 +838,8 @@ async def chat_structured(
                 timeout=effective_timeout,
                 purpose=purpose,
                 images=images,
+                tools=tools,
+                max_turns=max_turns,
             )
         except DevPromptError as exc:
             last_error = exc
@@ -771,8 +864,10 @@ def _parse_model(output_type: type[ModelT], raw: str) -> ModelT | None:
 class LLMGenerator:
     """GeneratePort 的 LLM 实现（F-301：generate_single 为唯一生成入口）。"""
 
-    def __init__(self, cfg: AppConfig) -> None:
+    def __init__(self, cfg: AppConfig, runner: CommandRunner | None = None) -> None:
         self._cfg = cfg
+        #: 同轮补充检索工具的执行通道（None = 不挂工具，行为与旧版一致）。
+        self._runner = runner
 
     async def generate_single(
         self,
@@ -794,19 +889,36 @@ class LLMGenerator:
             if fallback and self._cfg.llm_max_tokens is None
             else self._cfg
         )
+        tools = self._generate_tools(ctx)
+        system = tpl.system(locale, ctx.domain_id)
+        if tools:
+            system = f"{system}\n\n{_TOOL_HINT}"
         draft = await chat_structured(
             cfg,
             VariantDraft,
-            tpl.system(locale, ctx.domain_id),
+            system,
             tpl.build_user(ctx, locale),
             timeout=cfg.llm_generate_timeout,
             purpose="generate",
             images=ctx.images,
+            tools=tools,
+            max_turns=cfg.generate_tool_turns if tools else 1,
         )
         validate_variant(draft)
         # 兜底标记由模板选择单向决定，不接受模型自报（避免模型输出覆盖）。
         draft.fallback = fallback
         return draft
+
+    def _generate_tools(self, ctx: GenerationContext) -> tuple[FunctionTool, ...]:
+        """生成阶段挂补充检索工具：仅 code 域且有命令执行通道时启用。
+
+        非 code 域没有仓库可搜（通用域按结构化校验交付），挂工具只会让模型空转。
+        """
+        if self._runner is None or ctx.domain_id != "code":
+            return ()
+        if self._cfg.generate_tool_turns <= 1:
+            return ()
+        return (_search_code_tool(ctx.project_root, self._runner),)
 
     async def answer(self, ctx: GenerationContext, locale: Locale = DEFAULT_LOCALE) -> str:
         """纯回答（2026-11-05）：一次结构化调用，只取正文。

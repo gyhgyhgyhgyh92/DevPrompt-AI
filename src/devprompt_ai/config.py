@@ -128,6 +128,9 @@ class AppConfig(BaseSettings):
     llm_probe_timeout: float = 30.0
     llm_rank_timeout: float = 30.0
     llm_generate_timeout: float = 120.0
+    # 生成阶段同轮工具回路（2026-11-18）：>1 时允许模型在生成方案时自主调用
+    # search_code 补充检索，SDK 执行工具并把结果回喂同一轮；=1 关闭（行为与旧版一致）。
+    generate_tool_turns: int = 3
     # 看门狗（A9）：单次 run 的硬上限；超时以 watchdog-stall 收尾。
     run_timeout_seconds: float = 900.0
     # 上下文窗口（用于压缩档位与相位收敛的轮次门槛）；默认按 1M 模型保守取值。
