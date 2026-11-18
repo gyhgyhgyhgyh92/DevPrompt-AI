@@ -4,8 +4,8 @@
 prompt 前缀；这里用 8s 封顶的闸门把抖动吸收到用户边界。
 
 状态（2026-11-18 接线）：`service._execute_action_inner` 以本注册表为动作分发唯一入口
-（8 个 Agent 动作 → handler，未注册动作告警降级）；`LateRegistrationGate` 因无 MCP/插件
-动态注册场景仍无消费方，保留单测覆盖。
+（8 个 Agent 动作 → handler，未注册动作告警降级）。`LateRegistrationGate` 保留为 MCP/插件
+动态注册预留——当前无注册来源，故无消费方，仅单测覆盖；接入插件注册时直接启用。
 """
 
 from __future__ import annotations

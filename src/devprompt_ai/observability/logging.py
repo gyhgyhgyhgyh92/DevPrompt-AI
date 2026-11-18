@@ -75,6 +75,9 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "domain.classify_low_confidence",
         "domain.inherit_invalid",
         "agent.action_filtered",
+        # 同轮补充检索工具（2026-11-18）：工具被调用/失败留痕；只记规模不记检索词。
+        "tool.search_invoked",
+        "tool.search_failed",
     }
 )
 """SHOULD-08 固定事件名全集（made/skipped 同族计一项）。emit 之外的诊断日志用普通 logging。
