@@ -3,7 +3,9 @@
 「晚到注册」指 MCP/插件异步注册：首个请求发出前若工具数组还在变，会击碎已缓存的
 prompt 前缀；这里用 8s 封顶的闸门把抖动吸收到用户边界。
 
-状态：本项目无工具执行回路，业主裁定（2026-11-08）不需要消费方，维持单测覆盖不接线。
+状态（2026-11-18 接线）：`service._execute_action_inner` 以本注册表为动作分发唯一入口
+（8 个 Agent 动作 → handler，未注册动作告警降级）；`LateRegistrationGate` 因无 MCP/插件
+动态注册场景仍无消费方，保留单测覆盖。
 """
 
 from __future__ import annotations

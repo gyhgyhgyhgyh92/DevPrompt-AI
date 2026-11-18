@@ -165,6 +165,7 @@ from devprompt_ai.harness.overflow import is_context_overflow
 from devprompt_ai.harness.process import LocalCommandRunner, LocalFileReader, SymbolTableProvider
 from devprompt_ai.harness.repo_indexer import impact_for, index_project
 from devprompt_ai.harness.summarize import summarize_history
+from devprompt_ai.harness.tool_registry import ToolRegistry
 from devprompt_ai.harness.trace import TracingReader, TracingRunner
 from devprompt_ai.memory.model_catalog_store import read_model_catalog, write_model_catalog
 from devprompt_ai.memory.project_note_store import normalize_key
@@ -313,6 +314,10 @@ class FlowSnapshot:
     """
 
 
+#: 动作执行器签名：(session, request_id, progress) → None 继续 / 快照终止。
+ActionHandler = Callable[[Any, str, ProgressSink | None], Awaitable[FlowSnapshot | None]]
+
+
 # 方向分歧检测已抽到 domain/decision/direction.py（2026-11-07）：纯函数 + 可测词表。
 
 
@@ -435,6 +440,9 @@ class ForgeService:
         from devprompt_ai.decision.domains import DomainClassifier
 
         self._domain_classifier = DomainClassifier(cfg)
+        #: 8 个 Agent 动作的执行器注册表（2026-11-18 接线）：分发链唯一入口。
+        self._actions = self._build_action_registry()
+        self._action_names = frozenset(self._actions.names())
 
     # ------------------------------------------------------------------
     # 模型目录（2026-10-17 动态模型目录）
@@ -674,9 +682,7 @@ class ForgeService:
                 "project_root": project_root,
                 "domain": verdict.model_dump(),
                 # 多模态（2026-11-14）：风格与参考图随请求传入，追问轮沿用上一轮值
-                "style": (
-                    style if style is not None else str(session.data.get("style", ""))
-                ),
+                "style": (style if style is not None else str(session.data.get("style", ""))),
                 "images": (
                     list(images)
                     if images is not None
@@ -1256,8 +1262,13 @@ class ForgeService:
                 # 不区分时调度层会看到「已生成 2 套」而直接 deliver，把第二轮的新指令
                 # 整个跳过（实测 R2/R3 正文与 R1 逐字相同、tokens=0）。
                 inherited_variant_count=max(0, variants_total - generated_now),
-                # 领域包（2026-11-14）：菜单只列本领域允许的动作（通用域无检索类动作）
-                allowed_actions=tuple(self._domain_pack(session).allowed_actions),
+                # 领域包（2026-11-14）：菜单只列本领域允许的动作（通用域无检索类动作）；
+                # 2026-11-18：再与执行器注册表求交，未注册动作不下发给模型。
+                allowed_actions=tuple(
+                    item
+                    for item in self._domain_pack(session).allowed_actions
+                    if item.value in self._action_names
+                ),
             )
             action = AgentAction(decision.action)
             # 白名单兜底（2026-11-14）：模型越权选了本领域不允许的动作（或输出非法枚举），
@@ -1434,62 +1445,109 @@ class ForgeService:
         request_id: str,
         progress: ProgressSink | None = None,
     ) -> FlowSnapshot | None:
-        """执行一个动作。返回非 None 表示本轮就地结束（等用户 / 交付 / 放弃）。"""
-        if action is AgentAction.RETRIEVE:
-            # 已定位且取证新鲜时 _act_retrieve 内部直接复用，不会重跑 ripgrep
-            ok = await self._act_retrieve(
-                session,
-                str(session.data.get("sentence", "")),
-                str(session.data.get("project_root", "")),
+        """按注册表派发；未注册动作显式告警并降级为放弃（不静默）。"""
+        handler = self._actions.get(action.value)
+        if handler is None:
+            emit_warning(
+                "agent.action_unregistered",
+                action=action.value,
                 request_id=request_id,
-                progress=progress,
             )
-            return None if ok else self._snapshot(session, "ask")
+            await self._act_abort(session, reason="动作未注册")
+            return self._snapshot(session, "aborted")
+        return await handler(session, request_id, progress)
 
-        if action in (AgentAction.PROBE, AgentAction.ASK):
-            has_unknowns = await self._act_probe(session, request_id=request_id, progress=progress)
-            if has_unknowns:
-                # 研判出未决项就必然反问（2026-11-15）：此前只有 planner 主动选 ask 才进
-                # ASKING，实测出现过「有 2 条缺口却直接生成、清单静态写进方案」的路径。
-                await hop(session, FlowState.ASKING, self._sessions)
-                await self._finish_turn(session)
-                return self._snapshot(session, "ask")
-            return None  # 无未决项：交给下一轮调度决定继续取证还是生成
+    def _build_action_registry(self) -> ToolRegistry[ActionHandler]:
+        """8 个 Agent 动作 → 执行器；覆盖冲突在装配期告警。"""
+        registry: ToolRegistry[ActionHandler] = ToolRegistry()
+        handlers: dict[AgentAction, ActionHandler] = {
+            AgentAction.RETRIEVE: self._run_retrieve,
+            AgentAction.PROBE: self._run_probe,
+            AgentAction.ASK: self._run_probe,
+            AgentAction.GENERATE: self._run_generate,
+            AgentAction.REPLY: self._run_reply,
+            AgentAction.DELEGATE: self._run_delegate,
+            AgentAction.DELIVER: self._run_deliver,
+            AgentAction.ABORT: self._run_abort,
+        }
+        for action, handler in handlers.items():
+            registry.register(action.value, handler)
+        if registry.overwritten():
+            logger.warning(
+                "agent.action_overwritten", extra={"names": sorted(registry.overwritten())}
+            )
+        return registry
 
-        if action is AgentAction.GENERATE:
-            # agentic 允许跳过 RETRIEVING/PROBE 直接生成：先查证据新鲜度（改了代码
-            # 仍用旧证据会产出错误行号），再补研判（档位/追问/推荐全依赖它）。
-            await self._check_evidence_freshness(session, request_id=request_id, stage="generate")
-            if "facts_complete" not in session.data:
-                await self._act_probe(session, request_id=request_id, progress=progress)
-            await self._act_generate(session, progress=progress)
+    async def _run_retrieve(
+        self, session: FlowSession, request_id: str, progress: ProgressSink | None
+    ) -> FlowSnapshot | None:
+        # 已定位且取证新鲜时 _act_retrieve 内部直接复用，不会重跑 ripgrep
+        ok = await self._act_retrieve(
+            session,
+            str(session.data.get("sentence", "")),
+            str(session.data.get("project_root", "")),
+            request_id=request_id,
+            progress=progress,
+        )
+        return None if ok else self._snapshot(session, "ask")
+
+    async def _run_probe(
+        self, session: FlowSession, request_id: str, progress: ProgressSink | None
+    ) -> FlowSnapshot | None:
+        has_unknowns = await self._act_probe(session, request_id=request_id, progress=progress)
+        if has_unknowns:
+            # 研判出未决项就必然反问（2026-11-15）：此前只有 planner 主动选 ask 才进
+            # ASKING，实测出现过「有 2 条缺口却直接生成、清单静态写进方案」的路径。
+            await hop(session, FlowState.ASKING, self._sessions)
+            await self._finish_turn(session)
+            return self._snapshot(session, "ask")
+        return None  # 无未决项：交给下一轮调度决定继续取证还是生成
+
+    async def _run_generate(
+        self, session: FlowSession, request_id: str, progress: ProgressSink | None
+    ) -> FlowSnapshot | None:
+        # agentic 允许跳过 RETRIEVING/PROBE 直接生成：先查证据新鲜度（改了代码
+        # 仍用旧证据会产出错误行号），再补研判（档位/追问/推荐全依赖它）。
+        await self._check_evidence_freshness(session, request_id=request_id, stage="generate")
+        if "facts_complete" not in session.data:
+            await self._act_probe(session, request_id=request_id, progress=progress)
+        await self._act_generate(session, progress=progress)
+        return None
+
+    async def _run_reply(
+        self, session: FlowSession, request_id: str, progress: ProgressSink | None
+    ) -> FlowSnapshot | None:
+        # 回答里也可能引用行号，过期同样要披露
+        await self._check_evidence_freshness(session, request_id=request_id, stage="reply")
+        return await self._act_reply(session, progress=progress)
+
+    async def _run_delegate(
+        self, session: FlowSession, request_id: str, progress: ProgressSink | None
+    ) -> FlowSnapshot | None:
+        await self._act_delegate(session, progress=progress)
+        return None
+
+    async def _run_deliver(
+        self, session: FlowSession, request_id: str, progress: ProgressSink | None
+    ) -> FlowSnapshot | None:
+        await self._check_evidence_freshness(session, request_id=request_id, stage="deliver")
+        # A2 六道闸（本产品可判定的两道）：有纠偏未消化或没有产出时，自然收尾先弹回一次。
+        # 通知后回到循环——纠偏会被下一轮决策消费，弹回有界（不改变状态机，MUST-07）。
+        gate = self._evaluate_finish_gate(session)
+        if not gate.allowed:
+            emit(
+                "agent.finish_gate_blocked",
+                gate=gate.blocked_by.value if gate.blocked_by is not None else "",
+                reason=gate.detail,
+                request_id=request_id,
+            )
+            await _notify(session, progress, gate.detail)
             return None
+        return await self._act_deliver(session, progress=progress)
 
-        if action is AgentAction.REPLY:
-            # 回答里也可能引用行号，过期同样要披露
-            await self._check_evidence_freshness(session, request_id=request_id, stage="reply")
-            return await self._act_reply(session, progress=progress)
-
-        if action is AgentAction.DELEGATE:
-            await self._act_delegate(session, progress=progress)
-            return None
-
-        if action is AgentAction.DELIVER:
-            await self._check_evidence_freshness(session, request_id=request_id, stage="deliver")
-            # A2 六道闸（本产品可判定的两道）：有纠偏未消化或没有产出时，自然收尾先弹回一次。
-            # 通知后回到循环——纠偏会被下一轮决策消费，弹回有界（不改变状态机，MUST-07）。
-            gate = self._evaluate_finish_gate(session)
-            if not gate.allowed:
-                emit(
-                    "agent.finish_gate_blocked",
-                    gate=gate.blocked_by.value if gate.blocked_by is not None else "",
-                    reason=gate.detail,
-                    request_id=request_id,
-                )
-                await _notify(session, progress, gate.detail)
-                return None
-            return await self._act_deliver(session, progress=progress)
-
+    async def _run_abort(
+        self, session: FlowSession, request_id: str, progress: ProgressSink | None
+    ) -> FlowSnapshot | None:
         await self._act_abort(session, reason="模型放弃本轮")
         return self._snapshot(session, "aborted")
 
@@ -1623,11 +1681,11 @@ class ForgeService:
     ) -> None:
         """K6：工单按波次经调度闸执行，结果按 id 落位；被拒/失败只降级不阻断。
 
-        单工单时与直连调度闸行为等价（单波）；多工单逐波串行保证占位闸正确。
+        波间串行（依赖语义）；波内按 ``plan_batches`` 分批：只读批并发、写批串行作屏障。
         """
         from devprompt_ai.domain.agent.delegation import WorkerResult
         from devprompt_ai.domain.agent.team import merge_results, plan_waves
-        from devprompt_ai.harness.worker_session import run_read_worker
+        from devprompt_ai.harness.tool_batch import BatchItem, plan_batches
 
         try:
             waves = plan_waves(orders)
@@ -1648,19 +1706,32 @@ class ForgeService:
                 orders=[o.id for o in wave.orders],
                 request_id=str(session.data.get("last_request_id", "")),
             )
-            for order in wave.orders:
-                try:
-                    results[order.id] = await self._coordinator.run(
-                        order, lambda o: run_read_worker(o, execute=execute)
+            batches = plan_batches(
+                [
+                    BatchItem(index=index, name=order.id, read_only=self._order_is_read_only(order))
+                    for index, order in enumerate(wave.orders)
+                ]
+            )
+            for batch in batches:
+                if batch and batch[0].read_only:
+                    # 只读批：并发派发，容量由 coordinator 的 total/explore 信号量约束。
+                    outcomes = await asyncio.gather(
+                        *(
+                            self._run_one_order(session, wave.orders[item.index], progress, execute)
+                            for item in batch
+                        )
                     )
-                except ValueError as exc:
-                    emit(
-                        "delegation.rejected",
-                        reason=str(exc)[:120],
-                        request_id=str(session.data.get("last_request_id", "")),
-                    )
-                    await _notify(session, progress, f"委派被调度闸拒绝：{exc}")
-                    continue
+                else:
+                    # 写批：plan_batches 保证单工单，串行作屏障。
+                    outcomes = [
+                        await self._run_one_order(
+                            session, wave.orders[item.index], progress, execute
+                        )
+                        for item in batch
+                    ]
+                for item, outcome in zip(batch, outcomes, strict=True):
+                    if outcome is not None:
+                        results[wave.orders[item.index].id] = outcome
         first = next(iter(results.values()), None)
         if first is None:
             await _notify(session, progress, "委派全部被调度闸拒绝")
@@ -1674,6 +1745,38 @@ class ForgeService:
             "results": merge_results(orders, results),
         }
         await _notify(session, progress, f"委派完成（{first.status}）：{first.output[:200]}")
+
+    @staticmethod
+    def _order_is_read_only(order: WorkOrder) -> bool:
+        """profile 缺失按只读处理并告警（不因配置缺失阻断派发）。"""
+        from devprompt_ai.domain.agent.profile_registry import get_profile
+
+        profile = get_profile(order.profile)
+        if profile is None:
+            logger.warning("delegation.unknown_profile", extra={"profile": order.profile})
+            return True
+        return not profile.write
+
+    async def _run_one_order(
+        self,
+        session: FlowSession,
+        order: WorkOrder,
+        progress: ProgressSink | None,
+        execute: Callable[[Any], Awaitable[str]],
+    ) -> Any:
+        """单工单过调度闸；被拒只降级（返回 None），不取消同批其它任务。"""
+        from devprompt_ai.harness.worker_session import run_read_worker
+
+        try:
+            return await self._coordinator.run(order, lambda o: run_read_worker(o, execute=execute))
+        except ValueError as exc:
+            emit(
+                "delegation.rejected",
+                reason=str(exc)[:120],
+                request_id=str(session.data.get("last_request_id", "")),
+            )
+            await _notify(session, progress, f"委派被调度闸拒绝：{exc}")
+            return None
 
     async def _attach_impact(
         self, session: FlowSession, *, project_root: str, request_id: str
