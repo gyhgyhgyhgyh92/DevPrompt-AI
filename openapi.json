@@ -157,6 +157,37 @@
         "title": "ApiResponse[HealthResponse]",
         "type": "object"
       },
+      "ApiResponse_LogEventsPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LogEventsPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[LogEventsPayload]",
+        "type": "object"
+      },
       "ApiResponse_MetricSummaryPayload_": {
         "properties": {
           "code": {
@@ -1222,6 +1253,33 @@
           "candidate_limit"
         ],
         "title": "LockedSettings",
+        "type": "object"
+      },
+      "LogEventsPayload": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "total"
+        ],
+        "title": "LogEventsPayload",
         "type": "object"
       },
       "MetricSummaryPayload": {
@@ -3547,6 +3605,71 @@
         ]
       }
     },
+    "/api/v1/obs/logs/events": {
+      "get": {
+        "operationId": "events_api_v1_obs_logs_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "event",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Event",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "request_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_LogEventsPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Events",
+        "tags": [
+          "obs-logs"
+        ]
+      }
+    },
     "/api/v1/obs/metrics/alerts": {
       "get": {
         "operationId": "alerts_api_v1_obs_metrics_alerts_get",
@@ -4399,6 +4522,65 @@
         ]
       }
     },
+    "/api/v1/runs/{run_id}/resume": {
+      "post": {
+        "description": "断点续跑；从最近 checkpoint 恢复同一 turn 的 Agent 循环。",
+        "operationId": "resume_run_api_v1_runs__run_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Request-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Run",
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
     "/api/v1/sessions/{session_id}/stream": {
       "get": {
         "description": "订阅会话事件流；?since=N 只补差，建连先收 seq=0 合成快照。",
@@ -4422,6 +4604,22 @@
               "minimum": 0,
               "title": "Since",
               "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
             }
           }
         ],
