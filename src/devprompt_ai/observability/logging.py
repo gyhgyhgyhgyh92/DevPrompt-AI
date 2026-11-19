@@ -11,7 +11,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import Final
 
 logger = logging.getLogger("devprompt.events")
@@ -44,8 +48,12 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "agent.hook_halt",
         "agent.sensorium",
         "agent.loop_terminated",
+        "agent.turn_token_budget_exceeded",
+        "delegation.skipped_resume",
+        "delegation.reused",
         "evidence.reused",
         "evidence.stale_reprobe",
+        "evidence.target_changed",
         "generate.fallback",
         # 生成/决策调用失败留痕（2026-11-15）：此前只能靠「trace 少一条 response」推断
         "llm.error",
@@ -91,6 +99,56 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
 """
 
 _telemetry_enabled = True
+_FILE_SINK_INSTALLED = False
+
+
+class _JsonlFormatter(logging.Formatter):
+    """把固定事件的 extra 字段序列化成单行 JSON；不落用户原句由调用方字段约束保证。"""
+
+    def format(self, record: logging.LogRecord) -> str:
+        reserved = {
+            "name", "msg", "args", "levelname", "levelno", "pathname", "filename", "module",
+            "exc_info", "exc_text", "stack_info", "lineno", "funcName", "created", "msecs",
+            "relativeCreated", "thread", "threadName", "processName", "process", "message",
+            "asctime", "taskName",
+        }
+        fields = {
+            key: value for key, value in record.__dict__.items() if key not in reserved
+        }
+        return json.dumps(
+            {
+                "ts": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+                "level": record.levelname,
+                "event": record.getMessage(),
+                **fields,
+            },
+            ensure_ascii=False,
+            default=str,
+        )
+
+
+def install_file_sink(log_dir: str) -> None:
+    """幂等挂载 JSONL 文件 sink；失败只降级为控制台，不影响业务。"""
+    global _FILE_SINK_INSTALLED
+    if _FILE_SINK_INSTALLED or not log_dir:
+        return
+    try:
+        directory = Path(log_dir).expanduser()
+        directory.mkdir(parents=True, exist_ok=True)
+        handler = RotatingFileHandler(
+            directory / "events.jsonl", maxBytes=5_000_000, backupCount=3, encoding="utf-8"
+        )
+        handler.setFormatter(_JsonlFormatter())
+        logger.addHandler(handler)
+        # 固定事件大量走 INFO；默认 WARNING 会让它们根本不落盘。
+        logger.setLevel(logging.INFO)
+        _FILE_SINK_INSTALLED = True
+    except OSError:
+        logger.warning("event_log_sink_unavailable", exc_info=True)
+
+
+def event_log_path(log_dir: str) -> Path:
+    return Path(log_dir).expanduser() / "events.jsonl"
 
 
 def set_telemetry(enabled: bool) -> None:

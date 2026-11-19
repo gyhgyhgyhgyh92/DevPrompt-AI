@@ -144,7 +144,7 @@ export function MetricsPanel() {
                       </span>
                       <span className={s('obs-bar__value')}>
                         {Number(point.count ?? 0)} / {Number(point.failed ?? 0)} fails /{' '}
-                        {Number(point.p95_ms ?? 0)}ms
+                        {Number(point.p95_ms ?? 0)}ms / {Number(point.tokens ?? 0)} tok
                       </span>
                     </li>
                   ))}

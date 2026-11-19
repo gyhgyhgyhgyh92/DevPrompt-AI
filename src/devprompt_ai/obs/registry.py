@@ -46,7 +46,7 @@ class ObsModules:
 def build_obs_modules(cfg: AppConfig) -> ObsModules:
     """按配置装配三模块；关闭只影响各自 API/采集，不影响其它模块读取历史数据。"""
     trace_store = SQLiteTraceStore(cfg.db_path)
-    collector: Any = TraceCollectorImpl(trace_store, enabled=cfg.obs_trace_enabled)
+    collector: Any = TraceCollectorImpl(trace_store, enabled=cfg.obs_trace_enabled, cfg=cfg)
     trace_service = TraceService(trace_store, collector, enabled=cfg.obs_trace_enabled)
     alert_store = SQLiteAlertStore(cfg.db_path, cooldown_s=cfg.obs_metrics_alert_cooldown_s)
     metrics_service = MetricsService(trace_store, alert_store, cfg, enabled=cfg.obs_metrics_enabled)

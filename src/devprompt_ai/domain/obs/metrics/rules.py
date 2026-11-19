@@ -14,6 +14,8 @@ class MetricThresholds:
     error_rate_warn: float = 0.2
     token_warn: int = 50000
     tool_failure_rate_warn: float = 0.2
+    #: 模型拒绝率 = llm.response 中 failed 占比（失败分支由 TracedGenerator 记录）
+    refusal_rate_warn: float = 0.2
     critical_multiplier: float = 2.0
 
 
@@ -108,6 +110,35 @@ def evaluate(
                 threshold=thresholds.tool_failure_rate_warn,
                 message=(
                     f"工具失败率 {tool_rate:.2%} 超过阈值 {thresholds.tool_failure_rate_warn:.2%}"
+                ),
+            )
+        )
+
+    # 模型拒绝率（2026-11-19）：llm.response 的 failed 占比。分子来自 TracedGenerator
+    # 失败分支；空回答/交付门拦截已有 StopReason，不并入此口径，避免混淆模型与流程失败。
+    llm_points = [
+        point
+        for item in series
+        if item.dimension == "kind" and item.key == "llm.response"
+        for point in item.points
+    ]
+    llm_total = sum(point.count for point in llm_points)
+    llm_failed = sum(point.failed for point in llm_points)
+    refusal_rate = llm_failed / llm_total if llm_total else 0.0
+    if refusal_rate > thresholds.refusal_rate_warn:
+        drafts.append(
+            AlertDraft(
+                rule_id="refusal_rate",
+                severity=_severity(
+                    refusal_rate, thresholds.refusal_rate_warn, thresholds.critical_multiplier
+                ),
+                scope_kind=scope_kind,
+                scope_key=scope_key,
+                metric="refusal_rate",
+                observed=refusal_rate,
+                threshold=thresholds.refusal_rate_warn,
+                message=(
+                    f"模型拒绝率 {refusal_rate:.2%} 超过阈值 {thresholds.refusal_rate_warn:.2%}"
                 ),
             )
         )

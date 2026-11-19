@@ -31,6 +31,7 @@ class MetricsService:
             error_rate_warn=self._cfg.obs_metrics_error_rate_warn,
             token_warn=self._cfg.obs_metrics_token_warn,
             tool_failure_rate_warn=self._cfg.obs_metrics_tool_failure_warn,
+            refusal_rate_warn=self._cfg.obs_metrics_refusal_warn,
             critical_multiplier=self._cfg.obs_metrics_critical_multiplier,
         )
 
@@ -71,6 +72,7 @@ class MetricsService:
             "error_rate_warn": thresholds.error_rate_warn,
             "token_warn": thresholds.token_warn,
             "tool_failure_rate_warn": thresholds.tool_failure_rate_warn,
+            "refusal_rate_warn": thresholds.refusal_rate_warn,
             "critical_multiplier": thresholds.critical_multiplier,
             "alert_cooldown_s": self._cfg.obs_metrics_alert_cooldown_s,
         }
