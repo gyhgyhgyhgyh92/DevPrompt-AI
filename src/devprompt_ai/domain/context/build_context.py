@@ -24,7 +24,8 @@ from typing import Any, Final
 
 from devprompt_ai.domain.context.budget import fit_blocks
 from devprompt_ai.domain.context.compact_policy import CacheKind
-from devprompt_ai.domain.context.compactor import plan_compaction
+from devprompt_ai.domain.context.compact_economics import Billing, reclaim_floor
+from devprompt_ai.domain.context.compactor import confirm_reclaim, plan_compaction
 
 #: 单条摘要的字符上限（三字段合计），避免个别轮次吃掉整层预算。
 _SUMMARY_CHAR_LIMIT: Final = 120
@@ -47,12 +48,10 @@ _SENSORIUM_KEYS: Final = (
 
 
 def estimate_tokens(text: str) -> int:
-    """粗估 token（CJK≈1 字 1 token，其余 4 字符 1 token），与 common/text 同口径。
+    """统一口径（2026-11-19）：委托 `tokens.estimate_tokens`，消除 CJK 1 与 1.2 两套估算。"""
+    from devprompt_ai.domain.context.tokens import estimate_tokens as _estimate
 
-    这里不 import `common.text`：domain 只声明自身需要的纯函数，避免跨层耦合。
-    """
-    cjk = sum(1 for char in text if "\u4e00" <= char <= "\u9fff")
-    return cjk + max(0, (len(text) - cjk) // 4)
+    return _estimate(text)
 
 
 def _clip(text: str, limit: int) -> str:
@@ -241,14 +240,28 @@ def build_context(
         )
         if plan.should_compact:
             ratio = plan.budget_ratio
-            limits = (
+            scaled = (
                 limits[0],
                 int(limits[1] * ratio),
                 int(limits[2] * ratio),
                 int(limits[3] * ratio),
                 int(limits[4] * ratio),
             )
-            truncated.append(f"compacted:{plan.action.value}")
+            # 经济性否决门（2026-11-19）：回收不足时回滚缩放，避免白付 prefill。
+            floor = reclaim_floor(
+                billing=Billing.SUBSCRIPTION, cache_kind=cache_kind, window=context_window
+            )
+            verdict = confirm_reclaim(
+                before_tokens=estimated_tokens,
+                after_tokens=int(estimated_tokens * ratio),
+                floor=floor,
+                force=plan.force,
+            )
+            if verdict.worthwhile:
+                limits = scaled
+                truncated.append(f"compacted:{plan.action.value}")
+            else:
+                truncated.append(f"reclaim_rejected:{verdict.reason}")
     current_limit, recent_limit, digest_limit, older_limit, memory_limit = limits
 
     # current 层永不裁：超出只记录，不截断

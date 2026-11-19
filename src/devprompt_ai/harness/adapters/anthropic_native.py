@@ -175,7 +175,11 @@ class AnthropicNativeModel(BaseNativeModel):
             "messages": messages,
         }
         if system:
-            request["system"] = system
+            # Prompt 前缀缓存（2026-11-19）：system 在给定 purpose/schema 下逐字节稳定，
+            # 以 Anthropic 原生 ephemeral block 标记，跨轮命中 prefill 缓存；其它协议不受影响。
+            request["system"] = [
+                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+            ]
         if tools:
             request["tools"] = tools
             request["tool_choice"] = {"type": "auto"}

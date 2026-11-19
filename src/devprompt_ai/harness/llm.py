@@ -99,6 +99,8 @@ _RETRY_BUDGET: Final[RetryBudget] = RetryBudget(capacity=5, window_s=60.0)
 _GENERATION_SINK: ContextVar[ProgressSink | None] = ContextVar(
     "devprompt_generation_sink", default=None
 )
+#: 同轮工具回喂的累计 token（2026-11-19）：SDK 内部回喂不经请求断言，按请求隔离计数。
+_tool_token_state: ContextVar[int] = ContextVar("devprompt_tool_tokens", default=0)
 #: 增量推送节流：过密会把 SSE 刷爆，过疏则打字机断断续续。
 _STREAM_EMIT_INTERVAL_S: Final[float] = 0.25
 #: 每次推送保留的尾部字符数（前端只展示「正在写什么」）。
@@ -185,7 +187,9 @@ def _emit_tool_event(event: str, **fields: object) -> None:
         logger.debug("tool.event_failed", exc_info=True)
 
 
-def _search_code_tool(root: str, runner: CommandRunner) -> FunctionTool:
+def _search_code_tool(
+    root: str, runner: CommandRunner, *, budget_tokens: int = 0
+) -> FunctionTool:
     """生成阶段的补充检索工具（2026-11-18 同轮工具回路）。
 
     模型在生成方案时若发现证据不足，可调用本工具做一次字面全文检索；SDK 负责
@@ -221,6 +225,15 @@ def _search_code_tool(root: str, runner: CommandRunner) -> FunctionTool:
         hits = render_hits(raw)
         # 只记命中规模，不记检索词原文（MUST-19：用户原句/检索词不进日志）。
         _emit_tool_event("tool.search_invoked", chars=len(hits))
+        # 工具回路断言（2026-11-19）：SDK 回喂不再经过请求断言，按累计命中 token 自查；
+        # 超限只截尾不抛错，避免 SDK 把 UserError 当成整轮生成失败。
+        if budget_tokens > 0:
+            seen = _tool_token_state.get()
+            used = seen + estimate_tokens(hits)
+            if used > budget_tokens:
+                _emit_tool_event("tool.search_budget_exceeded", used=used, limit=budget_tokens)
+                return "检索结果超出本轮 token 预算，已省略；请基于现有证据作答。"
+            _tool_token_state.set(used)
         return hits
 
     return FunctionTool(
@@ -893,6 +906,8 @@ class LLMGenerator:
         system = tpl.system(locale, ctx.domain_id)
         if tools:
             system = f"{system}\n\n{_TOOL_HINT}"
+            _tool_token_state.set(0)
+            tools = (_search_code_tool(ctx.project_root, self._runner, budget_tokens=cfg.runtime_window()),)
         draft = await chat_structured(
             cfg,
             VariantDraft,

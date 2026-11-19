@@ -11,6 +11,7 @@ import asyncio
 import logging
 import os
 import time
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 
@@ -114,9 +115,15 @@ class SymbolTableProvider:
     变更即整表重建（符号表重建成本低，不做逐文件 diff）。
     """
 
-    def __init__(self, runner: CommandRunner, ttl_seconds: float = SYMBOL_TABLE_TTL) -> None:
+    def __init__(
+        self, runner: CommandRunner, ttl_seconds: float = SYMBOL_TABLE_TTL, capacity: int = 4
+    ) -> None:
         self._runner = runner
         self._ttl = ttl_seconds
+        self._capacity = max(1, capacity)
+        # 多槽 LRU（2026-11-19）：单槽会让多项目交替时互相驱逐，每次切回都全量重建。
+        self._slots: OrderedDict[str, tuple[list[Symbol], float]] = OrderedDict()
+        # 以下三项保留为「最近一次访问」的兼容投影（测试与诊断仍读取）。
         self._cache_key: str | None = None
         self._cache_symbols: list[Symbol] | None = None
         self._cached_at: float = 0.0
@@ -146,15 +153,12 @@ class SymbolTableProvider:
     async def get(self, root: str) -> SymbolTableResult:
         now = time.monotonic()
         key = self._current_key(root)
-        if (
-            self._cache_symbols is not None
-            and self._cache_key == key
-            and (now - self._cached_at) < self._ttl
-        ):
+        cached = self._slots.get(key)
+        if cached is not None and (now - cached[1]) < self._ttl:
+            self._slots.move_to_end(key)
+            self._cache_key, self._cache_symbols, self._cached_at = key, cached[0], cached[1]
             logger.info("cache.hit", extra={"what": "symbol_table", "root": root})
-            return SymbolTableResult(
-                symbols=self._cache_symbols or [], cache_hit=True, cache_key=key
-            )
+            return SymbolTableResult(symbols=cached[0], cache_hit=True, cache_key=key)
 
         # 老版 ctags 不认 `--fields=+n+{signature}`（未知字段名）会直接失败：签名只是排序的
         # 增强信息，不该让整个符号表不可用。首次失败后记住「本进程不支持签名」，后续直接不带，
@@ -184,6 +188,10 @@ class SymbolTableProvider:
                 if (extra.path, extra.name) not in known:
                     known.add((extra.path, extra.name))
                     symbols.append(extra)
+        self._slots[key] = (symbols, now)
+        self._slots.move_to_end(key)
+        while len(self._slots) > self._capacity:
+            self._slots.popitem(last=False)
         self._cache_key = key
         self._cache_symbols = symbols
         self._cached_at = now
