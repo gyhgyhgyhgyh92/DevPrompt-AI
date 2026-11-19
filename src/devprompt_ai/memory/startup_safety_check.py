@@ -122,7 +122,7 @@ def _abort_orphan_turns(
     turn 停在 AGENTIC、会话也停在 AGENTIC，此后 start_turn 会一直拒绝（6001）。
     多实例部署需改为按实例心跳判定（当前单机单用户不适用）。
     """
-    cutoff = f"-{max(1, older_than_minutes)} minutes"
+    cutoff = f"-{older_than_minutes} minutes"
     try:
         conn.execute(ORPHAN_TURNS_SQL, (cutoff,))
         cursor = conn.execute(ORPHAN_SESSIONS_SQL, (cutoff,))
@@ -130,6 +130,28 @@ def _abort_orphan_turns(
         # 自愈失败不阻断启动：留给下一次启动重试
         return 0
     return cursor.rowcount if cursor.rowcount > 0 else 0
+
+
+def abort_orphans_after_lock_takeover(db_path: str) -> int:
+    """写锁接管成功后立即收尾全部遗留活跃 turn / session，返回受影响会话数。
+
+    与 :func:`run_startup_safety_check` 里 30 分钟阈值的保守兜底不同：本函数只在
+    调用方确认「旧进程持有者已死」后使用（见 ``runtime.bootstrap``），因此无需
+    等待时间阈值——否则崩溃 5 分钟后重启会留下 25 分钟死锁窗口（新 run 被 6001 拒）。
+    """
+    path = Path(db_path).expanduser()
+    if not path.exists():
+        return 0
+    try:
+        conn = sqlite3.connect(str(path), timeout=5.0)
+    except sqlite3.Error:
+        return 0
+    try:
+        affected = _abort_orphan_turns(conn, older_than_minutes=0)
+        conn.commit()
+        return affected
+    finally:
+        conn.close()
 
 
 def run_startup_safety_check(db_path: str) -> StartupRepairReport:

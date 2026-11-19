@@ -12,7 +12,10 @@ import sqlite3
 import pytest
 
 from devprompt_ai.memory.schema import SESSIONS_DDL, TURNS_DDL
-from devprompt_ai.memory.startup_safety_check import _abort_orphan_turns
+from devprompt_ai.memory.startup_safety_check import (
+    _abort_orphan_turns,
+    abort_orphans_after_lock_takeover,
+)
 
 
 @pytest.fixture()
@@ -98,3 +101,40 @@ def test_asking_session_is_not_treated_as_orphan(conn: sqlite3.Connection) -> No
 
     assert _abort_orphan_turns(conn) == 0
     assert _state_of(conn, "forge_sessions", "session_id", "s-ask") == "ASKING"
+
+
+def test_lock_takeover_aborts_fresh_turn_immediately(tmp_path: object) -> None:
+    """写锁接管后 5 分钟前的崩溃 turn 也必须立即收尾，不等 30 分钟兜底。"""
+    from pathlib import Path
+
+    db = Path(str(tmp_path)) / "fresh.db"  # type: ignore[operator]
+    with sqlite3.connect(str(db)) as conn:
+        conn.executescript(SESSIONS_DDL)
+        conn.executescript(TURNS_DDL)
+        _insert_session(conn, session_id="s-crash", state="AGENTIC")
+        _insert_turn(
+            conn, turn_id="t-crash", session_id="s-crash", state="AGENTIC", age="-5 minutes"
+        )
+
+    assert abort_orphans_after_lock_takeover(str(db)) == 1
+    with sqlite3.connect(str(db)) as conn:
+        assert _state_of(conn, "forge_turns", "turn_id", "t-crash") == "ABORTED"
+        assert _state_of(conn, "forge_sessions", "session_id", "s-crash") == "ABORTED"
+
+
+def test_lock_takeover_leaves_waiting_session_untouched(tmp_path: object) -> None:
+    """立即收尾只针对执行中状态，等用户态不能被误杀。"""
+    from pathlib import Path
+
+    db = Path(str(tmp_path)) / "wait.db"  # type: ignore[operator]
+    with sqlite3.connect(str(db)) as conn:
+        conn.executescript(SESSIONS_DDL)
+        conn.executescript(TURNS_DDL)
+        _insert_session(conn, session_id="s-wait", state="ASKING")
+        _insert_turn(
+            conn, turn_id="t-wait", session_id="s-wait", state="INIT", age="-5 minutes"
+        )
+
+    assert abort_orphans_after_lock_takeover(str(db)) == 0
+    with sqlite3.connect(str(db)) as conn:
+        assert _state_of(conn, "forge_sessions", "session_id", "s-wait") == "ASKING"

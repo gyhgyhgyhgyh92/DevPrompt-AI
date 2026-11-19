@@ -23,6 +23,8 @@ class StopReason(str, Enum):
     WATCHDOG_STALL = "watchdog-stall"
     MAX_TURNS = "max-turns"
     WEDGED_LOOP = "wedged-loop"
+    #: 单轮 token 硬闸触发：工具/LLM 累计用量超过按内存压力分档的上限。
+    TURN_TOKEN_BUDGET = "turn-token-budget"
     USER_INTERRUPT = "user-interrupt"
     STREAM_ERROR = "stream-error"
     CHECKPOINT = "checkpoint"
@@ -36,6 +38,7 @@ GUARD_REASONS: Final[frozenset[StopReason]] = frozenset(
         StopReason.WATCHDOG_STALL,
         StopReason.MAX_TURNS,
         StopReason.WEDGED_LOOP,
+        StopReason.TURN_TOKEN_BUDGET,
     }
 )
 

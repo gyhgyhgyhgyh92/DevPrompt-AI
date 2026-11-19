@@ -106,6 +106,22 @@ async def test_loop_stops_when_step_budget_exhausted(monkeypatch: pytest.MonkeyP
     assert session.data["stop_reason"] == StopReason.MAX_TURNS.value
 
 
+async def test_loop_stops_when_turn_token_budget_exceeded() -> None:
+    """单轮 token 累计超过分档上限 → turn-token-budget，会话落 aborted。"""
+    svc = _service(PlannerDecider(["probe", "generate"]))
+    session = await _session(svc)
+    # 压力取 sensorium.pressure：cost_budget 未配置时为 0 → pressure 由 cost/cost_budget
+    # 走不到；用高 context_tokens 让绝对压力顶上来，配合低于上限的 cost_tokens 触发。
+    session.data["context_tokens"] = 1_000_000
+    session.data["cost_tokens"] = 60_000
+
+    snapshot = await svc.run_agent_loop(session, request_id="r-token")  # noqa: SLF001
+
+    assert snapshot is not None and snapshot.status == "aborted"
+    assert session.data["stop_reason"] == StopReason.TURN_TOKEN_BUDGET.value
+    assert snapshot.stop_reason == StopReason.TURN_TOKEN_BUDGET.value
+
+
 async def test_loop_halts_on_hook_verdict() -> None:
     """外环 hook 判 halt → 收敛熔断（convergence-abort）。"""
 

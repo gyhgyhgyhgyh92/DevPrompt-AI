@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any, cast
@@ -17,7 +18,7 @@ _BUSY_TIMEOUT_MS = 5000
 
 _COLUMNS = (
     "run_id, session_id, turn_index, status, stop_reason, request_id, model_id,"
-    " error_code, error_message, started_at, ended_at"
+    " error_code, error_message, started_at, ended_at, snapshot_json, applied_ops"
 )
 
 
@@ -36,6 +37,16 @@ class SQLiteRunStore:
             with self._connect() as conn:
                 conn.execute("PRAGMA journal_mode = WAL")
                 conn.executescript(RUNS_DDL)
+                # 旧库迁移：CREATE IF NOT EXISTS 不会补列，显式 ALTER 幂等补齐。
+                existing = {
+                    str(row[1]) for row in conn.execute("PRAGMA table_info(runs)").fetchall()
+                }
+                for column, ddl in (
+                    ("snapshot_json", "TEXT NOT NULL DEFAULT '{}'"),
+                    ("applied_ops", "TEXT NOT NULL DEFAULT '[]'"),
+                ):
+                    if column not in existing:
+                        conn.execute(f"ALTER TABLE runs ADD COLUMN {column} {ddl}")
 
         await asyncio.to_thread(_run)
 
@@ -110,8 +121,96 @@ class SQLiteRunStore:
 
         return await asyncio.to_thread(_run)
 
+    async def save_snapshot(self, run_id: str, snapshot: dict[str, Any]) -> None:
+        """保存断点快照（整包 session 状态 + steps）；失败只降级，不阻断执行。"""
+
+        def _run() -> None:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE runs SET snapshot_json = ? WHERE run_id = ?",
+                    (json.dumps(snapshot, ensure_ascii=False, default=str), run_id),
+                )
+
+        await asyncio.to_thread(_run)
+
+    async def load_snapshot(self, run_id: str) -> dict[str, Any]:
+        def _run() -> dict[str, Any]:
+            with self._connect() as conn:
+                row = conn.execute(
+                    "SELECT snapshot_json FROM runs WHERE run_id = ?", (run_id,)
+                ).fetchone()
+            if not row or not row[0]:
+                return {}
+            try:
+                value = json.loads(str(row[0]))
+            except json.JSONDecodeError:
+                return {}
+            return value if isinstance(value, dict) else {}
+
+        return await asyncio.to_thread(_run)
+
+    async def load_applied_ops(self, run_id: str) -> list[str]:
+        """已执行的副作用键（续跑幂等：同一键不重复产生副作用）。"""
+        def _run() -> list[str]:
+            with self._connect() as conn:
+                row = conn.execute(
+                    "SELECT applied_ops FROM runs WHERE run_id = ?", (run_id,)
+                ).fetchone()
+            if not row or not row[0]:
+                return []
+            try:
+                value = json.loads(str(row[0]))
+            except json.JSONDecodeError:
+                return []
+            return [str(item) for item in value] if isinstance(value, list) else []
+
+        return await asyncio.to_thread(_run)
+
+    async def record_applied_op(self, run_id: str, op_key: str) -> None:
+        """追加一个副作用键；同键幂等（重复写入不改变结果）。"""
+        if not op_key:
+            return
+
+        def _run() -> None:
+            with self._connect() as conn:
+                row = conn.execute(
+                    "SELECT applied_ops FROM runs WHERE run_id = ?", (run_id,)
+                ).fetchone()
+                try:
+                    keys = json.loads(str(row[0])) if row and row[0] else []
+                except json.JSONDecodeError:
+                    keys = []
+                if not isinstance(keys, list):
+                    keys = []
+                if op_key in keys:
+                    return
+                keys.append(op_key)
+                conn.execute(
+                    "UPDATE runs SET applied_ops = ? WHERE run_id = ?",
+                    (json.dumps(keys, ensure_ascii=False), run_id),
+                )
+
+        await asyncio.to_thread(_run)
+
+    async def reopen(self, run_id: str) -> bool:
+        """把崩溃/取消遗留的 run 复位为 running，供同 run_id 续跑。"""
+        def _run() -> bool:
+            with self._connect() as conn:
+                cursor = conn.execute(
+                    "UPDATE runs SET status = 'running', ended_at = NULL"
+                    " WHERE run_id = ? AND status IN ('aborted', 'error')",
+                    (run_id,),
+                )
+                return bool(cursor.rowcount)
+
+        return await asyncio.to_thread(_run)
+
     async def mark_orphans_aborted(self, older_than_minutes: int = 30) -> int:
-        """启动自愈：把崩溃遗留的 running 置 ABORTED（不误杀刚启动的）。"""
+        """启动自愈：把崩溃遗留的 running 置 ABORTED。
+
+        ``older_than_minutes=0`` 表示不限时间、立即收尾全部活跃 run——只在
+        ``SingleWriterLock`` 已成功接管（即旧持有者确认死亡）后调用。
+        """
 
         def _run() -> int:
             with self._connect() as conn:
@@ -121,7 +220,7 @@ class SQLiteRunStore:
                     " ended_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')"
                     " WHERE status IN ('queued','running')"
                     " AND started_at < strftime('%Y-%m-%dT%H:%M:%fZ','now', ?)",
-                    (f"-{max(1, older_than_minutes)} minutes",),
+                    (f"-{older_than_minutes} minutes",),
                 )
                 return int(cursor.rowcount or 0)
 
@@ -141,6 +240,8 @@ def _row_to_run(row: tuple[Any, ...]) -> RunRecord:
         error_message,
         started_at,
         ended_at,
+        _snapshot_json,
+        _applied_ops,
     ) = row
     return RunRecord(
         run_id=str(run_id),
