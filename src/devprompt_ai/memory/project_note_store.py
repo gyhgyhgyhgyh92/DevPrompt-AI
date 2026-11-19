@@ -43,9 +43,12 @@ def normalize_key(symbol: str, path: str) -> str:
 
 def score_note(note: ProjectNote, *, target_key: str, age_days: float) -> float:
     """检索打分（纯函数，便于单测）。"""
-    if note.key == target_key:
+    if not target_key:
+        # 项目级退化（2026-11-19）：无 target 的轮次不再必空，按 kind 给基础分。
+        key_match = 0.5 if note.kind in {"decision", "rejected_option"} else 0.0
+    elif note.key == target_key:
         key_match = 1.0
-    elif target_key and (
+    elif (
         note.key.split("@", 1)[0] == target_key.split("@", 1)[0]
         or note.key.split("@", 1)[-1] == target_key.split("@", 1)[-1]
     ):
@@ -93,6 +96,31 @@ class SQLiteProjectNoteStore:
                 )
 
         await asyncio.to_thread(_run)
+
+    async def archive_stale(self, project_root: str, *, max_age_days: int = 180, max_rows: int = 500) -> int:
+        """归档长期未命中/超量的旧记忆（标记 superseded_by，不物理删除）。"""
+        def _run() -> int:
+            with self._connect() as conn:
+                conn.executescript(PROJECT_NOTES_DDL)
+                cursor = conn.execute(
+                    "UPDATE project_notes SET superseded_by = 'archived'"
+                    " WHERE project_root = ? AND superseded_by IS NULL"
+                    " AND (last_hit_at IS NULL OR last_hit_at < datetime('now', ?))"
+                    " AND kind NOT IN ('decision', 'rejected_option')",
+                    (project_root, f"-{max_age_days} days"),
+                )
+                archived = int(cursor.rowcount or 0)
+                # 项目级上限：保留最近命中的 max_rows 条，其余归档。
+                cursor = conn.execute(
+                    "UPDATE project_notes SET superseded_by = 'archived'"
+                    " WHERE project_root = ? AND superseded_by IS NULL"
+                    " AND key NOT IN (SELECT key FROM project_notes WHERE project_root = ?"
+                    " ORDER BY COALESCE(last_hit_at, created_at) DESC LIMIT ?)",
+                    (project_root, project_root, max_rows),
+                )
+                return archived + int(cursor.rowcount or 0)
+
+        return await asyncio.to_thread(_run)
 
     async def record_from_session(self, project_root: str, data: dict[str, Any]) -> None:
         """本轮结束后自动写入 target / decision / rejected_option（自动级记忆）。"""
