@@ -162,11 +162,14 @@ class AppConfig(BaseSettings):
     obs_metrics_error_rate_warn: float = 0.2
     obs_metrics_token_warn: int = 50000
     obs_metrics_tool_failure_warn: float = 0.2
+    obs_metrics_refusal_warn: float = 0.2
     obs_metrics_alert_cooldown_s: int = 300
     obs_metrics_critical_multiplier: float = 2.0
     obs_replay_enabled: bool = True
     obs_replay_max_nodes: int = 20000
     obs_replay_timeout_seconds: float = 120.0
+    #: 多轮 Query 改写走 LLM 结构化改写（2026-11-19）：默认开，失败自动回退规则。
+    query_rewrite_llm: bool = True
     fact_probe_threshold: float = 0.75
     max_state_tokens: int = 30000  # 上下文装配预算下限（随档位放大，上限 160K）
 
