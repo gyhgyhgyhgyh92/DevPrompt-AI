@@ -80,12 +80,14 @@ async def get_runtime(service: ForgeService, serialize: SnapshotSerializer) -> R
                     logger.debug("checkpoint.snapshot_failed", exc_info=True)
 
             service.checkpoint_sink = _checkpoint
+            interventions = InterventionBroker(SQLiteInterventionStore(db_path), bus)
             manager = RunManager(
                 service=service,
                 bus=bus,
                 runs=runs,
                 pool=pool,
                 serialize=serialize,
+                interventions=interventions,
             )
             _runtime = RuntimeBundle(
                 service=service,
@@ -94,7 +96,7 @@ async def get_runtime(service: ForgeService, serialize: SnapshotSerializer) -> R
                 bus=bus,
                 pool=pool,
                 manager=manager,
-                interventions=InterventionBroker(SQLiteInterventionStore(db_path), bus),
+                interventions=interventions,
                 lock=lock,
             )
         except BaseException:

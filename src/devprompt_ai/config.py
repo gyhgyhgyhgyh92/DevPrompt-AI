@@ -170,6 +170,17 @@ class AppConfig(BaseSettings):
     obs_replay_timeout_seconds: float = 120.0
     #: 多轮 Query 改写走 LLM 结构化改写（2026-11-19）：默认开，失败自动回退规则。
     query_rewrite_llm: bool = True
+    # ---- 扩展能力（2026-11-21）：Skill 与 MCP ----
+    #: 本地技能根目录，逗号分隔（兼容 Claude/CodeBuddy 的 `<dir>/<skill>/SKILL.md`）。
+    skills_dirs: str = ""
+    #: 单轮注入的技能条数上限与正文字符总预算（独立于检索证据预算）。
+    skills_top_n: int = 3
+    skills_max_chars: int = 4000
+    #: MCP 总开关：关闭后不连接任何外部 Server（配置仍保留）。
+    mcp_enabled: bool = True
+    mcp_connect_timeout_seconds: float = 10.0
+    #: 工具调用人工审批超时：超时按拒绝处理（不得死等）。
+    mcp_approval_timeout_seconds: float = 60.0
     fact_probe_threshold: float = 0.75
     max_state_tokens: int = 30000  # 上下文装配预算下限（随档位放大，上限 160K）
 
@@ -282,6 +293,10 @@ class AppConfig(BaseSettings):
         service 的激活条目镜像负责（2026-11-10）。
         """
         return str((self.llm_params or {}).get("reasoning_effort", "") or "")
+
+    def skill_roots(self) -> list[str]:
+        """技能根目录列表：环境变量用逗号分隔（避免 JSON 数组解析坑）。"""
+        return [part.strip() for part in self.skills_dirs.split(",") if part.strip()]
 
     def runtime_window(self) -> int:
         """运行时上下文窗口：条目档位优先，未登记回落全局窗口。

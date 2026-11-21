@@ -124,6 +124,8 @@ async def test_l2_project_notes_off_flow_completes() -> None:
             # 2026-11-14 多模态：visual 域风格与图生图参考图（其余域恒为空缺省）
             "style_id",
             "images",
+            # 2026-11-21 扩展能力：命中技能正文（无命中为空串）
+            "skill_block",
         }
         assert dumped["clarifications"] == {}
         assert "note" not in dumped["memory_block"]

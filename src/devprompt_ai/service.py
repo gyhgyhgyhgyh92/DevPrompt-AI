@@ -165,11 +165,15 @@ from devprompt_ai.domain.retrieval.facts import (
 from devprompt_ai.domain.retrieval.locate import locate_symbol
 from devprompt_ai.domain.retrieval.paths import safe_join
 from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader, SymbolProvider
+from devprompt_ai.domain.mcp.models import McpServerConfig
 from devprompt_ai.domain.retrieval.query_rewrite import rewrite_query, target_changed
+from devprompt_ai.domain.skills.matching import fit_skills, rank_skills, render_skills
+from devprompt_ai.domain.skills.models import Skill
 from devprompt_ai.harness.guardrails import validate_claims
 from devprompt_ai.harness.llm import LLMGenerator, reset_generation_sink, set_generation_sink
 from devprompt_ai.harness.overflow import is_context_overflow
 from devprompt_ai.harness.process import LocalCommandRunner, LocalFileReader, SymbolTableProvider
+from devprompt_ai.harness.skills import loader as skill_loader
 from devprompt_ai.harness.repo_indexer import impact_for, index_project
 from devprompt_ai.harness.summarize import summarize_history
 from devprompt_ai.harness.tool_registry import ToolRegistry
@@ -178,11 +182,14 @@ from devprompt_ai.memory.model_catalog_store import read_model_catalog, write_mo
 from devprompt_ai.memory.project_note_store import normalize_key
 from devprompt_ai.memory.repo_index import SQLiteRepoIndex
 from devprompt_ai.memory.settings_store import (
+    read_mcp_servers,
     read_model_registry,
+    write_mcp_servers,
     write_model_registry,
     write_model_settings,
     write_process_settings,
 )
+from devprompt_ai.memory.skill_store import SQLiteSkillStore
 from devprompt_ai.memory.turn_store import TurnConflictError
 from devprompt_ai.observability.logging import emit, emit_error, emit_warning, set_telemetry
 from devprompt_ai.runtime.coordinator import DelegationCoordinator
@@ -2405,6 +2412,128 @@ class ForgeService:
             )
         return merged
 
+    def _skill_store(self) -> SQLiteSkillStore:
+        """按当前库路径惰性构造：不新增构造参数，测试与旧装配零改动。"""
+        return SQLiteSkillStore(self._cfg.db_path)
+
+    async def _skill_block(self, sentence: str, domain: str = "") -> str:
+        """按本轮原句与领域挑技能，命中才读正文；预算独立、超限截断。"""
+        custom = await self._skill_store().list_all()
+        by_id = {item.meta.skill_id: item for item in custom}
+        metas = [item.meta for item in custom]
+        dirs = self._cfg.skill_roots()
+        if dirs:
+            metas.extend(await asyncio.to_thread(skill_loader.scan, dirs))
+        ranked = rank_skills(
+            metas, sentence, domain, limit=max(1, int(self._cfg.skills_top_n))
+        )
+        if not ranked:
+            return ""
+        picked: list[Skill] = []
+        for _score, meta in ranked:
+            if meta.source == "custom":
+                picked.append(by_id.get(meta.skill_id, Skill(meta=meta)))
+            else:
+                picked.append(await asyncio.to_thread(skill_loader.load_body, meta))
+        kept, truncated = fit_skills(picked, int(self._cfg.skills_max_chars))
+        if kept:
+            emit("skill.selected", count=len(kept), names=[item.meta.name for item in kept])
+        if truncated:
+            emit("skill.budget_truncated", kept=len(kept))
+        return render_skills(kept)
+
+    async def _skills_view(self) -> dict[str, Any]:
+        """合并视图：目录扫描（只读）+ 自定义（可写），同形返回。"""
+        dirs = self._cfg.skill_roots()
+        dir_metas = await asyncio.to_thread(skill_loader.scan, dirs) if dirs else []
+        custom = await self._skill_store().list_all()
+        items: list[dict[str, Any]] = [
+            {
+                "skill_id": "",
+                "name": meta.name,
+                "description": meta.description,
+                "source": "dir",
+                "domains": list(meta.domains),
+                "enabled": True,
+            }
+            for meta in dir_metas
+        ]
+        items.extend(
+            {
+                "skill_id": skill.meta.skill_id,
+                "name": skill.meta.name,
+                "description": skill.meta.description,
+                "source": "custom",
+                "domains": list(skill.meta.domains),
+                "enabled": skill.meta.enabled,
+            }
+            for skill in custom
+        )
+        return {"dirs": dirs, "items": items}
+
+    def _mcp_servers_view(self) -> list[dict[str, Any]]:
+        """脱敏视图；坏配置跳过（一条写坏不该让设置页整体打不开）。"""
+        out: list[dict[str, Any]] = []
+        for raw in read_mcp_servers():
+            try:
+                config = McpServerConfig(**raw)
+            except ValidationError:
+                continue
+            view = config.public_view()
+            view["id"] = str(raw.get("id") or config.id or "")
+            out.append(view)
+        return out
+
+    async def _replace_custom_skills(self, items: list[dict[str, Any]]) -> None:
+        """整表替换自定义技能：未出现的旧项删除，目录来源不受影响。"""
+        store = self._skill_store()
+        existing = await store.list_all()
+        keep: set[str] = set()
+        for item in items:
+            saved = await store.upsert(
+                skill_id=str(item.get("skill_id") or ""),
+                name=str(item.get("name") or ""),
+                description=str(item.get("description") or ""),
+                body=str(item.get("body") or ""),
+                domains=[str(d) for d in (item.get("domains") or [])],
+                enabled=bool(item.get("enabled", True)),
+            )
+            keep.add(saved.meta.skill_id)
+        for skill in existing:
+            if skill.meta.skill_id not in keep:
+                await store.delete(skill.meta.skill_id)
+
+    def _replace_mcp_servers(self, items: list[dict[str, Any]], request_id: str) -> None:
+        """整表替换 MCP 配置；同 id 的 env/headers 空值沿用旧值（前端只有掩码）。"""
+        previous = {str(raw.get("id") or ""): raw for raw in read_mcp_servers()}
+        merged: list[dict[str, Any]] = []
+        for item in items:
+            sid = str(item.get("id") or "").strip() or uuid.uuid4().hex[:8]
+            old = previous.get(sid, {})
+            env = {
+                key: (value if value and value != "••••••" else str(old.get("env", {}).get(key, "")))
+                for key, value in dict(item.get("env") or {}).items()
+            }
+            headers = {
+                key: (
+                    value
+                    if value and value != "••••••"
+                    else str(old.get("headers", {}).get(key, ""))
+                )
+                for key, value in dict(item.get("headers") or {}).items()
+            }
+            config = McpServerConfig(
+                **{
+                    **item,
+                    "id": sid,
+                    "env": env,
+                    "headers": headers,
+                }
+            )
+            merged.append(config.model_dump())
+        write_mcp_servers(merged)
+        emit("settings.mcp_updated", count=len(merged), request_id=request_id)
+
     async def get_settings(self, locale: Locale = DEFAULT_LOCALE) -> dict[str, Any]:
         """F-604 读设置（T6-11）：有效配置视图（env 已并入）；api_key 恒脱敏，候选上限锁定只读。
 
@@ -2438,6 +2567,8 @@ class ForgeService:
                 "metrics_enabled": cfg.obs_metrics_enabled,
                 "replay_enabled": cfg.obs_replay_enabled,
             },
+            "skills": await self._skills_view(),
+            "mcp_servers": self._mcp_servers_view(),
             "locked": {"candidate_limit": MAX_CANDIDATES},  # MUST-09 宪法常量，只读下发
         }
 
@@ -2637,6 +2768,23 @@ class ForgeService:
                 await asyncio.to_thread(write_model_settings, mirror)
                 for src_key, value in mirror.items():
                     setattr(self._cfg, MODEL_KEY_MAP[src_key], value)
+
+        # 扩展能力（2026-11-21）：两段各自整表替换，None 表示不动。
+        skills_in = update.get("skills")
+        if skills_in is not None:
+            await self._replace_custom_skills([dict(item) for item in skills_in])
+            emit("settings.skills_updated", count=len(skills_in), request_id=request_id)
+        mcp_in = update.get("mcp_servers")
+        if mcp_in is not None:
+            self._replace_mcp_servers([dict(item) for item in mcp_in], request_id)
+            # 配置变更后立刻断开旧连接（2026-11-21）：否则要等下一次生成才重连，
+            # 用户会以为「保存没生效」。函数内 import：runtime 反向依赖 service。
+            from devprompt_ai.harness.mcp.runtime import close as close_mcp_servers
+
+            try:
+                await close_mcp_servers()
+            except Exception:  # noqa: BLE001 - 断连失败不阻断保存
+                logger.warning("mcp.close_after_update_failed", exc_info=True)
 
         api_key = model_in.pop("api_key", None)
         if api_key:  # 非空才替换（空值/None = 不变）
@@ -2937,6 +3085,9 @@ class ForgeService:
             # 多模态（2026-11-14）：visual 域风格与图生图参考图
             style_id=str(session.data.get("style", "")),
             images=tuple(str(x) for x in session.data.get("images") or ()),
+            skill_block=await self._skill_block(
+                str(session.data.get("sentence", "")), self._domain_id(session)
+            ),
         )
 
     async def _generate_single_guarded(

@@ -40,6 +40,8 @@ class GenerationContext(BaseModel):
     #: 领域包 id（2026-11-14 领域包）：模板据此切换分段语义、领域指令与 claims 规则。
     #: 默认 "code"——旧调用方零改动；领域指令/分段文案由模板按包内 i18n 键渲染。
     domain_id: str = "code"
+    #: 命中技能正文（2026-11-21）：由 service 按匹配度挑选并截断，独立于检索证据预算。
+    skill_block: str = ""
     #: 视觉生成风格（2026-11-14 多模态）：仅 visual 域消费；空串 = 通用风格。
     #: 合法值见 domain.domains.packs.visual.VISUAL_STYLES；模板按
     #: ``domain.visual.style.{style_id}`` i18n 键切领域指令，非法值回退通用。
