@@ -56,6 +56,8 @@ jobs:
           pnpm -C desktop install --frozen-lockfile
 
       - name: 安装检索工具（rg / ctags）
+        # 三平台统一用 bash：Windows runner 默认是 PowerShell，不认下面的 [ ... ] 语法
+        shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             choco install ripgrep universal-ctags -y --no-progress
