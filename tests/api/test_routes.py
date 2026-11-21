@@ -292,6 +292,8 @@ async def test_health_checks_non_empty(
     monkeypatch.setattr(health, "run_command", fake_run_command)
     monkeypatch.setenv("LLM_BASE_URL", "https://mock.local")
     monkeypatch.setenv("LLM_MODEL", "mock-model")
+    # 三项必须自洽：CI 无 .env，缺 key 会让 llm_config 变红（本地靠 .env 蒙混过关）
+    monkeypatch.setenv("LLM_API_KEY", "mock-key")
     monkeypatch.setenv("DB_PATH", str(tmp_path / "devprompt.db"))
     resp = await client.get("/api/v1/health")
     assert resp.status_code == 200
