@@ -2,8 +2,8 @@
 
 规则：一律 asyncio.create_subprocess_exec；禁 shell=True；必须设超时（默认 10 秒）；
 超时/异常路径 kill() + await wait() 防僵尸进程；输出统一 UTF-8 errors=replace。
-可执行文件解析带兜底（shutil.which → DPROMPT_<NAME>_PATH → WinGet/编辑器内置工具
-目录扫描），保证「本地工具即开即用」——用户终端无需手工配置 PATH。
+可执行文件解析带兜底（shutil.which → DPROMPT_<NAME>_PATH → 平台常见安装目录扫描），
+保证「本地工具即开即用」——用户终端无需手工配置 PATH。
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import glob
 import logging
 import os
 import shutil
+import sys
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
@@ -25,9 +26,18 @@ DEFAULT_ALLOWED_EXIT_CODES = frozenset({0})
 
 _resolved_cache: dict[str, str] = {}
 
+#: 安装指引按平台给出：Windows 用 winget，macOS 用 brew，Linux 用 apt
 _INSTALL_HINTS = {
-    "rg": "winget install BurntSushi.ripgrep.MSVC",
-    "ctags": "winget install universal-ctags.ctags",
+    "rg": {
+        "win32": "winget install BurntSushi.ripgrep.MSVC",
+        "darwin": "brew install ripgrep",
+        "linux": "apt install ripgrep",
+    },
+    "ctags": {
+        "win32": "winget install universal-ctags.ctags",
+        "darwin": "brew install universal-ctags",
+        "linux": "apt install universal-ctags",
+    },
 }
 
 
@@ -50,7 +60,7 @@ class ExecutableNotFoundError(ProcessError):
 
     def __init__(self, name: str) -> None:
         self.missing = name
-        hint = _INSTALL_HINTS.get(name, "")
+        hint = _INSTALL_HINTS.get(name, {}).get(sys.platform, "")
         message = f"未找到可执行文件 {name}。"
         if hint:
             message += f" 安装：{hint}"
@@ -59,12 +69,30 @@ class ExecutableNotFoundError(ProcessError):
 
 
 def _candidate_dirs() -> list[Path]:
-    """已知工具安装根：WinGet 包目录 + 本机程序目录（VSCode 系编辑器内置工具布局）。"""
-    local = os.environ.get("LOCALAPPDATA", "")
+    """已知工具安装根：Windows 的 WinGet/程序目录，macOS 与 Linux 的常见前缀。
+
+    GUI 应用（桌面壳）启动时的 PATH 往往不含 Homebrew / /usr/local 等目录，
+    故这些位置必须显式兜底，否则桌面端找不到 rg/ctags。
+    """
     dirs: list[Path] = []
-    if local:
-        dirs.append(Path(local) / "Microsoft" / "WinGet" / "Packages")
-        dirs.append(Path(local) / "Programs")
+    if os.name == "nt":
+        local = os.environ.get("LOCALAPPDATA", "")
+        if local:
+            dirs.append(Path(local) / "Microsoft" / "WinGet" / "Packages")
+            dirs.append(Path(local) / "Programs")
+    else:
+        dirs.extend(
+            [
+                Path("/opt/homebrew/bin"),  # macOS Apple Silicon Homebrew
+                Path("/opt/homebrew/sbin"),
+                Path("/usr/local/bin"),  # macOS Intel Homebrew / Linux 自编译
+                Path("/usr/local/sbin"),
+                Path("/usr/bin"),
+                Path("/bin"),
+                Path.home() / ".cargo" / "bin",
+                Path.home() / ".local" / "bin",
+            ]
+        )
     return [d for d in dirs if d.is_dir()]
 
 
@@ -79,13 +107,13 @@ def _resolve_executable(name: str) -> str:
     if env_val and Path(env_val).is_file():
         _resolved_cache[name] = env_val
         return env_val
-    if os.name == "nt":
-        exe = f"{name}.exe"
-        for base in _candidate_dirs():
-            hits = sorted(glob.glob(str(base / "**" / exe), recursive=True))
-            if hits:
-                _resolved_cache[name] = hits[0]
-                return hits[0]
+    #: Windows 可执行文件带 .exe；POSIX 不带后缀
+    exe = f"{name}.exe" if os.name == "nt" else name
+    for base in _candidate_dirs():
+        hits = sorted(glob.glob(str(base / "**" / exe), recursive=True))
+        if hits:
+            _resolved_cache[name] = hits[0]
+            return hits[0]
     return name  # 未命中：交由 CreateProcess 抛出，由 run_command 转友好错误
 
 

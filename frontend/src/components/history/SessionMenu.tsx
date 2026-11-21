@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Folder, Pencil, Pin, Trash2 } from 'lucide-react'
 import styles from './SessionMenu.module.css'
 import { makeS } from '../../utils/css'
 
@@ -17,59 +18,19 @@ interface SessionMenuProps {
 }
 
 function PinIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path
-        d="M8 1.5 9.6 5l3.4.4-2.5 2.3.7 3.4L8 9.4l-3.2 1.7.7-3.4L3 5.4 6.4 5 8 1.5Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-      <path d="M8 9.4V14" fill="none" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  )
+  return <Pin size={16} strokeWidth={1.5} aria-hidden="true" />
 }
 
 function FolderIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path
-        d="M1.5 4a1 1 0 0 1 1-1h3l1.2 1.2h6.8a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V4Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-      />
-    </svg>
-  )
+  return <Folder size={16} strokeWidth={1.5} aria-hidden="true" />
 }
 
 function PencilIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path
-        d="M11.5 2.5 13.5 4.5 5 13H3v-2l8.5-8.5Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
+  return <Pencil size={16} strokeWidth={1.5} aria-hidden="true" />
 }
 
 function TrashIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path
-        d="M3 4h10M6.5 4V2.8h3V4M4.3 4l.6 8.6h6.2L11.7 4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
+  return <Trash2 size={16} strokeWidth={1.5} aria-hidden="true" />
 }
 
 /**

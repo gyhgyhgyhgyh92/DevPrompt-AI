@@ -20,8 +20,16 @@ def test_archive_stale_marks_old_notes(tmp_path: Any) -> None:
 
     async def _run() -> None:
         note = ProjectNote(
-            project_root="p", kind="target", key="old@x", value="v", evidence="",
-            confidence=0.9, hit_count=0, last_hit_at=None, superseded_by="", source="test",
+            project_root="p",
+            kind="target",
+            key="old@x",
+            value="v",
+            evidence="",
+            confidence=0.9,
+            hit_count=0,
+            last_hit_at=None,
+            superseded_by="",
+            source="test",
         )
         await store.upsert(note)
         count = await store.archive_stale("p", max_age_days=0)

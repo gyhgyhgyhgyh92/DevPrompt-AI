@@ -61,13 +61,12 @@ from devprompt_ai.domain.context import (
     summary_from_turn,
 )
 from devprompt_ai.domain.context.budget import turn_token_budget
+from devprompt_ai.domain.context.build_context import compose_history
 from devprompt_ai.domain.context.collapse import collapse_tool_output
+from devprompt_ai.domain.context.compactor import plan_compaction
+from devprompt_ai.domain.context.prompt_layers import assert_append_only, render_delta
 from devprompt_ai.domain.context.prune import prune_content
 from devprompt_ai.domain.context.stale import is_stale
-from devprompt_ai.domain.context.build_context import compose_history
-from devprompt_ai.domain.context.compactor import plan_compaction
-from devprompt_ai.domain.model.registry import infer_cache_kind
-from devprompt_ai.domain.context.prompt_layers import assert_append_only, render_delta
 from devprompt_ai.domain.context.task_contract import (
     ContractStatus,
     TaskContract,
@@ -111,6 +110,8 @@ from devprompt_ai.domain.generate.ports import (
 from devprompt_ai.domain.hooks.builtin import DetectorHook, FactsSummaryHook, summarize_facts
 from devprompt_ai.domain.hooks.pipeline import HookPipeline
 from devprompt_ai.domain.hooks.types import HookContext
+from devprompt_ai.domain.mcp.models import McpServerConfig
+from devprompt_ai.domain.model.registry import infer_cache_kind
 from devprompt_ai.domain.model.tuning import resolve_effort
 from devprompt_ai.domain.model_catalog import (
     ModelCatalogFetcher,
@@ -165,7 +166,6 @@ from devprompt_ai.domain.retrieval.facts import (
 from devprompt_ai.domain.retrieval.locate import locate_symbol
 from devprompt_ai.domain.retrieval.paths import safe_join
 from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader, SymbolProvider
-from devprompt_ai.domain.mcp.models import McpServerConfig
 from devprompt_ai.domain.retrieval.query_rewrite import rewrite_query, target_changed
 from devprompt_ai.domain.skills.matching import fit_skills, rank_skills, render_skills
 from devprompt_ai.domain.skills.models import Skill
@@ -173,8 +173,8 @@ from devprompt_ai.harness.guardrails import validate_claims
 from devprompt_ai.harness.llm import LLMGenerator, reset_generation_sink, set_generation_sink
 from devprompt_ai.harness.overflow import is_context_overflow
 from devprompt_ai.harness.process import LocalCommandRunner, LocalFileReader, SymbolTableProvider
-from devprompt_ai.harness.skills import loader as skill_loader
 from devprompt_ai.harness.repo_indexer import impact_for, index_project
+from devprompt_ai.harness.skills import loader as skill_loader
 from devprompt_ai.harness.summarize import summarize_history
 from devprompt_ai.harness.tool_registry import ToolRegistry
 from devprompt_ai.harness.trace import TracingReader, TracingRunner
@@ -2424,9 +2424,7 @@ class ForgeService:
         dirs = self._cfg.skill_roots()
         if dirs:
             metas.extend(await asyncio.to_thread(skill_loader.scan, dirs))
-        ranked = rank_skills(
-            metas, sentence, domain, limit=max(1, int(self._cfg.skills_top_n))
-        )
+        ranked = rank_skills(metas, sentence, domain, limit=max(1, int(self._cfg.skills_top_n)))
         if not ranked:
             return ""
         picked: list[Skill] = []
@@ -2511,7 +2509,9 @@ class ForgeService:
             sid = str(item.get("id") or "").strip() or uuid.uuid4().hex[:8]
             old = previous.get(sid, {})
             env = {
-                key: (value if value and value != "••••••" else str(old.get("env", {}).get(key, "")))
+                key: (
+                    value if value and value != "••••••" else str(old.get("env", {}).get(key, ""))
+                )
                 for key, value in dict(item.get("env") or {}).items()
             }
             headers = {
@@ -2533,6 +2533,17 @@ class ForgeService:
             merged.append(config.model_dump())
         write_mcp_servers(merged)
         emit("settings.mcp_updated", count=len(merged), request_id=request_id)
+
+    async def test_mcp_server(self, config: McpServerConfig) -> dict[str, Any]:
+        """测试 MCP 服务器连接：连一次、列工具、立即断开；失败只回报不抛。
+
+        探测实现属基础设施层，HTTP 薄壳不得直接 import（薄壳约束，MUST-10），
+        故由本方法承接，路由只做「参数收拢 -> 调 service -> 渲染」。
+        """
+        # 函数内 import：harness 层实现，避免模块级反向依赖
+        from devprompt_ai.harness.mcp.manager import probe_server
+
+        return await probe_server(config, timeout_s=10.0)
 
     async def get_settings(self, locale: Locale = DEFAULT_LOCALE) -> dict[str, Any]:
         """F-604 读设置（T6-11）：有效配置视图（env 已并入）；api_key 恒脱敏，候选上限锁定只读。

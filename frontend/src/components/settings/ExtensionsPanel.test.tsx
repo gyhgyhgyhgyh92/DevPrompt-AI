@@ -33,8 +33,22 @@ const fixture = {
   skills: {
     dirs: ['/skills'],
     items: [
-      { skill_id: '', name: '目录技能', description: '来自目录', source: 'dir', domains: [], enabled: true },
-      { skill_id: 'k1', name: '自定义技能', description: '来自界面', source: 'custom', domains: [], enabled: true },
+      {
+        skill_id: '',
+        name: '目录技能',
+        description: '来自目录',
+        source: 'dir',
+        domains: [],
+        enabled: true,
+      },
+      {
+        skill_id: 'k1',
+        name: '自定义技能',
+        description: '来自界面',
+        source: 'custom',
+        domains: [],
+        enabled: true,
+      },
     ],
   },
   mcp_servers: [

@@ -14,8 +14,11 @@ from typing import Any
 from agents.mcp import (
     MCPServerManager,
     MCPServerSse,
+    MCPServerSseParams,
     MCPServerStdio,
+    MCPServerStdioParams,
     MCPServerStreamableHttp,
+    MCPServerStreamableHttpParams,
 )
 
 from devprompt_ai.domain.mcp.models import McpServerConfig
@@ -42,24 +45,24 @@ def build_server(config: McpServerConfig, *, session_timeout_s: float = 30.0) ->
     if config.transport == "stdio":
         # env 与父进程合并而非替换（2026-11-21）：只填业务变量时，PATH/SystemRoot
         # 等基础变量仍需存在，否则 Windows 上连命令都找不到。用户配置优先。
-        env = {**os.environ, **config.env} if config.env else None
-        return MCPServerStdio(
-            params={
-                "command": config.command,
-                "args": list(config.args),
-                "env": env,
-            },
-            **common,
-        )
+        # SDK 的 params.env 是 NotRequired：不能传 None，只能省略该键。
+        params: MCPServerStdioParams = {
+            "command": config.command,
+            "args": list(config.args),
+        }
+        if config.env:
+            params["env"] = {**os.environ, **config.env}
+        return MCPServerStdio(params=params, **common)
+    headers = dict(config.headers)
     if config.transport == "sse":
-        return MCPServerSse(
-            params={"url": config.url, "headers": dict(config.headers) or None},
-            **common,
-        )
-    return MCPServerStreamableHttp(
-        params={"url": config.url, "headers": dict(config.headers) or None},
-        **common,
-    )
+        sse_params: MCPServerSseParams = {"url": config.url}
+        if headers:
+            sse_params["headers"] = headers
+        return MCPServerSse(params=sse_params, **common)
+    http_params: MCPServerStreamableHttpParams = {"url": config.url}
+    if headers:
+        http_params["headers"] = headers
+    return MCPServerStreamableHttp(params=http_params, **common)
 
 
 class McpClientManager:
@@ -134,9 +137,7 @@ class McpClientManager:
         return out
 
 
-async def probe_server(
-    config: McpServerConfig, *, timeout_s: float = 10.0
-) -> dict[str, Any]:
+async def probe_server(config: McpServerConfig, *, timeout_s: float = 10.0) -> dict[str, Any]:
     """测试连接：连一次、列工具、立刻断开；失败返回错误类型而非抛异常。"""
     server = build_server(config, session_timeout_s=timeout_s)
     manager = MCPServerManager(

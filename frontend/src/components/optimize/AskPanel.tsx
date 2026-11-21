@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ChevronDown } from 'lucide-react'
 
 interface AskPanelProps {
   /** 本轮问题总数。 */
@@ -66,7 +67,7 @@ export function AskPanel({
             {answered} / {total} 已答
           </span>
           <span className="ask-panel__caret" aria-hidden="true">
-            ▾
+            <ChevronDown size={14} strokeWidth={1.5} />
           </span>
         </button>
       </header>

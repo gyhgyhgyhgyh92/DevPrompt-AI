@@ -59,6 +59,4 @@ async def test_run_command_stream_drains_stderr_without_deadlock() -> None:
 
 async def test_run_command_stream_timeout_still_raises() -> None:
     with pytest.raises(ProcessTimeoutError):
-        await run_command_stream(
-            [sys.executable, "-c", "import time; time.sleep(30)"], timeout=1.0
-        )
+        await run_command_stream([sys.executable, "-c", "import time; time.sleep(30)"], timeout=1.0)

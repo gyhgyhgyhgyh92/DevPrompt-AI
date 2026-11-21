@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
+import { Circle, Folder, MoreVertical, PanelLeftClose, Pin, Plus, Trash2 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
+import { useToast } from '../../hooks/useToast'
+import { Toast } from '../ui/Toast'
 import {
   HISTORY_PAGE_SIZE,
   deleteHistory,
@@ -28,75 +31,6 @@ function sortItems(items: readonly HistoryItemPayload[]): HistoryItemPayload[] {
     return b.updated_at.localeCompare(a.updated_at)
   })
   return copy
-}
-
-/** toast 显示时长（自研轻量提示，2s 消失）。 */
-const TOAST_DURATION_MS = 2000
-
-function FolderIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path
-        d="M1.5 4a1 1 0 0 1 1-1h3l1.2 1.2h6.8a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V4Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-      />
-    </svg>
-  )
-}
-
-function PinIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path
-        d="M8 1.5 9.6 5l3.4.4-2.5 2.3.7 3.4L8 9.4l-3.2 1.7.7-3.4L3 5.4 6.4 5 8 1.5Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-function DotIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <circle cx="8" cy="8" r="4" fill="none" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  )
-}
-
-/** 一键收纳图标（图一）：竖向边界 + 左向双箭头（收起侧边栏语义，自绘 SVG，MUST-04）。 */
-function CollapseIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path
-        d="M13.5 3.5v9M9.5 4.5 6 8l3.5 3.5M5.5 4.5 2 8l3.5 3.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-/** 项目组头删除图标（2026-11-01）：垃圾桶轮廓，与 SessionMenu 同形。 */
-function TrashIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path
-        d="M3 4h10M6.5 4V2.8h3V4M4.3 4l.6 8.6h6.2L11.7 4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
 }
 
 /** 条目标题回退：无 custom_title 且无原句（旧数据）时拼「项目名 · 状态」（spec 假设 3）。 */
@@ -155,12 +89,12 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
-  const [toast, setToast] = useState<string | null>(null)
   // 删除确认（2026-11-01）：单条会话与整个项目共用同一个确认弹窗与请求中标志
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [isDeleting, setDeleting] = useState(false)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 轻量提示：状态与计时收敛在共享 hook（2026-11-17），与历史页共用同一份实现
+  const toast = useToast()
 
   useEffect(() => {
     getHistory({ limit: HISTORY_PAGE_SIZE })
@@ -169,19 +103,6 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
         // 列表加载失败保持空态，不重试（MUST-15）
       })
   }, [])
-
-  useEffect(
-    () => () => {
-      if (toastTimer.current !== null) clearTimeout(toastTimer.current)
-    },
-    [],
-  )
-
-  function showToast(text: string): void {
-    setToast(text)
-    if (toastTimer.current !== null) clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToast(null), TOAST_DURATION_MS)
-  }
 
   async function refreshHistory(): Promise<void> {
     const page = await getHistory({ limit: HISTORY_PAGE_SIZE }).catch(() => null)
@@ -214,7 +135,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
     navigate('/')
     getResult(sessionId)
       .then((snapshot) => useOptimizeStore.getState().applySnapshot(snapshot))
-      .catch(() => showToast(t('history.load_result_failed')))
+      .catch(() => toast.show(t('history.load_result_failed')))
   }
 
   function handleNewSession(): void {
@@ -231,7 +152,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
       await patchHistory(item.session_id, { pinned: !item.pinned })
       await refreshHistory()
     } catch {
-      showToast(t('history.pin_failed'))
+      toast.show(t('history.pin_failed'))
     }
   }
 
@@ -249,7 +170,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
       await patchHistory(item.session_id, { title })
       await refreshHistory()
     } catch {
-      showToast(t('history.rename_failed'))
+      toast.show(t('history.rename_failed'))
     }
   }
 
@@ -288,13 +209,13 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
     try {
       if (target.kind === 'session') {
         await deleteSession(target.item)
-        showToast(t('history.deleted'))
+        toast.show(t('history.deleted'))
       } else {
         const deleted = await deleteProject(target.group)
-        showToast(`已删除 ${deleted} 条会话`)
+        toast.show(`已删除 ${deleted} 条会话`)
       }
     } catch {
-      showToast(
+      toast.show(
         target.kind === 'session' ? t('history.delete_failed') : t('history.delete_project_failed'),
       )
     } finally {
@@ -309,8 +230,8 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
     const text = item.project_root !== '' ? item.project_root : item.project
     void navigator.clipboard
       .writeText(text)
-      .then(() => showToast(t('history.copied')))
-      .catch(() => showToast(t('history.copy_failed')))
+      .then(() => toast.show(t('history.copied')))
+      .catch(() => toast.show(t('history.copy_failed')))
   }
 
   const sorted = sortItems(history)
@@ -356,7 +277,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
           >
             {isSelected ? (
               <span className={s('project-sidebar__item-icon')}>
-                <DotIcon />
+                <Circle size={14} strokeWidth={1.5} aria-hidden="true" />
               </span>
             ) : null}
             <span className={s('project-sidebar__item-title')}>{itemTitle(item)}</span>
@@ -364,7 +285,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
         )}
         {item.pinned ? (
           <span className={s('project-sidebar__item-pin')} aria-label={t('history.pinned')}>
-            <PinIcon />
+            <Pin size={14} strokeWidth={1.5} aria-hidden="true" />
           </span>
         ) : null}
         {showMenuButton ? (
@@ -378,7 +299,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
               setOpenMenuId((current) => (current === item.session_id ? null : item.session_id))
             }}
           >
-            ⋮
+            <MoreVertical size={14} strokeWidth={1.5} aria-hidden="true" />
           </button>
         ) : null}
         {isMenuOpen ? (
@@ -407,13 +328,13 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
           aria-label={t('history.aria_collapse')}
           onClick={onCollapse}
         >
-          <CollapseIcon />
+          <PanelLeftClose size={16} strokeWidth={1.5} aria-hidden="true" />
         </button>
         <span className={s('project-sidebar__title')}>{t('history.sidebar_label')}</span>
       </div>
 
       <button type="button" className={s('project-sidebar__new')} onClick={handleNewSession}>
-        ＋ 新建会话
+        <Plus size={14} strokeWidth={1.5} aria-hidden="true" /> 新建会话
       </button>
 
       <div className={s('project-sidebar__list')}>
@@ -424,7 +345,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
               className={s('project-sidebar__group-head')}
               title={group.projectRoot || undefined}
             >
-              <FolderIcon />
+              <Folder size={16} strokeWidth={1.5} aria-hidden="true" />
               <span className={s('project-sidebar__group-name')}>{group.project}</span>
               {group.projectRoot !== '' ? (
                 <button
@@ -436,7 +357,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
                     setPendingDelete({ kind: 'project', group })
                   }}
                 >
-                  <TrashIcon />
+                  <Trash2 size={14} strokeWidth={1.5} aria-hidden="true" />
                 </button>
               ) : null}
             </div>
@@ -462,11 +383,7 @@ export function ProjectSidebar({ onCollapse, onSelect }: ProjectSidebarProps) {
         <Link to="/history">{t('history.link_history')}</Link>
       </nav>
 
-      {toast !== null ? (
-        <div className={s('project-sidebar__toast')} role="status">
-          {toast}
-        </div>
-      ) : null}
+      <Toast message={toast.message} />
 
       {/* Portal 到 body：窄屏抽屉的 transform 会成为 fixed 的包含块，弹窗会被裁在抽屉里 */}
       {pendingDelete !== null

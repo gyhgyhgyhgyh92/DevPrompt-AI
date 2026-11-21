@@ -55,7 +55,9 @@ def _meta_from_file(path: Path) -> SkillMeta | None:
     if not name:
         return None
     domains = tuple(
-        item.strip() for item in front.get("domains", "").replace("，", ",").split(",") if item.strip()
+        item.strip()
+        for item in front.get("domains", "").replace("，", ",").split(",")
+        if item.strip()
     )
     return SkillMeta(
         name=name,

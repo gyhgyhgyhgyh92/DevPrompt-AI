@@ -10,6 +10,12 @@
   padding: var(--space-6) var(--space-5);
 }
 
+/* 桌面工作台：对话列放宽至 960px（Trae SOLO 的对话区为整幅宽列，无窄上限）。
+   仅桌面形态生效；Web 形态仍为 820px。 */
+[data-shell='desktop'] .chat-stream {
+  max-inline-size: var(--desktop-chat-width);
+}
+
 /* 窄屏（<768）：气泡放宽至 90%，对话流单列不溢出 */
 @media (max-width: 767.98px) {
   .chat-user-bubble {

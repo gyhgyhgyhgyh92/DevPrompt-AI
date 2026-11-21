@@ -23,9 +23,7 @@ def test_stdio_requires_command_and_rejects_shell_meta() -> None:
 
 def test_stdio_env_merges_parent_process() -> None:
     """只填业务变量时仍要保留 PATH 等基础变量，否则命令可能根本找不到。"""
-    config = McpServerConfig(
-        name="x", transport="stdio", command="python", env={"ONLY_MINE": "1"}
-    )
+    config = McpServerConfig(name="x", transport="stdio", command="python", env={"ONLY_MINE": "1"})
     server = build_server(config)
     env = server.params.env
     assert env["ONLY_MINE"] == "1"
@@ -63,9 +61,7 @@ def test_build_server_per_transport() -> None:
 
     stdio = build_server(McpServerConfig(name="a", command="python"))
     sse = build_server(McpServerConfig(name="b", transport="sse", url="https://a/sse"))
-    http = build_server(
-        McpServerConfig(name="c", transport="streamable-http", url="https://a/mcp")
-    )
+    http = build_server(McpServerConfig(name="c", transport="streamable-http", url="https://a/mcp"))
     assert isinstance(stdio, MCPServerStdio)
     assert isinstance(sse, MCPServerSse)
     assert isinstance(http, MCPServerStreamableHttp)
@@ -78,7 +74,8 @@ def test_disabled_configs_yield_no_servers() -> None:
         )
 
     assert asyncio.run(_go()) == []
-    assert asyncio.run(get_servers([McpServerConfig(name="a", command="python")], enabled=False)) == []
+    servers = [McpServerConfig(name="a", command="python")]
+    assert asyncio.run(get_servers(servers, enabled=False)) == []
 
 
 def test_parse_servers_skips_invalid() -> None:

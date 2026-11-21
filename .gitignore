@@ -39,3 +39,7 @@ devprompt-ai-e2e-flow/
 /.workbuddy/
 /browser-extension/README.md
 /eval/recall/README.md
+
+# ---- 官网不入库（2026-11-21）----
+# 产品官网是独立交付物，与产品源码不同源，单独部署与版本管理。
+/website/

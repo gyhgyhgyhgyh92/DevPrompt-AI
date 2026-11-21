@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
+import { Activity, Palette, Plug, Settings, ShieldCheck, X } from 'lucide-react'
 import { getSettings } from '../../api/endpoints'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { AppearancePanel } from './AppearancePanel'
 import { errorMessage } from './errorMessage'
@@ -32,12 +34,23 @@ const NAV_KEYS: NavKey[] = [
   'security',
   'extensions',
 ]
-const TAB_ICONS: Record<NavKey, string> = {
-  'model-service': '⚙',
-  appearance: '◐',
-  observability: '◎',
-  security: '⚑',
-  extensions: '⌘',
+
+/**
+ * 导航项图标（2026-11-17：统一到 lucide 16px 线性体系，
+ * 替掉原先的 ⚙ ◐ ◎ ⚑ 字符字形——字符在不同系统字体下大小与基线不一致）。
+ */
+const TAB_ICONS: Record<NavKey, typeof Settings> = {
+  'model-service': Settings,
+  appearance: Palette,
+  observability: Activity,
+  security: ShieldCheck,
+  extensions: Plug,
+}
+
+/** 渲染导航项图标（统一 16px 线性、currentColor，与全局图标体系一致）。 */
+function NavIcon({ navKey }: { navKey: NavKey }): ReactNode {
+  const Icon = TAB_ICONS[navKey]
+  return <Icon size={16} strokeWidth={1.5} aria-hidden="true" />
 }
 
 /**
@@ -76,6 +89,9 @@ export function SettingsModal(props: SettingsModalProps) {
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [props.open, props.onClose])
+
+  // 焦点陷阱：Tab 在弹窗内循环，不逃逸到背景（此前只移焦不循环）
+  useFocusTrap(panelRef, props.open)
 
   // 打开时回读后端设置（store 只存结果，fetch 在容器组件，MUST-16）
   useEffect(() => {
@@ -125,7 +141,7 @@ export function SettingsModal(props: SettingsModalProps) {
             aria-label={t('common.close')}
             onClick={props.onClose}
           >
-            ✕
+            <X size={16} strokeWidth={1.5} aria-hidden="true" />
           </button>
         </header>
         <div className={s('settings-modal__body')}>
@@ -142,7 +158,8 @@ export function SettingsModal(props: SettingsModalProps) {
                 )}
                 onClick={() => handleNav(key)}
               >
-                {TAB_ICONS[key]} {t(`settings.tab.${key}`)}
+                <NavIcon navKey={key} />
+                {t(`settings.tab.${key}`)}
               </button>
             ))}
           </nav>

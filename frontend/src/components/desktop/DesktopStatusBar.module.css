@@ -1,0 +1,64 @@
+/* 桌面状态栏（2026-11-17，22px）。
+ * 对标 VS Code `.statusbar`（22px / 12px）与 Trae SOLO 状态 chip
+ * （18px 高、4px 圆角、浅底）。配色全部取既有 token，不新增色值。 */
+
+.app-statusbar {
+  flex-shrink: 0;
+  block-size: var(--statusbar-height);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  background: var(--color-surface-base);
+  border-block-start: 1px solid var(--divider);
+  font: var(--font-code-regular);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+}
+
+.app-statusbar__spacer {
+  flex: 1;
+}
+
+.app-statusbar__path {
+  min-inline-size: 0;
+  max-inline-size: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+}
+
+.app-statusbar__item {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.app-statusbar__chip {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  block-size: var(--chip-height);
+  padding-inline: var(--space-1-5);
+  border-radius: var(--radius-chip);
+  background: var(--hover);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.app-statusbar__chip--ok {
+  color: var(--color-success-500);
+}
+
+.app-statusbar__chip--down {
+  color: var(--color-danger-500);
+}
+
+.app-statusbar__chip--running {
+  color: var(--color-running-500);
+}
+
+.app-statusbar__chip--checking,
+.app-statusbar__chip--idle {
+  color: var(--color-text-muted);
+}

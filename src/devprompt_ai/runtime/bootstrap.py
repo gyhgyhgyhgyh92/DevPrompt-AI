@@ -10,8 +10,6 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from devprompt_ai.memory.event_store import SQLiteEventStore
 from devprompt_ai.memory.intervention_store import SQLiteInterventionStore
 from devprompt_ai.memory.run_store import SQLiteRunStore
@@ -22,6 +20,8 @@ from devprompt_ai.runtime.lock import SingleWriterLock, acquire_writer_lock, rel
 from devprompt_ai.runtime.runs import RunManager, SnapshotSerializer
 from devprompt_ai.runtime.sessions import SessionPool
 from devprompt_ai.service import ForgeService
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass

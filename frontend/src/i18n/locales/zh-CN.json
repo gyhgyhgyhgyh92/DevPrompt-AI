@@ -667,5 +667,33 @@
         "usage": "说明目标、可投入资源、预算与时间节点。"
       }
     }
+  },
+  "desktop": {
+    "rail": {
+      "label": "桌面导航",
+      "chat": "对话",
+      "history": "历史",
+      "observability": "可观测性",
+      "settings": "设置"
+    },
+    "status": {
+      "label": "状态栏",
+      "session": "会话",
+      "no_session": "无会话",
+      "sse": {
+        "idle": "未连接",
+        "connecting": "连接中",
+        "open": "已连接",
+        "error": "连接异常"
+      }
+    },
+    "panel": {
+      "label": "运行日志",
+      "title": "运行日志",
+      "no_session": "尚无会话，提交一次优化后此处会实时输出事件流。",
+      "no_session_title": "尚无会话",
+      "no_events": "暂无事件",
+      "hint": "实时跟随会话事件流"
+    }
   }
 }

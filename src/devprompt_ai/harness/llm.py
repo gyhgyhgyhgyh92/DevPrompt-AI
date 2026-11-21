@@ -122,6 +122,8 @@ async def _mcp_servers_for(cfg: AppConfig) -> list[Any]:
     except Exception:  # noqa: BLE001 - MCP 是增强项，不可用不能拖垮本轮
         logger.warning("mcp.servers_unavailable", exc_info=True)
         return []
+
+
 #: 增量推送节流：过密会把 SSE 刷爆，过疏则打字机断断续续。
 _STREAM_EMIT_INTERVAL_S: Final[float] = 0.25
 #: 每次推送保留的尾部字符数（前端只展示「正在写什么」）。
@@ -208,9 +210,7 @@ def _emit_tool_event(event: str, **fields: object) -> None:
         logger.debug("tool.event_failed", exc_info=True)
 
 
-def _search_code_tool(
-    root: str, runner: CommandRunner, *, budget_tokens: int = 0
-) -> FunctionTool:
+def _search_code_tool(root: str, runner: CommandRunner, *, budget_tokens: int = 0) -> FunctionTool:
     """生成阶段的补充检索工具（2026-11-18 同轮工具回路）。
 
     模型在生成方案时若发现证据不足，可调用本工具做一次字面全文检索；SDK 负责
@@ -933,10 +933,16 @@ class LLMGenerator:
         if ctx.skill_block.strip():
             # 技能正文由 service 按匹配度挑选并截断，独立预算；这里只负责拼进 system。
             system = f"{system}\n\n{ctx.skill_block.strip()}"
-        if tools:
+        # runner 非空是 _generate_tools 的不变式（无通道则不挂工具），
+        # 但跨函数推断不出来，故在此显式收窄。
+        if tools and self._runner is not None:
             system = f"{system}\n\n{_TOOL_HINT}"
             _tool_token_state.set(0)
-            tools = (_search_code_tool(ctx.project_root, self._runner, budget_tokens=cfg.runtime_window()),)
+            tools = (
+                _search_code_tool(
+                    ctx.project_root, self._runner, budget_tokens=cfg.runtime_window()
+                ),
+            )
         servers = await _mcp_servers_for(cfg)
         draft = await chat_structured(
             cfg,

@@ -6,11 +6,11 @@ import json
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
 
 from devprompt_ai.config import AppConfig
 from devprompt_ai.interfaces.api.schemas import ApiResponse
 from devprompt_ai.observability.logging import event_log_path
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/v1/obs/logs", tags=["obs-logs"])
 

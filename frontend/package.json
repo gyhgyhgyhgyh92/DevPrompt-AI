@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "i18next": "^26.7.2",
+    "lucide-react": "1.74.0",
     "motion": "14.10.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

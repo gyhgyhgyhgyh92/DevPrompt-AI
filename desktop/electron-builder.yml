@@ -1,0 +1,62 @@
+# electron-builder 配置：一份配置产出 Windows / macOS / Linux 三种安装包。
+#
+# 产物命名与官网下载区的直链严格一致（DevPromptAI-<version>-<平台>-<架构>.<ext>），
+# 改这里必须同步改 website/src/lib/links.ts 的 assets 常量，否则出现死链。
+appId: ai.devprompt.desktop
+productName: DevPrompt AI
+copyright: MIT License
+
+directories:
+  output: dist/packages
+  buildResources: build
+
+# 只收编译产物与包清单；sidecar / 前端 / 检索工具走 extraResources（asar 外）
+files:
+  - dist/**/*
+  - package.json
+
+# 运行时资源布局与 desktop/src/main.ts 的路径解析一一对应：
+#   resources/sidecar/devprompt-ai-desktop[.exe]
+#   resources/frontend-dist
+#   resources/tools/{rg,ctags}[.exe]
+extraResources:
+  - from: dist/sidecar-dist/devprompt-ai-desktop
+    to: sidecar
+  - from: dist/sidecar-dist/tools
+    to: tools
+  - from: ../frontend/dist
+    to: frontend-dist
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: DevPromptAI-${version}-win-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - arm64
+  # 项目无 Apple 开发者证书：跳过签名与公证，产物为未签名 dmg，
+  # 首次打开需用户在「系统设置 → 隐私与安全性」放行。
+  identity: null
+  notarize: false
+  artifactName: DevPromptAI-${version}-mac-${arch}.${ext}
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  category: Development
+  synopsis: 本地运行的提示词工程工具
+  artifactName: DevPromptAI-${version}-linux-${arch}.${ext}

@@ -31,7 +31,9 @@ def render_snapshot(snapshot: FlowSnapshot) -> str:
     """把快照渲染成 MCP 纯文本：状态 + 需要确认项 + 方案正文。"""
     lines = [f"状态：{snapshot.status} / {snapshot.state}"]
     if snapshot.target is not None:
-        lines.append(f"目标：{snapshot.target.name} @ {snapshot.target.path}:{snapshot.target.line}")
+        lines.append(
+            f"目标：{snapshot.target.name} @ {snapshot.target.path}:{snapshot.target.line}"
+        )
     if snapshot.questions:
         lines.append("需要确认：")
         lines.extend(f"- {item.ask}" for item in snapshot.questions)

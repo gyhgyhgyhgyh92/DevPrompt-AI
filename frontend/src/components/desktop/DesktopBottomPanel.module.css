@@ -1,0 +1,158 @@
+/* 桌面底部面板（2026-11-17，可折叠「运行日志」）。
+ * 对标 VS Code 底部面板：面板头常驻可点，展开为单色等宽日志行。
+ * 配色全部取既有 token，不新增色值。 */
+
+.app-panel {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface-base);
+  border-block-start: 1px solid var(--divider);
+}
+
+.app-panel__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  block-size: var(--panel-header-height);
+  padding-inline: var(--space-3);
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  text-align: start;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.app-panel__head:hover {
+  background: var(--hover);
+  color: var(--color-text-primary);
+}
+
+.app-panel__title {
+  font: var(--font-code-medium);
+  font-size: var(--text-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-wide);
+}
+
+.app-panel__body {
+  block-size: var(--panel-height);
+  min-block-size: 0;
+  overflow: hidden;
+  border-block-start: 1px solid var(--divider);
+}
+
+.app-panel__log {
+  block-size: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  overflow-y: auto;
+  font: var(--font-code-regular);
+  color: var(--color-text-secondary);
+}
+
+.app-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-panel__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  min-block-size: 18px;
+  border-inline-start: 2px solid transparent;
+}
+
+.app-panel__row:hover {
+  background: var(--hover);
+}
+
+.app-panel__row--failed {
+  border-inline-start-color: var(--color-danger-500);
+  color: var(--color-danger-500);
+}
+
+.app-panel__seq {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-panel__type {
+  flex: 0 0 116px;
+  color: var(--color-text-brand);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-panel__summary {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-panel__empty,
+.app-panel__error {
+  margin: 0;
+  padding-inline: var(--space-3);
+  color: var(--color-text-muted);
+}
+
+.app-panel__error {
+  color: var(--color-danger-500);
+}
+
+.app-panel__more {
+  align-self: flex-start;
+  margin-inline-start: var(--space-3);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: var(--font-code-regular);
+  padding: 0 var(--space-2);
+  cursor: pointer;
+}
+
+.app-panel__more:hover {
+  background: var(--hover);
+}
+
+.app-panel__more:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.app-panel__hint {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding-inline: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-caption-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-panel__head {
+    transition: none;
+  }
+}
+
+.app-panel__skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-inline: var(--space-3);
+}

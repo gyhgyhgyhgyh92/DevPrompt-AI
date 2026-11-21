@@ -61,11 +61,10 @@ def test_delegation_skips_applied_orders() -> None:
     from devprompt_ai.config import AppConfig
     from devprompt_ai.domain.agent.work_order import WorkOrder
     from devprompt_ai.domain.models import FlowSession
+    from devprompt_ai.harness.process import SymbolTableProvider
     from devprompt_ai.service import AppliedOps, ForgeService
     from devprompt_ai.state import FlowState
     from test_service import FakeDecider, FakeGenerator, FakeReader, FakeRunner, FakeStore, _symbols
-
-    from devprompt_ai.harness.process import SymbolTableProvider
 
     svc = ForgeService(
         cfg=AppConfig(_env_file=None),  # type: ignore[call-arg]
@@ -104,11 +103,10 @@ def test_resume_execution_restores_steps() -> None:
     from devprompt_ai.config import AppConfig
     from devprompt_ai.domain.agent.action import AgentAction
     from devprompt_ai.domain.models import FlowSession
+    from devprompt_ai.harness.process import SymbolTableProvider
     from devprompt_ai.service import ForgeService
     from devprompt_ai.state import FlowState
     from test_service import FakeDecider, FakeGenerator, FakeReader, FakeRunner, FakeStore, _symbols
-
-    from devprompt_ai.harness.process import SymbolTableProvider
 
     svc = ForgeService(
         cfg=AppConfig(_env_file=None),  # type: ignore[call-arg]
@@ -128,7 +126,9 @@ def test_resume_execution_restores_steps() -> None:
     )
     captured: dict[str, Any] = {}
 
-    async def _fake_loop(_session: Any, *, request_id: str, progress: Any = None, initial_steps: Any = None) -> Any:
+    async def _fake_loop(
+        _session: Any, *, request_id: str, progress: Any = None, initial_steps: Any = None
+    ) -> Any:
         captured["steps"] = list(initial_steps or [])
         return None
 
@@ -139,8 +139,20 @@ def test_resume_execution_restores_steps() -> None:
         snapshot = {
             "session_data": {"sentence": "把提交按钮改成 primary", "project_root": "."},
             "steps": [
-                {"index": 0, "action": "probe", "outcome": "ok", "duration_ms": 3, "facts_passed": 2},
-                {"index": 1, "action": "generate", "outcome": "ok", "duration_ms": 5, "facts_passed": 2},
+                {
+                    "index": 0,
+                    "action": "probe",
+                    "outcome": "ok",
+                    "duration_ms": 3,
+                    "facts_passed": 2,
+                },
+                {
+                    "index": 1,
+                    "action": "generate",
+                    "outcome": "ok",
+                    "duration_ms": 5,
+                    "facts_passed": 2,
+                },
             ],
         }
         await svc.resume_execution("local", "s1", request_id="r1", snapshot=snapshot)

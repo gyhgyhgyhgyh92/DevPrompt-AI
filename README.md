@@ -2,7 +2,7 @@
 
 > 把一句模糊的需求，变成**带行号与token 出处、可被 ripgrep 反向验证**的工程级提示词。
 
-本地运行的 Web 工具。给定一个代码仓库与一句自然语言需求，它会先**检索定位**（符号表 → 候选集 → 全文定位 → 七项事实验证），信息不足时**反问澄清**，最后产出 **A/B/C 三套**信息完备度递进的提示词方案，并给出**诚实的推荐标记**。
+本地运行的提示词工程工具，两种交付形态：**Web**（浏览器访问 8000 端口）与**桌面端**（Windows 安装包，独立窗口）。给定一个代码仓库与一句自然语言需求，它会先**检索定位**（符号表 → 候选集 → 全文定位 → 七项事实验证），信息不足时**反问澄清**，最后产出 **A/B/C 三套**信息完备度递进的提示词方案，并给出**诚实的推荐标记**。两种形态共用同一份业务逻辑与 `~/.devprompt-ai` 数据，可交替使用（宪法 MUST-10 双形态）。
 
 ---
 
@@ -14,6 +14,7 @@
 | **按需追问** | 由「具体未知项」驱动批量反问；**信息充足时不提问**（七项取证全过即丢弃模型给出的问题直接生成），已答项按语义归一化去重、同一话题不再追问；随时可「直接生成」走保守路径 |
 | **不越级输出** | 信息只够 A 档就只出 A 档。C 档才给行号，且要求行号必须真实存在，否则降级表述 |
 | **诚实推荐** | 置信度优先于分差：置信度不足时**不标推荐**并说明原因，绝不假装确定 |
+| **两种形态** | Web（浏览器）与桌面安装包（Windows）共用同一份业务逻辑与数据，可交替使用；桌面端零命令行启动，无需装 ripgrep/ctags |
 | **评分可解释** | 总分即适配度（0~1，模型按五维打分后归一化），不用不可解释的加权魔数；置信度门禁（0.6 / 0.4）与分差双阈值（0.12 / 0.5）都写死在领域层并有表驱动测试 |
 | **过程可见** | 检索与取证的真实命令、命中行数与输出摘要逐条展示（路径与 stderr 均脱敏）；检索失败也会留下一张带 `Exit code` 的失败卡片，不会静默；结束后整组收成一行摘要，可展开回看 |
 | **本地优先** | 单进程本地服务，SQLite 单文件存储，密钥只落 0600 文件不进库不进日志 |
@@ -29,16 +30,25 @@
 |---|---|---|
 | [Python](https://www.python.org/) | ≥ 3.10（推荐 3.13） | 后端运行时 |
 | [uv](https://docs.astral.sh/uv/) | 任意 | Python 依赖管理 |
-| [Node.js](https://nodejs.org/) | ^20.19 / ^22.12 | 前端构建 |
-| [pnpm](https://pnpm.io/) | ^10.15 | 前端依赖管理 |
+| [Node.js](https://nodejs.org/) | ≥ 20.19 或 ≥ 22.12（Vite 7 引擎要求，实测 24.x 可用） | 前端构建 |
+| [pnpm](https://pnpm.io/) | ≥ 10.15（实测 10.33） | 前端依赖管理 |
 | [ripgrep](https://github.com/BurntSushi/ripgrep) | 任意 | 代码检索（**必需**） |
 | [universal-ctags](https://github.com/universal-ctags/ctags) | 任意 | 符号表构建（**必需**） |
+| [Inno Setup](https://jrsoftware.org/) | 7.1.0 | **仅打包桌面安装包时需要**（开发态跑壳与 Web 形态都不需要） |
 
 > **不必手工配置 PATH**：项目会依次尝试 ①系统 PATH → ②环境变量
 > `DPROMPT_RG_PATH` / `DPROMPT_CTAGS_PATH` → ③WinGet 与编辑器内置工具目录扫描，
 > 自动定位这两个可执行文件。找不到时会在启动自检（`GET /api/v1/health`）中报告并给出安装指引。
+> 桌面安装包已随附这两个二进制（`resources\tools\`），终端用户无需安装。
+
+> **已验证环境**（2026-10-22，Windows）：uv 0.11.28 · Node v24.14.0 · pnpm 10.33.0 ·
+> ripgrep 15.0.0 · Universal Ctags 6.1.0。下文命令均在该环境端到端跑通：
+> `uv sync` → `pnpm build` → 启动后 `GET /api/v1/health` 六项检查全绿。
 
 ### 三步启动
+
+> 已初始化过的机器（`.venv` 与 `frontend/node_modules` 均已存在）可跳过第 2、3 步，
+> 直接进入下方「启动」；`.env` 已配置好模型服务时无需任何额外步骤。
 
 ```powershell
 # 1. 配置（复制后填入你的模型服务信息）
@@ -94,6 +104,71 @@ pnpm dev
 
 ---
 
+## 桌面端（Windows / macOS / Linux 安装包）
+
+把同一套前端与后端打进一个可安装的桌面应用：安装后从开始菜单、应用菜单或桌面图标双击启动，
+独立窗口承载完整界面，无需终端、无需浏览器、无需装 ripgrep/ctags。
+业务逻辑与 Web 版**完全同一份**，两边共用 `~/.devprompt-ai` 数据，可交替使用。
+
+桌面形态是**桌面工作台**而非网页套壳：左侧 48px 活动栏（对话 / 历史 / 可观测性 / 设置）
++ 296px 项目会话侧栏 + 宽幅对话区 + 可折叠「运行日志」面板（实时事件流）+ 22px 状态栏。
+视觉取 Trae SOLO / Builder 的「背景色块分层 + 发丝描边」，配色与字体基调与 Web 端共用
+同一套 token，未新增色值。完整形态说明见 `desktop/README.md`。
+
+### 用户使用
+
+到 [Releases](https://github.com/gyhgyhgyhgyh92/DevPrompt-AI/releases) 下载对应平台的安装包：
+
+| 平台 | 产物 | 安装位置 / 运行方式 |
+|---|---|---|
+| Windows 10+ (x64) | `DevPromptAI-<version>-win-x64.exe` | 每用户安装到 `%LOCALAPPDATA%` 的 `Programs` 目录，免 UAC |
+| macOS 11+ (arm64) | `DevPromptAI-<version>-mac-arm64.dmg` | 拖入「应用程序」后双击运行 |
+| Linux (x86_64) | `DevPromptAI-<version>-linux-x86_64.AppImage` | `chmod +x` 后直接运行，无需安装 |
+
+升级 = 重跑新安装包覆盖安装。
+
+> 未做代码签名：项目未购买代码签名证书。Windows 首次运行若见 SmartScreen
+> 「未知发布商」，点「更多信息 → 仍要运行」；macOS 首次打开需在
+> 「系统设置 → 隐私与安全性」中点「仍要打开」。
+
+Web 形态无需安装，见上文「快速启动」；桌面端与 Web 形态共用同一份数据，可交替使用。
+
+### 开发者构建
+
+```bash
+# 前置：Node >=22.12 / pnpm >=10.15 / uv
+# Electron 二进制经 npmmirror 下载（desktop/.npmrc 已配镜像）
+
+# 一条命令：前端构建 -> 壳编译 -> PyInstaller sidecar -> 检索工具随包 -> 安装包
+uv run python desktop/scripts/build-desktop.py
+# 产物：desktop/dist/packages/（版本号读 pyproject.toml）
+
+# 只验证打包后的 sidecar 能跑（不等安装包，模拟安装态环境变量）
+uv run python desktop/scripts/smoke-sidecar.py
+```
+
+> PyInstaller 不能交叉编译，sidecar 必须在各平台本机构建——三平台安装包由
+> `.github/workflows/release.yml` 的 matrix 并行产出。macOS 的 `.dmg` 无签名无公证。
+
+架构、开发态跑壳、已知边界（无自动更新 / 无代码签名 / 无应用图标）见
+`desktop/README.md`；桌面端需求条目 F-905-1~4 见功能清单。
+
+### 开发态跑壳
+
+```powershell
+pnpm -C desktop install          # 首次（Electron 二进制经 npmmirror 下载）
+pnpm -C frontend build           # 壳开发态直接读仓库 frontend/dist，改前端后需重新 build
+pnpm -C desktop start            # tsc 编译 + 起 Electron 窗口
+```
+
+### 构建安全
+
+安装包与 sidecar 可执行文件已用腾讯电脑管家逐个扫描，**均报「无风险」，无误报**。
+打包规格做了四层防误报处理：one-dir（非 one-file）、禁用 UPX、嵌入版本资源元数据、
+console 模式。未做代码签名，故首次运行有 SmartScreen 提示（见上文「用户使用」第 3 步）。
+
+---
+
 ## 首次使用
 
 1. **配置模型**——启动后进「⚙ 设置 → 模型服务」，按供应商配置一次：
@@ -105,6 +180,8 @@ pnpm dev
    也可以直接写进 `.env` 的 `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`。
 
 2. **选择项目目录**——启动卡片点「选择文件夹（本地）」，浏览并选定代码仓库根目录。
+   桌面端会直接弹 Windows 原生目录对话框；Web 形态需先装一次浏览器扩展
+   （`pwsh -File scripts/install_native_picker.ps1`，再在扩展页加载 `browser-extension/`）。
 
 3. **描述需求**——用一句话说明想改什么，例如：
    > 把提交按钮改成 primary-500 主色，并补一个导出 CSV 的次要按钮
@@ -133,6 +210,9 @@ pnpm dev
 | `cd frontend && pnpm check:contract` | 契约一致性校验 |
 | `uv run python scripts/smoke_provider.py` | 供应商能力冒烟（遍历模型注册表） |
 | `uv build` | 产出 wheel |
+| `pnpm -C desktop start` | 开发态跑桌面壳（需先 `pnpm -C frontend build`） |
+| `pwsh -File desktop/scripts/build-desktop.ps1` | 打桌面安装包（前端→壳→sidecar→staging→Inno） |
+| `pwsh -File desktop/scripts/smoke-sidecar.ps1` | 打包后 sidecar 冒烟（模拟安装态环境变量） |
 
 ---
 
@@ -187,6 +267,13 @@ frontend/src/
 ├── hooks/             useSSE（进度流）、其它通用 hooks
 ├── schemas/           Zod 校验 + 契约生成类型 + 错误码文案表
 └── api/               endpoints / client（统一请求与 SSE 帧解析）
+
+desktop/               Electron 桌面壳（Windows / macOS / Linux，2026-10-22）
+├── src/main.ts        spawn sidecar / 解析就绪协议 / 建窗 / 单实例 / 退出杀树
+├── src/preload.ts     contextBridge：window.devpromptDesktop.pickFolder()
+├── pyinstaller/       sidecar 打包规格（one-dir + Windows 版本资源）
+├── electron-builder.yml 三目标打包配置（nsis / dmg / AppImage）
+└── scripts/           build-desktop / smoke-sidecar（跨平台 Python）
 ```
 
 架构规范、接口定义与错误码清单见 `DevPrompt-AI-项目架构文档.md`；开发约定见 `AGENTS.md`。
@@ -197,7 +284,8 @@ frontend/src/
 
 | 限制 | 说明 |
 |---|---|
-| 无远端仓库，MUST-22 无技术强制力 | 仓库当前仅本地单仓库（`git remote -v` 为空），「main 禁止直推 + PR 双人评审」无法由平台强制执行，所有门禁均为本地等效验证；建立远端仓库并开启分支保护后此条自动失效 |
+| 未做代码签名与公证 | 项目未购买代码签名证书。Windows 首次运行有 SmartScreen 提示，macOS 首次打开需在「系统设置 → 隐私与安全性」放行；均属信誉警告而非病毒判定 |
+| 桌面安装包需按平台构建 | PyInstaller 不能交叉编译，sidecar 必须各平台本机构建；安装包由 `.github/workflows/release.yml` 的 matrix 产出，本地构建只覆盖当前平台 |
 | 浏览器扩展仅 Chromium 系 | 原生文件夹选择器依赖 Chromium 系扩展 + native messaging；Firefox 未适配，未装扩展时没有回退入口 |
 | 后端改代码需手动重启 | Windows 下 `--reload` 被拒绝（见「开发模式」），其余平台可用 |
 
@@ -227,6 +315,20 @@ $env:DPROMPT_RG_PATH = "C:\path\to\rg.exe"
 
 **Q：端口被占用**
 `uv run devprompt-ai --port 9000`；若同时改前端 dev proxy，记得同步 `vite.config.ts`。
+桌面端不受影响——它用的是内核分配的随机端口，与 Web 版 8000 互不冲突。
+
+**Q：桌面端提示「未找到 sidecar 可执行文件」**
+开发态请确认跑过 `uv sync --extra dev`（会生成 `.venv\Scripts\devprompt-ai-desktop.exe`）；
+安装包形态下该文件应位于安装目录的 `resources\sidecar\`，缺失说明安装包损坏，重装即可。
+
+**Q：覆盖安装时提示文件被占用**
+先关掉正在运行的 DevPrompt AI 窗口再重装。若之前用任务管理器强杀过主进程，
+sidecar 可能残留占着数据库，需手动结束 `devprompt-ai-desktop.exe`。
+
+**Q：桌面端窗口一片空白 / 立即报错退出**
+多半是模型服务未配置或后端自检失败。可在 Web 形态下打开
+<http://127.0.0.1:8000/api/v1/health> 看六项检查（rg/ctags/git/DB/LLM/存储自愈）
+哪项不通过；桌面端的同一份检查在窗口内以错误弹窗呈现。
 
 **Q：接口返回 `405 Method Not Allowed`（例如答复反问时）**
 说明**正在跑的后端进程是旧版本**，新路由没注册，请求落到单端口托管前端的静态兜底上（StaticFiles 只接受 GET/HEAD）。核验方式：
@@ -250,4 +352,4 @@ uv run --no-managed-python devprompt-ai        # 改用系统 Python
 
 ## 许可证
 
-内部项目，版权归项目所有者所有。
+[MIT](LICENSE) License — Copyright (c) 2026 DevPrompt AI contributors。

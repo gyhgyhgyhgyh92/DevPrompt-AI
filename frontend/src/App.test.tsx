@@ -245,3 +245,28 @@ describe('App 设置预加载（2026-11-03）', () => {
     expect(screen.queryByText('未配置模型')).toBeNull()
   })
 })
+
+describe('App 桌面形态（Trae 式工作台）', () => {
+  afterEach(() => {
+    delete window.devpromptDesktop
+  })
+
+  it('挂载 preload 桥后进入桌面形态：出现活动栏 / 运行日志面板 / 状态栏', () => {
+    window.devpromptDesktop = { pickFolder: vi.fn(async () => ({ path: '' })), platform: 'win32' }
+    const { container } = render(<App />)
+
+    expect(container.querySelector('[data-shell]')?.getAttribute('data-shell')).toBe('desktop')
+    expect(screen.getByRole('navigation', { name: '桌面导航' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: '运行日志' })).toBeTruthy()
+    expect(screen.getByRole('contentinfo', { name: '状态栏' })).toBeTruthy()
+  })
+
+  it('Web 形态（无桥）：桌面专属区域完全不进 DOM，布局与改造前一致', () => {
+    const { container } = render(<App />)
+
+    expect(container.querySelector('[data-shell]')?.getAttribute('data-shell')).toBe('web')
+    expect(screen.queryByRole('navigation', { name: '桌面导航' })).toBeNull()
+    expect(screen.queryByRole('region', { name: '运行日志' })).toBeNull()
+    expect(screen.queryByRole('contentinfo', { name: '状态栏' })).toBeNull()
+  })
+})
