@@ -539,6 +539,65 @@ class ModelCatalogResponse(BaseModel):
     warning: str | None = None
 
 
+class SkillView(BaseModel):
+    """技能列表项（目录与自定义同形，靠 source 区分）。"""
+
+    skill_id: str = ""
+    name: str
+    description: str = ""
+    source: Literal["dir", "custom"] = "dir"
+    domains: list[str] = Field(default_factory=list)
+    enabled: bool = True
+
+
+class SkillUpdate(BaseModel):
+    """自定义技能写入项：整表替换，未出现的既有自定义技能视为删除。"""
+
+    skill_id: str | None = None
+    name: str = Field(min_length=1, max_length=80)
+    description: str = ""
+    body: str = ""
+    domains: list[str] = Field(default_factory=list)
+    enabled: bool = True
+
+
+class SkillsSettings(BaseModel):
+    """技能段：dirs 是当前生效的扫描目录（只读），items 是两个来源的合并视图。"""
+
+    dirs: list[str] = Field(default_factory=list)
+    items: list[SkillView] = Field(default_factory=list)
+
+
+class McpServerView(BaseModel):
+    """MCP Server 脱敏视图（env/headers 敏感键恒为掩码）。"""
+
+    id: str
+    name: str
+    transport: Literal["stdio", "sse", "streamable-http"] = "stdio"
+    command: str = ""
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
+    url: str = ""
+    headers: dict[str, str] = Field(default_factory=dict)
+    enabled: bool = False
+    tool_allowlist: list[str] = Field(default_factory=list)
+
+
+class McpServerUpdate(BaseModel):
+    """MCP Server 写入项：env/headers 空值表示沿用同 id 旧值（与 provider_configs 一致）。"""
+
+    id: str | None = None
+    name: str = Field(min_length=1, max_length=80)
+    transport: Literal["stdio", "sse", "streamable-http"] = "stdio"
+    command: str = ""
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
+    url: str = ""
+    headers: dict[str, str] = Field(default_factory=dict)
+    enabled: bool = False
+    tool_allowlist: list[str] = Field(default_factory=list)
+
+
 class SettingsResponse(BaseModel):
     """GET/PUT /settings 数据体（T6-11）。
 
@@ -558,6 +617,8 @@ class SettingsResponse(BaseModel):
     model_service: ModelServiceSettings
     process: ProcessSettings
     observability: ObservabilitySettings
+    skills: SkillsSettings = Field(default_factory=SkillsSettings)
+    mcp_servers: list[McpServerView] = Field(default_factory=list)
     locked: LockedSettings
 
 
@@ -607,6 +668,10 @@ class SettingsUpdate(BaseModel):
     model_service: ModelServiceUpdate | None = None
     process: ProcessUpdate | None = None
     observability: ObservabilityUpdate | None = None
+    #: 自定义技能整表替换（目录来源只读，不在此列表）；None = 不动。
+    skills: list[SkillUpdate] | None = None
+    #: MCP Server 整表替换；未出现的既有项视为删除；None = 不动。
+    mcp_servers: list[McpServerUpdate] | None = None
 
 
 class HistoryItemPayload(BaseModel):

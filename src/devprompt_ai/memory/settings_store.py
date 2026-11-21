@@ -158,6 +158,21 @@ def write_model_registry(
     _write_doc(doc, "设置文件已禁用（DEVPROMPT_SETTINGS_FILE 为空），无法写模型注册表")
 
 
+def read_mcp_servers() -> list[dict[str, Any]]:
+    """读 settings.json 的 mcp_servers 段（含 env/headers 明文，调用方负责脱敏）。"""
+    section = _read_doc().get("mcp_servers")
+    if not isinstance(section, list):
+        return []
+    return [dict(item) for item in section if isinstance(item, dict)]
+
+
+def write_mcp_servers(servers: list[dict[str, Any]]) -> None:
+    """整表替换写 mcp_servers 段（0600；与 provider_configs 同处密钥文件）。"""
+    doc = _read_doc()
+    doc["mcp_servers"] = servers
+    _write_doc(doc, "设置文件已禁用（DEVPROMPT_SETTINGS_FILE 为空），无法写 MCP 配置")
+
+
 def read_process_settings() -> dict[str, Any]:
     """读 app_settings 表全部键值（JSON 编码存储）；库/表缺失静默返回 {}。"""
     path = _db_path()
