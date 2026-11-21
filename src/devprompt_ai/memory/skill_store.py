@@ -67,9 +67,7 @@ class SQLiteSkillStore:
                         name=str(row[1]),
                         description=str(row[2]),
                         source="custom",
-                        domains=tuple(
-                            item for item in str(row[4]).split(",") if item.strip()
-                        ),
+                        domains=tuple(item for item in str(row[4]).split(",") if item.strip()),
                         skill_id=str(row[0]),
                         enabled=bool(row[5]),
                     ),

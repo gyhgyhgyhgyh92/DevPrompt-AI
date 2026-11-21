@@ -2,14 +2,19 @@
 """DevPrompt AI 桌面端 sidecar 打包规格（PyInstaller 6.22.3，版本经 PyPI 核实，MUST-24b）。
 
 入口 src/devprompt_ai/desktop.py：绑定随机端口起 uvicorn，stdout 单行就绪协议。
-one-dir 产物（dist/devprompt-ai-desktop/）由 desktop/scripts/build-desktop.ps1
+one-dir 产物（dist/devprompt-ai-desktop/）由 desktop/scripts/build-desktop.py
 搬进安装包 resources/sidecar/。
 
 console=True 是硬约束：sidecar 的 stdout/stderr 就是与 Electron 主进程的协议通道，
 窗口化（windowed）会让管道拿不到输出，主进程 30s 超时后误判「未就绪」。
+
+三平台适配：Windows 版本资源（PE 元数据，抑制杀软误报）仅在 Windows 生成；
+macOS 专属的签名/argv 模拟参数仅在 macOS 传入；其余平台参数按 PyInstaller
+文档的适用范围条件化，避免在不适用的平台上触发校验错误。
 """
 
 import os
+import sys
 import tomllib
 from pathlib import Path
 
@@ -18,7 +23,10 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy
 REPO_ROOT = Path(os.path.abspath(os.path.join(SPECPATH, '..', '..'))).resolve()
 ENTRY = REPO_ROOT / 'src' / 'devprompt_ai' / 'desktop.py'
 
-# 版本号唯一来源 pyproject.toml（与 Inno 安装包同源，不手抄，MUST-03）
+IS_WINDOWS = sys.platform == 'win32'
+IS_MACOS = sys.platform == 'darwin'
+
+# 版本号唯一来源 pyproject.toml（与安装包同源，不手抄，MUST-03）
 _VERSION = tomllib.loads((REPO_ROOT / 'pyproject.toml').read_text(encoding='utf-8'))['project'][
     'version'
 ]
@@ -29,7 +37,10 @@ _VERSION_STR = '.'.join(str(p) for p in _VERSION_TUPLE)
 # 是被滥用最多的打包器之一）。嵌入 ProductName/Company/OriginalFilename 后，
 # SmartScreen 与 Defender 的启发式扫描有据可依——这是不买代码签名证书前提下
 # 性价比最高的一步。one-dir + 禁 UPX 已在规格里，勿回退。
-_VERSION_INFO_TEMPLATE = """VSVersionInfo(
+# PE 版本资源是 Windows 专属格式，其他平台不生成（PyInstaller 的 version= 亦仅 Windows 生效）。
+_VERSION_FILE = REPO_ROOT / '.tmp' / 'sidecar-version-info.txt'
+if IS_WINDOWS:
+    _VERSION_INFO_TEMPLATE = """VSVersionInfo(
   ffi=FixedFileInfo(
     filevers={vt},
     prodvers={vt},
@@ -49,7 +60,7 @@ _VERSION_INFO_TEMPLATE = """VSVersionInfo(
           StringStruct('FileDescription', 'DevPrompt AI desktop sidecar'),
           StringStruct('FileVersion', '{vs}'),
           StringStruct('InternalName', 'devprompt-ai-desktop'),
-          StringStruct('LegalCopyright', 'Internal project. All rights reserved.'),
+          StringStruct('LegalCopyright', 'MIT License'),
           StringStruct('OriginalFilename', 'devprompt-ai-desktop.exe'),
           StringStruct('ProductName', 'DevPrompt AI'),
           StringStruct('ProductVersion', '{vs}')
@@ -60,11 +71,10 @@ _VERSION_INFO_TEMPLATE = """VSVersionInfo(
   ]
 )
 """
-_VERSION_FILE = REPO_ROOT / '.tmp' / 'sidecar-version-info.txt'
-_VERSION_FILE.parent.mkdir(parents=True, exist_ok=True)
-_VERSION_FILE.write_text(
-    _VERSION_INFO_TEMPLATE.format(vt=repr(_VERSION_TUPLE), vs=_VERSION_STR), encoding='utf-8'
-)
+    _VERSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _VERSION_FILE.write_text(
+        _VERSION_INFO_TEMPLATE.format(vt=repr(_VERSION_TUPLE), vs=_VERSION_STR), encoding='utf-8'
+    )
 
 # uvicorn 的协议/循环实现按可用性自动选择（httptools/websockets 未装则回落 h11/asyncio），
 # 选择逻辑的 import 发生在函数体内；h11 是 httpx→httpcore 的既有依赖，必然在场。
@@ -93,6 +103,31 @@ datas += collect_data_files('agents')
 
 block_cipher = None
 
+# 平台专属参数按 PyInstaller 文档的适用范围条件化传入
+_ANALYSIS_OPTS = {}
+if IS_WINDOWS:
+    _ANALYSIS_OPTS.update(
+        win_no_prefer_redirects=False,
+        win_private_assemblies=False,
+    )
+
+_EXE_OPTS = {}
+if IS_WINDOWS:
+    _EXE_OPTS.update(
+        version=str(_VERSION_FILE),
+        disable_windowed_traceback=False,
+    )
+else:
+    _EXE_OPTS.update(
+        bootloader_ignore_signals=False,
+    )
+if IS_MACOS:
+    _EXE_OPTS.update(
+        argv_emulation=False,
+        codesign_identity=None,
+        entitlements_file=None,
+    )
+
 a = Analysis(
     [ENTRY],
     pathex=[os.path.join(REPO_ROOT, 'src')],
@@ -103,10 +138,9 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=['tkinter'],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
     cipher=block_cipher,
     noarchive=False,
+    **_ANALYSIS_OPTS,
 )
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
@@ -117,16 +151,11 @@ exe = EXE(
     exclude_binaries=True,
     name='devprompt-ai-desktop',
     debug=False,
-    bootloader_ignore_signals=False,
     strip=False,
     upx=False,
     console=True,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
     target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    version=str(_VERSION_FILE),
+    **_EXE_OPTS,
 )
 coll = COLLECT(
     exe,

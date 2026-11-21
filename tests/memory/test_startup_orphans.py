@@ -131,9 +131,7 @@ def test_lock_takeover_leaves_waiting_session_untouched(tmp_path: object) -> Non
         conn.executescript(SESSIONS_DDL)
         conn.executescript(TURNS_DDL)
         _insert_session(conn, session_id="s-wait", state="ASKING")
-        _insert_turn(
-            conn, turn_id="t-wait", session_id="s-wait", state="INIT", age="-5 minutes"
-        )
+        _insert_turn(conn, turn_id="t-wait", session_id="s-wait", state="INIT", age="-5 minutes")
 
     assert abort_orphans_after_lock_takeover(str(db)) == 0
     with sqlite3.connect(str(db)) as conn:

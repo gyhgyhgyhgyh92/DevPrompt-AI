@@ -208,9 +208,7 @@ class LLMFallbackDecider:
 
     async def rewrite_query(self, sentence: str, previous_target: str = "") -> RewrittenQuery:
         """LLM 结构化改写（2026-11-19）：失败向上抛，由调用方回退规则结果。"""
-        user = REWRITE_USER.format(
-            previous=previous_target or "（无）", sentence=sentence[:500]
-        )
+        user = REWRITE_USER.format(previous=previous_target or "（无）", sentence=sentence[:500])
         out = await chat_structured(
             self._cfg,
             QueryRewriteOutput,

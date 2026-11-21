@@ -23,8 +23,8 @@ from dataclasses import dataclass, field
 from typing import Any, Final
 
 from devprompt_ai.domain.context.budget import fit_blocks
-from devprompt_ai.domain.context.compact_policy import CacheKind
 from devprompt_ai.domain.context.compact_economics import Billing, reclaim_floor
+from devprompt_ai.domain.context.compact_policy import CacheKind
 from devprompt_ai.domain.context.compactor import confirm_reclaim, plan_compaction
 
 #: 单条摘要的字符上限（三字段合计），避免个别轮次吃掉整层预算。

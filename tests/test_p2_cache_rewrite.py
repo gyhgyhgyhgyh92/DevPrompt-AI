@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from devprompt_ai.domain.context.compact_economics import Billing, reclaim_floor
-from devprompt_ai.domain.context.compactor import confirm_reclaim
 from devprompt_ai.domain.context.compact_policy import CacheKind
+from devprompt_ai.domain.context.compactor import confirm_reclaim
 from devprompt_ai.domain.model.registry import infer_cache_kind
 
 
@@ -20,13 +20,9 @@ def test_confirm_reclaim_rejects_tiny_gain() -> None:
     floor = reclaim_floor(
         billing=Billing.SUBSCRIPTION, cache_kind=CacheKind.AUTOMATIC, window=300_000
     )
-    verdict = confirm_reclaim(
-        before_tokens=10_000, after_tokens=9_999, floor=floor, force=False
-    )
+    verdict = confirm_reclaim(before_tokens=10_000, after_tokens=9_999, floor=floor, force=False)
     assert verdict.worthwhile is False
-    forced = confirm_reclaim(
-        before_tokens=10_000, after_tokens=9_999, floor=floor, force=True
-    )
+    forced = confirm_reclaim(before_tokens=10_000, after_tokens=9_999, floor=floor, force=True)
     assert forced.worthwhile is True
 
 
@@ -83,7 +79,9 @@ def test_llm_rewrite_takes_precedence_and_falls_back() -> None:
         ok = RewriteDecider()
         svc = _svc(ok)
         session = FlowSession(
-            session_id="s1", user_id="local", state=FlowState.AGENTIC.value,
+            session_id="s1",
+            user_id="local",
+            state=FlowState.AGENTIC.value,
             data={"sentence": "改成另一个页面的表格", "project_root": ".", "turn_index": 0},
         )
         await svc._sessions.create(session)  # noqa: SLF001
@@ -94,7 +92,9 @@ def test_llm_rewrite_takes_precedence_and_falls_back() -> None:
         bad = RewriteDecider(fail=True)
         svc2 = _svc(bad)
         session2 = FlowSession(
-            session_id="s2", user_id="local", state=FlowState.AGENTIC.value,
+            session_id="s2",
+            user_id="local",
+            state=FlowState.AGENTIC.value,
             data={"sentence": "把按钮改成蓝色", "project_root": ".", "turn_index": 0},
         )
         await svc2._sessions.create(session2)  # noqa: SLF001
@@ -108,8 +108,16 @@ def test_memory_search_without_target() -> None:
     from devprompt_ai.memory.project_note_store import ProjectNote, score_note
 
     note = ProjectNote(
-        project_root="p", kind="decision", key="x@y", value="选定向：A", evidence="",
-        confidence=0.7, hit_count=0, last_hit_at="", superseded_by="", source="test",
+        project_root="p",
+        kind="decision",
+        key="x@y",
+        value="选定向：A",
+        evidence="",
+        confidence=0.7,
+        hit_count=0,
+        last_hit_at="",
+        superseded_by="",
+        source="test",
     )
     assert score_note(note, target_key="", age_days=0) > 0
 

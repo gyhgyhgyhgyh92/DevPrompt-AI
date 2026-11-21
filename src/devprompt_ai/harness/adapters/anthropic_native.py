@@ -96,9 +96,7 @@ class AnthropicNativeModel(BaseNativeModel):
         for item in user_input:
             raw = item if isinstance(item, dict) else getattr(item, "raw_item", item)
             role = str(
-                raw.get("role", "user")
-                if isinstance(raw, dict)
-                else getattr(raw, "role", "user")
+                raw.get("role", "user") if isinstance(raw, dict) else getattr(raw, "role", "user")
             )
             content = (
                 raw.get("content", "") if isinstance(raw, dict) else getattr(raw, "content", "")

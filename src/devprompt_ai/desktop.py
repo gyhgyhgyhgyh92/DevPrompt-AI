@@ -1,4 +1,4 @@
-"""桌面端 sidecar 入口：Electron 桌面壳拉起的 Python 子进程（仅 Windows 分发形态）。
+"""桌面端 sidecar 入口：Electron 桌面壳拉起的 Python 子进程（Windows / macOS / Linux）。
 
 与 Web 形态入口 main.py 的分工：
 
@@ -8,7 +8,8 @@
      （消除「先取端口再回传」被抢占的竞态；随机端口也天然避开 Web 版 8000）；
   2. 就绪后向 stdout 打印单行 ``DPROMPT_READY {"port": N}`` 并 flush。
      uvicorn 默认把 access 日志写在 stdout，会污染协议流，故显式改道 stderr；
-  3. 优雅退出复用 uvicorn 自带信号处理（Windows 含 SIGBREAK），SQLite WAL 不留锁。
+  3. 优雅退出复用 uvicorn 自带信号处理（POSIX 的 SIGINT/SIGTERM、Windows 的 SIGBREAK），
+     SQLite WAL 不留锁。
 
 业务逻辑零改动：serve 的就是 ``interfaces.api.app:app`` 同一实例（MUST-10）。
 本模块不 import 任何基础设施实现模块（薄壳约束，同 main.py）。
@@ -16,6 +17,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import json
 import socket
@@ -47,6 +49,22 @@ def _emit_ready(port: int) -> None:
     sys.stdout.flush()
 
 
+def _force_utf8_stdio() -> None:
+    """把 stdout/stderr 固定为 UTF-8。
+
+    Windows 上 Python 的标准流默认用 locale 代码页（中文环境为 cp936/gbk），
+    任何非 ASCII 输出都会抛 UnicodeEncodeError；stdout 又是协议通道，
+    一旦写入失败主进程会一直等不到就绪行。POSIX 本就是 UTF-8，重复设置无害。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        with contextlib.suppress(OSError, ValueError):
+            # 已被替换为不可重配的流（如 pytest 捕获）时忽略
+            reconfigure(encoding="utf-8")
+
+
 def _stderr_access_log_config() -> dict[str, Any]:
     """uvicorn 默认日志配置的副本：access 日志从 stdout 改道 stderr。
 
@@ -70,6 +88,8 @@ def main() -> int:
     import uvicorn
 
     from devprompt_ai.interfaces.api.app import app as fastapi_app
+
+    _force_utf8_stdio()
 
     sock = bind_ephemeral_socket()
     port: int = sock.getsockname()[1]

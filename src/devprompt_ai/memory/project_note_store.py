@@ -97,8 +97,11 @@ class SQLiteProjectNoteStore:
 
         await asyncio.to_thread(_run)
 
-    async def archive_stale(self, project_root: str, *, max_age_days: int = 180, max_rows: int = 500) -> int:
+    async def archive_stale(
+        self, project_root: str, *, max_age_days: int = 180, max_rows: int = 500
+    ) -> int:
         """归档长期未命中/超量的旧记忆（标记 superseded_by，不物理删除）。"""
+
         def _run() -> int:
             with self._connect() as conn:
                 conn.executescript(PROJECT_NOTES_DDL)

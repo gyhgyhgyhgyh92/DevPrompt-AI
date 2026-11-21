@@ -151,6 +151,7 @@ class SQLiteRunStore:
 
     async def load_applied_ops(self, run_id: str) -> list[str]:
         """已执行的副作用键（续跑幂等：同一键不重复产生副作用）。"""
+
         def _run() -> list[str]:
             with self._connect() as conn:
                 row = conn.execute(
@@ -194,6 +195,7 @@ class SQLiteRunStore:
 
     async def reopen(self, run_id: str) -> bool:
         """把崩溃/取消遗留的 run 复位为 running，供同 run_id 续跑。"""
+
         def _run() -> bool:
             with self._connect() as conn:
                 cursor = conn.execute(

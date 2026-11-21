@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            artifact: win-x64
+          - name: macOS arm64
+            os: macos-latest
+            artifact: mac-arm64
+          - name: Linux x86_64
+            os: ubuntu-latest
+            artifact: linux-x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: 安装后端依赖
+        run: uv sync --frozen --extra dev
+
+      - name: 安装前端与桌面壳依赖
+        run: |
+          pnpm -C frontend install --frozen-lockfile
+          pnpm -C desktop install --frozen-lockfile
+
+      - name: 安装检索工具（rg / ctags）
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            choco install ripgrep universal-ctags -y --no-progress
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            brew install ripgrep universal-ctags
+          else
+            sudo apt-get update
+            sudo apt-get install -y ripgrep universal-ctags
+          fi
+
+      - name: 构建桌面端安装包
+        run: uv run python desktop/scripts/build-desktop.py
+        env:
+          # 项目无 Apple 证书，跳过证书探测避免构建失败
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: 冒烟校验打包后的 sidecar
+        run: uv run python desktop/scripts/smoke-sidecar.py
+
+      - name: 上传安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: DevPromptAI-${{ matrix.artifact }}
+          path: |
+            desktop/dist/packages/*.exe
+            desktop/dist/packages/*.dmg
+            desktop/dist/packages/*.AppImage
+          if-no-files-found: error
+
+  release:
+    name: 创建 GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载全部安装包
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: 创建 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md \
+            artifacts/*
+

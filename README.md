@@ -104,9 +104,9 @@ pnpm dev
 
 ---
 
-## 桌面端（Windows 安装包）
+## 桌面端（Windows / macOS / Linux 安装包）
 
-把同一套前端与后端打进一个可安装的桌面应用：安装后从开始菜单或桌面图标双击启动，
+把同一套前端与后端打进一个可安装的桌面应用：安装后从开始菜单、应用菜单或桌面图标双击启动，
 独立窗口承载完整界面，无需终端、无需浏览器、无需装 ripgrep/ctags。
 业务逻辑与 Web 版**完全同一份**，两边共用 `~/.devprompt-ai` 数据，可交替使用。
 
@@ -117,25 +117,38 @@ pnpm dev
 
 ### 用户使用
 
-1. 获取 `desktop/dist/installer/DevPromptAISetup-<version>.exe`（由开发者构建产出）
-2. 双击安装（每用户安装到 `%LOCALAPPDATA%\Programs\DevPrompt AI`，免 UAC；
-   升级 = 重跑新安装包覆盖安装）
-3. 首次运行若见 SmartScreen「未知发布方」提示，点「更多信息 → 仍要运行」
-   （内部工具未购买代码签名证书，属信誉警告而非病毒判定）
+到 [Releases](https://github.com/gyhgyhgyhgyh92/DevPrompt-AI/releases) 下载对应平台的安装包：
+
+| 平台 | 产物 | 安装位置 / 运行方式 |
+|---|---|---|
+| Windows 10+ (x64) | `DevPromptAI-<version>-win-x64.exe` | 每用户安装到 `%LOCALAPPDATA%` 的 `Programs` 目录，免 UAC |
+| macOS 11+ (arm64) | `DevPromptAI-<version>-mac-arm64.dmg` | 拖入「应用程序」后双击运行 |
+| Linux (x86_64) | `DevPromptAI-<version>-linux-x86_64.AppImage` | `chmod +x` 后直接运行，无需安装 |
+
+升级 = 重跑新安装包覆盖安装。
+
+> 未做代码签名：项目未购买代码签名证书。Windows 首次运行若见 SmartScreen
+> 「未知发布商」，点「更多信息 → 仍要运行」；macOS 首次打开需在
+> 「系统设置 → 隐私与安全性」中点「仍要打开」。
+
+Web 形态无需安装，见上文「快速启动」；桌面端与 Web 形态共用同一份数据，可交替使用。
 
 ### 开发者构建
 
-```powershell
-# 前置：Node ≥22.12 / pnpm ≥10.15 / uv / Inno Setup 7（iscc）
+```bash
+# 前置：Node >=22.12 / pnpm >=10.15 / uv
 # Electron 二进制经 npmmirror 下载（desktop/.npmrc 已配镜像）
 
-# 一条命令：前端构建 → 壳编译 → PyInstaller sidecar → staging → 安装包
-pwsh -File desktop/scripts/build-desktop.ps1
-# 产物：desktop/dist/installer/DevPromptAISetup-<version>.exe（版本号读 pyproject.toml）
+# 一条命令：前端构建 -> 壳编译 -> PyInstaller sidecar -> 检索工具随包 -> 安装包
+uv run python desktop/scripts/build-desktop.py
+# 产物：desktop/dist/packages/（版本号读 pyproject.toml）
 
 # 只验证打包后的 sidecar 能跑（不等安装包，模拟安装态环境变量）
-pwsh -File desktop/scripts/smoke-sidecar.ps1
+uv run python desktop/scripts/smoke-sidecar.py
 ```
+
+> PyInstaller 不能交叉编译，sidecar 必须在各平台本机构建——三平台安装包由
+> `.github/workflows/release.yml` 的 matrix 并行产出。macOS 的 `.dmg` 无签名无公证。
 
 架构、开发态跑壳、已知边界（无自动更新 / 无代码签名 / 无应用图标）见
 `desktop/README.md`；桌面端需求条目 F-905-1~4 见功能清单。
@@ -255,12 +268,12 @@ frontend/src/
 ├── schemas/           Zod 校验 + 契约生成类型 + 错误码文案表
 └── api/               endpoints / client（统一请求与 SSE 帧解析）
 
-desktop/               Electron 桌面壳（仅 Windows，2026-10-22）
+desktop/               Electron 桌面壳（Windows / macOS / Linux，2026-10-22）
 ├── src/main.ts        spawn sidecar / 解析就绪协议 / 建窗 / 单实例 / 退出杀树
 ├── src/preload.ts     contextBridge：window.devpromptDesktop.pickFolder()
-├── pyinstaller/       sidecar 打包规格（one-dir + 版本资源）
-├── installer/         Inno Setup 安装脚本
-└── scripts/           build-sidecar / build-desktop / smoke-sidecar
+├── pyinstaller/       sidecar 打包规格（one-dir + Windows 版本资源）
+├── electron-builder.yml 三目标打包配置（nsis / dmg / AppImage）
+└── scripts/           build-desktop / smoke-sidecar（跨平台 Python）
 ```
 
 架构规范、接口定义与错误码清单见 `DevPrompt-AI-项目架构文档.md`；开发约定见 `AGENTS.md`。
@@ -271,7 +284,8 @@ desktop/               Electron 桌面壳（仅 Windows，2026-10-22）
 
 | 限制 | 说明 |
 |---|---|
-| 无远端仓库，MUST-22 无技术强制力 | 仓库当前仅本地单仓库（`git remote -v` 为空），「main 禁止直推 + PR 双人评审」无法由平台强制执行，所有门禁均为本地等效验证；建立远端仓库并开启分支保护后此条自动失效 |
+| 未做代码签名与公证 | 项目未购买代码签名证书。Windows 首次运行有 SmartScreen 提示，macOS 首次打开需在「系统设置 → 隐私与安全性」放行；均属信誉警告而非病毒判定 |
+| 桌面安装包需按平台构建 | PyInstaller 不能交叉编译，sidecar 必须各平台本机构建；安装包由 `.github/workflows/release.yml` 的 matrix 产出，本地构建只覆盖当前平台 |
 | 浏览器扩展仅 Chromium 系 | 原生文件夹选择器依赖 Chromium 系扩展 + native messaging；Firefox 未适配，未装扩展时没有回退入口 |
 | 后端改代码需手动重启 | Windows 下 `--reload` 被拒绝（见「开发模式」），其余平台可用 |
 
@@ -338,4 +352,4 @@ uv run --no-managed-python devprompt-ai        # 改用系统 Python
 
 ## 许可证
 
-内部项目，版权归项目所有者所有。
+[MIT](LICENSE) License — Copyright (c) 2026 DevPrompt AI contributors。

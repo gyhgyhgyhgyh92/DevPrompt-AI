@@ -1,5 +1,5 @@
 /**
- * DevPrompt AI 桌面壳主进程（仅 Windows）。
+ * DevPrompt AI 桌面壳主进程（Windows / macOS / Linux）。
  *
  * 职责：拉起 Python sidecar → 解析 stdout 就绪协议 → 建窗加载 → 退出杀进程树。
  * 业务逻辑全在 sidecar（MUST-10 单一业务来源）：本文件只做进程编排与窗口管理。
@@ -13,17 +13,30 @@ import * as path from 'node:path'
 //: sidecar stdout 就绪协议前缀（与 src/devprompt_ai/desktop.py 对齐，改一处须改两处）
 const READY_PREFIX = 'DPROMPT_READY'
 const READY_TIMEOUT_MS = 30_000
-//: Windows 上 child.kill() 不杀进程树，宽限后强杀（taskkill /T /F）
+//: Windows 上 child.kill() 不杀进程树，POSIX 上需杀整个进程组；均先给优雅退出宽限
 const KILL_GRACE_MS = 500
 
-// ---------- 路径解析：打包态（Inno 安装目录）与开发态（仓库） ----------
+// ---------- 平台判定 ----------
+const IS_WINDOWS = process.platform === 'win32'
+const IS_MACOS = process.platform === 'darwin'
+
+/** 可执行文件名：Windows 带 .exe，POSIX 不带（PyInstaller 产物规则）。 */
+function exeName(stem: string): string {
+  return IS_WINDOWS ? `${stem}.exe` : stem
+}
+
+// ---------- 路径解析：打包态（安装目录）与开发态（仓库） ----------
 
 const repoRoot = path.resolve(__dirname, '..', '..')
 
 function sidecarExe(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'sidecar', 'devprompt-ai-desktop.exe')
-    : path.join(repoRoot, '.venv', 'Scripts', 'devprompt-ai-desktop.exe')
+  const stem = exeName('devprompt-ai-desktop')
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'sidecar', stem)
+  }
+  //: 虚拟环境可执行目录：Windows 是 Scripts，POSIX 是 bin
+  const venvBin = IS_WINDOWS ? path.join('.venv', 'Scripts') : path.join('.venv', 'bin')
+  return path.join(repoRoot, venvBin, stem)
 }
 
 function frontendDist(): string {
@@ -34,7 +47,7 @@ function frontendDist(): string {
 
 /** 安装包随附的检索工具（rg/ctags）；开发态不注入，走项目自带定位链。 */
 function bundledTool(name: 'rg' | 'ctags'): string | undefined {
-  const candidate = path.join(process.resourcesPath, 'tools', `${name}.exe`)
+  const candidate = path.join(process.resourcesPath, 'tools', exeName(name))
   return fs.existsSync(candidate) ? candidate : undefined
 }
 
@@ -47,8 +60,9 @@ function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0)
     return true
-  } catch {
-    return false
+  } catch (err) {
+    //: Windows 上无权限（EPERM）说明进程存在，只是当前用户不能发信号
+    return (err as NodeJS.ErrnoException).code === 'EPERM'
   }
 }
 
@@ -59,8 +73,17 @@ function killSidecar(): void {
   child.kill()
   if (pid === undefined) return
   setTimeout(() => {
-    if (isAlive(pid)) {
+    if (!isAlive(pid)) return
+    if (IS_WINDOWS) {
+      //: Windows 无进程组概念，用 taskkill /T /F 强杀整棵树
       spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' }).unref()
+    } else {
+      //: POSIX 下 sidecar 以 detached 启动、自成进程组，杀负 pid 即杀整组
+      try {
+        process.kill(-pid, 'SIGKILL')
+      } catch {
+        //: 进程组已消失，忽略
+      }
     }
   }, KILL_GRACE_MS)
 }
@@ -86,6 +109,9 @@ function startSidecar(): Promise<number> {
       cwd: path.dirname(exe),
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
+      //: POSIX 需 detached 自成进程组，退出时才能整组杀掉；Windows 需隐藏控制台窗
+      detached: !IS_WINDOWS,
+      windowsHide: IS_WINDOWS,
     })
     sidecar = child
 
@@ -191,6 +217,9 @@ ipcMain.handle('pick-folder', async (): Promise<{ path: string }> => {
 
 // ---------- 应用装配 ----------
 
+//: 已就绪的 sidecar 端口；macOS 关闭窗口后应用仍驻留，需据此重建窗口
+let sidecarPort: number | undefined
+
 // 单实例：二次启动聚焦既有窗口，不起第二个 sidecar（MUST-11 串行写入的另一道保险）
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -204,6 +233,7 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(async () => {
     try {
       const port = await startSidecar()
+      sidecarPort = port
       await createWindow(port)
     } catch (err) {
       dialog.showErrorBox('DevPrompt AI 启动失败', err instanceof Error ? err.message : String(err))
@@ -212,8 +242,17 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.on('window-all-closed', () => {
-    app.quit()
+    //: macOS 惯例：关闭所有窗口后应用仍驻留，可从 Dock 重新打开
+    if (!IS_MACOS) app.quit()
   })
+
+  if (IS_MACOS) {
+    app.on('activate', async () => {
+      //: macOS：Dock 点击应用图标时重建窗口
+      if (mainWindow !== undefined || sidecarPort === undefined) return
+      await createWindow(sidecarPort)
+    })
+  }
 
   app.on('before-quit', () => {
     isQuitting = true

@@ -22,7 +22,11 @@ async def test_custom_skill_injected_only_when_matched(svc) -> None:  # type: ig
     await svc.update_settings(
         {
             "skills": [
-                {"name": "接口规范", "description": "统一返回结构", "body": "所有接口返回 {code,data}"}
+                {
+                    "name": "接口规范",
+                    "description": "统一返回结构",
+                    "body": "所有接口返回 {code,data}",
+                }
             ]
         }
     )
@@ -34,7 +38,9 @@ async def test_custom_skill_injected_only_when_matched(svc) -> None:  # type: ig
 
 
 async def test_disabled_skill_not_injected(svc) -> None:  # type: ignore[no-untyped-def]
-    await svc.update_settings({"skills": [{"name": "停用规范", "body": "不该出现", "enabled": False}]})
+    await svc.update_settings(
+        {"skills": [{"name": "停用规范", "body": "不该出现", "enabled": False}]}
+    )
     assert await svc._skill_block("停用规范怎么用") == ""  # noqa: SLF001
 
 

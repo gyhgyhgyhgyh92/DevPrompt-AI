@@ -15,7 +15,9 @@ from pydantic import BaseModel, Field
 from devprompt_ai.common.text import tokenize_sentence
 
 #: 代码标识符形态：驼峰 / 下划线 / 点号 / 连字符连接的符号名（排除纯中文与颜色值）。
-_IDENTIFIER_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9]*(?:[_\.][A-Za-z0-9]+)+\b|\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+\b")
+_IDENTIFIER_RE = re.compile(
+    r"\b[A-Za-z][A-Za-z0-9]*(?:[_\.][A-Za-z0-9]+)+\b|\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+\b"
+)
 
 #: 指代/省略词：这些词单独出现时视为「沿用上一轮目标」。
 _ANAPHORA: frozenset[str] = frozenset(

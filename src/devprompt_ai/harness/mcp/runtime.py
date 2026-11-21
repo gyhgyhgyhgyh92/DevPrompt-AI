@@ -28,7 +28,9 @@ def parse_servers(raw: Sequence[dict[str, object]]) -> list[McpServerConfig]:
     out: list[McpServerConfig] = []
     for item in raw:
         try:
-            out.append(McpServerConfig(**dict(item)))
+            # model_validate 而非 ** 解包：解包时 mypy 无法校验键与类型，
+            # 而 pydantic 的运行时校验同样覆盖（坏配置照旧被 ValidationError 捕获）。
+            out.append(McpServerConfig.model_validate(dict(item)))
         except ValidationError:
             logger.info("mcp.config_invalid", extra={"name": str(item.get("name", ""))})
     return out

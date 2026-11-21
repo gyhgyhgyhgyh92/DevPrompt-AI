@@ -7,11 +7,11 @@ from typing import Any
 import pytest
 
 from devprompt_ai.config import AppConfig
-from devprompt_ai.domain.obs.contract.query import MetricSeries, MetricPoint
+from devprompt_ai.domain.obs.contract.query import MetricPoint, MetricSeries
 from devprompt_ai.domain.obs.metrics.rules import MetricThresholds, evaluate
 from devprompt_ai.harness.obs.trace_collector import TraceCollectorImpl
-from devprompt_ai.observability.logging import event_log_path, install_file_sink
 from devprompt_ai.interfaces.api.obs_logs_routes import _read_events
+from devprompt_ai.observability.logging import event_log_path, install_file_sink
 
 
 class _FakeCollector:
@@ -95,9 +95,7 @@ def test_event_log_roundtrip(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> 
     from devprompt_ai.observability.logging import emit
 
     emit("agent.step", action="probe", request_id="r-test")
-    rows = _read_events(
-        event_log_path(log_dir), event="agent.step", request_id="r-test", limit=10
-    )
+    rows = _read_events(event_log_path(log_dir), event="agent.step", request_id="r-test", limit=10)
     assert len(rows) >= 1
     assert rows[0]["action"] == "probe"
     assert rows[0]["request_id"] == "r-test"

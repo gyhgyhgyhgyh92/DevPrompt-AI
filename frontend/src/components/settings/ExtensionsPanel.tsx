@@ -9,7 +9,12 @@ import styles from './settings.module.css'
 const s = makeS(styles)
 
 type Draft = { name: string; description: string; body: string }
-type ServerDraft = { name: string; transport: 'stdio' | 'sse' | 'streamable-http'; command: string; url: string }
+type ServerDraft = {
+  name: string
+  transport: 'stdio' | 'sse' | 'streamable-http'
+  command: string
+  url: string
+}
 
 const emptySkill: Draft = { name: '', description: '', body: '' }
 const emptyServer: ServerDraft = { name: '', transport: 'stdio', command: '', url: '' }
@@ -114,7 +119,9 @@ export function ExtensionsPanel() {
   }
 
   async function toggleServer(index: number): Promise<void> {
-    const next = servers.map((item, i) => (i === index ? { ...item, enabled: !item.enabled } : item))
+    const next = servers.map((item, i) =>
+      i === index ? { ...item, enabled: !item.enabled } : item,
+    )
     await saveServers(next)
   }
 
@@ -237,7 +244,11 @@ export function ExtensionsPanel() {
                 <span className={s('ext-item__name')}>{item.name}</span>
                 <span
                   className={s(`ext-dot ${item.enabled ? 'ext-dot--on' : 'ext-dot--off'}`)}
-                  title={item.enabled ? t('settings.extensions.enabled') : t('settings.extensions.disabled')}
+                  title={
+                    item.enabled
+                      ? t('settings.extensions.enabled')
+                      : t('settings.extensions.disabled')
+                  }
                 />
                 <button
                   type="button"
@@ -245,7 +256,9 @@ export function ExtensionsPanel() {
                   disabled={busy}
                   onClick={() => void toggleServer(index)}
                 >
-                  {item.enabled ? t('settings.extensions.disable') : t('settings.extensions.enable')}
+                  {item.enabled
+                    ? t('settings.extensions.disable')
+                    : t('settings.extensions.enable')}
                 </button>
                 <button
                   type="button"
@@ -263,7 +276,9 @@ export function ExtensionsPanel() {
                 >
                   {t('settings.extensions.delete')}
                 </button>
-                {probe[item.id] ? <span className={s('settings-hint')}>{probe[item.id]}</span> : null}
+                {probe[item.id] ? (
+                  <span className={s('settings-hint')}>{probe[item.id]}</span>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -328,7 +343,9 @@ export function ExtensionsPanel() {
           <button
             type="button"
             className={s('settings-btn settings-btn--primary')}
-            disabled={busy || !server.name.trim() || (server.transport === 'stdio' && !riskAccepted)}
+            disabled={
+              busy || !server.name.trim() || (server.transport === 'stdio' && !riskAccepted)
+            }
             onClick={() => void addServer()}
           >
             {t('settings.extensions.add_server')}

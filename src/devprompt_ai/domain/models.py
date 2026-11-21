@@ -188,6 +188,12 @@ class ProjectNoteStore(Protocol):
         """按 confidence × 衰减 × key 匹配度排序取前 N，并回写命中计数。"""
         ...
 
+    async def archive_stale(
+        self, project_root: str, *, max_age_days: int = 180, max_rows: int = 500
+    ) -> int:
+        """归档长期未命中/超量的旧记忆（标记 superseded_by，不物理删除）。"""
+        ...
+
 
 class TurnStore(Protocol):
     """turn 存储能力（MUST-11：`(session_id, turn_index)` 唯一索引即乐观锁）。"""
