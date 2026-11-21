@@ -76,6 +76,12 @@ jobs:
 
       - name: 冒烟校验打包后的 sidecar
         run: uv run python desktop/scripts/smoke-sidecar.py
+        env:
+          # 冒烟只验证打包产物能启动并响应，不调用模型；占位值让 llm_config
+          # 健康项通过。发布 CI 不应依赖任何真实密钥。
+          LLM_BASE_URL: https://mock.local/v1
+          LLM_API_KEY: mock-key-for-smoke
+          LLM_MODEL: mock-model
 
       - name: 上传安装包
         uses: actions/upload-artifact@v4
