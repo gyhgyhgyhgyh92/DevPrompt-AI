@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any
 
 from devprompt_ai.domain.interventions import Intervention, InterventionKind
@@ -46,6 +48,24 @@ class InterventionBroker:
                 run_id=existing.run_id,
             )
         return ok
+
+    async def wait(
+        self, request_id: str, *, timeout_s: float = 60.0, interval_s: float = 0.5
+    ) -> Intervention | None:
+        """阻塞等待裁决（MCP 工具审批用）；超时返回 ``None`` 并按拒绝落库。
+
+        不允许无限等待：调用方在等的是**模型的一次工具调用**，挂死会拖住整轮生成。
+        """
+        deadline = time.monotonic() + max(0.0, timeout_s)
+        while True:
+            item = await self._store.get(request_id)
+            if item is None or not item.is_pending:
+                return item
+            if time.monotonic() >= deadline:
+                # 用 deny 收尾（decision 合法），answer 里标注超时原因供审计。
+                await self._store.resolve(request_id, "deny", "timeout")
+                return await self._store.get(request_id)
+            await asyncio.sleep(interval_s)
 
     async def pending(self, session_id: str) -> list[Intervention]:
         return await self._store.pending(session_id)

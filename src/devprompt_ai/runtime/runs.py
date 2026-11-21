@@ -14,6 +14,11 @@ from devprompt_ai.common.i18n import DEFAULT_LOCALE, Locale
 from devprompt_ai.domain.agent.stop_reason import StopReason, snapshot_stop_reason
 from devprompt_ai.domain.errors import DevPromptError, StateError
 from devprompt_ai.domain.runs import RunRecord
+from devprompt_ai.harness.mcp.approval import (
+    ApprovalContext,
+    reset_approval_context,
+    set_approval_context,
+)
 from devprompt_ai.memory.run_store import SQLiteRunStore
 from devprompt_ai.runtime.events import EventBus, EventSink
 from devprompt_ai.runtime.sessions import SessionPool
@@ -36,6 +41,7 @@ class RunManager:
         pool: SessionPool,
         serialize: SnapshotSerializer,
         user_id: str = "local",
+        interventions: Any | None = None,
     ) -> None:
         self._service = service
         self._bus = bus
@@ -43,6 +49,8 @@ class RunManager:
         self._pool = pool
         self._serialize = serialize
         self._user_id = user_id
+        #: MCP 工具审批落点（无则回调一律拒绝）。运行期传入，Service 不感知。
+        self._interventions = interventions
         self._tasks: dict[str, asyncio.Task[None]] = {}
 
     async def start(
@@ -172,8 +180,21 @@ class RunManager:
         resume_snapshot: dict[str, Any] | None = None,
     ) -> None:
         sink = EventSink(self._bus, session_id, run_id)
+        config = getattr(self._service, "config", None)
+        # 审批上下文：MCP 工具调用要落到「当前会话」而不是全局某个会话。
+        approval_token = (
+            set_approval_context(
+                ApprovalContext(
+                    broker=self._interventions,
+                    session_id=session_id,
+                    run_id=run_id,
+                    timeout_s=float(getattr(config, "mcp_approval_timeout_seconds", 60.0)),
+                )
+            )
+            if self._interventions is not None
+            else None
+        )
         try:
-            config = getattr(self._service, "config", None)
             timeout = float(getattr(config, "run_timeout_seconds", 900.0))
             if resume_snapshot is None:
                 call = self._service.optimize(
@@ -279,5 +300,7 @@ class RunManager:
                 error_message=type(exc).__name__,
             )
         finally:
+            if approval_token is not None:
+                reset_approval_context(approval_token)
             self._tasks.pop(run_id, None)
             self._pool.release(session_id)
