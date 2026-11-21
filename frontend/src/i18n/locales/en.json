@@ -106,7 +106,12 @@
     "image_limit": "Up to {{max}} reference images",
     "image_format": "Only PNG/JPEG/WebP images are supported",
     "image_size": "Each image must be 4MB or less",
-    "image_read_failed": "Failed to read image"
+    "image_read_failed": "Failed to read image",
+    "approval": {
+      "prompt": "MCP tool \"{{tool}}\" wants to run. Allow it?",
+      "approve": "Allow",
+      "deny": "Deny"
+    }
   },
   "validation": {
     "followup_mode_exclusive": "Exactly one of answers / escape / guardrail_action must be set"
@@ -353,10 +358,42 @@
       "model-service": "Model service",
       "appearance": "Appearance",
       "observability": "Observability",
-      "security": "Flow & security"
+      "security": "Flow & security",
+      "extensions": "Extensions"
     },
     "api_mode": "API mode",
-    "api_mode_only": "{{mode}} (this provider only supports this mode)"
+    "api_mode_only": "{{mode}} (this provider only supports this mode)",
+    "extensions": {
+      "title": "Extensions",
+      "desc": "Connect local skills and external MCP servers. Skill text is injected only when it matches; MCP tool calls require your approval.",
+      "skills": "Skills",
+      "mcp": "MCP Servers",
+      "dirs": "Scan directories: {{dirs}}",
+      "no_dirs": "No scan directories (SKILLS_DIRS env, comma separated)",
+      "no_skills": "No skills found. Configure a directory or create one below.",
+      "no_servers": "No MCP server configured yet.",
+      "from_dir": "Directory",
+      "from_custom": "Custom",
+      "skill_name": "Skill name",
+      "skill_desc": "One-line description (used for matching)",
+      "add_skill": "New skill",
+      "server_name": "Server name",
+      "transport": "Transport",
+      "command": "Command",
+      "url": "Endpoint URL",
+      "risk": "I understand stdio runs this command locally, equivalent to running any program.",
+      "add_server": "Add server",
+      "test": "Test connection",
+      "testing": "Connecting…",
+      "tools": "Connected, {{count}} tools",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "enable": "Enable",
+      "disable": "Disable",
+      "delete": "Delete",
+      "saved": "Saved",
+      "failed": "Request failed"
+    }
   },
   "observability": {
     "title": "Observability",

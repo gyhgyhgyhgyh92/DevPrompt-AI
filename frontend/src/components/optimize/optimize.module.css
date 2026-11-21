@@ -70,3 +70,67 @@
   color: var(--color-success-500);
   border-color: var(--color-success-500);
 }
+
+/* ---- MCP 工具审批条（2026-11-21） ---- */
+.approval-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--color-warning, #b45309);
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-warning-soft, #fef3c7);
+  color: var(--color-text);
+  font-size: var(--text-meta, 12px);
+}
+
+.approval-bar__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.approval-bar__btn {
+  flex: none;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.approval-bar__btn--deny {
+  color: var(--color-danger, #b91c1c);
+}
+
+/* ---- MCP 工具审批条（2026-11-21） ---- */
+.approval-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--color-warning, #b45309);
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-warning-soft, #fef3c7);
+  color: var(--color-text);
+  font-size: var(--text-meta, 12px);
+}
+
+.approval-bar__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.approval-bar__btn {
+  flex: none;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.approval-bar__btn--deny {
+  color: var(--color-danger, #b91c1c);
+}

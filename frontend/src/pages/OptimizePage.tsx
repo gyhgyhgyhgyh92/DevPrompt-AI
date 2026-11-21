@@ -18,6 +18,7 @@ import {
   streamOptimize,
 } from '../api/endpoints'
 import { AgentTimeline } from '../components/optimize/AgentTimeline'
+import { ApprovalBar } from '../components/optimize/ApprovalBar'
 import { EvidenceStaleNotice } from '../components/optimize/EvidenceStaleNotice'
 import { ChatStream } from '../components/optimize/ChatStream'
 import { ConsoleInput } from '../components/optimize/ConsoleInput'
@@ -662,6 +663,8 @@ export function OptimizePage() {
             <AgentTimeline step={agentStep} action={agentAction} elapsedMs={agentElapsedMs} />
             {/* 交付时证据已过期：代码被改过，方案引用的行号可能失效（只披露不阻断） */}
             <EvidenceStaleNotice stale={evidenceStale} />
+            {/* MCP 工具调用确认：后端在等裁决，超时按拒绝收尾 */}
+            <ApprovalBar />
             <ChatStream
               state={state}
               status={status}

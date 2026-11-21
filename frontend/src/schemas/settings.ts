@@ -170,6 +170,73 @@ export const ModelCatalogRefreshRequestSchema = z.object({
 
 export type ModelCatalogRefreshRequest = z.infer<typeof ModelCatalogRefreshRequestSchema>
 
+/** 技能列表项（目录与自定义同形，source 区分）。 */
+export const SkillViewSchema = z.object({
+  skill_id: z.string().default(''),
+  name: z.string(),
+  description: z.string().default(''),
+  source: z.enum(['dir', 'custom']).default('dir'),
+  domains: z.array(z.string()).default([]),
+  enabled: z.boolean().default(true),
+})
+
+export const SkillsSettingsSchema = z.object({
+  dirs: z.array(z.string()).default([]),
+  items: z.array(SkillViewSchema).default([]),
+})
+
+/** PUT /settings 自定义技能项（整表替换，未出现即删除）。 */
+export const SkillUpdateSchema = z.object({
+  skill_id: z.string().nullish(),
+  name: z.string().min(1),
+  description: z.string().default(''),
+  body: z.string().default(''),
+  domains: z.array(z.string()).default([]),
+  enabled: z.boolean().default(true),
+})
+
+const McpTransportSchema = z.enum(['stdio', 'sse', 'streamable-http'])
+
+export const McpServerViewSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  transport: McpTransportSchema.default('stdio'),
+  command: z.string().default(''),
+  args: z.array(z.string()).default([]),
+  env: z.record(z.string(), z.string()).default({}),
+  url: z.string().default(''),
+  headers: z.record(z.string(), z.string()).default({}),
+  enabled: z.boolean().default(false),
+  tool_allowlist: z.array(z.string()).default([]),
+})
+
+/** PUT /settings MCP 项（env/headers 空值 = 沿用同 id 旧值）。 */
+export const McpServerUpdateSchema = z.object({
+  id: z.string().nullish(),
+  name: z.string().min(1),
+  transport: McpTransportSchema.default('stdio'),
+  command: z.string().default(''),
+  args: z.array(z.string()).default([]),
+  env: z.record(z.string(), z.string()).default({}),
+  url: z.string().default(''),
+  headers: z.record(z.string(), z.string()).default({}),
+  enabled: z.boolean().default(false),
+  tool_allowlist: z.array(z.string()).default([]),
+})
+
+/** 测试连接结果：失败只回报，不抛。 */
+export const McpProbeResultSchema = z.object({
+  ok: z.boolean(),
+  tools: z.array(z.string()).default([]),
+  error: z.string().default(''),
+})
+
+export type McpProbeResult = z.infer<typeof McpProbeResultSchema>
+export type SkillView = z.infer<typeof SkillViewSchema>
+export type SkillsSettings = z.infer<typeof SkillsSettingsSchema>
+export type McpServerView = z.infer<typeof McpServerViewSchema>
+export type McpServerUpdate = z.infer<typeof McpServerUpdateSchema>
+
 export const SettingsResponseSchema = z.object({
   locked: LockedSchema,
   models: z.array(ModelEntryViewSchema),
@@ -180,6 +247,8 @@ export const SettingsResponseSchema = z.object({
   model_service: ModelServiceSchema,
   process: ProcessSchema,
   observability: ObservabilitySchema,
+  skills: SkillsSettingsSchema.default({ dirs: [], items: [] }),
+  mcp_servers: z.array(McpServerViewSchema).default([]),
 })
 
 /** PUT /settings 模型段（契约 ModelServiceUpdate；None/空=不变，api_key 仅入参明文）。 */
@@ -216,4 +285,6 @@ export const SettingsUpdateSchema = z.object({
   model_service: ModelServiceUpdateSchema.nullish(),
   process: ProcessUpdateSchema.nullish(),
   observability: ObservabilityUpdateSchema.nullish(),
+  skills: z.array(SkillUpdateSchema).nullish(),
+  mcp_servers: z.array(McpServerUpdateSchema).nullish(),
 })

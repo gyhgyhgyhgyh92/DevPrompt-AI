@@ -157,6 +157,37 @@
         "title": "ApiResponse[HealthResponse]",
         "type": "object"
       },
+      "ApiResponse_LogEventsPayload_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LogEventsPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "ok",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "ApiResponse[LogEventsPayload]",
+        "type": "object"
+      },
       "ApiResponse_MetricSummaryPayload_": {
         "properties": {
           "code": {
@@ -1222,6 +1253,185 @@
           "candidate_limit"
         ],
         "title": "LockedSettings",
+        "type": "object"
+      },
+      "LogEventsPayload": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "total"
+        ],
+        "title": "LogEventsPayload",
+        "type": "object"
+      },
+      "McpServerUpdate": {
+        "description": "MCP Server 写入项：env/headers 空值表示沿用同 id 旧值（与 provider_configs 一致）。",
+        "properties": {
+          "args": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Args",
+            "type": "array"
+          },
+          "command": {
+            "default": "",
+            "title": "Command",
+            "type": "string"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "env": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Env",
+            "type": "object"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Headers",
+            "type": "object"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "tool_allowlist": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tool Allowlist",
+            "type": "array"
+          },
+          "transport": {
+            "default": "stdio",
+            "enum": [
+              "stdio",
+              "sse",
+              "streamable-http"
+            ],
+            "title": "Transport",
+            "type": "string"
+          },
+          "url": {
+            "default": "",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "McpServerUpdate",
+        "type": "object"
+      },
+      "McpServerView": {
+        "description": "MCP Server 脱敏视图（env/headers 敏感键恒为掩码）。",
+        "properties": {
+          "args": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Args",
+            "type": "array"
+          },
+          "command": {
+            "default": "",
+            "title": "Command",
+            "type": "string"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "env": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Env",
+            "type": "object"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Headers",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "tool_allowlist": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tool Allowlist",
+            "type": "array"
+          },
+          "transport": {
+            "default": "stdio",
+            "enum": [
+              "stdio",
+              "sse",
+              "streamable-http"
+            ],
+            "title": "Transport",
+            "type": "string"
+          },
+          "url": {
+            "default": "",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "McpServerView",
         "type": "object"
       },
       "MetricSummaryPayload": {
@@ -2373,6 +2583,13 @@
           "locked": {
             "$ref": "#/components/schemas/LockedSettings"
           },
+          "mcp_servers": {
+            "items": {
+              "$ref": "#/components/schemas/McpServerView"
+            },
+            "title": "Mcp Servers",
+            "type": "array"
+          },
           "model_service": {
             "$ref": "#/components/schemas/ModelServiceSettings"
           },
@@ -2402,6 +2619,9 @@
             },
             "title": "Providers",
             "type": "array"
+          },
+          "skills": {
+            "$ref": "#/components/schemas/SkillsSettings"
           }
         },
         "required": [
@@ -2427,6 +2647,20 @@
               }
             ],
             "title": "Active Model Id"
+          },
+          "mcp_servers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/McpServerUpdate"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mcp Servers"
           },
           "model_service": {
             "anyOf": [
@@ -2485,9 +2719,138 @@
               }
             ],
             "title": "Provider Configs"
+          },
+          "skills": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SkillUpdate"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skills"
           }
         },
         "title": "SettingsUpdate",
+        "type": "object"
+      },
+      "SkillUpdate": {
+        "description": "自定义技能写入项：整表替换，未出现的既有自定义技能视为删除。",
+        "properties": {
+          "body": {
+            "default": "",
+            "title": "Body",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Domains",
+            "type": "array"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "skill_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skill Id"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "SkillUpdate",
+        "type": "object"
+      },
+      "SkillView": {
+        "description": "技能列表项（目录与自定义同形，靠 source 区分）。",
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Domains",
+            "type": "array"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "skill_id": {
+            "default": "",
+            "title": "Skill Id",
+            "type": "string"
+          },
+          "source": {
+            "default": "dir",
+            "enum": [
+              "dir",
+              "custom"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "SkillView",
+        "type": "object"
+      },
+      "SkillsSettings": {
+        "description": "技能段：dirs 是当前生效的扫描目录（只读），items 是两个来源的合并视图。",
+        "properties": {
+          "dirs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dirs",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SkillView"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "SkillsSettings",
         "type": "object"
       },
       "StartRunRequest": {
@@ -3547,6 +3910,71 @@
         ]
       }
     },
+    "/api/v1/obs/logs/events": {
+      "get": {
+        "operationId": "events_api_v1_obs_logs_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "event",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Event",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "request_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_LogEventsPayload_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Events",
+        "tags": [
+          "obs-logs"
+        ]
+      }
+    },
     "/api/v1/obs/metrics/alerts": {
       "get": {
         "operationId": "alerts_api_v1_obs_metrics_alerts_get",
@@ -4399,6 +4827,65 @@
         ]
       }
     },
+    "/api/v1/runs/{run_id}/resume": {
+      "post": {
+        "description": "断点续跑；从最近 checkpoint 恢复同一 turn 的 Agent 循环。",
+        "operationId": "resume_run_api_v1_runs__run_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Request-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Run",
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
     "/api/v1/sessions/{session_id}/stream": {
       "get": {
         "description": "订阅会话事件流；?since=N 只补差，建连先收 seq=0 合成快照。",
@@ -4422,6 +4909,22 @@
               "minimum": 0,
               "title": "Since",
               "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
             }
           }
         ],
@@ -4504,6 +5007,45 @@
           }
         },
         "summary": "Put Settings"
+      }
+    },
+    "/api/v1/settings/mcp/test": {
+      "post": {
+        "description": "测试连接（2026-11-21）：连一次、列工具、立即断开；失败只回报不抛。",
+        "operationId": "test_mcp_server_api_v1_settings_mcp_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/McpServerUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Mcp Server"
       }
     },
     "/api/v1/settings/models/catalog": {

@@ -33,6 +33,7 @@ from devprompt_ai.interfaces.api.schemas import (
     HealthResponse,
     HistoryItemPayload,
     HistoryUpdateRequest,
+    McpServerUpdate,
     ModelCatalogRefreshRequest,
     ModelCatalogResponse,
     OptimizeRequest,
@@ -759,6 +760,20 @@ async def put_settings(request: Request, req: SettingsUpdate) -> ApiResponse[Set
     svc = await get_service()
     view = await svc.update_settings(req.model_dump(exclude_none=True), request_id=request_id)
     return _ok(SettingsResponse(**view), request_id)
+
+
+@router.post("/settings/mcp/test")
+async def test_mcp_server(
+    request: Request, req: McpServerUpdate
+) -> ApiResponse[dict[str, Any]]:
+    """测试连接（2026-11-21）：连一次、列工具、立即断开；失败只回报不抛。"""
+    from devprompt_ai.domain.mcp.models import McpServerConfig
+    from devprompt_ai.harness.mcp.manager import probe_server
+
+    request_id = _request_id(request)
+    config = McpServerConfig(**{**req.model_dump(exclude_none=True), "enabled": True})
+    result = await probe_server(config, timeout_s=10.0)
+    return _ok(result, request_id)
 
 
 @router.get("/settings/models/catalog")

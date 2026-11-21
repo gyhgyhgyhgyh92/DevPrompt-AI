@@ -198,7 +198,22 @@ class TracedGenerator:
                 "purpose": "generate",
             },
         )
-        draft = await self._inner.generate_single(ctx, locale, fallback=fallback)
+        try:
+            draft = await self._inner.generate_single(ctx, locale, fallback=fallback)
+        except Exception as exc:  # noqa: BLE001 - 记录失败后原样抛给调用方
+            await self._collector.record(
+                TraceKind.LLM_RESULT.value,
+                "generate_single",
+                status=TraceStatus.FAILED.value,
+                error={"type": type(exc).__name__, "message": str(exc)},
+                attributes={
+                    "call_key": call_key,
+                    "duration_ms": int((time.monotonic() - started) * 1000),
+                    "tokens": _tokens(before_tokens),
+                },
+                parent_id=request_id,
+            )
+            raise
         await self._collector.record(
             TraceKind.LLM_RESULT.value,
             "generate_single",
@@ -226,7 +241,22 @@ class TracedGenerator:
                 "purpose": "reply",
             },
         )
-        text = str(await self._inner.answer(ctx, locale))
+        try:
+            text = str(await self._inner.answer(ctx, locale))
+        except Exception as exc:  # noqa: BLE001 - 记录失败后原样抛给调用方
+            await self._collector.record(
+                TraceKind.LLM_RESULT.value,
+                "answer",
+                status=TraceStatus.FAILED.value,
+                error={"type": type(exc).__name__, "message": str(exc)},
+                attributes={
+                    "call_key": call_key,
+                    "duration_ms": int((time.monotonic() - started) * 1000),
+                    "tokens": _tokens(before_tokens),
+                },
+                parent_id=request_id,
+            )
+            raise
         await self._collector.record(
             TraceKind.LLM_RESULT.value,
             "answer",
@@ -251,6 +281,7 @@ class TracedDecider:
     async def _call(self, method: str, args: dict[str, Any], call: Any) -> Any:
         call_key = hash_key("decision", method, args)
         started = time.monotonic()
+        before_tokens = _usage_total()
         request_id = await self._collector.record(
             TraceKind.DECISION.value, method, input=args, attributes={"call_key": call_key}
         )
@@ -262,6 +293,7 @@ class TracedDecider:
             attributes={
                 "call_key": call_key,
                 "duration_ms": int((time.monotonic() - started) * 1000),
+                "tokens": _tokens(before_tokens),
             },
             parent_id=request_id,
         )
@@ -308,6 +340,14 @@ class TracedDecider:
             await self._call(
                 "score_prompts", args, lambda: self._inner.score_prompts(context, variants)
             ),
+        )
+
+    async def rewrite_query(self, sentence: str, previous_target: str = "") -> Any:
+        """转发结构化改写（2026-11-19）：走同一 _call，Trace 上可见这次 LLM 调用。"""
+        return await self._call(
+            "rewrite_query",
+            {"sentence": sentence, "previous_target": previous_target},
+            lambda: self._inner.rewrite_query(sentence, previous_target),
         )
 
     async def next_action(self, **kwargs: Any) -> Any:

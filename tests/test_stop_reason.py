@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from devprompt_ai.domain.agent.action import AgentAction, AgentStep, StepOutcome
 from devprompt_ai.domain.agent.stop_reason import (
+    GUARD_REASONS,
     StopReason,
     StopRecord,
     snapshot_stop_reason,
@@ -43,7 +44,8 @@ def test_await_user_is_not_a_voluntary_finish() -> None:
 def test_all_reasons_have_unique_values() -> None:
     values = [reason.value for reason in StopReason]
 
-    assert len(values) == len(set(values)) == 13
+    assert len(values) == len(set(values)) == 14
+    assert StopReason.TURN_TOKEN_BUDGET in GUARD_REASONS
 
 
 def _step(index: int, action: AgentAction, facts: int) -> AgentStep:

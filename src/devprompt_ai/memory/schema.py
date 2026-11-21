@@ -140,7 +140,10 @@ CREATE TABLE IF NOT EXISTS runs (
   error_code   INTEGER,
   error_message TEXT NOT NULL DEFAULT '',
   started_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  ended_at     TEXT
+  ended_at     TEXT,
+  -- 断点续跑（2026-11-19）：最近全量快照 + 幂等 op 集合；旧库由 ALTER 迁移补列。
+  snapshot_json TEXT NOT NULL DEFAULT '{}',
+  applied_ops   TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS idx_runs_session ON runs (session_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_runs_status ON runs (status);

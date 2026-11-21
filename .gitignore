@@ -27,3 +27,19 @@ eval/repos/
 eval/obs/runs/
 devprompt-ai-e2e-flow/
 .trae-html-share-packages/
+
+# ---- 文档不入库（2026-11-21）----
+# 只保留根 README 与 eval 评测报告；其余文档仅存本地。
+# 精确路径而非 *.md：通配会误伤 README 与 eval 报告。
+/AGENTS.md
+/CodeBuddy-AskUserQuestion-提问规范.md
+/DevPrompt-AI-*.md
+/doc-阶段/
+/.trae/
+/.workbuddy/
+/browser-extension/README.md
+/eval/recall/README.md
+
+# ---- 官网不入库（2026-11-21）----
+# 产品官网是独立交付物，与产品源码不同源，单独部署与版本管理。
+/website/

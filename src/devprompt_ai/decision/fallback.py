@@ -38,6 +38,7 @@ from devprompt_ai.domain.decision.port import (
 )
 from devprompt_ai.domain.errors import DevPromptError
 from devprompt_ai.domain.models import Candidate, FactResult
+from devprompt_ai.domain.retrieval.query_rewrite import QueryRewriteOutput, RewrittenQuery
 from devprompt_ai.harness.ask_tool import parse_ask_call
 from devprompt_ai.harness.guardrails import validate_ranking
 from devprompt_ai.harness.llm import (
@@ -51,6 +52,19 @@ logger = logging.getLogger("devprompt.decision")
 
 #: 动作枚举全集（含 delegate）：allowed_actions=None 时 USER 枚举串与旧契约逐字一致。
 _ALL_ACTIONS: Final[tuple[str, ...]] = tuple(ACTION_LINES) + ("delegate",)
+
+#: 结构化 Query 改写（2026-11-19）：多轮追问换目标时，规则识别不出纯中文描述。
+REWRITE_SYSTEM: Final[str] = (
+    "你是检索查询分析器。判断用户这一轮想改的目标是否与上一轮相同。"
+    "只输出 JSON：target（目标名，沿用则原样给出上一轮目标）、intent"
+    "（add/modify/remove/diagnose）、entities（提到的组件/页面/样式等实体）、"
+    "negation（明确不要的东西）、confidence（0~1，指目标判断的把握）。"
+)
+REWRITE_USER: Final[str] = (
+    "上一轮目标：{previous}\n本轮原句：{sentence}\n\n"
+    "如果本轮只是改样式/参数/细节，target 保持上一轮；"
+    "如果说的是另一个页面、组件或模块，target 写新目标名。"
+)
 
 
 def _fit_state(text: str, limit: int) -> str:
@@ -190,6 +204,27 @@ class LLMFallbackDecider:
             user,
             timeout=self._cfg.llm_probe_timeout,
             purpose="probe",
+        )
+
+    async def rewrite_query(self, sentence: str, previous_target: str = "") -> RewrittenQuery:
+        """LLM 结构化改写（2026-11-19）：失败向上抛，由调用方回退规则结果。"""
+        user = REWRITE_USER.format(
+            previous=previous_target or "（无）", sentence=sentence[:500]
+        )
+        out = await chat_structured(
+            self._cfg,
+            QueryRewriteOutput,
+            REWRITE_SYSTEM,
+            user,
+            timeout=self._cfg.llm_probe_timeout,
+            purpose="probe",
+        )
+        return RewrittenQuery(
+            target=(out.target or previous_target).strip()[:80],
+            intent=out.intent or "modify",
+            entities=tuple(str(item)[:40] for item in out.entities[:8]),
+            negation=tuple(str(item)[:40] for item in out.negation[:8]),
+            confidence=max(0.0, min(1.0, float(out.confidence))),
         )
 
     async def score_prompts(

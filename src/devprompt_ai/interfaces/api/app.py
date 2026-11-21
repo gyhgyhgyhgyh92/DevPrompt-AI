@@ -19,6 +19,7 @@ from devprompt_ai.common.process import ProcessError, ProcessTimeoutError
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.errors import DevPromptError
 from devprompt_ai.interfaces.api import (
+    obs_logs_routes,
     obs_metrics_routes,
     obs_replay_routes,
     obs_trace_routes,
@@ -26,6 +27,7 @@ from devprompt_ai.interfaces.api import (
     runtime_routes,
 )
 from devprompt_ai.interfaces.api.schemas import ApiResponse
+from devprompt_ai.observability.logging import install_file_sink
 
 
 class _SpaStaticFiles(StaticFiles):
@@ -162,6 +164,7 @@ async def _render_error(request: Request, exc: Exception) -> JSONResponse:
 def create_app() -> FastAPI:
     cfg = AppConfig()
     cfg.validate()
+    install_file_sink(cfg.log_dir)
     app = FastAPI(title="DevPrompt AI", version="0.1.0")
     origins = [o.strip() for o in cfg.cors_origins.split(",") if o.strip()]
     app.add_middleware(
@@ -189,6 +192,7 @@ def create_app() -> FastAPI:
     app.include_router(obs_trace_routes.router)
     app.include_router(obs_metrics_routes.router)
     app.include_router(obs_replay_routes.router)
+    app.include_router(obs_logs_routes.router)
     for exc_type in (DevPromptError, ProcessError, ProcessTimeoutError, TimeoutError):
         app.add_exception_handler(exc_type, _render_error)
     # py3.10 下 asyncio.TimeoutError 与内建 TimeoutError 非同一类，显式覆盖

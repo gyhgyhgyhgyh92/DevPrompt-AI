@@ -46,8 +46,11 @@ class TraceCollectorImpl:
         *,
         enabled: bool = True,
         buffer_size: int = 20,
+        cfg: Any = None,
     ) -> None:
         self._store = store
+        # 持 cfg 引用而非快照：模型热切换后新节点自动带新 model_id。
+        self._cfg = cfg
         self._enabled = enabled
         self._buffer_size = max(1, buffer_size)
         self._ctx: ContextVar[_TraceContext | None] = ContextVar("trace_ctx", default=None)
@@ -130,6 +133,11 @@ class TraceCollectorImpl:
             return ""
         seq = self._seq.get(ctx.trace_id, 0) + 1
         self._seq[ctx.trace_id] = seq
+        # model 维度（2026-11-19）：Metrics 按 attributes.model_id 聚合；统一在此注入，
+        # 避免每个 traced_port 各写一遍且遗漏。只补 LLM/决策节点，工具节点无模型语义。
+        attrs = dict(attributes or {})
+        if self._cfg is not None and kind.startswith(("llm.", "decision.")):
+            attrs.setdefault("model_id", str(getattr(self._cfg, "llm_model", "") or ""))
         event = TraceEvent(
             event_id=uuid.uuid4().hex,
             trace_id=ctx.trace_id,
@@ -148,7 +156,7 @@ class TraceCollectorImpl:
             input=mask_secrets(input or {}),
             output=mask_secrets(output or {}),
             error=mask_secrets(error or {}),
-            attributes=mask_secrets(attributes or {}),
+            attributes=mask_secrets(attrs),
             schema_version=TRACE_SCHEMA_VERSION,
         )
         self._buffers.setdefault(ctx.trace_id, []).append(event)

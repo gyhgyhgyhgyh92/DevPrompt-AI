@@ -10,8 +10,10 @@ import json
 import logging
 import time
 import uuid
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass, field
+from contextvars import ContextVar
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -58,9 +60,13 @@ from devprompt_ai.domain.context import (
     build_context,
     summary_from_turn,
 )
+from devprompt_ai.domain.context.budget import turn_token_budget
+from devprompt_ai.domain.context.collapse import collapse_tool_output
+from devprompt_ai.domain.context.prune import prune_content
+from devprompt_ai.domain.context.stale import is_stale
 from devprompt_ai.domain.context.build_context import compose_history
-from devprompt_ai.domain.context.compact_policy import CacheKind
 from devprompt_ai.domain.context.compactor import plan_compaction
+from devprompt_ai.domain.model.registry import infer_cache_kind
 from devprompt_ai.domain.context.prompt_layers import assert_append_only, render_delta
 from devprompt_ai.domain.context.task_contract import (
     ContractStatus,
@@ -159,10 +165,15 @@ from devprompt_ai.domain.retrieval.facts import (
 from devprompt_ai.domain.retrieval.locate import locate_symbol
 from devprompt_ai.domain.retrieval.paths import safe_join
 from devprompt_ai.domain.retrieval.ports import CommandRunner, FileReader, SymbolProvider
+from devprompt_ai.domain.mcp.models import McpServerConfig
+from devprompt_ai.domain.retrieval.query_rewrite import rewrite_query, target_changed
+from devprompt_ai.domain.skills.matching import fit_skills, rank_skills, render_skills
+from devprompt_ai.domain.skills.models import Skill
 from devprompt_ai.harness.guardrails import validate_claims
 from devprompt_ai.harness.llm import LLMGenerator, reset_generation_sink, set_generation_sink
 from devprompt_ai.harness.overflow import is_context_overflow
 from devprompt_ai.harness.process import LocalCommandRunner, LocalFileReader, SymbolTableProvider
+from devprompt_ai.harness.skills import loader as skill_loader
 from devprompt_ai.harness.repo_indexer import impact_for, index_project
 from devprompt_ai.harness.summarize import summarize_history
 from devprompt_ai.harness.tool_registry import ToolRegistry
@@ -171,11 +182,14 @@ from devprompt_ai.memory.model_catalog_store import read_model_catalog, write_mo
 from devprompt_ai.memory.project_note_store import normalize_key
 from devprompt_ai.memory.repo_index import SQLiteRepoIndex
 from devprompt_ai.memory.settings_store import (
+    read_mcp_servers,
     read_model_registry,
+    write_mcp_servers,
     write_model_registry,
     write_model_settings,
     write_process_settings,
 )
+from devprompt_ai.memory.skill_store import SQLiteSkillStore
 from devprompt_ai.memory.turn_store import TurnConflictError
 from devprompt_ai.observability.logging import emit, emit_error, emit_warning, set_telemetry
 from devprompt_ai.runtime.coordinator import DelegationCoordinator
@@ -200,10 +214,35 @@ def _render_previous_variants(variants: Sequence[VariantDraft]) -> str:
     return text[: PREVIOUS_VARIANTS_LIMIT - 1] + "…"
 
 
+@dataclass
+class AppliedOps:
+    """续跑副作用幂等（2026-11-19）：已执行的键 + 落库回调。
+
+    用 ContextVar 而非实例属性隔离并发 run——ForgeService 是单例，多会话并行时
+    实例属性会互相污染（与 `_GENERATION_SINK` 同一取舍）。
+    """
+
+    keys: set[str] = field(default_factory=set)
+    persist: Callable[[str], Awaitable[None]] | None = None
+
+    def seen(self, key: str) -> bool:
+        return key in self.keys
+
+    async def mark(self, key: str) -> None:
+        if key in self.keys:
+            return
+        self.keys.add(key)
+        if self.persist is not None:
+            await self.persist(key)
+
+
+_APPLIED_OPS: ContextVar[AppliedOps | None] = ContextVar("devprompt_applied_ops", default=None)
+
 _RANK_CACHE_TTL_SECONDS: float = 30.0 * 60.0
 """组件排序缓存 TTL（MUST-14：决策结果 30 分钟；SHOULD-04 惰性淘汰）。"""
 
-_RANK_CACHE: dict[tuple[str, str, str, str], tuple[float, list[int]]] = {}
+_RANK_CACHE_CAPACITY = 256
+_RANK_CACHE: OrderedDict[tuple[str, str, str, str], tuple[float, list[int]]] = OrderedDict()
 """rank_components 结果缓存（模块级，MUST-14）。
 
 键 = (项目绝对路径, 原句 sha256, 阈值配置 hash, 候选集摘要)——键不含原句明文。
@@ -305,6 +344,8 @@ class FlowSnapshot:
     reply_text: str = ""
     #: 交付证据门结果（2026-11-05）：只披露质量标记，不阻断交付。
     delivery_gate: DeliveryGateView | None = None
+    #: 终止原因（2026-11-19）：runtime 收尾据此落 runs.stop_reason，避免一律 user-interrupt。
+    stop_reason: str = ""
     #: 领域路由结论（2026-11-14 领域包）：{domain, source, confidence}，旧会话为 None
     domain: dict[str, Any] | None = None
     """本轮归属（2026-11-04）：前端据此决定该轮进历史列表还是当前对话区。
@@ -920,6 +961,63 @@ class ForgeService:
             return self._snapshot(session, "ask")
         return self._snapshot(session, "running")
 
+    async def resume_execution(
+        self,
+        user_id: str,
+        session_id: str,
+        *,
+        request_id: str,
+        snapshot: dict[str, Any] | None = None,
+        progress: ProgressSink | None = None,
+        applied_ops: AppliedOps | None = None,
+    ) -> FlowSnapshot:
+        """断点续跑（2026-11-19）：从 checkpoint 恢复同一 turn 的 Agent 循环。
+
+        与只读 :meth:`resume` 不同——这里真正继续执行；调用方负责确认写锁已接管、
+        run 已 reopen。等用户态（ASKING/CONFIRMING）不是执行中断，直接返回快照。
+        """
+        session = await self._load_owned(user_id, session_id)
+        state = FlowState(session.state)
+        if state in {FlowState.ASKING, FlowState.CONFIRMING, FlowState.DONE}:
+            return self._snapshot(
+                session,
+                "ask" if state is FlowState.ASKING else "done",
+            )
+
+        restored_steps: list[AgentStep] = []
+        if snapshot:
+            saved = snapshot.get("session_data")
+            if isinstance(saved, dict):
+                session.data.update(saved)
+            for raw in snapshot.get("steps") or ():
+                if not isinstance(raw, dict):
+                    continue
+                try:
+                    restored_steps.append(
+                        AgentStep(
+                            index=int(raw.get("index", len(restored_steps))),
+                            action=AgentAction(str(raw.get("action", "probe"))),
+                            outcome=StepOutcome(str(raw.get("outcome", "ok"))),
+                            duration_ms=int(raw.get("duration_ms", 0)),
+                            facts_passed=int(raw.get("facts_passed", 0)),
+                            decided_by_evidence=bool(raw.get("decided_by_evidence", False)),
+                            note=str(raw.get("note", "")),
+                        )
+                    )
+                except (ValueError, TypeError):
+                    continue
+        token = _APPLIED_OPS.set(applied_ops) if applied_ops is not None else None
+        try:
+            return await self.run_agent_loop(
+                session,
+                request_id=request_id,
+                progress=progress,
+                initial_steps=restored_steps,
+            )
+        finally:
+            if token is not None:
+                _APPLIED_OPS.reset(token)
+
     async def escape(self, user_id: str, session_id: str, *, request_id: str) -> FlowSnapshot:
         """MUST-26 ②：用户逃生「直接生成」→ 保守版。
 
@@ -987,7 +1085,26 @@ class ForgeService:
         # 指纹（符号表缓存键 = root + 全量 mtime 摘要）变了就重取，避免拿旧行号当证据。
         existing_facts = session.data.get("facts") or []
         existing_digest = str(session.data.get("facts_mtime_digest", ""))
-        if existing_facts and existing_digest:
+        # Query 改写（2026-11-19）：本轮目标变化时禁止复用，换目标必须重检索。
+        previous_target = str((session.data.get("target") or {}).get("name", ""))
+        rewritten = rewrite_query(sentence, previous_target)
+        # LLM 结构化改写（2026-11-19）：开关开启 + 决策层支持 + 本轮有新原句时调用一次；
+        # 用 getattr 探测端口能力，FakeDecider 等替身自动走规则版，失败也回退规则版。
+        llm_rewrite = getattr(self._decider, "rewrite_query", None)
+        if bool(self._cfg.query_rewrite_llm) and llm_rewrite is not None and sentence.strip():
+            try:
+                rewritten = await llm_rewrite(sentence, previous_target)
+            except Exception:  # noqa: BLE001 - 改写是增强项，失败回退规则
+                logger.debug("query.rewrite_llm_failed", exc_info=True)
+        session.data["query_rewrite"] = rewritten.to_dict()
+        # 空句沿用上一轮 sentence（继承路径），没有新信号，一律不判目标切换。
+        target_switched = bool(sentence.strip()) and target_changed(rewritten, previous_target)
+        if target_switched:
+            session.data["target_changed"] = True
+            session.data["facts"] = []
+            session.data["facts_mtime_digest"] = ""
+            emit("evidence.target_changed", request_id=request_id)
+        if existing_facts and existing_digest and not target_switched:
             if existing_digest != digest:
                 emit("evidence.stale_reprobe", request_id=request_id)
             elif session.data.get("target"):
@@ -1002,10 +1119,12 @@ class ForgeService:
 
         await _notify(session, progress, retrieval_text(_session_locale(session)))
         await _notify(session, progress, symbols_text(len(symbols), _session_locale(session)))
-        result = build_candidates(sentence, symbols)
+        # 目标切换时用改写后的结构化 target 检索，避免指代/省略词再次落空。
+        retrieval_sentence = rewritten.target if target_switched else sentence
+        result = build_candidates(retrieval_sentence, symbols)
         # I1–I3：对 ≤25 条候选做 BM25+RRF+路径权重二次排序（只调序不减候选，MUST-09）
         result = dataclasses.replace(
-            result, candidates=reorder_by_lexicon(result.candidates, sentence)
+            result, candidates=reorder_by_lexicon(result.candidates, retrieval_sentence)
         )
         await _notify(
             session,
@@ -1232,7 +1351,12 @@ class ForgeService:
         session.data["design_tokens"] = list(location.token_hits)
 
     async def run_agent_loop(
-        self, session: FlowSession, *, request_id: str, progress: ProgressSink | None = None
+        self,
+        session: FlowSession,
+        *,
+        request_id: str,
+        progress: ProgressSink | None = None,
+        initial_steps: list[AgentStep] | None = None,
     ) -> FlowSnapshot:
         """AGENTIC 循环：取动作 → 执行 → 记录步骤 → 收敛检测 → 回到决策。
 
@@ -1244,7 +1368,7 @@ class ForgeService:
             raise DevPromptError("agentic 调度端口未装配，无法进入循环", code=9001, context={})
 
         await hop(session, FlowState.AGENTIC, self._sessions)
-        steps: list[AgentStep] = []
+        steps: list[AgentStep] = list(initial_steps or [])
         budget = AgentBudget()
 
         while True:
@@ -1313,6 +1437,21 @@ class ForgeService:
                 request_id=request_id,
             )
             self._record_sensorium(session, steps, budget, request_id)
+            # 单轮 token 硬闸：按当前压力分档取上限，用量超限即熔断，不静默截断。
+            # 上限为 0 表示内存已危急、预算禁用——此时交给步数/收敛熔断兜底。
+            pressure = float((session.data.get("sensorium") or {}).get("pressure", 0.0))
+            token_limit = turn_token_budget(pressure)
+            used_tokens = int(session.data.get("cost_tokens", 0) or 0)
+            if token_limit > 0 and used_tokens >= token_limit:
+                emit_warning(
+                    "agent.turn_token_budget_exceeded",
+                    used=used_tokens,
+                    limit=token_limit,
+                    pressure=pressure,
+                )
+                session.data["stop_reason"] = StopReason.TURN_TOKEN_BUDGET.value
+                await self._act_abort(session, reason="turn_token_budget")
+                return self._snapshot(session, "aborted")
             if terminal is not None:
                 # 终止原因结构化（A1）：交付/等用户/放弃三种收尾各自可归因。
                 session.data["stop_reason"] = snapshot_stop_reason(
@@ -1697,6 +1836,15 @@ class ForgeService:
             )
             await _notify(session, progress, f"委派计划被拒：{exc}")
             return
+        # 续跑幂等（2026-11-19）：全部工单已在快照里完成 → 直接复用，不重跑也不覆盖结果。
+        applied = _APPLIED_OPS.get()
+        turn = int(session.data.get("turn_index", 0) or 0)
+        if applied is not None:
+            done = sum(1 for order in orders if applied.seen(f"delegation:{turn}:{order.id}"))
+            if done == len(orders) and session.data.get("delegation"):
+                emit("delegation.reused", count=done)
+                await _notify(session, progress, f"委派结果已恢复（{done} 个工单），无需重跑")
+                return
         results: dict[str, WorkerResult] = {}
         for wave in waves:
             emit(
@@ -1736,13 +1884,19 @@ class ForgeService:
         if first is None:
             await _notify(session, progress, "委派全部被调度闸拒绝")
             return
+        merged = merge_results(orders, results)
+        # 部分跳过（resume 中已完成的工单）时保留快照里的旧结果，不降级成 blocked。
+        previous = (session.data.get("delegation") or {}).get("results") or {}
+        for order in orders:
+            if order.id not in results and order.id in previous:
+                merged[order.id] = previous[order.id]
         session.data["delegation"] = {
             "status": first.status,
             "summary": first.output[:300],
             "evidence": list(first.evidence),
             "salvaged": first.salvaged,
             "evidence_status": first.evidence_status,
-            "results": merge_results(orders, results),
+            "results": merged,
         }
         await _notify(session, progress, f"委派完成（{first.status}）：{first.output[:200]}")
 
@@ -1767,8 +1921,19 @@ class ForgeService:
         """单工单过调度闸；被拒只降级（返回 None），不取消同批其它任务。"""
         from devprompt_ai.harness.worker_session import run_read_worker
 
+        # 续跑幂等（2026-11-19）：键含轮次，避免上一轮同 id 工单在本轮被误跳过。
+        applied = _APPLIED_OPS.get()
+        op_key = f"delegation:{int(session.data.get('turn_index', 0) or 0)}:{order.id}"
+        if applied is not None and applied.seen(op_key):
+            emit("delegation.reused", order_id=order.id)
+            return None
         try:
-            return await self._coordinator.run(order, lambda o: run_read_worker(o, execute=execute))
+            result = await self._coordinator.run(
+                order, lambda o: run_read_worker(o, execute=execute)
+            )
+            if applied is not None:
+                await applied.mark(op_key)
+            return result
         except ValueError as exc:
             emit(
                 "delegation.rejected",
@@ -1917,7 +2082,8 @@ class ForgeService:
                 cost_tokens=int(session.data.get("cost_tokens", 0)),
                 cost_budget=int(self._cfg.followup_cost_budget),
                 context_tokens=int(session.data.get("context_tokens", 0)),
-                context_window=int(self._cfg.runtime_state_budget()),
+                # 压力分母用模型真实窗口（2026-11-19）：装配预算只有窗口 10%，会虚高压力。
+                context_window=int(self._cfg.runtime_window()),
                 claim_coverage=coverage,
                 notes_hit=int(session.data.get("notes_hit", 0)),
                 turn_index=int(session.data.get("turn_index", 0)),
@@ -1938,6 +2104,11 @@ class ForgeService:
             return
         if int(session.data.get("cost_tokens", 0)) <= 0:
             return
+        # 续跑幂等（2026-11-19）：token_ledger 无唯一键，同一轮重跑会重复记账。
+        applied = _APPLIED_OPS.get()
+        ledger_key = f"ledger:{int(session.data.get('turn_index', 0) or 0)}"
+        if applied is not None and applied.seen(ledger_key):
+            return
         try:
             await self._token_ledger.record(
                 session_id=session.session_id,
@@ -1948,6 +2119,9 @@ class ForgeService:
             )
         except Exception:  # noqa: BLE001 - 账本是旁路，失败不阻断收尾
             logger.warning("ledger.record_failed", exc_info=True)
+            return
+        if applied is not None:
+            await applied.mark(ledger_key)
 
     @staticmethod
     def _step_outcome(action: AgentAction, session: FlowSession) -> StepOutcome:
@@ -1982,6 +2156,11 @@ class ForgeService:
                         1 for f in session.data.get("facts", []) if f.get("passed")
                     ),
                     "request_id": request_id,
+                    # 断点续跑（2026-11-19）：整包状态 + 步骤明细，供同 run 恢复循环。
+                    "run_id": str(session.data.get("last_run_id", "")),
+                    "turn_index": int(session.data.get("turn_index", 0)),
+                    "steps": [asdict(step) for step in steps],
+                    "session_data": dict(session.data),
                 },
             )
         except Exception:  # noqa: BLE001 - checkpoint 是旁路，失败不阻断主循环
@@ -2233,6 +2412,128 @@ class ForgeService:
             )
         return merged
 
+    def _skill_store(self) -> SQLiteSkillStore:
+        """按当前库路径惰性构造：不新增构造参数，测试与旧装配零改动。"""
+        return SQLiteSkillStore(self._cfg.db_path)
+
+    async def _skill_block(self, sentence: str, domain: str = "") -> str:
+        """按本轮原句与领域挑技能，命中才读正文；预算独立、超限截断。"""
+        custom = await self._skill_store().list_all()
+        by_id = {item.meta.skill_id: item for item in custom}
+        metas = [item.meta for item in custom]
+        dirs = self._cfg.skill_roots()
+        if dirs:
+            metas.extend(await asyncio.to_thread(skill_loader.scan, dirs))
+        ranked = rank_skills(
+            metas, sentence, domain, limit=max(1, int(self._cfg.skills_top_n))
+        )
+        if not ranked:
+            return ""
+        picked: list[Skill] = []
+        for _score, meta in ranked:
+            if meta.source == "custom":
+                picked.append(by_id.get(meta.skill_id, Skill(meta=meta)))
+            else:
+                picked.append(await asyncio.to_thread(skill_loader.load_body, meta))
+        kept, truncated = fit_skills(picked, int(self._cfg.skills_max_chars))
+        if kept:
+            emit("skill.selected", count=len(kept), names=[item.meta.name for item in kept])
+        if truncated:
+            emit("skill.budget_truncated", kept=len(kept))
+        return render_skills(kept)
+
+    async def _skills_view(self) -> dict[str, Any]:
+        """合并视图：目录扫描（只读）+ 自定义（可写），同形返回。"""
+        dirs = self._cfg.skill_roots()
+        dir_metas = await asyncio.to_thread(skill_loader.scan, dirs) if dirs else []
+        custom = await self._skill_store().list_all()
+        items: list[dict[str, Any]] = [
+            {
+                "skill_id": "",
+                "name": meta.name,
+                "description": meta.description,
+                "source": "dir",
+                "domains": list(meta.domains),
+                "enabled": True,
+            }
+            for meta in dir_metas
+        ]
+        items.extend(
+            {
+                "skill_id": skill.meta.skill_id,
+                "name": skill.meta.name,
+                "description": skill.meta.description,
+                "source": "custom",
+                "domains": list(skill.meta.domains),
+                "enabled": skill.meta.enabled,
+            }
+            for skill in custom
+        )
+        return {"dirs": dirs, "items": items}
+
+    def _mcp_servers_view(self) -> list[dict[str, Any]]:
+        """脱敏视图；坏配置跳过（一条写坏不该让设置页整体打不开）。"""
+        out: list[dict[str, Any]] = []
+        for raw in read_mcp_servers():
+            try:
+                config = McpServerConfig(**raw)
+            except ValidationError:
+                continue
+            view = config.public_view()
+            view["id"] = str(raw.get("id") or config.id or "")
+            out.append(view)
+        return out
+
+    async def _replace_custom_skills(self, items: list[dict[str, Any]]) -> None:
+        """整表替换自定义技能：未出现的旧项删除，目录来源不受影响。"""
+        store = self._skill_store()
+        existing = await store.list_all()
+        keep: set[str] = set()
+        for item in items:
+            saved = await store.upsert(
+                skill_id=str(item.get("skill_id") or ""),
+                name=str(item.get("name") or ""),
+                description=str(item.get("description") or ""),
+                body=str(item.get("body") or ""),
+                domains=[str(d) for d in (item.get("domains") or [])],
+                enabled=bool(item.get("enabled", True)),
+            )
+            keep.add(saved.meta.skill_id)
+        for skill in existing:
+            if skill.meta.skill_id not in keep:
+                await store.delete(skill.meta.skill_id)
+
+    def _replace_mcp_servers(self, items: list[dict[str, Any]], request_id: str) -> None:
+        """整表替换 MCP 配置；同 id 的 env/headers 空值沿用旧值（前端只有掩码）。"""
+        previous = {str(raw.get("id") or ""): raw for raw in read_mcp_servers()}
+        merged: list[dict[str, Any]] = []
+        for item in items:
+            sid = str(item.get("id") or "").strip() or uuid.uuid4().hex[:8]
+            old = previous.get(sid, {})
+            env = {
+                key: (value if value and value != "••••••" else str(old.get("env", {}).get(key, "")))
+                for key, value in dict(item.get("env") or {}).items()
+            }
+            headers = {
+                key: (
+                    value
+                    if value and value != "••••••"
+                    else str(old.get("headers", {}).get(key, ""))
+                )
+                for key, value in dict(item.get("headers") or {}).items()
+            }
+            config = McpServerConfig(
+                **{
+                    **item,
+                    "id": sid,
+                    "env": env,
+                    "headers": headers,
+                }
+            )
+            merged.append(config.model_dump())
+        write_mcp_servers(merged)
+        emit("settings.mcp_updated", count=len(merged), request_id=request_id)
+
     async def get_settings(self, locale: Locale = DEFAULT_LOCALE) -> dict[str, Any]:
         """F-604 读设置（T6-11）：有效配置视图（env 已并入）；api_key 恒脱敏，候选上限锁定只读。
 
@@ -2266,6 +2567,8 @@ class ForgeService:
                 "metrics_enabled": cfg.obs_metrics_enabled,
                 "replay_enabled": cfg.obs_replay_enabled,
             },
+            "skills": await self._skills_view(),
+            "mcp_servers": self._mcp_servers_view(),
             "locked": {"candidate_limit": MAX_CANDIDATES},  # MUST-09 宪法常量，只读下发
         }
 
@@ -2465,6 +2768,23 @@ class ForgeService:
                 await asyncio.to_thread(write_model_settings, mirror)
                 for src_key, value in mirror.items():
                     setattr(self._cfg, MODEL_KEY_MAP[src_key], value)
+
+        # 扩展能力（2026-11-21）：两段各自整表替换，None 表示不动。
+        skills_in = update.get("skills")
+        if skills_in is not None:
+            await self._replace_custom_skills([dict(item) for item in skills_in])
+            emit("settings.skills_updated", count=len(skills_in), request_id=request_id)
+        mcp_in = update.get("mcp_servers")
+        if mcp_in is not None:
+            self._replace_mcp_servers([dict(item) for item in mcp_in], request_id)
+            # 配置变更后立刻断开旧连接（2026-11-21）：否则要等下一次生成才重连，
+            # 用户会以为「保存没生效」。函数内 import：runtime 反向依赖 service。
+            from devprompt_ai.harness.mcp.runtime import close as close_mcp_servers
+
+            try:
+                await close_mcp_servers()
+            except Exception:  # noqa: BLE001 - 断连失败不阻断保存
+                logger.warning("mcp.close_after_update_failed", exc_info=True)
 
         api_key = model_in.pop("api_key", None)
         if api_key:  # 非空才替换（空值/None = 不变）
@@ -2765,6 +3085,9 @@ class ForgeService:
             # 多模态（2026-11-14）：visual 域风格与图生图参考图
             style_id=str(session.data.get("style", "")),
             images=tuple(str(x) for x in session.data.get("images") or ()),
+            skill_block=await self._skill_block(
+                str(session.data.get("sentence", "")), self._domain_id(session)
+            ),
         )
 
     async def _generate_single_guarded(
@@ -3199,10 +3522,38 @@ class ForgeService:
             notes = [note.render() for note in found]
             # 供六维状态感知的「熟悉度」维度读取（shadow 观测，不影响行为）
             session.data["notes_hit"] = len(notes)
+        # 消息级压缩（2026-11-19）：在用户边界对工具/取证文本做内容级折叠。
+        # 只替换 content 字符串，不动数组结构——恢复时无需对齐索引。
+        facts_summary_raw = str(session.data.get("facts_summary", "") or "")
+        facts_summary = collapse_tool_output("retrieve", facts_summary_raw)
+        session.data["facts_summary"] = facts_summary
+        target_excerpt = str(session.data.get("target_excerpt", "") or "")
+        step_count = len(session.data.get("agent_steps") or [])
+        if is_stale(
+            content_chars=len(target_excerpt),
+            lag_steps=step_count,
+            suffix_tokens=0,
+            superseded=bool(session.data.get("target_changed")),
+            referenced=True,
+        ):
+            target_excerpt = prune_content(target_excerpt, reason="stale-excerpt")
+            session.data["target_excerpt"] = target_excerpt
+
+        # 装配估算补全（2026-11-19）：此前只算 current/摘要/记忆，漏掉生成侧四块证据，
+        # 导致压缩判定偏晚、先撞请求断言才回压。统一在装配时计入，口径与请求断言一致。
+        extra_parts = (
+            facts_summary,
+            target_excerpt,
+            "\n".join(str(item) for item in (session.data.get("design_tokens") or ())),
+            _render_previous_variants(
+                TurnMemory.from_payload(session.data.get("turn_memory")).variants
+            ),
+        )
         estimated = (
             estimate_ctx_tokens(current.render())
             + sum(estimate_ctx_tokens(summary.render()) for summary in summaries)
             + sum(estimate_ctx_tokens(note) for note in notes)
+            + sum(estimate_ctx_tokens(part) for part in extra_parts if part)
         )
         # E3：绝对压力的分母数据源（六维 pressure 与压缩决策共用同一估算口径）
         session.data["context_tokens"] = estimated
@@ -3222,7 +3573,7 @@ class ForgeService:
             budget=ContextBudget(total=self._cfg.runtime_state_budget()),
             context_window=window,
             estimated_tokens=estimated,
-            cache_kind=CacheKind.AUTOMATIC,
+            cache_kind=infer_cache_kind(self._cfg.llm_provider),
             ledger_block=self._render_ledger(session),
             delta_block=self._render_context_delta(session),
         )
@@ -3292,7 +3643,7 @@ class ForgeService:
         plan = plan_compaction(
             estimated_tokens=estimated_tokens,
             window=self._cfg.runtime_window(),
-            cache_kind=CacheKind.AUTOMATIC,
+            cache_kind=infer_cache_kind(self._cfg.llm_provider),
         )
         if not (shrunk or plan.should_compact):
             return summaries
@@ -3500,6 +3851,8 @@ class ForgeService:
                 await self._notes.record_from_session(
                     str(session.data.get("project_root", "")), session.data
                 )
+                # 项目级归档（2026-11-19）：写入后清理长期未命中/超量记录。
+                await self._notes.archive_stale(str(session.data.get("project_root", "")))
             except Exception:  # noqa: BLE001 - 记忆写入失败不阻断生成
                 logger.warning("notes.record_failed", exc_info=True)
 
@@ -3535,6 +3888,7 @@ class ForgeService:
         if cached is not None:
             expires_at, order = cached
             if now <= expires_at and order and order[0] < len(candidates):
+                _RANK_CACHE.move_to_end(key)
                 emit("cache.hit", request_id=request_id, candidates=len(candidates))
                 return candidates[order[0]]
             _RANK_CACHE.pop(key, None)  # 过期惰性淘汰（SHOULD-04）
@@ -3555,6 +3909,9 @@ class ForgeService:
             )
             return candidates[0]
         _RANK_CACHE[key] = (now + _RANK_CACHE_TTL_SECONDS, list(out.order))
+        _RANK_CACHE.move_to_end(key)
+        while len(_RANK_CACHE) > _RANK_CACHE_CAPACITY:
+            _RANK_CACHE.popitem(last=False)
         if out.order and out.order[0] < len(candidates):
             return candidates[out.order[0]]
         return candidates[0]
@@ -3648,6 +4005,7 @@ class ForgeService:
             domain=(
                 session.data.get("domain") if isinstance(session.data.get("domain"), dict) else None
             ),
+            stop_reason=str(session.data.get("stop_reason", "") or ""),
         )
 
     async def _load_owned(self, user_id: str, session_id: str) -> FlowSession:

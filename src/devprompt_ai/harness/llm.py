@@ -99,6 +99,29 @@ _RETRY_BUDGET: Final[RetryBudget] = RetryBudget(capacity=5, window_s=60.0)
 _GENERATION_SINK: ContextVar[ProgressSink | None] = ContextVar(
     "devprompt_generation_sink", default=None
 )
+#: 同轮工具回喂的累计 token（2026-11-19）：SDK 内部回喂不经请求断言，按请求隔离计数。
+_tool_token_state: ContextVar[int] = ContextVar("devprompt_tool_tokens", default=0)
+
+
+async def _mcp_servers_for(cfg: AppConfig) -> list[Any]:
+    """取已连接的外部 MCP Server；关闭/无配置/连接异常一律返回空列表（不阻断生成）。"""
+    if not bool(getattr(cfg, "mcp_enabled", False)):
+        return []
+    try:
+        from devprompt_ai.harness.mcp.runtime import get_servers, parse_servers
+        from devprompt_ai.memory.settings_store import read_mcp_servers
+
+        configs = parse_servers(read_mcp_servers())
+        return list(
+            await get_servers(
+                configs,
+                enabled=True,
+                connect_timeout_s=float(cfg.mcp_connect_timeout_seconds),
+            )
+        )
+    except Exception:  # noqa: BLE001 - MCP 是增强项，不可用不能拖垮本轮
+        logger.warning("mcp.servers_unavailable", exc_info=True)
+        return []
 #: 增量推送节流：过密会把 SSE 刷爆，过疏则打字机断断续续。
 _STREAM_EMIT_INTERVAL_S: Final[float] = 0.25
 #: 每次推送保留的尾部字符数（前端只展示「正在写什么」）。
@@ -185,7 +208,9 @@ def _emit_tool_event(event: str, **fields: object) -> None:
         logger.debug("tool.event_failed", exc_info=True)
 
 
-def _search_code_tool(root: str, runner: CommandRunner) -> FunctionTool:
+def _search_code_tool(
+    root: str, runner: CommandRunner, *, budget_tokens: int = 0
+) -> FunctionTool:
     """生成阶段的补充检索工具（2026-11-18 同轮工具回路）。
 
     模型在生成方案时若发现证据不足，可调用本工具做一次字面全文检索；SDK 负责
@@ -221,6 +246,15 @@ def _search_code_tool(root: str, runner: CommandRunner) -> FunctionTool:
         hits = render_hits(raw)
         # 只记命中规模，不记检索词原文（MUST-19：用户原句/检索词不进日志）。
         _emit_tool_event("tool.search_invoked", chars=len(hits))
+        # 工具回路断言（2026-11-19）：SDK 回喂不再经过请求断言，按累计命中 token 自查；
+        # 超限只截尾不抛错，避免 SDK 把 UserError 当成整轮生成失败。
+        if budget_tokens > 0:
+            seen = _tool_token_state.get()
+            used = seen + estimate_tokens(hits)
+            if used > budget_tokens:
+                _emit_tool_event("tool.search_budget_exceeded", used=used, limit=budget_tokens)
+                return "检索结果超出本轮 token 预算，已省略；请基于现有证据作答。"
+            _tool_token_state.set(used)
         return hits
 
     return FunctionTool(
@@ -651,6 +685,7 @@ async def _structured_once(
     images: tuple[str, ...] = (),
     tools: tuple[FunctionTool, ...] = (),
     max_turns: int = 1,
+    mcp_servers: tuple[Any, ...] = (),
 ) -> ModelT:
     """单候选的一次结构化调用（含纠偏重试），失败转细分错误码（M-9）。
 
@@ -669,6 +704,8 @@ async def _structured_once(
         instructions=instructions,
         model=build_model(cfg),
         tools=list(tools),
+        # MCP 工具由 SDK 发现与执行；这里只交已连接的 Server 列表（空列表=不挂）。
+        mcp_servers=list(mcp_servers),
         model_settings=ModelSettings(
             **tuned.effective_llm_params(),
             # reasoning_effort 等 ModelSettings 未建模的参数走 extra_body 真正下发
@@ -811,6 +848,7 @@ async def chat_structured(
     images: tuple[str, ...] = (),
     tools: tuple[FunctionTool, ...] = (),
     max_turns: int = 1,
+    mcp_servers: tuple[Any, ...] = (),
 ) -> ModelT:
     """单次结构化调用（多模型路由 + 主备，G2–G6/G9）。
 
@@ -840,6 +878,7 @@ async def chat_structured(
                 images=images,
                 tools=tools,
                 max_turns=max_turns,
+                mcp_servers=mcp_servers,
             )
         except DevPromptError as exc:
             last_error = exc
@@ -891,8 +930,14 @@ class LLMGenerator:
         )
         tools = self._generate_tools(ctx)
         system = tpl.system(locale, ctx.domain_id)
+        if ctx.skill_block.strip():
+            # 技能正文由 service 按匹配度挑选并截断，独立预算；这里只负责拼进 system。
+            system = f"{system}\n\n{ctx.skill_block.strip()}"
         if tools:
             system = f"{system}\n\n{_TOOL_HINT}"
+            _tool_token_state.set(0)
+            tools = (_search_code_tool(ctx.project_root, self._runner, budget_tokens=cfg.runtime_window()),)
+        servers = await _mcp_servers_for(cfg)
         draft = await chat_structured(
             cfg,
             VariantDraft,
@@ -902,7 +947,9 @@ class LLMGenerator:
             purpose="generate",
             images=ctx.images,
             tools=tools,
-            max_turns=cfg.generate_tool_turns if tools else 1,
+            # MCP 工具也要多轮：max_turns=1 时 SDK 执行完工具就撞轮次上限。
+            max_turns=cfg.generate_tool_turns if (tools or servers) else 1,
+            mcp_servers=tuple(servers),
         )
         validate_variant(draft)
         # 兜底标记由模板选择单向决定，不接受模型自报（避免模型输出覆盖）。
@@ -929,13 +976,19 @@ class LLMGenerator:
         from devprompt_ai.domain.generate.ports import ReplyOutput
         from devprompt_ai.domain.generate.templates import reply as reply_tpl
 
+        system = reply_tpl.system_text(locale)
+        if ctx.skill_block.strip():
+            system = f"{system}\n\n{ctx.skill_block.strip()}"
+        servers = await _mcp_servers_for(self._cfg)
         out = await chat_structured(
             self._cfg,
             ReplyOutput,
-            reply_tpl.system_text(locale),
+            system,
             reply_tpl.build_user(ctx, locale),
             timeout=self._cfg.llm_generate_timeout,
             purpose="generate",
+            max_turns=self._cfg.generate_tool_turns if servers else 1,
+            mcp_servers=tuple(servers),
         )
         return out.text
 

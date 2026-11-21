@@ -9,6 +9,9 @@ dependencies = [
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.7,<3",
     "openai-agents>=0.23.1,<1.0",
+    # MCP 双向（2026-11-21）：openai-agents 已带客户端（agents.mcp），这里显式声明
+    # 服务端所用 SDK，防止它作为传递依赖被上游悄悄改版本。
+    "mcp>=2.3,<3",
 ]
 
 [project.optional-dependencies]
@@ -37,6 +40,8 @@ devprompt-ai = "devprompt_ai.main:main"
 devprompt-ai-pick-folder = "devprompt_ai.native_host:main"
 # 桌面端 sidecar（2026-10-22）：Electron 桌面壳 spawn 的子进程，随机端口 + stdout 就绪协议
 devprompt-ai-desktop = "devprompt_ai.desktop:main"
+# MCP 交付形态（2026-11-21）：stdio 给本地客户端；--transport streamable-http 供远程。
+devprompt-ai-mcp = "devprompt_ai.interfaces.mcp.server:main"
 
 [build-system]
 requires = ["hatchling"]

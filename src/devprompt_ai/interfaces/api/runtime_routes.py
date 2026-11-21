@@ -143,7 +143,16 @@ async def start_run(
 async def stream_session(
     session_id: str,
     since: Annotated[int, Query(ge=0)] = 0,
+    last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
 ) -> StreamingResponse:
+    # 断线重连（2026-11-19）：浏览器 EventSource 会自动带 Last-Event-ID，
+    # 它与 ?since=N 同义；两者都在时以 header 为准（SSE 规范的重连语义）。
+    effective_since = since
+    if last_event_id:
+        try:
+            effective_since = max(0, int(last_event_id.strip()))
+        except ValueError:
+            effective_since = since
     bundle = await _bundle()
     run = await bundle.runs.latest_for_session(session_id)
     pending = await bundle.interventions.pending(session_id)
@@ -171,7 +180,7 @@ async def stream_session(
         async for event in follow(
             bundle.bus,
             session_id,
-            since=since,
+            since=effective_since,
             snapshot=snapshot,
         ):
             yield sse_frame(event)
@@ -214,6 +223,29 @@ async def cancel_run(run_id: str) -> ApiResponse[dict[str, Any]]:
     if not cancelled:
         raise DevPromptError("运行不存在或已结束", code=6003)
     return ApiResponse(data={"run_id": run_id, "cancelled": True})
+
+
+@router.post(
+    "/runs/{run_id}/resume",
+    response_model=ApiResponse[dict[str, Any]],
+    description="断点续跑；从最近 checkpoint 恢复同一 turn 的 Agent 循环。",
+)
+async def resume_run(
+    request: Request,
+    run_id: str,
+    x_request_id: Annotated[str | None, Header(alias="X-Request-ID")] = None,
+) -> ApiResponse[dict[str, Any]]:
+    bundle = await _bundle()
+    request_id = _request_id(request, x_request_id)
+    record = await bundle.manager.resume(run_id, request_id=request_id)
+    return ApiResponse(
+        data={
+            "run_id": record.run_id,
+            "session_id": record.session_id,
+            "status": record.status,
+            "request_id": request_id,
+        }
+    )
 
 
 @router.get(

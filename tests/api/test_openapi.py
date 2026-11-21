@@ -39,13 +39,15 @@ def test_openapi_covers_all_operations() -> None:
     """
     doc = create_app().openapi()
     paths: dict[str, Any] = doc["paths"]
-    assert len(paths) == 32
+    # 2026-11-19：新增 POST /runs/{run_id}/resume 与 GET /obs/logs/events → 34 条路径。
+    # 2026-11-21：新增 POST /settings/mcp/test（连接测试）→ 35 条路径。
+    assert len(paths) == 35
     assert all(p.startswith("/api/v1/") for p in paths)
     operations = sum(
         len([m for m in ops if m in {"get", "put", "post", "patch", "delete"}])
         for ops in paths.values()
     )
-    assert operations == 35
+    assert operations == 38  # 2026-11-21：新增 MCP 连接测试端点
     assert "get" in paths["/api/v1/obs/trace/sessions/{session_id}/traces"]
     assert "get" in paths["/api/v1/obs/trace/sessions/{session_id}/events"]
     assert "get" in paths["/api/v1/obs/trace/traces/{trace_id}"]
@@ -150,9 +152,10 @@ class TestContextWindowTierContract:
         后为 **33 路径 / 36 操作**；2026-11-15 删会话级模型热度切换后为 **32 路径 / 35 操作**。
         """
         doc = create_app().openapi()
-        assert len(doc["paths"]) == 32
+        # 2026-11-19：新增 resume / obs logs 两条路径 → 34 条。
+        assert len(doc["paths"]) == 35
         operations = sum(
             len([k for k in v if k in {"get", "post", "put", "patch", "delete"}])
             for v in doc["paths"].values()
         )
-        assert operations == 35
+        assert operations == 38  # 2026-11-21：新增 MCP 连接测试端点

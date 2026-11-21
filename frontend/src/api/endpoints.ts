@@ -14,7 +14,10 @@ import {
   PagedHistoryItemSchema,
   ProjectDeleteSchema,
 } from '../schemas/history'
+import type { McpProbeResult, McpServerUpdate } from '../schemas/settings'
 import {
+  McpProbeResultSchema,
+  McpServerUpdateSchema,
   ModelCatalogRefreshRequestSchema,
   ModelCatalogResponseSchema,
   SettingsResponseSchema,
@@ -107,6 +110,7 @@ export const ENDPOINTS = {
     `${API_BASE_URL}/settings/models/catalog?provider_id=${encodeURIComponent(providerId)}`,
   refreshModelCatalog: `${API_BASE_URL}/settings/models/catalog/refresh`,
   settings: `${API_BASE_URL}/settings`,
+  mcpTest: `${API_BASE_URL}/settings/mcp/test`,
   runs: `${API_BASE_URL}/runs`,
   runCancel: (runId: string) => `${API_BASE_URL}/runs/${encodeURIComponent(runId)}/cancel`,
   sessionStream: (sessionId: string, since: number) =>
@@ -496,6 +500,19 @@ export function putSettings(body: SettingsUpdate, signal?: AbortSignal): Promise
     method: 'PUT',
     schema: SettingsResponseSchema,
     body: parseBody(SettingsUpdateSchema, body),
+    signal,
+  })
+}
+
+/** 测试 MCP 连接（2026-11-21）：连一次、列工具、断开；失败以 ok=false 返回。 */
+export function testMcpServer(
+  body: McpServerUpdate,
+  signal?: AbortSignal,
+): Promise<McpProbeResult> {
+  return request(ENDPOINTS.mcpTest, {
+    method: 'POST',
+    schema: McpProbeResultSchema,
+    body: parseBody(McpServerUpdateSchema, body),
     signal,
   })
 }
