@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import sys
 import threading
 import time
 import uuid
@@ -142,7 +143,9 @@ class SingleWriterLock:
 
 def _pid_started_at_ms(pid: int) -> int | None:
     """进程真实启动时刻（epoch ms）；探测不了返回 None，调用方据此保守处理。"""
-    if os.name == "nt":
+    # sys.platform 而非 os.name：mypy 按 platform 剪枝，Linux runner 上不检查
+    # Windows-only 的 ctypes.windll 分支（os.name 不触发剪枝）。
+    if sys.platform == "win32":
         import ctypes
         from ctypes import wintypes
 
@@ -176,7 +179,9 @@ def _pid_started_at_ms(pid: int) -> int | None:
         start_ticks = int(fields[19])  # 第 22 字段（去掉 pid/comm 后索引 19）
         with open("/proc/stat", encoding="utf-8") as handle:
             btime = next(int(line.split()[1]) for line in handle if line.startswith("btime"))
-        clock_ticks = int(os.sysconf("SC_CLK_TCK"))  # type: ignore[attr-defined]
+        # os.sysconf 只在 POSIX 存在：Windows 上类型检查报 attr-defined，
+        # POSIX 上该 ignore 又会变成 unused-ignore，故两个码一起列。
+        clock_ticks = int(os.sysconf("SC_CLK_TCK"))  # type: ignore[attr-defined, unused-ignore]
         return int((btime + start_ticks / clock_ticks) * 1000)
     except (OSError, ValueError, IndexError, StopIteration):
         return None
@@ -184,7 +189,7 @@ def _pid_started_at_ms(pid: int) -> int | None:
 
 def _pid_alive(pid: int) -> bool:
     """进程存活检测：Windows 用 OpenProcess，POSIX 用 kill(pid, 0)。"""
-    if os.name == "nt":
+    if sys.platform == "win32":
         import ctypes
 
         # PROCESS_QUERY_LIMITED_INFORMATION

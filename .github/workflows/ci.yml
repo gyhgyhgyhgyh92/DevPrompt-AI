@@ -35,6 +35,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          # 必须显式给版本：action-setup v4 不再从 package.json 的 packageManager 推断，
+          # 缺 version 会直接报 "No pnpm version is specified" 而失败。
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 22

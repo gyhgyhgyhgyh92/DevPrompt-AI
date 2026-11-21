@@ -123,7 +123,8 @@ class TestDialogStdoutEncoding:
                 _UTF8_STDOUT + f"[Console]::Out.Write('{self._CJK_PATH}')",
             ],
             capture_output=True,
-            creationflags=subprocess.CREATE_NO_WINDOW,
+            # CREATE_NO_WINDOW 是 Windows-only 常量，非 Windows 上取 0（不隐藏窗口）
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             timeout=60,
         )
         assert result.stdout.decode("utf-8") == self._CJK_PATH
