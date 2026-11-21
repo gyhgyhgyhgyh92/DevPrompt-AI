@@ -74,6 +74,9 @@ interface OptimizeState {
   thinking: readonly ThinkingItem[]
   /** 思考流进行中（传输层状态，不是 FlowState，MUST-07 不新增状态机态）。 */
   isThinking: boolean
+  /** MCP 工具审批（2026-11-21）：非空时页面显示确认条，超时后端按拒绝处理。 */
+  pendingApproval: { requestId: string; tool: string } | null
+  clearApproval: () => void
   beginThinking: () => void
   /** 答复后重新研判（2026-11-03）：只清过程、开闸，不动 sessionId 与当前阶段（后端会推 phase）。 */
   beginReprobe: () => void
@@ -119,6 +122,7 @@ const initialState: Pick<
   | 'domain'
   | 'thinking'
   | 'isThinking'
+  | 'pendingApproval'
 > = {
   sessionId: null,
   state: 'INIT',
@@ -144,6 +148,7 @@ const initialState: Pick<
   domain: null,
   thinking: [],
   isThinking: false,
+  pendingApproval: null,
 }
 
 /** 时间线条目 id：只用于 React key，不入契约。 */
@@ -174,6 +179,7 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
   // 若保留上一轮 id，TurnList 会把它当作「当前轮」过滤掉，而 ChatStream 的方案已被清空，
   // 于是上一轮正文在生成窗口内消失（用户报障：第二轮开始后第一轮结果直接不见）。
   // 置 null 后历史轮全部留在 TurnList，等终态快照的 current_turn_id 再推进。
+  clearApproval: () => set({ pendingApproval: null }),
   beginThinking: () =>
     set((state) => ({
       ...initialState,
@@ -317,7 +323,29 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
       }
       case 'snapshot': {
         const parsed = FlowSnapshotSchema.safeParse(event.data)
-        if (parsed.success) store.applySnapshot(parsed.data)
+        if (parsed.success) {
+          store.applySnapshot(parsed.data)
+          return
+        }
+        // 建连合成快照（seq=0）不是 FlowSnapshot：它带 pending 干预列表。
+        // 断线重连后靠这里恢复审批条，否则用户看不到确认入口，只能等超时拒绝。
+        const pending = Array.isArray(event.data.pending) ? event.data.pending : []
+        const approval = pending.find(
+          (item) =>
+            typeof item === 'object' &&
+            item !== null &&
+            (item as Record<string, unknown>).kind === 'approval' &&
+            typeof (item as Record<string, unknown>).request_id === 'string',
+        ) as Record<string, unknown> | undefined
+        const payload = (approval?.payload ?? {}) as Record<string, unknown>
+        set({
+          pendingApproval: approval
+            ? {
+                requestId: String(approval.request_id),
+                tool: typeof payload.tool === 'string' ? payload.tool : 'MCP',
+              }
+            : null,
+        })
         return
       }
       case 'error': {
@@ -330,8 +358,21 @@ export const useOptimizeStore = create<OptimizeState>()((set, get) => ({
         return
       }
       case 'stop':
-        set({ isThinking: false, sseStatus: 'idle' })
+        set({ isThinking: false, sseStatus: 'idle', pendingApproval: null })
         return
+      case 'approval': {
+        // MCP 工具调用前的确认：后端在等本次裁决，超时会按拒绝收尾。
+        const requestId = typeof event.data.request_id === 'string' ? event.data.request_id : ''
+        if (!requestId) return
+        const payload = (event.data.payload ?? {}) as Record<string, unknown>
+        set({
+          pendingApproval: {
+            requestId,
+            tool: typeof payload.tool === 'string' ? payload.tool : 'MCP',
+          },
+        })
+        return
+      }
       case 'agent.checkpoint': {
         // 每 5 步的执行进度：直写步骤镜像（snapshot 帧之外的增量进度源）
         const payload = parseEventPayload(CheckpointPayloadSchema, event.data)

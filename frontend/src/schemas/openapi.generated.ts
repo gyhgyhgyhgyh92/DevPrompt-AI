@@ -215,6 +215,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/obs/logs/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Events */
+        get: operations["events_api_v1_obs_logs_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/obs/metrics/alerts": {
         parameters: {
             query?: never;
@@ -522,6 +539,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{run_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Run
+         * @description 断点续跑；从最近 checkpoint 恢复同一 turn 的 Agent 循环。
+         */
+        post: operations["resume_run_api_v1_runs__run_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sessions/{session_id}/stream": {
         parameters: {
             query?: never;
@@ -557,6 +594,26 @@ export interface paths {
          */
         put: operations["put_settings_api_v1_settings_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/mcp/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Mcp Server
+         * @description 测试连接（2026-11-21）：连一次、列工具、立即断开；失败只回报不抛。
+         */
+        post: operations["test_mcp_server_api_v1_settings_mcp_test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -714,6 +771,25 @@ export interface components {
              */
             code: number;
             data?: components["schemas"]["HealthResponse"] | null;
+            /**
+             * Message
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+        };
+        /** ApiResponse[LogEventsPayload] */
+        ApiResponse_LogEventsPayload_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data?: components["schemas"]["LogEventsPayload"] | null;
             /**
              * Message
              * @default ok
@@ -1326,6 +1402,103 @@ export interface components {
             /** Candidate Limit */
             candidate_limit: number;
         };
+        /** LogEventsPayload */
+        LogEventsPayload: {
+            /** Items */
+            items: {
+                [key: string]: unknown;
+            }[];
+            /** Limit */
+            limit: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * McpServerUpdate
+         * @description MCP Server 写入项：env/headers 空值表示沿用同 id 旧值（与 provider_configs 一致）。
+         */
+        McpServerUpdate: {
+            /** Args */
+            args?: string[];
+            /**
+             * Command
+             * @default
+             */
+            command: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Env */
+            env?: {
+                [key: string]: string;
+            };
+            /** Headers */
+            headers?: {
+                [key: string]: string;
+            };
+            /** Id */
+            id?: string | null;
+            /** Name */
+            name: string;
+            /** Tool Allowlist */
+            tool_allowlist?: string[];
+            /**
+             * Transport
+             * @default stdio
+             * @enum {string}
+             */
+            transport: "stdio" | "sse" | "streamable-http";
+            /**
+             * Url
+             * @default
+             */
+            url: string;
+        };
+        /**
+         * McpServerView
+         * @description MCP Server 脱敏视图（env/headers 敏感键恒为掩码）。
+         */
+        McpServerView: {
+            /** Args */
+            args?: string[];
+            /**
+             * Command
+             * @default
+             */
+            command: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Env */
+            env?: {
+                [key: string]: string;
+            };
+            /** Headers */
+            headers?: {
+                [key: string]: string;
+            };
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Tool Allowlist */
+            tool_allowlist?: string[];
+            /**
+             * Transport
+             * @default stdio
+             * @enum {string}
+             */
+            transport: "stdio" | "sse" | "streamable-http";
+            /**
+             * Url
+             * @default
+             */
+            url: string;
+        };
         /** MetricSummaryPayload */
         MetricSummaryPayload: {
             /** Items */
@@ -1893,6 +2066,8 @@ export interface components {
          */
         SettingsResponse: {
             locked: components["schemas"]["LockedSettings"];
+            /** Mcp Servers */
+            mcp_servers?: components["schemas"]["McpServerView"][];
             model_service: components["schemas"]["ModelServiceSettings"];
             /** Models */
             models: components["schemas"]["ModelEntryView"][];
@@ -1902,6 +2077,7 @@ export interface components {
             provider_configs?: components["schemas"]["ProviderConfigView"][];
             /** Providers */
             providers?: components["schemas"]["ProviderDirectoryEntry"][];
+            skills?: components["schemas"]["SkillsSettings"];
         };
         /**
          * SettingsUpdate
@@ -1926,6 +2102,8 @@ export interface components {
         SettingsUpdate: {
             /** Active Model Id */
             active_model_id?: string | null;
+            /** Mcp Servers */
+            mcp_servers?: components["schemas"]["McpServerUpdate"][] | null;
             model_service?: components["schemas"]["ModelServiceUpdate"] | null;
             /** Models */
             models?: components["schemas"]["ModelEntryUpdate"][] | null;
@@ -1933,6 +2111,76 @@ export interface components {
             process?: components["schemas"]["ProcessUpdate"] | null;
             /** Provider Configs */
             provider_configs?: components["schemas"]["ProviderConfigUpdate"][] | null;
+            /** Skills */
+            skills?: components["schemas"]["SkillUpdate"][] | null;
+        };
+        /**
+         * SkillUpdate
+         * @description 自定义技能写入项：整表替换，未出现的既有自定义技能视为删除。
+         */
+        SkillUpdate: {
+            /**
+             * Body
+             * @default
+             */
+            body: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Domains */
+            domains?: string[];
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Name */
+            name: string;
+            /** Skill Id */
+            skill_id?: string | null;
+        };
+        /**
+         * SkillView
+         * @description 技能列表项（目录与自定义同形，靠 source 区分）。
+         */
+        SkillView: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Domains */
+            domains?: string[];
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Skill Id
+             * @default
+             */
+            skill_id: string;
+            /**
+             * Source
+             * @default dir
+             * @enum {string}
+             */
+            source: "dir" | "custom";
+        };
+        /**
+         * SkillsSettings
+         * @description 技能段：dirs 是当前生效的扫描目录（只读），items 是两个来源的合并视图。
+         */
+        SkillsSettings: {
+            /** Dirs */
+            dirs?: string[];
+            /** Items */
+            items?: components["schemas"]["SkillView"][];
         };
         /**
          * StartRunRequest
@@ -2573,6 +2821,39 @@ export interface operations {
             };
         };
     };
+    events_api_v1_obs_logs_events_get: {
+        parameters: {
+            query?: {
+                event?: string;
+                request_id?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_LogEventsPayload_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     alerts_api_v1_obs_metrics_alerts_get: {
         parameters: {
             query?: {
@@ -3117,12 +3398,47 @@ export interface operations {
             };
         };
     };
+    resume_run_api_v1_runs__run_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Request-ID"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     stream_session_api_v1_sessions__session_id__stream_get: {
         parameters: {
             query?: {
                 since?: number;
             };
-            header?: never;
+            header?: {
+                "Last-Event-ID"?: string | null;
+            };
             path: {
                 session_id: string;
             };
@@ -3190,6 +3506,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_SettingsResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_mcp_server_api_v1_settings_mcp_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpServerUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_dict_str__Any__"];
                 };
             };
             /** @description Validation Error */

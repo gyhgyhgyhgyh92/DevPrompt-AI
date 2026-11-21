@@ -1,21 +1,51 @@
 {
   "domain": {
     "badge_fallback": "已回退",
-    "code": { "name": "代码" },
-    "work": { "name": "工作" },
-    "life": { "name": "生活" },
-    "creative": { "name": "创意" },
-    "learning": { "name": "学习" },
-    "data": { "name": "数据" },
-    "marketing": { "name": "营销" },
-    "translation": { "name": "翻译" },
-    "legal": { "name": "法律" },
-    "medical": { "name": "医疗" },
-    "finance": { "name": "财务" },
-    "game": { "name": "游戏" },
-    "av": { "name": "音视频" },
-    "visual": { "name": "视觉生成" },
-    "operations": { "name": "运营" }
+    "code": {
+      "name": "代码"
+    },
+    "work": {
+      "name": "工作"
+    },
+    "life": {
+      "name": "生活"
+    },
+    "creative": {
+      "name": "创意"
+    },
+    "learning": {
+      "name": "学习"
+    },
+    "data": {
+      "name": "数据"
+    },
+    "marketing": {
+      "name": "营销"
+    },
+    "translation": {
+      "name": "翻译"
+    },
+    "legal": {
+      "name": "法律"
+    },
+    "medical": {
+      "name": "医疗"
+    },
+    "finance": {
+      "name": "财务"
+    },
+    "game": {
+      "name": "游戏"
+    },
+    "av": {
+      "name": "音视频"
+    },
+    "visual": {
+      "name": "视觉生成"
+    },
+    "operations": {
+      "name": "运营"
+    }
   },
   "app": {
     "status_checking": "API 检测中",
@@ -76,7 +106,12 @@
     "image_limit": "参考图最多 {{max}} 张",
     "image_format": "仅支持 PNG/JPEG/WebP 图片",
     "image_size": "单张图片不得超过 4MB",
-    "image_read_failed": "图片读取失败"
+    "image_read_failed": "图片读取失败",
+    "approval": {
+      "prompt": "MCP 工具「{{tool}}」请求执行，是否允许？",
+      "approve": "允许",
+      "deny": "拒绝"
+    }
   },
   "validation": {
     "followup_mode_exclusive": "answers / escape / guardrail_action 三种模式必须且只能启用一种"
@@ -323,10 +358,42 @@
       "model-service": "模型服务",
       "appearance": "通用外观",
       "observability": "可观测性",
-      "security": "流程与安全"
+      "security": "流程与安全",
+      "extensions": "扩展"
     },
     "api_mode": "API 形态",
-    "api_mode_only": "{{mode}}（该供应商仅支持这一种形态）"
+    "api_mode_only": "{{mode}}（该供应商仅支持这一种形态）",
+    "extensions": {
+      "title": "扩展",
+      "desc": "接入本地技能与外部 MCP Server；技能正文按本轮需求匹配后注入，MCP 工具调用前需你确认。",
+      "skills": "技能",
+      "mcp": "MCP Servers",
+      "dirs": "扫描目录：{{dirs}}",
+      "no_dirs": "未配置扫描目录（环境变量 SKILLS_DIRS，逗号分隔）",
+      "no_skills": "未发现技能：可配置目录，或在下方新建自定义技能。",
+      "no_servers": "尚未配置 MCP Server。",
+      "from_dir": "目录",
+      "from_custom": "自定义",
+      "skill_name": "技能名称",
+      "skill_desc": "一句话描述（用于匹配）",
+      "add_skill": "新建技能",
+      "server_name": "Server 名称",
+      "transport": "传输方式",
+      "command": "启动命令",
+      "url": "服务地址",
+      "risk": "我了解：stdio 模式会在本机执行该命令，等同于运行任意程序。",
+      "add_server": "添加 Server",
+      "test": "测试连接",
+      "testing": "连接中…",
+      "tools": "已连接，{{count}} 个工具",
+      "enabled": "已启用",
+      "disabled": "未启用",
+      "enable": "启用",
+      "disable": "停用",
+      "delete": "删除",
+      "saved": "已保存",
+      "failed": "操作失败"
+    }
   },
   "observability": {
     "title": "可观测性",

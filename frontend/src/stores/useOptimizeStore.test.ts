@@ -200,6 +200,39 @@ describe('useOptimizeStore 运行时事件守卫', () => {
     ).toBe(true)
   })
 
+  it('重连快照的 pending 恢复审批条，空 pending 清掉旧条', () => {
+    useOptimizeStore.getState().applyRunEvent({
+      seq: 0,
+      type: 'snapshot',
+      run_id: '',
+      data: {
+        session_id: 's1',
+        pending: [
+          {
+            request_id: 'req-1',
+            kind: 'approval',
+            payload: { tool: 'fetch_page' },
+          },
+        ],
+        last_seq: 9,
+      },
+      ts: '',
+    })
+    expect(useOptimizeStore.getState().pendingApproval).toEqual({
+      requestId: 'req-1',
+      tool: 'fetch_page',
+    })
+
+    useOptimizeStore.getState().applyRunEvent({
+      seq: 0,
+      type: 'snapshot',
+      run_id: '',
+      data: { session_id: 's1', pending: [], last_seq: 9 },
+      ts: '',
+    })
+    expect(useOptimizeStore.getState().pendingApproval).toBeNull()
+  })
+
   it('畸形载荷安全丢弃不崩', () => {
     expect(() =>
       useOptimizeStore.getState().applyRunEvent({

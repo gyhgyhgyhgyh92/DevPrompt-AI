@@ -5,6 +5,7 @@ import { getSettings } from '../../api/endpoints'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { AppearancePanel } from './AppearancePanel'
 import { errorMessage } from './errorMessage'
+import { ExtensionsPanel } from './ExtensionsPanel'
 import { ModelServicePanel } from './ModelServicePanel'
 import { SecurityPanel } from './SecurityPanel'
 import styles from './settings.module.css'
@@ -18,18 +19,25 @@ export interface SettingsModalProps {
 }
 
 /** 弹窗内可切换的面板；左侧导航第四项是可观测性入口（跳转独立页面），不属此列。 */
-type PanelKey = 'model-service' | 'appearance' | 'security'
+type PanelKey = 'model-service' | 'appearance' | 'security' | 'extensions'
 type NavKey = PanelKey | 'observability'
 
 /** 可观测性独立页面路由（内容唯一一份，弹窗内不再展开，MUST-10）。 */
 const OBSERVABILITY_ROUTE = '/observability'
 
-const NAV_KEYS: NavKey[] = ['model-service', 'appearance', 'observability', 'security']
+const NAV_KEYS: NavKey[] = [
+  'model-service',
+  'appearance',
+  'observability',
+  'security',
+  'extensions',
+]
 const TAB_ICONS: Record<NavKey, string> = {
   'model-service': '⚙',
   appearance: '◐',
   observability: '◎',
   security: '⚑',
+  extensions: '⌘',
 }
 
 /**
@@ -145,6 +153,7 @@ export function SettingsModal(props: SettingsModalProps) {
             {activeTab === 'model-service' ? <ModelServicePanel /> : null}
             {activeTab === 'appearance' ? <AppearancePanel /> : null}
             {activeTab === 'security' ? <SecurityPanel /> : null}
+            {activeTab === 'extensions' ? <ExtensionsPanel /> : null}
           </div>
         </div>
       </div>
