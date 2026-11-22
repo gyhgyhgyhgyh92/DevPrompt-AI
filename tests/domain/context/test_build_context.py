@@ -117,6 +117,32 @@ class TestTrimming:
 
         assert "memory" in payload.truncated_layers
 
+    def test_cache_advisor_delays_only_when_hit_rate_is_hot(self) -> None:
+        from devprompt_ai.domain.context.compact_policy import CacheKind
+
+        turns = [_turn(i) for i in range(20)]
+        hot = build_context(
+            turns,
+            _current(),
+            context_window=100_000,
+            estimated_tokens=80_000,
+            cache_kind=CacheKind.NONE,
+            recent_hit_rate=0.9,
+            pressure=0.2,
+        )
+        busy = build_context(
+            turns,
+            _current(),
+            context_window=100_000,
+            estimated_tokens=80_000,
+            cache_kind=CacheKind.NONE,
+            recent_hit_rate=0.9,
+            pressure=0.9,
+        )
+
+        assert not any(layer.startswith("compacted:") for layer in hot.truncated_layers)
+        assert any(layer.startswith("compacted:") for layer in busy.truncated_layers)
+
 
 class TestSummaryFromTurn:
     def test_extracts_three_fields_without_sentence_or_path(self) -> None:

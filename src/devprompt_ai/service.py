@@ -3722,9 +3722,24 @@ class ForgeService:
         window = self._cfg.runtime_window()
         if shrink:
             estimated = max(estimated, window)
+        # 缓存顾问输入：命中率取已入账用量（分母 0 记 0），压力取六维快照（缺失记 0）。
+        prompt_tokens = int(session.data.get("cost_prompt_tokens", 0) or 0)
+        cached_tokens = int(session.data.get("cost_cached_tokens", 0) or 0)
+        recent_hit_rate = cached_tokens / prompt_tokens if prompt_tokens > 0 else 0.0
+        pressure = 0.0
+        sensorium = session.data.get("sensorium")
+        if isinstance(sensorium, dict):
+            raw_pressure = sensorium.get("pressure", 0.0)
+            if isinstance(raw_pressure, (int, float)) and not isinstance(raw_pressure, bool):
+                pressure = float(raw_pressure)
         # B11：压缩触发时把窗口外的旧轮折成一段 LLM 摘要（失败回退规则摘要，不阻断）
         summaries = await self._maybe_llm_digest(
-            session, summaries, estimated_tokens=estimated, shrunk=shrink
+            session,
+            summaries,
+            estimated_tokens=estimated,
+            shrunk=shrink,
+            recent_hit_rate=recent_hit_rate,
+            pressure=pressure,
         )
         payload = build_context(
             summaries,
@@ -3734,6 +3749,8 @@ class ForgeService:
             context_window=window,
             estimated_tokens=estimated,
             cache_kind=infer_cache_kind(self._cfg.llm_provider),
+            recent_hit_rate=recent_hit_rate,
+            pressure=pressure,
             ledger_block=self._render_ledger(session),
             delta_block=self._render_context_delta(session),
         )
@@ -3792,6 +3809,8 @@ class ForgeService:
         *,
         estimated_tokens: int,
         shrunk: bool,
+        recent_hit_rate: float = 0.0,
+        pressure: float = 0.0,
     ) -> list[TurnSummary]:
         """B11：压缩触发时把 recent(2)+digest(6) 窗口外的旧轮折成一段 cheap 槽摘要。
 
@@ -3804,6 +3823,8 @@ class ForgeService:
             estimated_tokens=estimated_tokens,
             window=self._cfg.runtime_window(),
             cache_kind=infer_cache_kind(self._cfg.llm_provider),
+            recent_hit_rate=recent_hit_rate,
+            pressure=pressure,
         )
         if not (shrunk or plan.should_compact):
             return summaries

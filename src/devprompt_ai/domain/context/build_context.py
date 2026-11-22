@@ -218,6 +218,8 @@ def build_context(
     context_window: int = 0,
     estimated_tokens: int = 0,
     cache_kind: CacheKind = CacheKind.AUTOMATIC,
+    recent_hit_rate: float = 0.0,
+    pressure: float = 0.0,
     tail_anchor: str = "",
     ledger_block: str = "",
     delta_block: str = "",
@@ -226,6 +228,7 @@ def build_context(
 
     传入 `context_window` 与 `estimated_tokens` 时启用压缩：按计划缩放
     recent/digest/older/memory 四层预算；**current 层永不压**。
+    `recent_hit_rate` 与 `pressure` 交给缓存顾问，命中率高且压力低时推迟压缩。
 
     返回的 `history_block` 可直接拼进生成 prompt；`memory_block` 单独一块，
     便于调用方在超预算时优先保留记忆或反之。
@@ -237,6 +240,8 @@ def build_context(
             estimated_tokens=estimated_tokens,
             window=context_window,
             cache_kind=cache_kind,
+            recent_hit_rate=recent_hit_rate,
+            pressure=pressure,
         )
         if plan.should_compact:
             ratio = plan.budget_ratio

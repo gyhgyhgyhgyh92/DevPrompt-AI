@@ -48,6 +48,24 @@ def test_high_ratio_plans_micro_with_budget() -> None:
     assert plan.force is False
 
 
+def test_collapse_and_prune_use_their_budget_ratios() -> None:
+    collapse = plan_compaction(
+        estimated_tokens=75_000,
+        window=100_000,
+        cache_kind=CacheKind.NONE,
+    )
+    prune = plan_compaction(
+        estimated_tokens=90_000,
+        window=100_000,
+        cache_kind=CacheKind.NONE,
+    )
+
+    assert collapse.action is CompactAction.COLLAPSE
+    assert collapse.budget_ratio == 0.65
+    assert prune.action is CompactAction.PRUNE
+    assert prune.budget_ratio == 0.60
+
+
 def test_ceiling_forces_checkpoint() -> None:
     plan = plan_compaction(
         estimated_tokens=980_000,

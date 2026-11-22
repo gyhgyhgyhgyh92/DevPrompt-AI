@@ -42,6 +42,23 @@ def test_policy_tier_depends_on_cache_kind() -> None:
     assert explicit.action is CompactAction.NONE, "精确缓存下 0.55 还没到 watch(0.72)"
 
 
+def test_policy_uses_full_action_ladder() -> None:
+    # 100K 窗口无精度带/1M 阶梯；三档缓存各自覆盖 COLLAPSE/PRUNE
+    cases = [
+        (CacheKind.NONE, 0.75, 0.90),
+        (CacheKind.AUTOMATIC, 0.80, 0.90),
+        (CacheKind.EXPLICIT, 0.88, 0.93),
+    ]
+    micro = decide_compact_action(0.55, window=100_000, cache_kind=CacheKind.NONE)
+    assert micro.action is CompactAction.MICRO and micro.tier == 1
+
+    for cache_kind, collapse_ratio, prune_ratio in cases:
+        collapse = decide_compact_action(collapse_ratio, window=100_000, cache_kind=cache_kind)
+        prune = decide_compact_action(prune_ratio, window=100_000, cache_kind=cache_kind)
+        assert collapse.action is CompactAction.COLLAPSE and collapse.tier == 2
+        assert prune.action is CompactAction.PRUNE and prune.tier == 3
+
+
 def test_policy_ceiling_forces_checkpoint_on_large_window() -> None:
     decision = decide_compact_action(0.96, window=1_000_000, cache_kind=CacheKind.EXPLICIT)
 

@@ -97,9 +97,9 @@ def decide_compact_action(
 
     watch, compact, reactive = ratios_for(cache_kind)
     if ratio >= reactive:
-        return CompactDecision(CompactAction.MICRO, tier=3, reason="reactive")
+        return CompactDecision(CompactAction.PRUNE, tier=3, reason="reactive")
     if ratio >= compact:
-        return CompactDecision(CompactAction.MICRO, tier=2, reason="compact")
+        return CompactDecision(CompactAction.COLLAPSE, tier=2, reason="compact")
     if ratio >= watch:
         return CompactDecision(CompactAction.MICRO, tier=1, reason="watch")
     return CompactDecision(CompactAction.NONE, reason="below-watch")

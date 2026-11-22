@@ -1300,6 +1300,41 @@ async def test_assemble_context_uses_runtime_window(
     assert getattr(budget, "total", None) == svc._cfg.runtime_state_budget()
 
 
+async def test_assemble_context_passes_cache_advisor_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """装配必须把已入账命中率与六维压力传给缓存顾问。"""
+    from devprompt_ai.domain.context import ContextPayload
+
+    svc, _ = _service()
+    captured: dict[str, object] = {}
+
+    def _fake_build_context(*_args: object, **kwargs: object) -> ContextPayload:
+        captured.update(kwargs)
+        return ContextPayload()
+
+    monkeypatch.setattr("devprompt_ai.service.build_context", _fake_build_context)
+    session = FlowSession(
+        session_id="s-advisor",
+        user_id="local",
+        state="GENERATING",
+        data={
+            "sentence": "改按钮",
+            "project_root": ".",
+            "facts": [],
+            "clarifications": {},
+            "cost_prompt_tokens": 1000,
+            "cost_cached_tokens": 800,
+            "sensorium": {"pressure": 0.25},
+        },
+    )
+
+    await svc._assemble_context(session)
+
+    assert captured["recent_hit_rate"] == 0.8
+    assert captured["pressure"] == 0.25
+
+
 def test_account_usage_aggregates_all_fields() -> None:
     """全字段聚合：一次取用写入 total/prompt/completion/cached，重复调用幂等。"""
     from devprompt_ai.common.cost import add_llm_usage, take_llm_usage
