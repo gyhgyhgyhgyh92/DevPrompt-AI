@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
-import { Activity, Palette, Plug, Settings, ShieldCheck, X } from 'lucide-react'
+import { Activity, Palette, Plug, Settings, ShieldCheck, Sparkles, X } from 'lucide-react'
 import { getSettings } from '../../api/endpoints'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { useSettingsStore } from '../../stores/useSettingsStore'
@@ -9,6 +9,7 @@ import { AppearancePanel } from './AppearancePanel'
 import { errorMessage } from './errorMessage'
 import { ExtensionsPanel } from './ExtensionsPanel'
 import { ModelServicePanel } from './ModelServicePanel'
+import { ReflectionPanel } from './ReflectionPanel'
 import { SecurityPanel } from './SecurityPanel'
 import styles from './settings.module.css'
 import { makeS } from '../../utils/css'
@@ -20,8 +21,8 @@ export interface SettingsModalProps {
   onClose: () => void
 }
 
-/** 弹窗内可切换的面板；左侧导航第四项是可观测性入口（跳转独立页面），不属此列。 */
-type PanelKey = 'model-service' | 'appearance' | 'security' | 'extensions'
+/** 弹窗内可切换的面板；左侧导航里的可观测性项是跳转入口（独立页面），不属此列。 */
+type PanelKey = 'model-service' | 'appearance' | 'reflection' | 'security' | 'extensions'
 type NavKey = PanelKey | 'observability'
 
 /** 可观测性独立页面路由（内容唯一一份，弹窗内不再展开，MUST-10）。 */
@@ -30,6 +31,7 @@ const OBSERVABILITY_ROUTE = '/observability'
 const NAV_KEYS: NavKey[] = [
   'model-service',
   'appearance',
+  'reflection',
   'observability',
   'security',
   'extensions',
@@ -42,6 +44,7 @@ const NAV_KEYS: NavKey[] = [
 const TAB_ICONS: Record<NavKey, typeof Settings> = {
   'model-service': Settings,
   appearance: Palette,
+  reflection: Sparkles,
   observability: Activity,
   security: ShieldCheck,
   extensions: Plug,
@@ -54,7 +57,7 @@ function NavIcon({ navKey }: { navKey: NavKey }): ReactNode {
 }
 
 /**
- * 设置中心模态（F-604）：左侧四项导航 + 右侧内容区；
+ * 设置中心模态（F-604）：左侧导航 + 右侧内容区；
  * Esc/✕ 关闭，打开时焦点入面板、关闭归还触发按钮（无障碍惯例，非状态逻辑）。
  *
  * 2026-11-16：可观测性项位置不变，但点击改为关闭弹窗并跳转独立页面 /observability，
@@ -169,6 +172,7 @@ export function SettingsModal(props: SettingsModalProps) {
             ) : null}
             {activeTab === 'model-service' ? <ModelServicePanel /> : null}
             {activeTab === 'appearance' ? <AppearancePanel /> : null}
+            {activeTab === 'reflection' ? <ReflectionPanel /> : null}
             {activeTab === 'security' ? <SecurityPanel /> : null}
             {activeTab === 'extensions' ? <ExtensionsPanel /> : null}
           </div>

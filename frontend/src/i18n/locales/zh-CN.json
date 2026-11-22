@@ -340,6 +340,20 @@
       "aria": "供应商",
       "unregistered": "（端点未登记）"
     },
+    "reflection": {
+      "title": "自进化（Reflection）",
+      "desc": "把每一轮的目标、取证结果与结论沉淀成经验；下一轮生成前按需召回并注入系统提示词。",
+      "enabled": "启用自进化",
+      "base_url": "经验库地址（agentmemory 侧车）",
+      "top_k": "单轮召回条数",
+      "top_k_hint": "1–20；两桶各取一半后合并去重",
+      "top_k_invalid": "召回条数需在 1–20 之间",
+      "save": "保存连接设置",
+      "link_ok": "已连接",
+      "link_off": "未启用",
+      "link_down": "未连接",
+      "note": "需要本地 agentmemory 侧车（Node ≥ 20）。侧车不可达时整条链路静默跳过，不影响生成。"
+    },
     "security": {
       "title": "流程与安全",
       "round_guard": "反问软护栏轮数",
@@ -357,6 +371,7 @@
     "tab": {
       "model-service": "模型服务",
       "appearance": "通用外观",
+      "reflection": "自进化",
       "observability": "可观测性",
       "security": "流程与安全",
       "extensions": "扩展"

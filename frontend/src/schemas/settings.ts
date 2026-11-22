@@ -45,6 +45,15 @@ export const ObservabilitySchema = z.object({
 
 export type ObservabilitySettings = z.infer<typeof ObservabilitySchema>
 
+/** 自进化（Reflection）运行配置（契约 ReflectionSettings）：总开关 + 侧车地址 + 召回条数。 */
+export const ReflectionSchema = z.object({
+  enabled: z.boolean(),
+  base_url: z.string(),
+  top_k: z.number(),
+})
+
+export type ReflectionSettings = z.infer<typeof ReflectionSchema>
+
 /** 模型注册表条目脱敏视图（契约 ModelEntryView；api_key 恒脱敏，MUST-19）。 */
 export const ModelEntryViewSchema = z.object({
   id: z.string(),
@@ -247,6 +256,12 @@ export const SettingsResponseSchema = z.object({
   model_service: ModelServiceSchema,
   process: ProcessSchema,
   observability: ObservabilitySchema,
+  /** 旧后端可能不下发该段：给默认值，面板恒有可渲染数据 */
+  reflection: ReflectionSchema.default({
+    enabled: false,
+    base_url: 'http://127.0.0.1:3111',
+    top_k: 5,
+  }),
   skills: SkillsSettingsSchema.default({ dirs: [], items: [] }),
   mcp_servers: z.array(McpServerViewSchema).default([]),
 })
@@ -277,6 +292,13 @@ export const ObservabilityUpdateSchema = z.object({
   replay_enabled: z.boolean().nullish(),
 })
 
+/** PUT /settings 自进化段（契约 ReflectionUpdate；None=不变，保存后即时生效）。 */
+export const ReflectionUpdateSchema = z.object({
+  enabled: z.boolean().nullish(),
+  base_url: z.string().nullish(),
+  top_k: z.number().nullish(),
+})
+
 /** PUT /settings 请求体（契约 SettingsUpdate；models 整表替换，active_model_id 切换生效项）。 */
 export const SettingsUpdateSchema = z.object({
   provider_configs: z.array(ProviderConfigUpdateSchema).nullish(),
@@ -285,6 +307,7 @@ export const SettingsUpdateSchema = z.object({
   model_service: ModelServiceUpdateSchema.nullish(),
   process: ProcessUpdateSchema.nullish(),
   observability: ObservabilityUpdateSchema.nullish(),
+  reflection: ReflectionUpdateSchema.nullish(),
   skills: z.array(SkillUpdateSchema).nullish(),
   mcp_servers: z.array(McpServerUpdateSchema).nullish(),
 })

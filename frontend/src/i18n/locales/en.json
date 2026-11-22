@@ -340,6 +340,20 @@
       "aria": "Provider",
       "unregistered": " (endpoint not registered)"
     },
+    "reflection": {
+      "title": "Self-evolution (Reflection)",
+      "desc": "Each turn's goal, evidence and conclusion are distilled into experience; before the next run, relevant lessons are recalled and injected into the system prompt.",
+      "enabled": "Enable self-evolution",
+      "base_url": "Experience store URL (agentmemory sidecar)",
+      "top_k": "Lessons recalled per turn",
+      "top_k_hint": "1–20; each bucket returns half, then merged and de-duplicated",
+      "top_k_invalid": "Recalled lessons must be between 1 and 20",
+      "save": "Save connection settings",
+      "link_ok": "Connected",
+      "link_off": "Disabled",
+      "link_down": "Not connected",
+      "note": "Requires a local agentmemory sidecar (Node >= 20). When it is unreachable the whole path is skipped silently and generation is unaffected."
+    },
     "security": {
       "title": "Flow & security",
       "round_guard": "Follow-up soft round guard",
@@ -357,6 +371,7 @@
     "tab": {
       "model-service": "Model service",
       "appearance": "Appearance",
+      "reflection": "Self-evolution",
       "observability": "Observability",
       "security": "Flow & security",
       "extensions": "Extensions"

@@ -1974,6 +1974,42 @@ export interface components {
              */
             supports_reasoning: boolean;
         };
+        /**
+         * ReflectionSettings
+         * @description 自进化（Reflection）运行级配置（2026-11-22）：总开关 + 侧车地址 + 召回条数。
+         *
+         *     只下发这三项——字符预算与请求超时属实现细节，走环境变量；侧车连通性
+         *     走 ``GET /health`` 的 ``reflection`` 检查项，不放进设置段（设置段只描述意图）。
+         */
+        ReflectionSettings: {
+            /**
+             * Base Url
+             * @default http://127.0.0.1:3111
+             */
+            base_url: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Top K
+             * @default 5
+             */
+            top_k: number;
+        };
+        /**
+         * ReflectionUpdate
+         * @description PUT /settings 自进化段：None = 保持不变；保存后立即作用于运行中的服务。
+         */
+        ReflectionUpdate: {
+            /** Base Url */
+            base_url?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Top K */
+            top_k?: number | null;
+        };
         /** ReplayComparePayload */
         ReplayComparePayload: {
             /** Final */
@@ -2077,6 +2113,7 @@ export interface components {
             provider_configs?: components["schemas"]["ProviderConfigView"][];
             /** Providers */
             providers?: components["schemas"]["ProviderDirectoryEntry"][];
+            reflection?: components["schemas"]["ReflectionSettings"];
             skills?: components["schemas"]["SkillsSettings"];
         };
         /**
@@ -2111,6 +2148,7 @@ export interface components {
             process?: components["schemas"]["ProcessUpdate"] | null;
             /** Provider Configs */
             provider_configs?: components["schemas"]["ProviderConfigUpdate"][] | null;
+            reflection?: components["schemas"]["ReflectionUpdate"] | null;
             /** Skills */
             skills?: components["schemas"]["SkillUpdate"][] | null;
         };

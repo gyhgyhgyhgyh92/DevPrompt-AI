@@ -2432,6 +2432,71 @@
         "title": "ProviderDirectoryEntry",
         "type": "object"
       },
+      "ReflectionSettings": {
+        "description": "自进化（Reflection）运行级配置（2026-11-22）：总开关 + 侧车地址 + 召回条数。\n\n只下发这三项——字符预算与请求超时属实现细节，走环境变量；侧车连通性\n走 ``GET /health`` 的 ``reflection`` 检查项，不放进设置段（设置段只描述意图）。",
+        "properties": {
+          "base_url": {
+            "default": "http://127.0.0.1:3111",
+            "title": "Base Url",
+            "type": "string"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "top_k": {
+            "default": 5,
+            "title": "Top K",
+            "type": "integer"
+          }
+        },
+        "title": "ReflectionSettings",
+        "type": "object"
+      },
+      "ReflectionUpdate": {
+        "description": "PUT /settings 自进化段：None = 保持不变；保存后立即作用于运行中的服务。",
+        "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "top_k": {
+            "anyOf": [
+              {
+                "maximum": 20.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top K"
+          }
+        },
+        "title": "ReflectionUpdate",
+        "type": "object"
+      },
       "ReplayComparePayload": {
         "properties": {
           "final": {
@@ -2620,6 +2685,9 @@
             "title": "Providers",
             "type": "array"
           },
+          "reflection": {
+            "$ref": "#/components/schemas/ReflectionSettings"
+          },
           "skills": {
             "$ref": "#/components/schemas/SkillsSettings"
           }
@@ -2719,6 +2787,16 @@
               }
             ],
             "title": "Provider Configs"
+          },
+          "reflection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReflectionUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "skills": {
             "anyOf": [
