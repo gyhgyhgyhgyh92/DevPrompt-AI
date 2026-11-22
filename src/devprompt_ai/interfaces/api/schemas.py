@@ -442,6 +442,26 @@ class ObservabilityUpdate(BaseModel):
     replay_enabled: bool | None = None
 
 
+class ReflectionSettings(BaseModel):
+    """自进化（Reflection）运行级配置（2026-11-22）：总开关 + 侧车地址 + 召回条数。
+
+    只下发这三项——字符预算与请求超时属实现细节，走环境变量；侧车连通性
+    走 ``GET /health`` 的 ``reflection`` 检查项，不放进设置段（设置段只描述意图）。
+    """
+
+    enabled: bool = False
+    base_url: str = "http://127.0.0.1:3111"
+    top_k: int = 5
+
+
+class ReflectionUpdate(BaseModel):
+    """PUT /settings 自进化段：None = 保持不变；保存后立即作用于运行中的服务。"""
+
+    enabled: bool | None = None
+    base_url: str | None = Field(default=None, max_length=200)
+    top_k: int | None = Field(default=None, ge=1, le=20)
+
+
 class ModelDirectoryEntry(BaseModel):
     """模型目录条目（2026-10-17 窗口/能力下沉到模型级）。
 
@@ -617,6 +637,7 @@ class SettingsResponse(BaseModel):
     model_service: ModelServiceSettings
     process: ProcessSettings
     observability: ObservabilitySettings
+    reflection: ReflectionSettings = Field(default_factory=ReflectionSettings)
     skills: SkillsSettings = Field(default_factory=SkillsSettings)
     mcp_servers: list[McpServerView] = Field(default_factory=list)
     locked: LockedSettings
@@ -668,6 +689,7 @@ class SettingsUpdate(BaseModel):
     model_service: ModelServiceUpdate | None = None
     process: ProcessUpdate | None = None
     observability: ObservabilityUpdate | None = None
+    reflection: ReflectionUpdate | None = None
     #: 自定义技能整表替换（目录来源只读，不在此列表）；None = 不动。
     skills: list[SkillUpdate] | None = None
     #: MCP Server 整表替换；未出现的既有项视为删除；None = 不动。

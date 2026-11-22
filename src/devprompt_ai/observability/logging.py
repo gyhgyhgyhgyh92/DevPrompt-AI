@@ -28,6 +28,12 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "recommendation.skipped",
         "recommendation.recovered",
         "state.truncated",
+        # Reflection（2026-11-22）：外部经验库旁路——recalled/recorded 为常规，
+        # skipped 为未配置，failed 为降级（只记操作名与异常类型，不记内容）
+        "reflection.recalled",
+        "reflection.recorded",
+        "reflection.skipped",
+        "reflection.failed",
         "followup.guardrail",
         "followup.clarifications_invalidated",
         "followup.escaped",
@@ -53,6 +59,7 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "delegation.reused",
         "settings.skills_updated",
         "settings.mcp_updated",
+        "settings.reflection_updated",
         "skill.selected",
         "skill.budget_truncated",
         "mcp.connected",

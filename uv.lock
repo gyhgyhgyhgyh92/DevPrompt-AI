@@ -664,6 +664,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "mcp" },
     { name = "openai-agents" },
     { name = "pydantic" },
@@ -693,6 +694,7 @@ requires-dist = [
     { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=1.15,<2" },
     { name = "fastapi", specifier = ">=0.136,<0.137" },
     { name = "google-genai", marker = "extra == 'gemini'", specifier = ">=2.31,<3" },
+    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28" },
     { name = "mcp", specifier = ">=2.3,<3" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },

@@ -42,6 +42,9 @@ class GenerationContext(BaseModel):
     domain_id: str = "code"
     #: 命中技能正文（2026-11-21）：由 service 按匹配度挑选并截断，独立于检索证据预算。
     skill_block: str = ""
+    #: 历史经验区块（2026-11-22 Reflection）：service 从外部经验库召回、裁剪后渲染，
+    #: 与技能区块并列拼进 system；空串表示本轮无可注入经验（或该能力未启用）。
+    reflection_block: str = ""
     #: 视觉生成风格（2026-11-14 多模态）：仅 visual 域消费；空串 = 通用风格。
     #: 合法值见 domain.domains.packs.visual.VISUAL_STYLES；模板按
     #: ``domain.visual.style.{style_id}`` i18n 键切领域指令，非法值回退通用。

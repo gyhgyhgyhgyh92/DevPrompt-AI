@@ -21,6 +21,12 @@ DEFAULT_LOCALE: Final[Locale] = "zh-CN"
 #: 两语言键集必须完全一致，由 tests/test_i18n.py 强制。
 MESSAGES: Final[dict[str, dict[str, str]]] = {
     "zh-CN": {
+        # Reflection（2026-11-22）：注入 system prompt 的经验区块标题与桶标签
+        "reflection.block.title": (
+            "【历史经验】以下为此前轮次沉淀的经验，与当前实测冲突时以实测为准："
+        ),
+        "reflection.block.project": "项目",
+        "reflection.block.global": "全局",
         "progress.retrieval": "开始分析这条提示词，先在你的项目里检索相关代码。",
         "progress.symbols": "符号表就绪，共 {total} 个符号参与匹配。",
         "progress.candidates_trimmed": (
@@ -458,6 +464,12 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         ),
     },
     "en": {
+        # Reflection（2026-11-22）：与 zh-CN 同键，键集一致由 tests/test_i18n.py 强制
+        "reflection.block.title": (
+            "Past lessons from earlier turns (current evidence wins on conflict):"
+        ),
+        "reflection.block.project": "project",
+        "reflection.block.global": "global",
         "progress.retrieval": (
             "Analyzing this prompt; first retrieving related code from your project."
         ),

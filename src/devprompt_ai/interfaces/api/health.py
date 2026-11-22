@@ -10,6 +10,7 @@ import asyncio
 from pathlib import Path
 
 from devprompt_ai.common.envhint import render_env_hint
+from devprompt_ai.common.health_probe import probe_service
 from devprompt_ai.common.process import run_command
 from devprompt_ai.config import AppConfig
 from devprompt_ai.domain.startup_report import ACTION_FAILED, latest_report
@@ -57,4 +58,13 @@ async def run_checks(cfg: AppConfig) -> HealthResponse:
             detail=repair.summary(),
         )
     )
+    # 自进化侧车（2026-11-22）：未启用时恒绿（不装扮成故障），启用后按实际连通性报告。
+    if cfg.reflection_enabled:
+        reflection_ok, reflection_detail = await probe_service(
+            cfg.reflection_base_url, cfg.reflection_secret_path, "/agentmemory/health"
+        )
+    else:
+        # 稳定标记（非自然语言）：前端据此区分「未启用」与「已连接」，文案由前端 i18n 决定
+        reflection_ok, reflection_detail = True, "disabled"
+    checks.append(HealthCheckItem(name="reflection", ok=reflection_ok, detail=reflection_detail))
     return HealthResponse(checks=checks, is_healthy=all(c.ok for c in checks))

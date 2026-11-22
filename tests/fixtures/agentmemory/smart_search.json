@@ -1,0 +1,61 @@
+{
+  "probed_at": "2026-11-22",
+  "agent_id": "devprompt-probe",
+  "body_agent_id": {
+    "request": {
+      "query": "这个仓库用什么包管理器",
+      "limit": 3,
+      "agentId": "devprompt-probe"
+    },
+    "status": 200,
+    "response": {
+      "lessons": [],
+      "mode": "compact",
+      "results": [
+        {
+          "layer": "memory",
+          "memoryType": "fact",
+          "obsId": "mem_mwqpshdz_653f80787346",
+          "score": 1,
+          "sessionId": "memory",
+          "timestamp": "2026-11-21T18:01:24.741Z",
+          "title": "devprompt probe：该仓库使用 pnpm 与 ruff",
+          "type": "decision"
+        }
+      ]
+    }
+  },
+  "query_agent_id": {
+    "request": {
+      "query": "这个仓库用什么包管理器",
+      "limit": 3
+    },
+    "status": 200,
+    "response": {
+      "lessons": [],
+      "mode": "compact",
+      "results": [
+        {
+          "layer": "memory",
+          "memoryType": "fact",
+          "obsId": "mem_mwqpshdz_653f80787346",
+          "score": 1,
+          "sessionId": "memory",
+          "timestamp": "2026-11-21T18:01:24.741Z",
+          "title": "devprompt probe：该仓库使用 pnpm 与 ruff",
+          "type": "decision"
+        },
+        {
+          "layer": "memory",
+          "memoryType": "fact",
+          "obsId": "mem_mwqpshk3_522623a0e60c",
+          "score": 0.9838709677419354,
+          "sessionId": "memory",
+          "timestamp": "2026-11-21T18:01:24.961Z",
+          "title": "devprompt probe：该仓库使用 pnpm 与 ruff",
+          "type": "decision"
+        }
+      ]
+    }
+  }
+}

@@ -19,6 +19,9 @@ dependencies = [
     # MCP 双向（2026-11-21）：openai-agents 已带客户端（agents.mcp），这里显式声明
     # 服务端所用 SDK，防止它作为传递依赖被上游悄悄改版本。
     "mcp>=2.3,<3",
+    # Reflection 适配器（2026-11-22）：httpx 本就是 openai 的传递依赖（uv.lock 0.28.1），
+    # 显式声明只为不让上游改动悄悄换掉我们的调用面；不新增实际安装包。
+    "httpx>=0.28,<1",
 ]
 
 [project.optional-dependencies]

@@ -797,7 +797,8 @@ def _assert_request_budget(
     """A7 请求级预算断言：system+user+预留输出必须装进窗口，不足即抛。
 
     `RequestBudgetError` 被 `is_context_overflow` 识别，service 层的
-    `with_overflow_retry` 会压缩一次上下文后重发（A7 与 A8 同一闭环）。
+    `_generate_single_guarded` / `_answer_guarded` 会压缩一次上下文后重发
+    （A7 与 A8 同一闭环）。
 
     2026-11-10：窗口取 ``cfg.runtime_window()``（条目档位优先）。
     生成路径保留原始 `RequestBudgetError` 供 service 压缩重发；其它路径转 3003，
@@ -933,6 +934,9 @@ class LLMGenerator:
         if ctx.skill_block.strip():
             # 技能正文由 service 按匹配度挑选并截断，独立预算；这里只负责拼进 system。
             system = f"{system}\n\n{ctx.skill_block.strip()}"
+        if ctx.reflection_block.strip():
+            # 历史经验（2026-11-22）：同样是 service 已裁剪的成品块，此处只拼接。
+            system = f"{system}\n\n{ctx.reflection_block.strip()}"
         # runner 非空是 _generate_tools 的不变式（无通道则不挂工具），
         # 但跨函数推断不出来，故在此显式收窄。
         if tools and self._runner is not None:
@@ -985,6 +989,8 @@ class LLMGenerator:
         system = reply_tpl.system_text(locale)
         if ctx.skill_block.strip():
             system = f"{system}\n\n{ctx.skill_block.strip()}"
+        if ctx.reflection_block.strip():
+            system = f"{system}\n\n{ctx.reflection_block.strip()}"
         servers = await _mcp_servers_for(self._cfg)
         out = await chat_structured(
             self._cfg,

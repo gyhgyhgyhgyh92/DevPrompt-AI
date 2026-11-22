@@ -75,6 +75,10 @@ class _LocalSettingsSource(PydanticBaseSettingsSource):
         ):
             if key in local.get("process", {}):
                 values[key] = local["process"][key]
+        # 自进化开关（2026-11-22）：与可观测性同法平铺在 process 段，重启后按上次保存值装配
+        for key in ("reflection_enabled", "reflection_base_url", "reflection_top_k"):
+            if key in local.get("process", {}):
+                values[key] = local["process"][key]
         return values
 
 
@@ -181,6 +185,20 @@ class AppConfig(BaseSettings):
     mcp_connect_timeout_seconds: float = 10.0
     #: 工具调用人工审批超时：超时按拒绝处理（不得死等）。
     mcp_approval_timeout_seconds: float = 60.0
+    # ---- Reflection（2026-11-22）：agentmemory 本地经验库旁路 ----
+    #: 总开关：默认关闭。开启后 turn 收尾写经验、下一轮装配前召回注入。
+    #: 侧车未启动/超时/密钥缺失一律静默降级，不影响生成与首字延迟。
+    reflection_enabled: bool = False
+    reflection_base_url: str = "http://127.0.0.1:3111"
+    #: Bearer 密钥文件（agentmemory 首次启动自动生成，权限 0600）。
+    reflection_secret_path: str = "~/.agentmemory/secret"
+    #: 桶前缀：项目桶 `<前缀>-proj-<sha1(project_root)[:12]>`，全局桶 `<前缀>-global`。
+    reflection_agent_id: str = "devprompt"
+    #: 单轮召回条数上限（两桶各取一半）与注入字符总预算。
+    reflection_top_k: int = 5
+    reflection_max_chars: int = 1200
+    #: 单次请求超时：侧车在本机，3s 已属宽松；失败后 60s 内直接短路。
+    reflection_timeout_seconds: float = 3.0
     fact_probe_threshold: float = 0.75
     max_state_tokens: int = 30000  # 上下文装配预算下限（随档位放大，上限 160K）
 

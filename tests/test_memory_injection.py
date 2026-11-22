@@ -126,6 +126,8 @@ async def test_l2_project_notes_off_flow_completes() -> None:
             "images",
             # 2026-11-21 扩展能力：命中技能正文（无命中为空串）
             "skill_block",
+            # 2026-11-22 Reflection：历史经验区块（未启用/无命中为空串）
+            "reflection_block",
         }
         assert dumped["clarifications"] == {}
         assert "note" not in dumped["memory_block"]

@@ -153,6 +153,12 @@ from devprompt_ai.domain.progress import (
     symbols_text,
     target_text,
 )
+from devprompt_ai.domain.reflection.block import fit_block, merge_hits, render_block
+from devprompt_ai.domain.reflection.port import (
+    ReflectionNote,
+    ReflectionPort,
+    ReflectionScope,
+)
 from devprompt_ai.domain.retrieval.candidates import (
     MAX_CANDIDATES,
     build_candidates,
@@ -273,6 +279,33 @@ _OBS_SETTING_KEYS: dict[str, str] = {
 2026-11-12：三模块各自独立启停。持久化进 app_settings 表（与流程段同表），
 由 config 的本地设置源在重启后读回；运行期则同步到 ``ObsModules`` 即时生效。
 """
+
+_REFLECTION_SETTING_KEYS: dict[str, str] = {
+    "enabled": "reflection_enabled",
+    "base_url": "reflection_base_url",
+    "top_k": "reflection_top_k",
+}
+"""PUT /settings reflection 段键 → AppConfig 字段（2026-11-22）。
+
+与可观测性同法：持久化进 app_settings 表，由 config 本地设置源重启后读回；
+运行期则重建 ``ReflectionPort`` 适配器即时生效（关闭时置 None，链路整体旁路）。
+"""
+
+
+def _make_reflection(cfg: AppConfig) -> ReflectionPort | None:
+    """按当前配置构造经验库适配器（2026-11-22）；关闭时返回 None 表示整条链路旁路。"""
+    if not cfg.reflection_enabled:
+        return None
+    # 函数内 import：构建期才需要，且避免 harness → service 的方向纠缠
+    from devprompt_ai.harness.agentmemory import AgentMemoryReflection
+
+    return AgentMemoryReflection(
+        base_url=cfg.reflection_base_url,
+        secret_path=cfg.reflection_secret_path,
+        bucket_prefix=cfg.reflection_agent_id,
+        top_k=cfg.reflection_top_k,
+        timeout_seconds=cfg.reflection_timeout_seconds,
+    )
 
 
 def _session_locale(session: FlowSession) -> Locale:
@@ -427,6 +460,8 @@ class ForgeService:
         symbols_override: list[Symbol] | None = None,
         turns: TurnStore | None = None,
         notes: ProjectNoteStore | None = None,
+        #: 历史经验库（2026-11-22 Reflection）；None 时不召回也不写回，旧装配零改动。
+        reflection: ReflectionPort | None = None,
         token_ledger: SQLiteTokenLedger | None = None,
         trace: Any | None = None,
     ) -> None:
@@ -447,6 +482,8 @@ class ForgeService:
         self._turns = turns
         #: L2 项目记忆；None 时不注入也不记录
         self._notes = notes
+        #: 历史经验库（2026-11-22 Reflection）；None 时不召回也不写回
+        self._reflection = reflection
         #: H5 token 账本；None 时不落账（旧测试零改动）
         self._token_ledger = token_ledger
         #: 阶段7 周期 checkpoint 出口：runtime 装配时注入（写 run_events），None 时跳过
@@ -2440,6 +2477,85 @@ class ForgeService:
             emit("skill.budget_truncated", kept=len(kept))
         return render_skills(kept)
 
+    async def _reflection_block(self, session: FlowSession) -> str:
+        """召回历史经验并渲染成注入块（2026-11-22）；未启用或无命中返回空串。
+
+        适配器内部已把一切失败降级为「空结果 + 一条告警」，这里不重复加 try：
+        旁路增强不给生成路径引入任何新的异常分支。
+        """
+        if self._reflection is None:
+            return ""
+        hits = await self._reflection.recall(
+            sentence=str(session.data.get("sentence", "")),
+            domain=self._domain_id(session),
+            project_root=str(session.data.get("project_root", "")),
+        )
+        if not hits:
+            return ""
+        merged = merge_hits(
+            [hit for hit in hits if hit.scope is ReflectionScope.PROJECT],
+            [hit for hit in hits if hit.scope is ReflectionScope.GLOBAL],
+            int(self._cfg.reflection_top_k),
+        )
+        kept, truncated = fit_block(merged, int(self._cfg.reflection_max_chars))
+        if not kept:
+            return ""
+        emit(
+            "reflection.recalled",
+            hits=len(kept),
+            truncated=truncated,
+            request_id=str(session.data.get("last_request_id", "")),
+        )
+        return render_block(kept, _session_locale(session))
+
+    def _reflection_notes(self, session: FlowSession) -> tuple[ReflectionNote, ReflectionNote]:
+        """构造两条待写回的经验（项目 / 全局）——结构化摘要，不调 LLM。
+
+        全局桶只保留领域级信息（领域 / 终止原因 / 是否澄清 / 方案标题），绝不含
+        路径与代码片段：该桶跨项目、跨 agent 共享，隐私边界比项目内更严。
+        """
+        domain = self._domain_id(session)
+        stop_reason = str(session.data.get("stop_reason", "") or "")
+        target_data = session.data.get("target")
+        target = str(target_data.get("name", "")) if isinstance(target_data, dict) else ""
+        path = str(target_data.get("path", "")) if isinstance(target_data, dict) else ""
+        facts = [item for item in (session.data.get("facts") or []) if isinstance(item, dict)]
+        passed = sum(1 for item in facts if item.get("passed"))
+        clarifications = session.data.get("clarifications") or {}
+        variant = session.data.get("variant")
+        title = str(variant.get("title", "")) if isinstance(variant, dict) else ""
+        project_bits = (
+            f"目标={target or '未定位'}",
+            f"路径={path}" if path else "",
+            f"领域={domain}",
+            f"取证={passed}/{len(facts)}",
+            f"终止={stop_reason or '无'}",
+            f"方案={title[:80]}" if title else "",
+        )
+        global_bits = (
+            f"领域={domain}",
+            f"终止={stop_reason or '无'}",
+            f"澄清={'有' if clarifications else '无'}",
+            f"方案={title[:80]}" if title else "",
+        )
+        return (
+            ReflectionNote(
+                scope=ReflectionScope.PROJECT,
+                summary="；".join(bit for bit in project_bits if bit),
+                project_root=str(session.data.get("project_root", "")),
+                domain=domain,
+                stop_reason=stop_reason,
+                target=target,
+                paths=(path,) if path else (),
+            ),
+            ReflectionNote(
+                scope=ReflectionScope.GLOBAL,
+                summary="；".join(bit for bit in global_bits if bit),
+                domain=domain,
+                stop_reason=stop_reason,
+            ),
+        )
+
     async def _skills_view(self) -> dict[str, Any]:
         """合并视图：目录扫描（只读）+ 自定义（可写），同形返回。"""
         dirs = self._cfg.skill_roots()
@@ -2578,6 +2694,11 @@ class ForgeService:
                 "metrics_enabled": cfg.obs_metrics_enabled,
                 "replay_enabled": cfg.obs_replay_enabled,
             },
+            "reflection": {
+                "enabled": cfg.reflection_enabled,
+                "base_url": cfg.reflection_base_url,
+                "top_k": cfg.reflection_top_k,
+            },
             "skills": await self._skills_view(),
             "mcp_servers": self._mcp_servers_view(),
             "locked": {"candidate_limit": MAX_CANDIDATES},  # MUST-09 宪法常量，只读下发
@@ -2687,6 +2808,12 @@ class ForgeService:
             cfg_key: value
             for api_key, cfg_key in _OBS_SETTING_KEYS.items()
             if (value := obs_in.get(api_key)) is not None
+        }
+        reflection_in: dict[str, Any] = dict(update.get("reflection") or {})
+        reflection_write = {
+            cfg_key: value
+            for api_key, cfg_key in _REFLECTION_SETTING_KEYS.items()
+            if (value := reflection_in.get(api_key)) is not None
         }
         providers_in = update.get("provider_configs")
         models_in = update.get("models")
@@ -2804,16 +2931,28 @@ class ForgeService:
         process_write = {k: v for k, v in process_in.items() if v is not None}
         if model_write:
             await asyncio.to_thread(write_model_settings, model_write)
-        if process_write or obs_write:
-            await asyncio.to_thread(write_process_settings, {**process_write, **obs_write})
+        if process_write or obs_write or reflection_write:
+            await asyncio.to_thread(
+                write_process_settings, {**process_write, **obs_write, **reflection_write}
+            )
         for src_key, value in model_write.items():
             setattr(self._cfg, MODEL_KEY_MAP[src_key], value)
         for key, value in process_write.items():
             setattr(self._cfg, key, value)
         for key, value in obs_write.items():
             setattr(self._cfg, key, value)
+        for key, value in reflection_write.items():
+            setattr(self._cfg, key, value)
         self._cfg.validate()
         set_telemetry(self._cfg.telemetry)
+        if reflection_write:
+            # 即时生效（2026-11-22）：按最新 cfg 重建适配器；关闭时置 None，整条链路旁路
+            self._reflection = _make_reflection(self._cfg)
+            emit(
+                "settings.reflection_updated",
+                enabled=self._cfg.reflection_enabled,
+                request_id=request_id,
+            )
         if obs_write:
             modules = getattr(self, "obs", None)
             if modules is not None:
@@ -3099,6 +3238,8 @@ class ForgeService:
             skill_block=await self._skill_block(
                 str(session.data.get("sentence", "")), self._domain_id(session)
             ),
+            # 历史经验（2026-11-22）：装配期已召回并裁剪，这里只透传，不再发请求
+            reflection_block=str(session.data.get("reflection_block", "") or ""),
         )
 
     async def _generate_single_guarded(
@@ -3533,6 +3674,13 @@ class ForgeService:
             notes = [note.render() for note in found]
             # 供六维状态感知的「熟悉度」维度读取（shadow 观测，不影响行为）
             session.data["notes_hit"] = len(notes)
+        # 历史经验（2026-11-22 Reflection）：正常装配召回一次并缓存；超窗重试（shrink）
+        # 复用缓存——同一轮不打两次网络，生成与回答两路也看到同一份经验。
+        if shrink:
+            reflection_block = str(session.data.get("reflection_block", "") or "")
+        else:
+            reflection_block = await self._reflection_block(session)
+            session.data["reflection_block"] = reflection_block
         # 消息级压缩（2026-11-19）：在用户边界对工具/取证文本做内容级折叠。
         # 只替换 content 字符串，不动数组结构——恢复时无需对齐索引。
         facts_summary_raw = str(session.data.get("facts_summary", "") or "")
@@ -3555,6 +3703,7 @@ class ForgeService:
         extra_parts = (
             facts_summary,
             target_excerpt,
+            reflection_block,
             "\n".join(str(item) for item in (session.data.get("design_tokens") or ())),
             _render_previous_variants(
                 TurnMemory.from_payload(session.data.get("turn_memory")).variants
@@ -3836,6 +3985,20 @@ class ForgeService:
                 logger.warning("turn.memory_conflict", extra={"session_id": session.session_id})
         except Exception:  # noqa: BLE001 - 继承状态落库失败不阻断本轮收尾
             logger.warning("turn.memory_save_failed", exc_info=True)
+        # 经验写回（2026-11-22 Reflection）：必须早于下面两个 early return——
+        # 它只依赖 session.data，与「有无 turn 存储 / turn_id」无关，否则旁路会被主链
+        # 的存储形态意外掐断（turns=None 的装配下曾整段不执行）。
+        if self._reflection is not None:
+            try:
+                for note in self._reflection_notes(session):
+                    if await self._reflection.record(note):
+                        emit(
+                            "reflection.recorded",
+                            scope=note.scope.value,
+                            chars=len(note.summary),
+                        )
+            except Exception:  # noqa: BLE001 - 经验写入是旁路，失败不阻断收尾
+                logger.warning("reflection.record_failed", exc_info=True)
         if self._turns is None:
             return
         turn_id = str(session.data.get("current_turn_id", ""))
@@ -4106,6 +4269,8 @@ async def build_default(cfg: AppConfig) -> ForgeService:
     obs = obs_registry.build_obs_modules(cfg)
     await obs.startup()
     command_runner = TracedRunner(LocalCommandRunner(), obs.collector)
+    # Reflection（2026-11-22）：默认关闭；开启才构造适配器（与设置热更新共用同一构造器）
+    reflection = _make_reflection(cfg)
     service = ForgeService(
         cfg=cfg,
         decider=TracedDecider(create_decider(cfg), obs.collector),
@@ -4120,6 +4285,7 @@ async def build_default(cfg: AppConfig) -> ForgeService:
         catalog_fetcher=OpenAIModelsFetcher(),
         turns=SQLiteTurnStore(cfg.db_path),
         notes=SQLiteProjectNoteStore(cfg.db_path),
+        reflection=reflection,
         token_ledger=_TokenLedger(cfg.db_path),
         trace=obs.collector,
     )
