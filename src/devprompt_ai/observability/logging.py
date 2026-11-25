@@ -34,6 +34,9 @@ EVENT_NAMES: Final[frozenset[str]] = frozenset(
         "reflection.recorded",
         "reflection.skipped",
         "reflection.failed",
+        # 回答偏好采集（2026-11-23）：只记选项/默认/自由输入等计数，不记答案原文
+        "clarification.answer_classified",
+        "reflection.preference",
         "followup.guardrail",
         "followup.clarifications_invalidated",
         "followup.escaped",

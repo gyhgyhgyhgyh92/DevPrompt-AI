@@ -159,6 +159,12 @@ from devprompt_ai.domain.reflection.port import (
     ReflectionPort,
     ReflectionScope,
 )
+from devprompt_ai.domain.reflection.preferences import (
+    AnswerKind,
+    signals_from_answers,
+    signals_from_payload,
+    summarize_preferences,
+)
 from devprompt_ai.domain.retrieval.candidates import (
     MAX_CANDIDATES,
     build_candidates,
@@ -957,6 +963,8 @@ class ForgeService:
             session.data.setdefault("clarifications", {}).update(answers)
             session.data["last_request_id"] = request_id
             session.data["rounds"] = int(session.data.get("rounds", 0)) + 1
+            # 偏好采集必须在 _reprobe 覆盖 unknowns 之前完成。
+            self._capture_answer_signals(session, answers)
             await hop(session, FlowState.CONFIRMING, self._sessions)
             return await self._reprobe(session, progress=progress)
         except Exception:
@@ -2508,6 +2516,30 @@ class ForgeService:
         )
         return render_block(kept, _session_locale(session))
 
+    def _capture_answer_signals(self, session: FlowSession, answers: dict[str, str]) -> None:
+        """采集回答偏好信号（2026-11-23）；reflection 关闭时零开销。"""
+        if self._reflection is None:
+            return
+        round_index = int(session.data.get("rounds", 0) or 0)
+        unknowns = [item for item in (session.data.get("unknowns") or []) if isinstance(item, dict)]
+        signals = signals_from_answers(unknowns, answers, round_index=round_index)
+        if not signals:
+            return
+        kept = list(session.data.get("clarification_signals") or [])
+        kept.extend(dataclasses.asdict(signal) for signal in signals)
+        session.data["clarification_signals"] = kept[-20:]
+        emit(
+            "clarification.answer_classified",
+            total=len(signals),
+            option=sum(1 for signal in signals if signal.kind is AnswerKind.OPTION),
+            best_guess=sum(1 for signal in signals if signal.kind is AnswerKind.BEST_GUESS),
+            free_text=sum(1 for signal in signals if signal.kind is AnswerKind.FREE_TEXT),
+            multi_select=sum(1 for signal in signals if signal.multi_select),
+            short=sum(1 for signal in signals if signal.short),
+            round=round_index,
+            request_id=str(session.data.get("last_request_id", "")),
+        )
+
     def _reflection_notes(self, session: FlowSession) -> tuple[ReflectionNote, ReflectionNote]:
         """构造两条待写回的经验（项目 / 全局）——结构化摘要，不调 LLM。
 
@@ -2524,6 +2556,21 @@ class ForgeService:
         clarifications = session.data.get("clarifications") or {}
         variant = session.data.get("variant")
         title = str(variant.get("title", "")) if isinstance(variant, dict) else ""
+        raw_signals = session.data.get("clarification_signals")
+        signals = signals_from_payload(raw_signals if isinstance(raw_signals, list) else [])
+        summary = summarize_preferences(signals)
+        if summary.project_bits or summary.global_bits:
+            emit(
+                "reflection.preference",
+                signals=summary.total,
+                option=summary.option,
+                best_guess=summary.best_guess,
+                free_text=summary.free_text,
+                multi_select=summary.multi_select,
+                project_bits=len(summary.project_bits),
+                global_bits=len(summary.global_bits),
+                request_id=str(session.data.get("last_request_id", "")),
+            )
         project_bits = (
             f"目标={target or '未定位'}",
             f"路径={path}" if path else "",
@@ -2531,12 +2578,14 @@ class ForgeService:
             f"取证={passed}/{len(facts)}",
             f"终止={stop_reason or '无'}",
             f"方案={title[:80]}" if title else "",
+            *summary.project_bits,
         )
         global_bits = (
             f"领域={domain}",
             f"终止={stop_reason or '无'}",
             f"澄清={'有' if clarifications else '无'}",
             f"方案={title[:80]}" if title else "",
+            *summary.global_bits,
         )
         return (
             ReflectionNote(
@@ -4010,6 +4059,21 @@ class ForgeService:
         # 它只依赖 session.data，与「有无 turn 存储 / turn_id」无关，否则旁路会被主链
         # 的存储形态意外掐断（turns=None 的装配下曾整段不执行）。
         if self._reflection is not None:
+            # 主链先 _finish_turn、后由 run_agent_loop 落 stop_reason；写经验前
+            # 按已到达的终态补一次。await-user/natural-finish 是软状态，允许随本轮
+            # 继续推进而翻转；具体熔断原因不覆盖。
+            current_reason = str(session.data.get("stop_reason", "") or "")
+            soft = {
+                "",
+                StopReason.AWAIT_USER.value,
+                StopReason.NATURAL_FINISH.value,
+                StopReason.END_TURN.value,
+            }
+            if current_reason in soft:
+                if session.state == FlowState.DONE.value:
+                    session.data["stop_reason"] = StopReason.NATURAL_FINISH.value
+                elif session.state in (FlowState.ASKING.value, FlowState.CONFIRMING.value):
+                    session.data["stop_reason"] = StopReason.AWAIT_USER.value
             try:
                 for note in self._reflection_notes(session):
                     if await self._reflection.record(note):
