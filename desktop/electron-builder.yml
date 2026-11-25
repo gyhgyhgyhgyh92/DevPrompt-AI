@@ -11,8 +11,10 @@ directories:
   buildResources: build
 
 # 只收编译产物与包清单；sidecar / 前端 / 检索工具走 extraResources（asar 外）
+# 必须按文件名收壳产物：dist/ 下还有 sidecar-dist、packages、stage 等中间目录，
+# 用 dist/**/* 会把它们整体塞进 asar（实测 1.5 GB），安装包体积翻倍。
 files:
-  - dist/**/*
+  - dist/*.js
   - package.json
 
 # 运行时资源布局与 desktop/src/main.ts 的路径解析一一对应：
