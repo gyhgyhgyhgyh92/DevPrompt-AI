@@ -1,7 +1,7 @@
 {
   "name": "devprompt-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DevPrompt AI 桌面壳（Electron + Python sidecar，Windows / macOS / Linux）",
   "license": "MIT",
   "packageManager": "pnpm@10.15.0",

@@ -165,7 +165,7 @@ def create_app() -> FastAPI:
     cfg = AppConfig()
     cfg.validate()
     install_file_sink(cfg.log_dir)
-    app = FastAPI(title="DevPrompt AI", version="0.1.0")
+    app = FastAPI(title="DevPrompt AI", version="0.2.0")
     origins = [o.strip() for o in cfg.cors_origins.split(",") if o.strip()]
     app.add_middleware(
         CORSMiddleware,
