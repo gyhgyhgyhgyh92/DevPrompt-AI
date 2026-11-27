@@ -120,7 +120,7 @@ uv run python desktop/scripts/build-desktop.py
 ```
 DevPrompt AI.exe / DevPrompt AI.app / DevPrompt AI   # Electron 运行时
 resources/
-  app.asar                         # 壳本体（package.json + main.js + preload.js）
+  app.asar                         # 壳本体（main/preload + electron-updater 等生产依赖）
   frontend-dist/                   # 前端构建产物（与 Web 版同一份）
   sidecar/                         # PyInstaller one-dir（exe + _internal/）
   tools/                           # rg[.exe] + ctags[.exe]（构建时收集）
@@ -128,11 +128,24 @@ resources/
 
 Windows 安装位置 `{localappdata}\Programs\DevPrompt AI`（每用户，免 UAC）；
 macOS 为 `/Applications` 下的 `.app`；Linux AppImage 免安装，`chmod +x` 后直接运行。
-覆盖安装即升级：固定 AppId + 固定安装目录，重跑安装包原地覆盖。
+覆盖安装仍可作为升级/回退手段；Windows 0.3.0 起改用自动更新（见下）。
+
+## 自动更新（Windows，2026-11-27）
+
+- 仅 Windows x64、stable 通道；macOS/Linux 仍靠手动覆盖安装（macOS 未签名，Squirrel.Mac 不能工作）。
+- 检查节奏：窗口就绪 10 秒后首次检查，之后每 6 小时（带抖动）；设置中心「关于与更新」可手动检查。
+- 源顺序：`ghfast.top` → `ghproxy.net` → `gh-proxy.com` → GitHub 直连；每源 8 秒超时，GitHub 可达时交叉校验 `latest.yml` 的 version/sha512。
+- 交互：发现新版本先弹窗询问；下载完成再询问「立即重启 / 稍后」，不会静默安装。
+- 安装前：停 sidecar（等待退出，失败则 `taskkill /T /F`）；备份 `~/.devprompt-ai` 的 DB 与 `settings.json`（保留 2 份）；再以 `--updated /S` 静默覆盖安装。
+- 回滚：只做 roll-forward（发更高版本修复）；保留最近 2 个版本的安装包，必要时手动覆盖并按需恢复备份。
+- 安全边界：更新包未签名，只校验 `latest.yml` 的 SHA512；镜像与 GitHub 的清单会交叉校验，但无法防御镜像两侧同时被投毒。
+- 发布：`.github/workflows/release.yml` 在 stable tag 上更新 `updates` 预发布 tag（`latest.yml` + exe + blockmap）。`updates` 是自动更新指针，请勿手动下载。
+- 本地联调：非打包态设置 `DPROMPT_UPDATE_BASE_URL=http://127.0.0.1:9000/`（仅此环境变量生效），并在 `desktop/dev-app-update.yml` 放同源 `provider/url`；目录里放 `latest.yml` 与安装包。
+- 打包态静默安装验收必须走真实 `updates` tag：先发布 0.3.0 并安装，再发布 0.3.1 验证检查/下载/重启；本地 URL 覆盖只对非打包态生效。
 
 ## 已知边界
 
-- **无自动更新**：升级靠重跑安装包覆盖安装（用户已裁定 YAGNI）
+- **macOS/Linux 无自动更新**：Windows 才有更新器；macOS 需先购买签名证书并产出 zip 才能接 Squirrel.Mac
 - **无代码签名与公证**：Windows 有 SmartScreen 提示，macOS 需用户手动放行
 - **无应用图标**：暂用 Electron 默认图标（frontend 只有 favicon.svg，转换 .ico/icns 未做）
 - **sidecar 异常进程残留**：若主进程被任务管理器强杀，sidecar 可能残留占着 DB；

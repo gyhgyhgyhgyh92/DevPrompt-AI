@@ -125,7 +125,9 @@ pnpm dev
 | macOS 11+ (arm64) | `DevPromptAI-<version>-mac-arm64.dmg` | 拖入「应用程序」后双击运行 |
 | Linux (x86_64) | `DevPromptAI-<version>-linux-x86_64.AppImage` | `chmod +x` 后直接运行，无需安装 |
 
-升级 = 重跑新安装包覆盖安装。
+升级：Windows 0.3.0 起桌面端会在启动后检查更新（GitHub 镜像优先，失败回落 GitHub 直连），
+弹窗确认后下载并静默覆盖安装；也可继续重跑新安装包手动覆盖。0.2.0 及更早版本没有更新器，
+需手动安装 0.3.0 一次，之后才会自动更新。
 
 > 未做代码签名：项目未购买代码签名证书。Windows 首次运行若见 SmartScreen
 > 「未知发布商」，点「更多信息 → 仍要运行」；macOS 首次打开需在
@@ -150,7 +152,7 @@ uv run python desktop/scripts/smoke-sidecar.py
 > PyInstaller 不能交叉编译，sidecar 必须在各平台本机构建——三平台安装包由
 > `.github/workflows/release.yml` 的 matrix 并行产出。macOS 的 `.dmg` 无签名无公证。
 
-架构、开发态跑壳、已知边界（无自动更新 / 无代码签名 / 无应用图标）见
+架构、开发态跑壳、已知边界（macOS/Linux 无自动更新 / 无代码签名 / 无应用图标）见
 `desktop/README.md`；桌面端需求条目 F-905-1~4 见功能清单。
 
 ### 开发态跑壳
