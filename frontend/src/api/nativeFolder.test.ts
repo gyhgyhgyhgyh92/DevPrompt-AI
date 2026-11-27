@@ -102,10 +102,19 @@ describe('pickFolderViaNative（扩展桥）', () => {
 describe('isNativeBridgeReady（扩展就绪探测）', () => {
   afterEach(() => {
     document.documentElement.removeAttribute('data-devprompt-native')
+    delete window.devpromptDesktop
   })
 
   it('扩展已注入（共享 DOM 有标记）：就绪', () => {
     document.documentElement.setAttribute('data-devprompt-native', '1')
+    expect(isNativeBridgeReady()).toBe(true)
+  })
+
+  it('桌面壳（preload 桥存在）：就绪，不依赖扩展标记', () => {
+    window.devpromptDesktop = {
+      pickFolder: vi.fn(async () => ({ path: '' })),
+      platform: 'win32',
+    }
     expect(isNativeBridgeReady()).toBe(true)
   })
 

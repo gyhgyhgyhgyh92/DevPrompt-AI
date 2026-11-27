@@ -176,7 +176,7 @@ export function ConsoleInput({
    * → native messaging host）。取消（空串）时保持原状；未装扩展等失败给明确文案。
    */
   async function handlePickFolder(): Promise<void> {
-    // 扩展未注入本页（没装/没启用/没刷新页面）→ 立即提示，不进入悬挂等待
+    // 原生选择器不可用（桌面桥缺失且扩展未注入本页）→ 立即提示，不进入悬挂等待
     if (!isNativeBridgeReady()) {
       setProjectError(nativeBridgeMissingHint())
       return

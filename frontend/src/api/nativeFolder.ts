@@ -66,12 +66,15 @@ let seq = 0
 const READY_ATTR = 'data-devprompt-native'
 
 /**
- * 扩展桥是否已就绪（扩展 content script 已注入本页）。
+ * 原生文件夹选择器是否可用（点击前的同步探测）。
  *
- * 用于**点击前**的同步探测：扩展未加载/未启用/页面未刷新时，postMessage
+ * 桌面壳有 preload 桥即可用，不依赖扩展；Web 形态看扩展 content script 是否已注入。
+ *
+ * 用于**点击前**的探测：扩展未加载/未启用/页面未刷新时，postMessage
  * 无人应答，请求会悬挂到超时——此时应立即给出可执行提示，而非长时间空转。
  */
 export function isNativeBridgeReady(): boolean {
+  if (isDesktopRuntime()) return true
   if (typeof document === 'undefined') return false
   return document.documentElement?.getAttribute(READY_ATTR) === '1'
 }
