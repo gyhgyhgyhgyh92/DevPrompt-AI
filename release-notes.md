@@ -1,4 +1,4 @@
-# DevPrompt AI v0.2.0
+# DevPrompt AI v0.3.0
 
 把一句模糊需求，变成带行号与 token 出处、可被 ripgrep 反向验证的工程级提示词。
 
@@ -6,11 +6,13 @@
 
 | 平台 | 产物 | 版本 |
 |---|---|---|
-| Windows 10+ (x64) | `DevPromptAI-0.2.0-win-x64.exe` | v0.2.0 |
-| macOS 11+ (arm64) | `DevPromptAI-0.1.0-mac-arm64.dmg` | v0.1.0 |
-| Linux (x86_64) | `DevPromptAI-0.1.0-linux-x86_64.AppImage` | v0.1.0 |
+| Windows 10+ (x64) | `DevPromptAI-0.3.0-win-x64.exe` | v0.3.0 |
+| macOS 11+ (arm64) | `DevPromptAI-0.3.0-mac-arm64.dmg` | v0.3.0 |
+| Linux (x86_64) | `DevPromptAI-0.3.0-linux-x86_64.AppImage` | v0.3.0 |
 
-本次仅重新构建并发布 Windows 包；macOS / Linux 沿用 v0.1.0 的安装包，功能与本版 Windows 包存在差异。
+三平台同步构建；**自动更新仅 Windows 提供**，macOS / Linux 仍靠手动覆盖安装。
+
+0.2.0 及更早版本没有更新器，需手动安装 0.3.0 一次；之后 Windows 才会自动更新到更高版本。
 
 桌面端与 Web 形态共用同一份业务逻辑与 `~/.devprompt-ai` 数据，可交替使用。
 
@@ -25,12 +27,13 @@
 
 ## 本次包含
 
-- **反思经验库**：接入 agentmemory，生成前注入历史经验，跨会话复用已验证的方案
-- **澄清偏好采集**：回答归类为选项 / 多选 / 默认 / 自由输入并记账，不记录答案原文
-- **上下文压缩信号**：压缩决策接入缓存命中率与上下文压力
-- **设置中心「自进化」页**：新增经验库配置与侧车连通状态
-- **反思离线度量**：指标聚合模块 + 批量跑批脚本，可量化字段完整率与重复自省率
-- 沿用 v0.1.0 打包链路（electron-builder），版本号唯一来源 `pyproject.toml`
+- **Windows 桌面端自动更新**：启动约 10 秒后检查、每 6 小时轮询，设置中心「关于与更新」可手动检查
+- **镜像优先、GitHub 直连兜底**：`ghfast.top` → `ghproxy.net` → `gh-proxy.com` → GitHub；GitHub 可达时会交叉校验清单
+- **确认后下载**：检查到新版本先提示，用户同意后下载；完成后提示立即重启安装
+- **安装前保护**：停 sidecar 并等待退出，备份 `~/.devprompt-ai` 的数据库与 `settings.json`（保留 2 份）
+- **更新状态入口**：设置中心「关于与更新」页与状态栏更新徽标
+- **安全边界**：更新包未签名，只校验 `latest.yml` 的 SHA512；首次自动更新为全量，之后走 blockmap 差量
+- 沿用 0.2.0 的反思经验库、澄清偏好采集、上下文压缩信号与自进化设置页
 
 ## 许可
 

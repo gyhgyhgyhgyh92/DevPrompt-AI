@@ -1,6 +1,6 @@
 [project]
 name = "devprompt-ai"
-version = "0.2.0"
+version = "0.3.0"
 description = "DevPrompt AI - 把模糊自然语言需求编译为工程级精准提示词"
 readme = "README.md"
 license = "MIT"
