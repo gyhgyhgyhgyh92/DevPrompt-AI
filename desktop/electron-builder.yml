@@ -10,6 +10,14 @@ directories:
   output: dist/packages
   buildResources: build
 
+# 自动更新：主源是 GitHub 镜像上的 updates 预发布 tag（latest.yml 用相对路径，
+# 同一份清单在任意镜像前缀下都会解析到该镜像自己的 releases/download/updates/）。
+# 客户端另按序尝试其它镜像与 GitHub 直连，见 desktop/src/updateSources.ts。
+publish:
+  provider: generic
+  url: https://ghfast.top/https://github.com/gyhgyhgyhgyh92/DevPrompt-AI/releases/download/updates/
+electronUpdaterCompatibility: ">=2.16"
+
 # 只收编译产物与包清单；sidecar / 前端 / 检索工具走 extraResources（asar 外）
 # 必须按文件名收壳产物：dist/ 下还有 sidecar-dist、packages、stage 等中间目录，
 # 用 dist/**/* 会把它们整体塞进 asar（实测 1.5 GB），安装包体积翻倍。

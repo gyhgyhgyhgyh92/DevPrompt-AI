@@ -10,7 +10,8 @@
     "build": "tsc -b",
     "start": "pnpm build && electron .",
     "dist": "electron-builder --publish never",
-    "dist:dir": "electron-builder --dir --publish never"
+    "dist:dir": "electron-builder --dir --publish never",
+    "test": "tsc src/updateSources.ts --target ES2022 --module commonjs --lib ES2022,DOM --outDir dist --skipLibCheck && node --test tests/updateSources.test.cjs"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
@@ -22,5 +23,8 @@
     "onlyBuiltDependencies": [
       "electron"
     ]
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11"
   }
 }

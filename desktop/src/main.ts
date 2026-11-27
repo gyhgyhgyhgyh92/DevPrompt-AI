@@ -9,12 +9,14 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { UpdateService } from './updater'
 
 //: sidecar stdout 就绪协议前缀（与 src/devprompt_ai/desktop.py 对齐，改一处须改两处）
 const READY_PREFIX = 'DPROMPT_READY'
 const READY_TIMEOUT_MS = 30_000
-//: Windows 上 child.kill() 不杀进程树，POSIX 上需杀整个进程组；均先给优雅退出宽限
-const KILL_GRACE_MS = 500
+//: 更新安装前必须等 sidecar 真正退出（Windows 文件占用）；先优雅、后强杀
+const STOP_GRACE_MS = 3_000
+const STOP_FORCE_MS = 2_000
 
 // ---------- 平台判定 ----------
 const IS_WINDOWS = process.platform === 'win32'
@@ -56,24 +58,42 @@ function bundledTool(name: 'rg' | 'ctags'): string | undefined {
 let sidecar: ChildProcess | undefined
 let isQuitting = false
 
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (err) {
-    //: Windows 上无权限（EPERM）说明进程存在，只是当前用户不能发信号
-    return (err as NodeJS.ErrnoException).code === 'EPERM'
-  }
+/** 等待子进程退出；超时返回 false，不抛错。 */
+function waitForExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true)
+  return new Promise<boolean>((resolve) => {
+    let settled = false
+    const finish = (value: boolean): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      child.off('exit', onExit)
+      resolve(value)
+    }
+    const onExit = (): void => finish(true)
+    const timer = setTimeout(() => finish(false), timeoutMs)
+    child.once('exit', onExit)
+    // 监听器挂上之前已经退出：exitCode/signalCode 已落值，直接结束等待。
+    if (child.exitCode !== null || child.signalCode !== null) finish(true)
+  })
 }
 
-function killSidecar(): void {
-  const child = sidecar
-  if (!child || child.killed || child.exitCode !== null) return
-  const pid = child.pid
-  child.kill()
-  if (pid === undefined) return
-  setTimeout(() => {
-    if (!isAlive(pid)) return
+let stopPromise: Promise<boolean> | undefined
+
+/** 停 sidecar：先优雅退出，宽限后未退出再 taskkill /T /F 或杀进程组。 */
+function stopSidecar(): Promise<boolean> {
+  if (stopPromise !== undefined) return stopPromise
+  stopPromise = (async (): Promise<boolean> => {
+    const child = sidecar
+    if (child === undefined || child.exitCode !== null || child.signalCode !== null) return true
+    const pid = child.pid
+    try {
+      child.kill()
+    } catch {
+      //: 已经退出时忽略
+    }
+    if (await waitForExit(child, STOP_GRACE_MS)) return true
+    if (pid === undefined) return true
     if (IS_WINDOWS) {
       //: Windows 无进程组概念，用 taskkill /T /F 强杀整棵树
       spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' }).unref()
@@ -85,7 +105,11 @@ function killSidecar(): void {
         //: 进程组已消失，忽略
       }
     }
-  }, KILL_GRACE_MS)
+    return waitForExit(child, STOP_FORCE_MS)
+  })().finally(() => {
+    stopPromise = undefined
+  })
+  return stopPromise
 }
 
 function startSidecar(): Promise<number> {
@@ -118,7 +142,7 @@ function startSidecar(): Promise<number> {
     const timer = setTimeout(() => {
       if (settled) return
       settled = true
-      killSidecar()
+      void stopSidecar()
       reject(new Error(`sidecar 未在 ${READY_TIMEOUT_MS / 1000} 秒内就绪`))
     }, READY_TIMEOUT_MS)
 
@@ -215,6 +239,38 @@ ipcMain.handle('pick-folder', async (): Promise<{ path: string }> => {
   return { path: result.filePaths[0] ?? '' }
 })
 
+// ---------- 自动更新 ----------
+
+let updateService: UpdateService | undefined
+
+/** 更新安装前：置 isQuitting 并等待 sidecar 退出；失败回滚标志。 */
+async function stopSidecarForUpdate(): Promise<boolean> {
+  isQuitting = true
+  const stopped = await stopSidecar()
+  if (!stopped) isQuitting = false
+  return stopped
+}
+
+function registerUpdateIpc(service: UpdateService): void {
+  ipcMain.handle('updates:get-state', () => service.getState())
+  ipcMain.handle('updates:check', async () => {
+    await service.check(true)
+    return service.getState()
+  })
+  ipcMain.handle('updates:download', async () => {
+    await service.download()
+    return service.getState()
+  })
+  ipcMain.handle('updates:install', async () => {
+    await service.install()
+    return service.getState()
+  })
+  ipcMain.handle('updates:dismiss', () => {
+    service.dismiss()
+    return service.getState()
+  })
+}
+
 // ---------- 应用装配 ----------
 
 //: 已就绪的 sidecar 端口；macOS 关闭窗口后应用仍驻留，需据此重建窗口
@@ -234,7 +290,18 @@ if (!app.requestSingleInstanceLock()) {
     try {
       const port = await startSidecar()
       sidecarPort = port
+      updateService = new UpdateService({
+        getWindow: () => mainWindow,
+        stopSidecarForUpdate,
+        onState: (state) => {
+          if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('updates:state', state)
+          }
+        },
+      })
+      registerUpdateIpc(updateService)
       await createWindow(port)
+      updateService.init()
     } catch (err) {
       dialog.showErrorBox('DevPrompt AI 启动失败', err instanceof Error ? err.message : String(err))
       app.quit()
@@ -256,6 +323,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('before-quit', () => {
     isQuitting = true
-    killSidecar()
+    updateService?.dispose()
+    void stopSidecar()
   })
 }
