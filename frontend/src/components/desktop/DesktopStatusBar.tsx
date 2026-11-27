@@ -10,6 +10,7 @@
  */
 import { useTranslation } from 'react-i18next'
 import type { ReactNode } from 'react'
+import type { UpdatePhase } from '../../api/desktopUpdate'
 import { useOptimizeStore } from '../../stores/useOptimizeStore'
 import { useHistoryStore } from '../../stores/useHistoryStore'
 import { useSettingsStore } from '../../stores/useSettingsStore'
@@ -23,6 +24,10 @@ export type DesktopApiStatus = 'checking' | 'ok' | 'down'
 export interface DesktopStatusBarProps {
   /** API 可用性（外壳已拉过 /health，此处只消费，不重复请求）。 */
   apiStatus: DesktopApiStatus
+  /** 自动更新态；无桥/尚未检查时为 undefined。 */
+  updatePhase?: UpdatePhase
+  /** 点击更新徽标打开设置页。 */
+  onOpenSettings?: () => void
 }
 
 /** SSE 连接态 → 视觉色调。取既有状态色，不引入新的语义判定。 */
@@ -33,7 +38,11 @@ const SSE_TONE: Record<string, string> = {
   error: 'app-statusbar__chip--down',
 }
 
-export function DesktopStatusBar({ apiStatus }: DesktopStatusBarProps): ReactNode {
+export function DesktopStatusBar({
+  apiStatus,
+  updatePhase,
+  onOpenSettings,
+}: DesktopStatusBarProps): ReactNode {
   const { t } = useTranslation()
   // 逐字段订阅（MUST-16：精确 selector，不整表订阅）
   const sessionId = useOptimizeStore((state) => state.sessionId)
@@ -81,6 +90,29 @@ export function DesktopStatusBar({ apiStatus }: DesktopStatusBarProps): ReactNod
 
       {activeModel !== undefined ? (
         <span className={s('app-statusbar__item')}>{activeModel}</span>
+      ) : null}
+
+      {updatePhase === 'available' || updatePhase === 'downloaded' ? (
+        <button
+          type="button"
+          className={s(
+            'app-statusbar__chip',
+            'app-statusbar__chip--ok',
+            'app-statusbar__chip--button',
+          )}
+          title={t(
+            updatePhase === 'downloaded'
+              ? 'desktop.status.update_ready'
+              : 'desktop.status.update_available',
+          )}
+          onClick={onOpenSettings}
+        >
+          {t(
+            updatePhase === 'downloaded'
+              ? 'desktop.status.update_ready'
+              : 'desktop.status.update_available',
+          )}
+        </button>
       ) : null}
     </footer>
   )

@@ -4,6 +4,12 @@ import { BrowserRouter } from 'react-router'
 import { Menu, Settings } from 'lucide-react'
 import { getHealth, getSettings } from './api/endpoints'
 import { isDesktopRuntime } from './api/nativeFolder'
+import {
+  getUpdateState,
+  isUpdateSupported,
+  subscribeUpdateState,
+  type UpdateState,
+} from './api/desktopUpdate'
 import { DesktopActivityRail } from './components/desktop/DesktopActivityRail'
 import { DesktopBottomPanel } from './components/desktop/DesktopBottomPanel'
 import { DesktopStatusBar } from './components/desktop/DesktopStatusBar'
@@ -39,6 +45,8 @@ export function App() {
   const { t } = useTranslation()
   const [apiStatus, setApiStatus] = useState<ApiStatus>('checking')
   const [isSettingsOpen, setSettingsOpen] = useState(false)
+  const [openAbout, setOpenAbout] = useState(false)
+  const [updateState, setUpdateState] = useState<UpdateState | null>(null)
   // 桌面形态判定（2026-11-17）：Electron preload 桥存在即为桌面壳。
   // 唯一判据是桥的**存在性**，不依赖平台/UA 嗅探；Web 形态恒为 false。
   const isDesktop = isDesktopRuntime()
@@ -83,6 +91,22 @@ export function App() {
       })
     return () => {
       isCancelled = true
+    }
+  }, [])
+
+  // 自动更新态（2026-11-27）：Web 形态无桥，直接跳过；桌面壳用主进程状态镜像状态栏徽标。
+  useEffect(() => {
+    if (!isUpdateSupported()) return undefined
+    let isCancelled = false
+    getUpdateState()
+      .then((next) => {
+        if (!isCancelled && next !== null) setUpdateState(next)
+      })
+      .catch(() => undefined)
+    const unsubscribe = subscribeUpdateState(setUpdateState)
+    return () => {
+      isCancelled = true
+      unsubscribe()
     }
   }, [])
 
@@ -194,11 +218,25 @@ export function App() {
         {isDesktop ? (
           <>
             <DesktopBottomPanel />
-            <DesktopStatusBar apiStatus={apiStatus} />
+            <DesktopStatusBar
+              apiStatus={apiStatus}
+              updatePhase={updateState?.phase}
+              onOpenSettings={() => {
+                setOpenAbout(true)
+                setSettingsOpen(true)
+              }}
+            />
           </>
         ) : null}
       </div>
-      <SettingsModal open={isSettingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsModal
+        open={isSettingsOpen}
+        onClose={() => {
+          setSettingsOpen(false)
+          setOpenAbout(false)
+        }}
+        initialPanel={openAbout ? 'about' : undefined}
+      />
     </BrowserRouter>
   )
 }

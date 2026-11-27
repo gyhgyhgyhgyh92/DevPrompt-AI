@@ -10,6 +10,7 @@
  */
 import { errorMessage } from '../components/settings/errorMessage'
 import { i18n } from '../i18n'
+import type { DesktopUpdatesBridge } from './desktopUpdate'
 
 const SOURCE = 'devprompt-ai'
 /** 原生对话框是用户驱动的模态交互，超时放宽（与历史实现一致）。 */
@@ -29,6 +30,8 @@ export interface NativePickResult {
 interface DesktopBridge {
   pickFolder(): Promise<NativePickResult>
   platform: string
+  /** 自动更新桥；旧版桌面壳可能没有。 */
+  updates?: DesktopUpdatesBridge
 }
 
 declare global {

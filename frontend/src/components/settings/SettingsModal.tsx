@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
-import { Activity, Palette, Plug, Settings, ShieldCheck, Sparkles, X } from 'lucide-react'
+import { Activity, Info, Palette, Plug, Settings, ShieldCheck, Sparkles, X } from 'lucide-react'
 import { getSettings } from '../../api/endpoints'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { useSettingsStore } from '../../stores/useSettingsStore'
+import { AboutPanel } from './AboutPanel'
 import { AppearancePanel } from './AppearancePanel'
 import { errorMessage } from './errorMessage'
 import { ExtensionsPanel } from './ExtensionsPanel'
@@ -19,10 +20,12 @@ const s = makeS(styles)
 export interface SettingsModalProps {
   open: boolean
   onClose: () => void
+  /** 从状态栏更新徽标进入时直达「关于与更新」。 */
+  initialPanel?: 'about'
 }
 
 /** 弹窗内可切换的面板；左侧导航里的可观测性项是跳转入口（独立页面），不属此列。 */
-type PanelKey = 'model-service' | 'appearance' | 'reflection' | 'security' | 'extensions'
+type PanelKey = 'model-service' | 'appearance' | 'reflection' | 'security' | 'extensions' | 'about'
 type NavKey = PanelKey | 'observability'
 
 /** 可观测性独立页面路由（内容唯一一份，弹窗内不再展开，MUST-10）。 */
@@ -35,6 +38,7 @@ const NAV_KEYS: NavKey[] = [
   'observability',
   'security',
   'extensions',
+  'about',
 ]
 
 /**
@@ -48,6 +52,7 @@ const TAB_ICONS: Record<NavKey, typeof Settings> = {
   observability: Activity,
   security: ShieldCheck,
   extensions: Plug,
+  about: Info,
 }
 
 /** 渲染导航项图标（统一 16px 线性、currentColor，与全局图标体系一致）。 */
@@ -92,6 +97,11 @@ export function SettingsModal(props: SettingsModalProps) {
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [props.open, props.onClose])
+
+  // 从状态栏更新徽标进入时直达「关于与更新」；用户手动切换后不再强制。
+  useEffect(() => {
+    if (props.open && props.initialPanel !== undefined) setActiveTab(props.initialPanel)
+  }, [props.open, props.initialPanel])
 
   // 焦点陷阱：Tab 在弹窗内循环，不逃逸到背景（此前只移焦不循环）
   useFocusTrap(panelRef, props.open)
@@ -175,6 +185,7 @@ export function SettingsModal(props: SettingsModalProps) {
             {activeTab === 'reflection' ? <ReflectionPanel /> : null}
             {activeTab === 'security' ? <SecurityPanel /> : null}
             {activeTab === 'extensions' ? <ExtensionsPanel /> : null}
+            {activeTab === 'about' ? <AboutPanel /> : null}
           </div>
         </div>
       </div>

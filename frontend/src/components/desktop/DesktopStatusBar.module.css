@@ -62,3 +62,13 @@
 .app-statusbar__chip--idle {
   color: var(--color-text-muted);
 }
+
+.app-statusbar__chip--button {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.app-statusbar__chip--button:hover {
+  color: var(--color-text-primary);
+}
