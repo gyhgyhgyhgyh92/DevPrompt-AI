@@ -55,6 +55,9 @@ jobs:
           pnpm -C frontend install --frozen-lockfile
           pnpm -C desktop install --frozen-lockfile
 
+      - name: 桌面端更新源单元测试
+        run: pnpm -C desktop test
+
       - name: 安装检索工具（rg / ctags）
         # 三平台统一用 bash：Windows runner 默认是 PowerShell，不认下面的 [ ... ] 语法
         shell: bash
@@ -83,6 +86,10 @@ jobs:
           LLM_API_KEY: mock-key-for-smoke
           LLM_MODEL: mock-model
 
+      - name: 校验 Windows 更新清单
+        if: matrix.os == 'windows-latest'
+        run: node scripts/verify-update-manifest.mjs desktop/dist/packages/latest.yml
+
       - name: 上传安装包
         uses: actions/upload-artifact@v4
         with:
@@ -91,6 +98,8 @@ jobs:
             desktop/dist/packages/*.exe
             desktop/dist/packages/*.dmg
             desktop/dist/packages/*.AppImage
+            desktop/dist/packages/latest*.yml
+            desktop/dist/packages/*.blockmap
           if-no-files-found: error
 
   release:
@@ -100,11 +109,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 校验 tag 与版本号
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(python -c "import json;print(json.load(open('desktop/package.json'))['version'])")
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "tag ${GITHUB_REF_NAME} 与 desktop/package.json ${version} 不一致" >&2
+            exit 1
+          fi
+
       - name: 下载全部安装包
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
+
+      - name: 校验 Windows 产物齐全
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: test -f artifacts/latest.yml
 
       - name: 创建 Release
         env:
@@ -114,4 +136,64 @@ jobs:
             --title "${GITHUB_REF_NAME}" \
             --notes-file release-notes.md \
             artifacts/*
+
+  publish-updates:
+    name: 发布自动更新指针
+    needs: release
+    # 只对 stable tag 更新指针；预发布 tag 与手动触发不改客户端更新源。
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 下载 Windows 产物
+        uses: actions/download-artifact@v4
+        with:
+          name: DevPromptAI-win-x64
+          path: updates
+
+      - name: 校验清单与安装包
+        run: node scripts/verify-update-manifest.mjs updates/latest.yml
+
+      - name: 创建/更新 updates 预发布
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view updates >/dev/null 2>&1 || \
+            gh release create updates --prerelease \
+              --title "自动更新元数据（勿手动下载）" \
+              --notes "由 Release 工作流自动维护，指向当前 stable 版本。"
+          # 先产物、后清单：避免客户端拿到指向不存在文件的 latest.yml
+          gh release upload updates updates/*.exe updates/*.blockmap --clobber
+          gh release upload updates updates/latest.yml --clobber
+
+      - name: 清理旧资产
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current_exe=$(basename "$(ls updates/*.exe | head -n 1)")
+          current_block="${current_exe}.blockmap"
+          gh release view updates --json assets --jq '.assets[].name' | while read -r name; do
+            if [ "$name" != "$current_exe" ] && [ "$name" != "$current_block" ] && [ "$name" != "latest.yml" ]; then
+              gh release delete-asset updates "$name" --yes
+            fi
+          done
+
+      - name: 校验 GitHub 更新源
+        run: |
+          curl -fsSL --max-time 20 \
+            "https://github.com/gyhgyhgyhgyh92/DevPrompt-AI/releases/download/updates/latest.yml" >/dev/null
+          current_exe=$(basename "$(ls updates/*.exe | head -n 1)")
+          curl -fsSL --max-time 20 -r 0-99 \
+            "https://github.com/gyhgyhgyhgyh92/DevPrompt-AI/releases/download/updates/${current_exe}" >/dev/null
+
+      - name: 校验镜像更新源（尽力而为）
+        continue-on-error: true
+        run: |
+          curl -fsSL --max-time 20 \
+            "https://ghfast.top/https://github.com/gyhgyhgyhgyh92/DevPrompt-AI/releases/download/updates/latest.yml" >/dev/null
 
